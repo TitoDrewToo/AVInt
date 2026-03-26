@@ -5,9 +5,11 @@ import { X, User, ChevronDown, ChevronLeft, AlertTriangle, LogOut } from "lucide
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { GoogleSignInButton } from "@/components/google-sign-in-button"
+import { supabase } from "@/lib/supabase"
+import type { Session } from "@supabase/supabase-js"
 
 // Development flag to preview logged-in state
-const DEV_FORCE_LOGGED_IN = true
+const DEV_FORCE_LOGGED_IN = false
 
 interface AccountPanelProps {
   isOpen: boolean
@@ -274,11 +276,24 @@ function DeleteAccountModal({
 }
 
 export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelProps) {
-  const isSignedIn = DEV_FORCE_LOGGED_IN
+  const [session, setSession] = useState<Session | null>(null)
+  const isSignedIn = DEV_FORCE_LOGGED_IN || session !== null
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [expandedSection, setExpandedSection] = useState<ExpandedSection>(null)
   const [panelView, setPanelView] = useState<PanelView>("menu")
   const giftCodeRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session)
+    })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession)
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
 
   useEffect(() => {
     if (isOpen && focusGiftCode && giftCodeRef.current) {
@@ -347,7 +362,7 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                 {panelView === "menu" && isSignedIn && (
                   <p className="mt-0.5 text-sm text-muted-foreground">
                     Signed in as<br />
-                    <span className="text-foreground">email@example.com</span>
+                    <span className="text-foreground">{session?.user?.email ?? "email@example.com"}</span>
                   </p>
                 )}
               </div>
@@ -562,7 +577,10 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                   {/* Sign Out */}
                   <div className="h-px bg-border" />
                   <div className="space-y-1">
-                    <button className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-muted">
+                    <button
+                      onClick={() => supabase.auth.signOut()}
+                      className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-muted"
+                    >
                       Sign out
                       <LogOut className="h-4 w-4 text-muted-foreground" />
                     </button>

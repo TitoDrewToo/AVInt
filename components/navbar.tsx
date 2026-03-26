@@ -11,13 +11,13 @@ import { SystemStatusIndicator } from "@/components/ui/system-status-indicator"
 const products = [
   { name: "PicklePal", href: "https://picklepalph.com", external: true },
   { name: "Hooper", href: "#", disabled: true },
-  { name: "Smart Storage", href: "/smart-storage" },
-  { name: "Smart Dashboard", href: "/smart-dashboard" },
+  { name: "Smart Storage", href: "/products/smart-storage" },
+  { name: "Smart Dashboard", href: "/products/smart-dashboard" },
 ]
 
 const tools = [
-  { name: "Smart Storage", href: "/smart-storage" },
-  { name: "Smart Dashboard", href: "/smart-dashboard" },
+  { name: "Smart Storage", href: "/tools/smart-storage" },
+  { name: "Smart Dashboard", href: "/tools/smart-dashboard" },
 ]
 
 function ThemeToggle() {

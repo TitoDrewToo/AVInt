@@ -1,6 +1,7 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
+import { supabase } from "@/lib/supabase"
 
 function GoogleIcon({ className }: { className?: string }) {
   return (
@@ -36,11 +37,18 @@ interface GoogleSignInButtonProps {
 }
 
 export function GoogleSignInButton({ onClick, className }: GoogleSignInButtonProps) {
+  const handleClick = async () => {
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+    })
+    onClick?.()
+  }
+
   return (
     <Button
       variant="outline"
       size="lg"
-      onClick={onClick}
+      onClick={handleClick}
       className={`w-full rounded-lg border-border bg-background hover:bg-muted ${className}`}
     >
       <GoogleIcon className="mr-3 h-5 w-5" />

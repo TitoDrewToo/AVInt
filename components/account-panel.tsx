@@ -1,0 +1,596 @@
+"use client"
+
+import { useState, useEffect, useRef } from "react"
+import { X, User, ChevronDown, ChevronLeft, AlertTriangle, LogOut } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { GoogleSignInButton } from "@/components/google-sign-in-button"
+
+// Development flag to preview logged-in state
+const DEV_FORCE_LOGGED_IN = true
+
+interface AccountPanelProps {
+  isOpen: boolean
+  onClose: () => void
+  focusGiftCode?: boolean
+}
+
+type ExpandedSection = "subscription" | "email" | "password" | "giftcode" | null
+type PanelView = "menu" | "privacy" | "terms"
+
+function AccordionItem({
+  label,
+  isExpanded,
+  onToggle,
+  children,
+  variant = "default",
+}: {
+  label: string
+  isExpanded: boolean
+  onToggle: () => void
+  children: React.ReactNode
+  variant?: "default" | "destructive"
+}) {
+  return (
+    <div>
+      <button
+        onClick={onToggle}
+        className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm transition-colors ${
+          variant === "destructive"
+            ? "text-destructive hover:bg-destructive/10"
+            : "text-foreground hover:bg-muted"
+        }`}
+      >
+        {label}
+        <ChevronDown
+          className={`h-4 w-4 transition-transform duration-200 ${
+            variant === "destructive" ? "" : "text-muted-foreground"
+          } ${isExpanded ? "rotate-180" : ""}`}
+        />
+      </button>
+      <div
+        className={`overflow-hidden transition-all duration-200 ease-out ${
+          isExpanded ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
+        }`}
+      >
+        <div className="px-3 pb-3 pt-2">{children}</div>
+      </div>
+    </div>
+  )
+}
+
+function PrivacyPolicyContent() {
+  return (
+    <div className="space-y-6 text-sm">
+      <p className="text-muted-foreground">
+        AVIntelligence respects your privacy. We design our systems to process documents automatically and securely.
+      </p>
+
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">Information We Collect</h3>
+        <p className="text-muted-foreground">
+          We collect only the information necessary to provide our services:
+        </p>
+        <ul className="ml-4 list-disc space-y-1 text-muted-foreground">
+          <li>Uploaded files and documents</li>
+          <li>Extracted structured data</li>
+          <li>Account email address</li>
+          <li>Usage activity related to reports and dashboards</li>
+        </ul>
+        <p className="text-muted-foreground">
+          We do not manually review documents. Processing is automated.
+        </p>
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">How Data Is Used</h3>
+        <p className="text-muted-foreground">Your data is used to:</p>
+        <ul className="ml-4 list-disc space-y-1 text-muted-foreground">
+          <li>Structure document information</li>
+          <li>Generate reports</li>
+          <li>Power dashboards</li>
+          <li>Improve system performance</li>
+        </ul>
+        <p className="text-muted-foreground">
+          We do not sell personal data. We do not use documents for advertising purposes.
+        </p>
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">Data Storage</h3>
+        <p className="text-muted-foreground">
+          Files and structured data are securely stored using modern cloud infrastructure. We implement access controls to prevent unauthorized access. Only you can access your uploaded documents and generated outputs.
+        </p>
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">AI Processing</h3>
+        <p className="text-muted-foreground">
+          Documents may be processed by automated systems to extract structured information such as dates, amounts, document types, and vendors. Processing is performed programmatically. No human review is required.
+        </p>
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">Data Retention</h3>
+        <p className="text-muted-foreground">
+          Documents remain stored until you delete files or delete your account. You may request deletion at any time.
+        </p>
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">Security</h3>
+        <p className="text-muted-foreground">
+          We apply industry standard practices for data storage, access control, and encrypted connections. No system can guarantee absolute security, but we prioritize protection of user data.
+        </p>
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">User Control</h3>
+        <p className="text-muted-foreground">You may:</p>
+        <ul className="ml-4 list-disc space-y-1 text-muted-foreground">
+          <li>Delete documents</li>
+          <li>Update account email</li>
+          <li>Change password</li>
+          <li>Delete your account</li>
+        </ul>
+        <p className="text-muted-foreground">
+          Account deletion permanently removes stored data.
+        </p>
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">Contact</h3>
+        <p className="text-muted-foreground">support@avintph.com</p>
+      </section>
+    </div>
+  )
+}
+
+function TermsOfServiceContent() {
+  return (
+    <div className="space-y-6 text-sm">
+      <p className="text-muted-foreground">
+        By using AVIntelligence, you agree to the following terms.
+      </p>
+
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">Use of Service</h3>
+        <p className="text-muted-foreground">
+          AVIntelligence provides tools that help structure and analyze documents. You are responsible for how you use generated outputs. We do not provide financial, legal, or tax advice. Reports are provided as reference tools.
+        </p>
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">Account Responsibility</h3>
+        <p className="text-muted-foreground">
+          You are responsible for maintaining the confidentiality of your account credentials. You agree not to share unauthorized access to your account.
+        </p>
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">Acceptable Use</h3>
+        <p className="text-muted-foreground">You agree not to upload:</p>
+        <ul className="ml-4 list-disc space-y-1 text-muted-foreground">
+          <li>Malicious files</li>
+          <li>Illegal content</li>
+          <li>Content that violates applicable laws</li>
+        </ul>
+        <p className="text-muted-foreground">
+          We reserve the right to suspend accounts that misuse the platform.
+        </p>
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">Service Availability</h3>
+        <p className="text-muted-foreground">
+          We aim to provide reliable service but do not guarantee uninterrupted availability. Features may change or improve over time.
+        </p>
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">Payments</h3>
+        <p className="text-muted-foreground">
+          Paid features provide access to advanced reports and analytics. Billing is handled securely through third-party providers. Access duration depends on selected plan.
+        </p>
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">Limitation of Liability</h3>
+        <p className="text-muted-foreground">
+          AVIntelligence is provided as-is. We are not liable for decisions made using generated reports or insights. Users are responsible for verifying outputs before external use.
+        </p>
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">Updates to Terms</h3>
+        <p className="text-muted-foreground">
+          We may update these terms as the service evolves. Continued use of the platform indicates acceptance of updated terms.
+        </p>
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">Contact</h3>
+        <p className="text-muted-foreground">support@avintph.com</p>
+      </section>
+    </div>
+  )
+}
+
+function DeleteAccountModal({
+  isOpen,
+  onClose,
+}: {
+  isOpen: boolean
+  onClose: () => void
+}) {
+  const [password, setPassword] = useState("")
+
+  if (!isOpen) return null
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center">
+      <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-lg">
+        <div className="flex items-start gap-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-destructive/10">
+            <AlertTriangle className="h-5 w-5 text-destructive" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-lg font-semibold text-foreground">
+              Delete your account?
+            </h3>
+            <p className="mt-2 text-sm text-muted-foreground">
+              This action cannot be undone. Enter your password to confirm.
+            </p>
+          </div>
+        </div>
+        <div className="mt-4">
+          <Input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="rounded-lg"
+          />
+        </div>
+        <div className="mt-6 flex gap-3">
+          <Button
+            variant="outline"
+            className="flex-1 rounded-lg"
+            onClick={onClose}
+          >
+            Cancel
+          </Button>
+          <Button
+            className="flex-1 rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            onClick={onClose}
+          >
+            Delete Account
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelProps) {
+  const isSignedIn = DEV_FORCE_LOGGED_IN
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [expandedSection, setExpandedSection] = useState<ExpandedSection>(null)
+  const [panelView, setPanelView] = useState<PanelView>("menu")
+  const giftCodeRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (isOpen && focusGiftCode && giftCodeRef.current) {
+      setExpandedSection("giftcode")
+      setTimeout(() => {
+        giftCodeRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
+        const input = giftCodeRef.current?.querySelector("input")
+        input?.focus()
+      }, 300)
+    }
+  }, [isOpen, focusGiftCode])
+
+  // Reset state when panel closes
+  useEffect(() => {
+    if (!isOpen) {
+      setExpandedSection(null)
+      setPanelView("menu")
+    }
+  }, [isOpen])
+
+  const toggleSection = (section: ExpandedSection) => {
+    setExpandedSection(expandedSection === section ? null : section)
+  }
+
+  const getPanelTitle = () => {
+    switch (panelView) {
+      case "privacy":
+        return "Privacy Policy"
+      case "terms":
+        return "Terms of Service"
+      default:
+        return "Account"
+    }
+  }
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className={`fixed inset-0 z-40 bg-background/60 backdrop-blur-sm transition-opacity duration-300 ${
+          isOpen ? "opacity-100" : "pointer-events-none opacity-0"
+        }`}
+        onClick={onClose}
+      />
+
+      {/* Panel */}
+      <div
+        className={`fixed right-0 top-0 z-50 h-full w-full max-w-[420px] transform border-l border-border bg-background shadow-2xl transition-transform duration-300 ease-out ${
+          isOpen ? "translate-x-0" : "translate-x-full"
+        }`}
+      >
+        <div className="flex h-full flex-col">
+          {/* Header */}
+          <div className="flex items-center justify-between border-b border-border px-6 py-4">
+            <div className="flex items-center gap-3">
+              {panelView !== "menu" && (
+                <button
+                  onClick={() => setPanelView("menu")}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
+              )}
+              <div>
+                <h2 className="text-lg font-semibold text-foreground">{getPanelTitle()}</h2>
+                {panelView === "menu" && isSignedIn && (
+                  <p className="mt-0.5 text-sm text-muted-foreground">
+                    Signed in as<br />
+                    <span className="text-foreground">email@example.com</span>
+                  </p>
+                )}
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto p-6">
+            {/* Privacy Policy View */}
+            {panelView === "privacy" && <PrivacyPolicyContent />}
+
+            {/* Terms of Service View */}
+            {panelView === "terms" && <TermsOfServiceContent />}
+
+            {/* Main Menu View */}
+            {panelView === "menu" && (
+            <div className="space-y-6">
+              {/* Authentication Section */}
+              {!isSignedIn && (
+                <div className="space-y-5">
+                  {/* Google SSO */}
+                  <GoogleSignInButton />
+
+                  {/* Divider */}
+                  <div className="flex items-center gap-3">
+                    <div className="h-px flex-1 bg-border" />
+                    <span className="text-xs text-muted-foreground">or continue with email</span>
+                    <div className="h-px flex-1 bg-border" />
+                  </div>
+
+                  {/* Email login fields */}
+                  <div className="space-y-3">
+                    <Input
+                      type="email"
+                      placeholder="Email"
+                      className="rounded-lg"
+                    />
+                    <Input
+                      type="password"
+                      placeholder="Password"
+                      className="rounded-lg"
+                    />
+                  </div>
+                  <Button className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90">
+                    Sign In
+                  </Button>
+                  <div className="flex items-center justify-between text-sm">
+                    <button className="text-muted-foreground transition-colors hover:text-foreground">
+                      Create account
+                    </button>
+                    <button className="text-muted-foreground transition-colors hover:text-foreground">
+                      Forgot password
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Account Settings (visible when signed in) */}
+              {isSignedIn && (
+                <>
+                  {/* Subscription Section */}
+                  <div className="space-y-1">
+                    <AccordionItem
+                      label="Subscription"
+                      isExpanded={expandedSection === "subscription"}
+                      onToggle={() => toggleSection("subscription")}
+                    >
+                      <div className="space-y-3">
+                        <div className="rounded-lg bg-muted/50 p-3">
+                          <p className="text-xs text-muted-foreground">Current plan</p>
+                          <p className="mt-1 text-sm font-medium text-foreground">Free</p>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full rounded-lg"
+                          disabled
+                        >
+                          Manage subscription
+                        </Button>
+                      </div>
+                    </AccordionItem>
+                    <button
+                      className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-muted"
+                      disabled
+                    >
+                      Billing
+                      <span className="text-xs text-muted-foreground">Coming soon</span>
+                    </button>
+                  </div>
+
+                  {/* Gift Code Section */}
+                  <div className="h-px bg-border" />
+                  <div ref={giftCodeRef} className="space-y-1">
+                    <AccordionItem
+                      label="Redeem Gift Code"
+                      isExpanded={expandedSection === "giftcode"}
+                      onToggle={() => toggleSection("giftcode")}
+                    >
+                      <div className="space-y-3">
+                        <div className="flex gap-2">
+                          <Input
+                            type="text"
+                            placeholder="Enter gift code"
+                            className="flex-1 rounded-lg"
+                          />
+                          <Button size="sm" className="rounded-lg bg-primary text-primary-foreground hover:bg-primary/90">
+                            Apply Code
+                          </Button>
+                        </div>
+                      </div>
+                    </AccordionItem>
+                  </div>
+
+                  {/* Email Section */}
+                  <div className="h-px bg-border" />
+                  <div className="space-y-1">
+                    <AccordionItem
+                      label="Email"
+                      isExpanded={expandedSection === "email"}
+                      onToggle={() => toggleSection("email")}
+                    >
+                      <div className="space-y-3">
+                        <Input
+                          type="email"
+                          placeholder="New email"
+                          className="rounded-lg"
+                        />
+                        <Input
+                          type="password"
+                          placeholder="Password confirmation"
+                          className="rounded-lg"
+                        />
+                        <Button size="sm" className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90">
+                          Save email
+                        </Button>
+                        <p className="text-xs text-muted-foreground">
+                          Email change requires password confirmation for security.
+                        </p>
+                      </div>
+                    </AccordionItem>
+
+                    {/* Change Password Section */}
+                    <AccordionItem
+                      label="Change password"
+                      isExpanded={expandedSection === "password"}
+                      onToggle={() => toggleSection("password")}
+                    >
+                      <div className="space-y-3">
+                        <Input
+                          type="password"
+                          placeholder="Current password"
+                          className="rounded-lg"
+                        />
+                        <Input
+                          type="password"
+                          placeholder="New password"
+                          className="rounded-lg"
+                        />
+                        <Input
+                          type="password"
+                          placeholder="Confirm new password"
+                          className="rounded-lg"
+                        />
+                        <Button size="sm" className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90">
+                          Update password
+                        </Button>
+                        <p className="text-xs text-muted-foreground">
+                          Use a strong password.
+                        </p>
+                      </div>
+                    </AccordionItem>
+                  </div>
+
+                  {/* Legal Section */}
+                  <div className="h-px bg-border" />
+                  <div className="space-y-1">
+                    <button
+                      onClick={() => setPanelView("privacy")}
+                      className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-muted"
+                    >
+                      Privacy
+                      <ChevronDown className="h-4 w-4 -rotate-90 text-muted-foreground" />
+                    </button>
+                    <button
+                      onClick={() => setPanelView("terms")}
+                      className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-muted"
+                    >
+                      Terms
+                      <ChevronDown className="h-4 w-4 -rotate-90 text-muted-foreground" />
+                    </button>
+                  </div>
+
+                  {/* Delete Account */}
+                  <div className="h-px bg-border" />
+                  <div className="space-y-1">
+                    <button
+                      onClick={() => setShowDeleteModal(true)}
+                      className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-destructive transition-colors hover:bg-destructive/10"
+                    >
+                      Delete account
+                      <ChevronDown className="h-4 w-4 -rotate-90" />
+                    </button>
+                  </div>
+
+                  {/* Sign Out */}
+                  <div className="h-px bg-border" />
+                  <div className="space-y-1">
+                    <button className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-muted">
+                      Sign out
+                      <LogOut className="h-4 w-4 text-muted-foreground" />
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <DeleteAccountModal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+      />
+    </>
+  )
+}
+
+export function AccountMenuButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      aria-label="Open account menu"
+    >
+      <User className="h-4 w-4" />
+    </button>
+  )
+}

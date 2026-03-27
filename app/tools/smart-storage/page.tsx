@@ -1,11 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Navbar } from "@/components/navbar"
 import { Footer } from "@/components/footer"
 import { Button } from "@/components/ui/button"
 import { ProcessingIndicator } from "@/components/ui/processing-indicator"
-import { AuthGuardModal, DEV_FORCE_LOGGED_IN } from "@/components/auth-guard-modal"
+import { AuthGuardModal } from "@/components/auth-guard-modal"
+import { supabase } from "@/lib/supabase"
+import type { Session } from "@supabase/supabase-js"
 import { 
   Folder, 
   FolderOpen,
@@ -206,8 +208,21 @@ function ReportCategory({
 }
 
 export default function SmartStoragePage() {
+  const [session, setSession] = useState<Session | null>(null)
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session)
+    })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession)
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
@@ -224,15 +239,13 @@ export default function SmartStoragePage() {
     // UI only - no upload logic
   }
 
-  // DEV PREVIEW ONLY
-  const isSignedIn = false
+  if (!session) {
+    return <AuthGuardModal isVisible={true} />
+  }
 
   return (
     <div className="flex min-h-screen flex-col">
       <Navbar />
-      
-      {/* Auth Guard Modal */}
-      <AuthGuardModal isVisible={!isSignedIn} />
       
       {/* Workspace */}
       <main className="flex flex-1">

@@ -4,17 +4,12 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { GoogleSignInButton } from "@/components/google-sign-in-button"
 
-// Development flag - sync with account-panel.tsx
-// Set to true to bypass auth guard
-const DEV_FORCE_LOGGED_IN = true
-
 interface AuthGuardModalProps {
   isVisible: boolean
 }
 
 export function AuthGuardModal({ isVisible }: AuthGuardModalProps) {
-  // Don't show if dev flag is true or if not visible
-  if (DEV_FORCE_LOGGED_IN || !isVisible) return null
+  if (!isVisible) return null
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -31,17 +26,14 @@ export function AuthGuardModal({ isVisible }: AuthGuardModalProps) {
         </div>
 
         <div className="mt-8 space-y-4">
-          {/* Google SSO */}
           <GoogleSignInButton />
 
-          {/* Divider */}
           <div className="flex items-center gap-3">
             <div className="h-px flex-1 bg-border" />
             <span className="text-xs text-muted-foreground">or</span>
             <div className="h-px flex-1 bg-border" />
           </div>
 
-          {/* Email sign in */}
           <div className="space-y-3">
             <Input
               type="email"
@@ -62,6 +54,3 @@ export function AuthGuardModal({ isVisible }: AuthGuardModalProps) {
     </div>
   )
 }
-
-// Export the dev flag for use in pages
-export { DEV_FORCE_LOGGED_IN }

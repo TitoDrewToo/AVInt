@@ -9,7 +9,6 @@ import { supabase } from "@/lib/supabase"
 import type { Session } from "@supabase/supabase-js"
 
 // Development flag to preview logged-in state
-const DEV_FORCE_LOGGED_IN = false
 
 interface AccountPanelProps {
   isOpen: boolean
@@ -277,7 +276,7 @@ function DeleteAccountModal({
 
 export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelProps) {
   const [session, setSession] = useState<Session | null>(null)
-  const isSignedIn = DEV_FORCE_LOGGED_IN || session !== null
+  const isSignedIn = session !== null
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [expandedSection, setExpandedSection] = useState<ExpandedSection>(null)
   const [panelView, setPanelView] = useState<PanelView>("menu")

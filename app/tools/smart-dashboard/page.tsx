@@ -1,9 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Navbar } from "@/components/navbar"
 import { Footer } from "@/components/footer"
-import { AuthGuardModal, DEV_FORCE_LOGGED_IN } from "@/components/auth-guard-modal"
+import { AuthGuardModal } from "@/components/auth-guard-modal"
+import { supabase } from "@/lib/supabase"
+import type { Session } from "@supabase/supabase-js"
 import { ProcessingIndicator } from "@/components/ui/processing-indicator"
 import { ChevronDown, Star, Search, GripVertical } from "lucide-react"
 
@@ -157,11 +159,24 @@ function AccordionSection({
 }
 
 export default function SmartDashboardPage() {
+  const [session, setSession] = useState<Session | null>(null)
   const [widgets, setWidgets] = useState<Widget[]>(initialWidgets)
   const [selectedWidget, setSelectedWidget] = useState<string | null>(null)
   const [expandedSection, setExpandedSection] = useState<"standard" | "custom" | null>("standard")
   const [customSearch, setCustomSearch] = useState("")
   const [draggedWidget, setDraggedWidget] = useState<string | null>(null)
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session)
+    })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession)
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
 
   const toggleSection = (section: "standard" | "custom") => {
     setExpandedSection(expandedSection === section ? null : section)
@@ -201,15 +216,13 @@ export default function SmartDashboardPage() {
     .filter((v) => !customSearch || v.label.toLowerCase().includes(customSearch.toLowerCase()))
     .sort((a, b) => (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0))
 
-  // DEV PREVIEW ONLY
-  const isSignedIn = false
+  if (!session) {
+    return <AuthGuardModal isVisible={true} />
+  }
 
   return (
     <div className="flex min-h-screen flex-col">
       <Navbar />
-      
-      {/* Auth Guard Modal */}
-      <AuthGuardModal isVisible={!isSignedIn} />
 
       {/* Workspace Container */}
       <div className="flex flex-1 overflow-hidden">

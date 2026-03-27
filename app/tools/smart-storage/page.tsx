@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Navbar } from "@/components/navbar"
 import { Footer } from "@/components/footer"
 import { Button } from "@/components/ui/button"
@@ -18,7 +18,6 @@ import {
   File
 } from "lucide-react"
 
-// User folder tree structure
 const userFolders = [
   {
     name: "Documents",
@@ -38,7 +37,6 @@ const userFolders = [
   { name: "Business", children: [] },
 ]
 
-// Classification folders (system-driven)
 const classificationFolders = [
   { name: "Unclassified", count: 0 },
   { name: "Receipts", count: 0 },
@@ -49,7 +47,6 @@ const classificationFolders = [
   { name: "Other", count: 0 },
 ]
 
-// Workspace folders (for grid display)
 const workspaceFolders = [
   { name: "Receipts 2026" },
   { name: "Invoices" },
@@ -57,7 +54,6 @@ const workspaceFolders = [
   { name: "Tax Documents" },
 ]
 
-// Report categories with availability
 const reportCategories = [
   {
     name: "Expenses",
@@ -104,7 +100,6 @@ const reportCategories = [
   },
 ]
 
-// Folder tree component
 function FolderTreeItem({ 
   folder, 
   level = 0,
@@ -165,7 +160,6 @@ function FolderTreeItem({
   )
 }
 
-// Report category component
 function ReportCategory({ 
   category 
 }: { 
@@ -209,21 +203,114 @@ function ReportCategory({
 
 export default function SmartStoragePage() {
   const [session, setSession] = useState<Session | null>(null)
+  const [sessionLoaded, setSessionLoaded] = useState(false)
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
+  const [isProcessing, setIsProcessing] = useState(false)
 
+  // ── Session ───────────────────────────────────────────────────────────────
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session)
+      setSessionLoaded(true)
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
       setSession(newSession)
+      setSessionLoaded(true)
     })
 
     return () => subscription.unsubscribe()
   }, [])
 
+  // ── Processing indicator — query processing_jobs ──────────────────────────
+  const checkProcessingState = useCallback(async () => {
+    if (!session?.user?.id) return
+
+    // Step 1: get all file IDs belonging to this user
+    const { data: userFiles } = await supabase
+      .from("files")
+      .select("id")
+      .eq("user_id", session.user.id)
+
+    if (!userFiles || userFiles.length === 0) {
+      setIsProcessing(false)
+      return
+    }
+
+    const fileIds = userFiles.map((f) => f.id)
+
+    // Step 2: check if any of those files have active processing jobs
+    const { data: activeJobs } = await supabase
+      .from("processing_jobs")
+      .select("status")
+      .in("file_id", fileIds)
+      .in("status", ["uploaded", "processing"])
+
+    setIsProcessing((activeJobs?.length ?? 0) > 0)
+  }, [session])
+
+  useEffect(() => {
+    checkProcessingState()
+  }, [checkProcessingState])
+
+  // ── Upload handler ────────────────────────────────────────────────────────
+  const handleUpload = async (files: FileList | File[]) => {
+    if (!session?.user?.id) return
+
+    const fileArray = Array.from(files)
+
+    for (const file of fileArray) {
+      try {
+        // 1. Generate unique storage path
+        const ext = file.name.split(".").pop()
+        const uniqueName = `${crypto.randomUUID()}.${ext}`
+        const storagePath = `${session.user.id}/${uniqueName}`
+
+        // 2. Upload to Supabase Storage
+        const { error: storageError } = await supabase.storage
+          .from("documents")
+          .upload(storagePath, file)
+
+        if (storageError) throw storageError
+
+        // 3. Insert into files table
+        const { data: fileRecord, error: fileError } = await supabase
+          .from("files")
+          .insert({
+            user_id: session.user.id,
+            filename: file.name,
+            storage_path: storagePath,
+            file_type: file.type,
+            file_size: file.size,
+            document_type: "unknown",
+            upload_status: "uploaded",
+          })
+          .select()
+          .single()
+
+        if (fileError) throw fileError
+
+        // 4. Insert into processing_jobs table
+        const { error: jobError } = await supabase
+          .from("processing_jobs")
+          .insert({
+            file_id: fileRecord.id,
+            status: "uploaded",
+          })
+
+        if (jobError) throw jobError
+
+        // 5. Refresh processing indicator
+        await checkProcessingState()
+
+      } catch (err) {
+        console.error("Upload failed for", file.name, err)
+      }
+    }
+  }
+
+  // ── Drag handlers ─────────────────────────────────────────────────────────
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
     setIsDragOver(true)
@@ -233,32 +320,31 @@ export default function SmartStoragePage() {
     setIsDragOver(false)
   }
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault()
     setIsDragOver(false)
-    // UI only - no upload logic
+    if (e.dataTransfer.files.length > 0) {
+      await handleUpload(e.dataTransfer.files)
+    }
   }
 
-  if (!session) {
-    return <AuthGuardModal isVisible={true} />
-  }
+  // ── Auth guard ────────────────────────────────────────────────────────────
+  if (!sessionLoaded) return null
+  if (!session) return <AuthGuardModal isVisible={true} />
 
   return (
     <div className="flex min-h-screen flex-col">
       <Navbar />
-      
-      {/* Workspace */}
+
       <main className="flex flex-1">
-        {/* Three-pane layout */}
         <div className="flex flex-1">
-          
+
           {/* LEFT PANE - Folder Navigation (15%) */}
           <aside className="flex w-[15%] min-w-[180px] flex-col border-r border-border bg-card">
             {/* User Folders (60%) */}
             <div className="flex-[0.6] overflow-y-auto border-b border-border p-3">
-              {/* Processing indicator - top right */}
               <div className="mb-2 flex justify-end">
-                <ProcessingIndicator active={true} />
+                <ProcessingIndicator active={isProcessing} />
               </div>
               <div className="space-y-0.5">
                 {userFolders.map((folder) => (
@@ -326,7 +412,6 @@ export default function SmartStoragePage() {
                 workspaceFolders.length > 0 ? "opacity-50" : ""
               }`}
             >
-              {/* Silhouette file icons */}
               <div className="relative mb-6 flex items-end justify-center gap-2">
                 <div className="flex h-16 w-14 items-center justify-center rounded-lg bg-muted/50">
                   <FileText className="h-8 w-8 text-muted-foreground/30" />
@@ -354,7 +439,7 @@ export default function SmartStoragePage() {
           {/* RIGHT PANE - Report Generator (20%) */}
           <aside className="flex w-[20%] min-w-[180px] flex-col border-l border-border bg-card p-4">
             <h2 className="mb-4 text-sm font-semibold text-foreground">Reports</h2>
-            
+
             <Button className="mb-6 w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90">
               Generate Report
             </Button>
@@ -365,6 +450,7 @@ export default function SmartStoragePage() {
               ))}
             </div>
           </aside>
+
         </div>
       </main>
 

@@ -10,6 +10,16 @@ import { useState } from "react"
 // Placeholder gift codes for UI preview
 const placeholderCodes = ["SSG-AX92-KLM1", "SSG-QT77-BN21"]
 
+// ─────────────────────────────────────────────
+// future: trigger transactional email confirmation
+// subscription confirmation OR gift code delivery email
+//
+// placement: call after successful purchase verification
+// expected inputs: user email, purchase type, plan name, gift codes (if applicable)
+// email designs: minimal, dark/light adaptive, strong typography — consistent with site aesthetic
+// provider: TBD (Resend / Postmark / similar)
+// ─────────────────────────────────────────────
+
 function CopyableCode({ code }: { code: string }) {
   const [copied, setCopied] = useState(false)
 
@@ -34,7 +44,8 @@ function CopyableCode({ code }: { code: string }) {
 }
 
 export default function PurchaseSuccessPage() {
-  // UI placeholder — in production, detect purchase type from query params
+  // UI placeholder — will be driven by query params after LemonSqueezy integration
+  // e.g. /purchase/success?type=gift or /purchase/success?type=subscription
   const isGiftCodePurchase = true
 
   return (
@@ -43,6 +54,7 @@ export default function PurchaseSuccessPage() {
       <main className="flex flex-1 items-center justify-center px-6 py-24">
         <div className="mx-auto w-full max-w-md">
           <div className="rounded-2xl border border-border bg-card p-10 text-center shadow-sm">
+
             {/* Success icon */}
             <div className="flex justify-center">
               <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
@@ -53,7 +65,7 @@ export default function PurchaseSuccessPage() {
             <h1 className="mt-6 text-2xl font-semibold text-foreground">Purchase successful</h1>
             <p className="mt-2 text-sm text-muted-foreground">Access is now active.</p>
 
-            {/* Gift codes section */}
+            {/* Gift codes — conditionally shown */}
             {isGiftCodePurchase && (
               <div className="mt-8 text-left">
                 <p className="mb-3 text-sm font-medium text-foreground">Your gift codes</p>

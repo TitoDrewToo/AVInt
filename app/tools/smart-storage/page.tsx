@@ -4,19 +4,130 @@ import { useState, useEffect, useCallback } from "react"
 import { Navbar } from "@/components/navbar"
 import { Footer } from "@/components/footer"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { ProcessingIndicator } from "@/components/ui/processing-indicator"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 import { supabase } from "@/lib/supabase"
 import type { Session } from "@supabase/supabase-js"
-import { 
-  Folder, 
+import {
+  Folder,
   FolderOpen,
   ChevronRight,
   ChevronDown,
   FileText,
   Image as ImageIcon,
-  File
+  File,
+  Calendar,
 } from "lucide-react"
+
+// ── Document type normalization ───────────────────────────────────────────────
+
+const SUPPORTED_DOCUMENT_TYPES = [
+  "receipt",
+  "invoice",
+  "payslip",
+  "income_statement",
+  "bank_statement",
+  "transaction_record",
+  "contract",
+  "agreement",
+  "tax_document",
+  "general_document",
+] as const
+
+type DocumentType = typeof SUPPORTED_DOCUMENT_TYPES[number]
+
+const DOCUMENT_TYPE_ALIASES: Record<string, DocumentType> = {
+  "expense receipt": "receipt",
+  "expense": "receipt",
+  "bill": "receipt",
+  "salary slip": "payslip",
+  "pay slip": "payslip",
+  "paycheck": "payslip",
+  "wage slip": "payslip",
+  "employment agreement": "contract",
+  "service agreement": "contract",
+  "nda": "contract",
+  "bank record": "bank_statement",
+  "account statement": "bank_statement",
+  "income record": "income_statement",
+  "earnings statement": "income_statement",
+  "tax form": "tax_document",
+  "tax return": "tax_document",
+  "transaction": "transaction_record",
+}
+
+const CONFIDENCE_THRESHOLD = 0.7
+
+function normalizeDocumentType(raw: string, confidence: number): DocumentType {
+  if (confidence < CONFIDENCE_THRESHOLD) return "general_document"
+  const lower = raw.toLowerCase().trim()
+  if (SUPPORTED_DOCUMENT_TYPES.includes(lower as DocumentType)) return lower as DocumentType
+  if (DOCUMENT_TYPE_ALIASES[lower]) return DOCUMENT_TYPE_ALIASES[lower]
+  // partial match
+  for (const [alias, type] of Object.entries(DOCUMENT_TYPE_ALIASES)) {
+    if (lower.includes(alias) || alias.includes(lower)) return type
+  }
+  return "general_document"
+}
+
+// ── Date range ────────────────────────────────────────────────────────────────
+
+type DateRangePreset = "30d" | "90d" | "this_year" | "prev_year" | "custom"
+
+interface DateRange {
+  preset: DateRangePreset
+  from: string
+  to: string
+}
+
+function getPresetRange(preset: DateRangePreset): { from: string; to: string } {
+  const now = new Date()
+  const pad = (n: number) => String(n).padStart(2, "0")
+  const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  const today = fmt(now)
+
+  switch (preset) {
+    case "30d": {
+      const from = new Date(now); from.setDate(from.getDate() - 30)
+      return { from: fmt(from), to: today }
+    }
+    case "90d": {
+      const from = new Date(now); from.setDate(from.getDate() - 90)
+      return { from: fmt(from), to: today }
+    }
+    case "this_year":
+      return { from: `${now.getFullYear()}-01-01`, to: today }
+    case "prev_year":
+      return { from: `${now.getFullYear() - 1}-01-01`, to: `${now.getFullYear() - 1}-12-31` }
+    default:
+      return { from: "", to: today }
+  }
+}
+
+// ── Report definitions ────────────────────────────────────────────────────────
+
+interface ReportDef {
+  id: string
+  label: string
+  // minimum field requirements to be enabled
+  requires: "any_file" | "date_and_amount_2" | "income_amount" | "expense_or_income" | "contract_fields"
+}
+
+const REPORTS: ReportDef[] = [
+  { id: "expense_summary",       label: "Expense Summary",         requires: "date_and_amount_2" },
+  { id: "receipt_extraction",    label: "Receipt Extraction Report",requires: "date_and_amount_2" },
+  { id: "income_summary",        label: "Income Summary",          requires: "income_amount" },
+  { id: "profit_loss",           label: "Profit & Loss Summary",   requires: "expense_or_income" },
+  { id: "tax_bundle",            label: "Tax Bundle Summary",      requires: "expense_or_income" },
+  { id: "transaction_summary",   label: "Transaction Summary",     requires: "date_and_amount_2" },
+  { id: "document_index",        label: "Document Index",          requires: "any_file" },
+  { id: "contract_summary",      label: "Contract Summary",        requires: "contract_fields" },
+  { id: "key_terms",             label: "Key Terms Summary",       requires: "contract_fields" },
+  { id: "general_summary",       label: "General Document Summary",requires: "any_file" },
+]
+
+// ── Folder tree ───────────────────────────────────────────────────────────────
 
 const userFolders = [
   {
@@ -38,13 +149,13 @@ const userFolders = [
 ]
 
 const classificationFolders = [
-  { name: "Unclassified", count: 0 },
-  { name: "Receipts", count: 0 },
-  { name: "Income", count: 0 },
-  { name: "Tax", count: 0 },
-  { name: "Contracts", count: 0 },
-  { name: "Legal", count: 0 },
-  { name: "Other", count: 0 },
+  "Unclassified",
+  "Receipts",
+  "Income",
+  "Tax",
+  "Contracts",
+  "Legal",
+  "Other",
 ]
 
 const workspaceFolders = [
@@ -54,58 +165,14 @@ const workspaceFolders = [
   { name: "Tax Documents" },
 ]
 
-const reportCategories = [
-  {
-    name: "Expenses",
-    reports: [
-      { name: "Monthly Summary", available: true },
-      { name: "Category Breakdown", available: true },
-      { name: "Vendor Analysis", available: false },
-    ],
-  },
-  {
-    name: "Income",
-    reports: [
-      { name: "Revenue Report", available: false },
-      { name: "Income Sources", available: false },
-    ],
-  },
-  {
-    name: "Tax",
-    reports: [
-      { name: "Deductions Summary", available: false },
-      { name: "Annual Overview", available: false },
-    ],
-  },
-  {
-    name: "Documents",
-    reports: [
-      { name: "Document Inventory", available: true },
-      { name: "Processing Status", available: true },
-    ],
-  },
-  {
-    name: "Business",
-    reports: [
-      { name: "Cash Flow", available: false },
-      { name: "Profit & Loss", available: false },
-    ],
-  },
-  {
-    name: "Legal",
-    reports: [
-      { name: "Contract Summary", available: false },
-      { name: "Expiration Tracker", available: false },
-    ],
-  },
-]
+// ── Sub-components ────────────────────────────────────────────────────────────
 
-function FolderTreeItem({ 
-  folder, 
+function FolderTreeItem({
+  folder,
   level = 0,
   selectedFolder,
-  onSelect
-}: { 
+  onSelect,
+}: {
   folder: { name: string; children?: { name: string; children?: any[] }[] }
   level?: number
   selectedFolder: string | null
@@ -128,11 +195,7 @@ function FolderTreeItem({
         style={{ paddingLeft: `${level * 12 + 8}px` }}
       >
         {hasChildren ? (
-          isOpen ? (
-            <ChevronDown className="h-3.5 w-3.5 shrink-0" />
-          ) : (
-            <ChevronRight className="h-3.5 w-3.5 shrink-0" />
-          )
+          isOpen ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" />
         ) : (
           <span className="w-3.5" />
         )}
@@ -160,46 +223,98 @@ function FolderTreeItem({
   )
 }
 
-function ReportCategory({ 
-  category 
-}: { 
-  category: { name: string; reports: { name: string; available: boolean }[] } 
+function DateRangeSelector({
+  dateRange,
+  onChange,
+}: {
+  dateRange: DateRange
+  onChange: (range: DateRange) => void
 }) {
-  const [isOpen, setIsOpen] = useState(false)
+  const presets: { label: string; value: DateRangePreset }[] = [
+    { label: "Last 30 days", value: "30d" },
+    { label: "Last 90 days", value: "90d" },
+    { label: "This year",    value: "this_year" },
+    { label: "Prev year",    value: "prev_year" },
+    { label: "Custom",       value: "custom" },
+  ]
+
+  const handlePreset = (preset: DateRangePreset) => {
+    const { from, to } = getPresetRange(preset)
+    onChange({ preset, from, to })
+  }
 
   return (
-    <div>
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-sm text-foreground transition-colors hover:bg-muted"
-      >
-        <span className="font-medium">{category.name}</span>
-        {isOpen ? (
-          <ChevronDown className="h-4 w-4 text-muted-foreground" />
-        ) : (
-          <ChevronRight className="h-4 w-4 text-muted-foreground" />
-        )}
-      </button>
-      {isOpen && (
-        <div className="ml-2 space-y-0.5 border-l border-border pl-3 pt-1">
-          {category.reports.map((report) => (
-            <button
-              key={report.name}
-              disabled={!report.available}
-              className={`block w-full rounded px-2 py-1 text-left text-sm transition-colors ${
-                report.available
-                  ? "text-muted-foreground hover:bg-muted hover:text-foreground"
-                  : "cursor-not-allowed text-muted-foreground/40"
-              }`}
-            >
-              {report.name}
-            </button>
-          ))}
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-1">
+        {presets.map((p) => (
+          <button
+            key={p.value}
+            onClick={() => handlePreset(p.value)}
+            className={`rounded-md px-2 py-1 text-xs transition-colors ${
+              dateRange.preset === p.value
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+      {dateRange.preset === "custom" && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="w-6 text-xs text-muted-foreground">From</span>
+            <Input
+              type="date"
+              value={dateRange.from}
+              onChange={(e) => onChange({ ...dateRange, from: e.target.value })}
+              className="h-7 rounded-md text-xs"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-6 text-xs text-muted-foreground">To</span>
+            <Input
+              type="date"
+              value={dateRange.to}
+              onChange={(e) => onChange({ ...dateRange, to: e.target.value })}
+              className="h-7 rounded-md text-xs"
+            />
+          </div>
         </div>
       )}
     </div>
   )
 }
+
+function ReportItem({
+  report,
+  enabled,
+  onSelect,
+  selected,
+}: {
+  report: ReportDef
+  enabled: boolean
+  onSelect: (id: string) => void
+  selected: boolean
+}) {
+  return (
+    <button
+      disabled={!enabled}
+      onClick={() => enabled && onSelect(report.id)}
+      className={`w-full rounded px-2 py-1.5 text-left text-sm transition-colors ${
+        selected
+          ? "bg-primary/10 text-primary"
+          : enabled
+          ? "text-foreground hover:bg-muted"
+          : "cursor-not-allowed text-muted-foreground/40"
+      }`}
+    >
+      {report.label}
+    </button>
+  )
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function SmartStoragePage() {
   const [session, setSession] = useState<Session | null>(null)
@@ -207,27 +322,33 @@ export default function SmartStoragePage() {
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
+  const [selectedReport, setSelectedReport] = useState<string | null>(null)
+  const [showDateRange, setShowDateRange] = useState(false)
+  const [dateRange, setDateRange] = useState<DateRange>({
+    preset: "this_year",
+    ...getPresetRange("this_year"),
+  })
 
-  // ── Session ───────────────────────────────────────────────────────────────
+  // Report availability state — driven by document_fields presence
+  const [reportAvailability, setReportAvailability] = useState<Record<string, boolean>>({})
+
+  // ── Session ─────────────────────────────────────────────────────────────
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session)
       setSessionLoaded(true)
     })
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      setSession(newSession)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(s)
       setSessionLoaded(true)
     })
-
     return () => subscription.unsubscribe()
   }, [])
 
-  // ── Processing indicator — query processing_jobs ──────────────────────────
+  // ── Processing indicator ─────────────────────────────────────────────────
   const checkProcessingState = useCallback(async () => {
     if (!session?.user?.id) return
 
-    // Step 1: get all file IDs belonging to this user
     const { data: userFiles } = await supabase
       .from("files")
       .select("id")
@@ -240,7 +361,6 @@ export default function SmartStoragePage() {
 
     const fileIds = userFiles.map((f) => f.id)
 
-    // Step 2: check if any of those files have active processing jobs
     const { data: activeJobs } = await supabase
       .from("processing_jobs")
       .select("status")
@@ -254,27 +374,87 @@ export default function SmartStoragePage() {
     checkProcessingState()
   }, [checkProcessingState])
 
+  // ── Report availability — check document_fields for required data ─────────
+  const checkReportAvailability = useCallback(async () => {
+    if (!session?.user?.id) return
+
+    const { data: userFiles } = await supabase
+      .from("files")
+      .select("id")
+      .eq("user_id", session.user.id)
+
+    const availability: Record<string, boolean> = {}
+
+    if (!userFiles || userFiles.length === 0) {
+      REPORTS.forEach((r) => { availability[r.id] = false })
+      setReportAvailability(availability)
+      return
+    }
+
+    const fileIds = userFiles.map((f) => f.id)
+
+    const { data: fields } = await supabase
+      .from("document_fields")
+      .select("file_id, total_amount, gross_income, net_income, document_date, vendor_name, employer_name")
+      .in("file_id", fileIds)
+
+    const hasAnyFile = fileIds.length > 0
+
+    const docsWithDateAndAmount = (fields ?? []).filter(
+      (f) => f.document_date && f.total_amount != null
+    )
+    const docsWithIncome = (fields ?? []).filter(
+      (f) => f.gross_income != null || f.net_income != null
+    )
+    const docsWithExpenseOrIncome = (fields ?? []).filter(
+      (f) => f.total_amount != null || f.gross_income != null
+    )
+    const docsWithContracts = (fields ?? []).filter(
+      (f) => f.vendor_name || f.employer_name
+    )
+
+    for (const report of REPORTS) {
+      switch (report.requires) {
+        case "any_file":
+          availability[report.id] = hasAnyFile
+          break
+        case "date_and_amount_2":
+          availability[report.id] = docsWithDateAndAmount.length >= 2
+          break
+        case "income_amount":
+          availability[report.id] = docsWithIncome.length >= 1
+          break
+        case "expense_or_income":
+          availability[report.id] = docsWithExpenseOrIncome.length >= 1
+          break
+        case "contract_fields":
+          availability[report.id] = docsWithContracts.length >= 1
+          break
+      }
+    }
+
+    setReportAvailability(availability)
+  }, [session])
+
+  useEffect(() => {
+    checkReportAvailability()
+  }, [checkReportAvailability])
+
   // ── Upload handler ────────────────────────────────────────────────────────
   const handleUpload = async (files: FileList | File[]) => {
     if (!session?.user?.id) return
 
-    const fileArray = Array.from(files)
-
-    for (const file of fileArray) {
+    for (const file of Array.from(files)) {
       try {
-        // 1. Generate unique storage path
         const ext = file.name.split(".").pop()
         const uniqueName = `${crypto.randomUUID()}.${ext}`
         const storagePath = `${session.user.id}/${uniqueName}`
 
-        // 2. Upload to Supabase Storage
         const { error: storageError } = await supabase.storage
           .from("documents")
           .upload(storagePath, file)
-
         if (storageError) throw storageError
 
-        // 3. Insert into files table
         const { data: fileRecord, error: fileError } = await supabase
           .from("files")
           .insert({
@@ -288,21 +468,15 @@ export default function SmartStoragePage() {
           })
           .select()
           .single()
-
         if (fileError) throw fileError
 
-        // 4. Insert into processing_jobs table
         const { error: jobError } = await supabase
           .from("processing_jobs")
-          .insert({
-            file_id: fileRecord.id,
-            status: "uploaded",
-          })
-
+          .insert({ file_id: fileRecord.id, status: "uploaded" })
         if (jobError) throw jobError
 
-        // 5. Refresh processing indicator
         await checkProcessingState()
+        await checkReportAvailability()
 
       } catch (err) {
         console.error("Upload failed for", file.name, err)
@@ -311,21 +485,12 @@ export default function SmartStoragePage() {
   }
 
   // ── Drag handlers ─────────────────────────────────────────────────────────
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault()
-    setIsDragOver(true)
-  }
-
-  const handleDragLeave = () => {
-    setIsDragOver(false)
-  }
-
+  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragOver(true) }
+  const handleDragLeave = () => setIsDragOver(false)
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault()
     setIsDragOver(false)
-    if (e.dataTransfer.files.length > 0) {
-      await handleUpload(e.dataTransfer.files)
-    }
+    if (e.dataTransfer.files.length > 0) await handleUpload(e.dataTransfer.files)
   }
 
   // ── Auth guard ────────────────────────────────────────────────────────────
@@ -339,9 +504,8 @@ export default function SmartStoragePage() {
       <main className="flex flex-1">
         <div className="flex flex-1">
 
-          {/* LEFT PANE - Folder Navigation (15%) */}
+          {/* LEFT PANE — Folder Navigation (15%) */}
           <aside className="flex w-[15%] min-w-[180px] flex-col border-r border-border bg-card">
-            {/* User Folders (60%) */}
             <div className="flex-[0.6] overflow-y-auto border-b border-border p-3">
               <div className="mb-2 flex justify-end">
                 <ProcessingIndicator active={isProcessing} />
@@ -357,32 +521,28 @@ export default function SmartStoragePage() {
                 ))}
               </div>
             </div>
-
-            {/* Classification Folders (40%) */}
             <div className="flex-[0.4] overflow-y-auto p-3">
               <span className="mb-2 block px-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Classification
               </span>
               <div className="space-y-0.5">
-                {classificationFolders.map((folder) => (
+                {classificationFolders.map((name) => (
                   <button
-                    key={folder.name}
-                    onClick={() => setSelectedFolder(folder.name)}
+                    key={name}
+                    onClick={() => setSelectedFolder(name)}
                     className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm transition-colors hover:bg-muted ${
-                      selectedFolder === folder.name
-                        ? "bg-muted text-foreground"
-                        : "text-muted-foreground"
+                      selectedFolder === name ? "bg-muted text-foreground" : "text-muted-foreground"
                     }`}
                   >
                     <Folder className="h-4 w-4 shrink-0" />
-                    <span className="truncate">{folder.name}</span>
+                    <span className="truncate">{name}</span>
                   </button>
                 ))}
               </div>
             </div>
           </aside>
 
-          {/* CENTER PANE - Workspace (65%) */}
+          {/* CENTER PANE — Workspace (65%) */}
           <div
             className={`relative flex w-[65%] flex-col bg-background p-6 transition-colors ${
               isDragOver ? "bg-primary/5" : ""
@@ -391,7 +551,6 @@ export default function SmartStoragePage() {
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
           >
-            {/* Folder Grid */}
             {workspaceFolders.length > 0 && (
               <div className="mb-8 grid grid-cols-4 gap-4">
                 {workspaceFolders.map((folder) => (
@@ -406,12 +565,7 @@ export default function SmartStoragePage() {
               </div>
             )}
 
-            {/* Drag & Drop Hint */}
-            <div
-              className={`flex flex-1 flex-col items-center justify-center ${
-                workspaceFolders.length > 0 ? "opacity-50" : ""
-              }`}
-            >
+            <div className={`flex flex-1 flex-col items-center justify-center ${workspaceFolders.length > 0 ? "opacity-50" : ""}`}>
               <div className="relative mb-6 flex items-end justify-center gap-2">
                 <div className="flex h-16 w-14 items-center justify-center rounded-lg bg-muted/50">
                   <FileText className="h-8 w-8 text-muted-foreground/30" />
@@ -423,30 +577,57 @@ export default function SmartStoragePage() {
                   <ImageIcon className="h-8 w-8 text-muted-foreground/30" />
                 </div>
               </div>
-
               <p className="text-sm text-muted-foreground">Drag & drop files here</p>
               <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-                <span className="text-xs text-muted-foreground/60">PDF</span>
-                <span className="text-xs text-muted-foreground/60">JPG</span>
-                <span className="text-xs text-muted-foreground/60">JPEG</span>
-                <span className="text-xs text-muted-foreground/60">PNG</span>
-                <span className="text-xs text-muted-foreground/60">WEBP</span>
-                <span className="text-xs text-muted-foreground/60">HEIC</span>
+                {["PDF", "JPG", "JPEG", "PNG", "WEBP", "HEIC"].map((ext) => (
+                  <span key={ext} className="text-xs text-muted-foreground/60">{ext}</span>
+                ))}
               </div>
             </div>
           </div>
 
-          {/* RIGHT PANE - Report Generator (20%) */}
+          {/* RIGHT PANE — Reports (20%) */}
           <aside className="flex w-[20%] min-w-[180px] flex-col border-l border-border bg-card p-4">
-            <h2 className="mb-4 text-sm font-semibold text-foreground">Reports</h2>
+            <h2 className="mb-3 text-sm font-semibold text-foreground">Reports</h2>
 
-            <Button className="mb-6 w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90">
+            {/* Date range toggle */}
+            <button
+              onClick={() => setShowDateRange(!showDateRange)}
+              className="mb-3 flex w-full items-center justify-between rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <span className="flex items-center gap-1.5">
+                <Calendar className="h-3.5 w-3.5" />
+                {dateRange.preset === "custom"
+                  ? `${dateRange.from} – ${dateRange.to}`
+                  : { "30d": "Last 30 days", "90d": "Last 90 days", "this_year": "This year", "prev_year": "Prev year" }[dateRange.preset]
+                }
+              </span>
+              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showDateRange ? "rotate-180" : ""}`} />
+            </button>
+
+            {showDateRange && (
+              <div className="mb-3 rounded-lg border border-border bg-muted/30 p-3">
+                <DateRangeSelector dateRange={dateRange} onChange={setDateRange} />
+              </div>
+            )}
+
+            <Button
+              className="mb-4 w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
+              disabled={!selectedReport}
+            >
               Generate Report
             </Button>
 
-            <div className="flex-1 space-y-1 overflow-y-auto">
-              {reportCategories.map((category) => (
-                <ReportCategory key={category.name} category={category} />
+            {/* Flat report list */}
+            <div className="flex-1 space-y-0.5 overflow-y-auto">
+              {REPORTS.map((report) => (
+                <ReportItem
+                  key={report.id}
+                  report={report}
+                  enabled={reportAvailability[report.id] ?? false}
+                  selected={selectedReport === report.id}
+                  onSelect={setSelectedReport}
+                />
               ))}
             </div>
           </aside>

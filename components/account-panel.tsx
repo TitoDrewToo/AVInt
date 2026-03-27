@@ -8,15 +8,13 @@ import { GoogleSignInButton } from "@/components/google-sign-in-button"
 import { supabase } from "@/lib/supabase"
 import type { Session } from "@supabase/supabase-js"
 
-// Development flag to preview logged-in state
-
 interface AccountPanelProps {
   isOpen: boolean
   onClose: () => void
   focusGiftCode?: boolean
 }
 
-type ExpandedSection = "subscription" | "email" | "password" | "giftcode" | null
+type ExpandedSection = "subscription" | "email" | "password" | null
 type PanelView = "menu" | "privacy" | "terms"
 
 function AccordionItem({
@@ -51,7 +49,7 @@ function AccordionItem({
       </button>
       <div
         className={`overflow-hidden transition-all duration-200 ease-out ${
-          isExpanded ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
+          isExpanded ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0"
         }`}
       >
         <div className="px-3 pb-3 pt-2">{children}</div>
@@ -66,23 +64,17 @@ function PrivacyPolicyContent() {
       <p className="text-muted-foreground">
         AVIntelligence respects your privacy. We design our systems to process documents automatically and securely.
       </p>
-
       <section className="space-y-2">
         <h3 className="font-medium text-foreground">Information We Collect</h3>
-        <p className="text-muted-foreground">
-          We collect only the information necessary to provide our services:
-        </p>
+        <p className="text-muted-foreground">We collect only the information necessary to provide our services:</p>
         <ul className="ml-4 list-disc space-y-1 text-muted-foreground">
           <li>Uploaded files and documents</li>
           <li>Extracted structured data</li>
           <li>Account email address</li>
           <li>Usage activity related to reports and dashboards</li>
         </ul>
-        <p className="text-muted-foreground">
-          We do not manually review documents. Processing is automated.
-        </p>
+        <p className="text-muted-foreground">We do not manually review documents. Processing is automated.</p>
       </section>
-
       <section className="space-y-2">
         <h3 className="font-medium text-foreground">How Data Is Used</h3>
         <p className="text-muted-foreground">Your data is used to:</p>
@@ -92,39 +84,24 @@ function PrivacyPolicyContent() {
           <li>Power dashboards</li>
           <li>Improve system performance</li>
         </ul>
-        <p className="text-muted-foreground">
-          We do not sell personal data. We do not use documents for advertising purposes.
-        </p>
+        <p className="text-muted-foreground">We do not sell personal data. We do not use documents for advertising purposes.</p>
       </section>
-
       <section className="space-y-2">
         <h3 className="font-medium text-foreground">Data Storage</h3>
-        <p className="text-muted-foreground">
-          Files and structured data are securely stored using modern cloud infrastructure. We implement access controls to prevent unauthorized access. Only you can access your uploaded documents and generated outputs.
-        </p>
+        <p className="text-muted-foreground">Files and structured data are securely stored using modern cloud infrastructure. We implement access controls to prevent unauthorized access. Only you can access your uploaded documents and generated outputs.</p>
       </section>
-
       <section className="space-y-2">
         <h3 className="font-medium text-foreground">AI Processing</h3>
-        <p className="text-muted-foreground">
-          Documents may be processed by automated systems to extract structured information such as dates, amounts, document types, and vendors. Processing is performed programmatically. No human review is required.
-        </p>
+        <p className="text-muted-foreground">Documents may be processed by automated systems to extract structured information such as dates, amounts, document types, and vendors. Processing is performed programmatically. No human review is required.</p>
       </section>
-
       <section className="space-y-2">
         <h3 className="font-medium text-foreground">Data Retention</h3>
-        <p className="text-muted-foreground">
-          Documents remain stored until you delete files or delete your account. You may request deletion at any time.
-        </p>
+        <p className="text-muted-foreground">Documents remain stored until you delete files or delete your account. You may request deletion at any time.</p>
       </section>
-
       <section className="space-y-2">
         <h3 className="font-medium text-foreground">Security</h3>
-        <p className="text-muted-foreground">
-          We apply industry standard practices for data storage, access control, and encrypted connections. No system can guarantee absolute security, but we prioritize protection of user data.
-        </p>
+        <p className="text-muted-foreground">We apply industry standard practices for data storage, access control, and encrypted connections. No system can guarantee absolute security, but we prioritize protection of user data.</p>
       </section>
-
       <section className="space-y-2">
         <h3 className="font-medium text-foreground">User Control</h3>
         <p className="text-muted-foreground">You may:</p>
@@ -134,11 +111,8 @@ function PrivacyPolicyContent() {
           <li>Change password</li>
           <li>Delete your account</li>
         </ul>
-        <p className="text-muted-foreground">
-          Account deletion permanently removes stored data.
-        </p>
+        <p className="text-muted-foreground">Account deletion permanently removes stored data.</p>
       </section>
-
       <section className="space-y-2">
         <h3 className="font-medium text-foreground">Contact</h3>
         <p className="text-muted-foreground">support@avintph.com</p>
@@ -150,24 +124,15 @@ function PrivacyPolicyContent() {
 function TermsOfServiceContent() {
   return (
     <div className="space-y-6 text-sm">
-      <p className="text-muted-foreground">
-        By using AVIntelligence, you agree to the following terms.
-      </p>
-
+      <p className="text-muted-foreground">By using AVIntelligence, you agree to the following terms.</p>
       <section className="space-y-2">
         <h3 className="font-medium text-foreground">Use of Service</h3>
-        <p className="text-muted-foreground">
-          AVIntelligence provides tools that help structure and analyze documents. You are responsible for how you use generated outputs. We do not provide financial, legal, or tax advice. Reports are provided as reference tools.
-        </p>
+        <p className="text-muted-foreground">AVIntelligence provides tools that help structure and analyze documents. You are responsible for how you use generated outputs. We do not provide financial, legal, or tax advice. Reports are provided as reference tools.</p>
       </section>
-
       <section className="space-y-2">
         <h3 className="font-medium text-foreground">Account Responsibility</h3>
-        <p className="text-muted-foreground">
-          You are responsible for maintaining the confidentiality of your account credentials. You agree not to share unauthorized access to your account.
-        </p>
+        <p className="text-muted-foreground">You are responsible for maintaining the confidentiality of your account credentials. You agree not to share unauthorized access to your account.</p>
       </section>
-
       <section className="space-y-2">
         <h3 className="font-medium text-foreground">Acceptable Use</h3>
         <p className="text-muted-foreground">You agree not to upload:</p>
@@ -176,39 +141,24 @@ function TermsOfServiceContent() {
           <li>Illegal content</li>
           <li>Content that violates applicable laws</li>
         </ul>
-        <p className="text-muted-foreground">
-          We reserve the right to suspend accounts that misuse the platform.
-        </p>
+        <p className="text-muted-foreground">We reserve the right to suspend accounts that misuse the platform.</p>
       </section>
-
       <section className="space-y-2">
         <h3 className="font-medium text-foreground">Service Availability</h3>
-        <p className="text-muted-foreground">
-          We aim to provide reliable service but do not guarantee uninterrupted availability. Features may change or improve over time.
-        </p>
+        <p className="text-muted-foreground">We aim to provide reliable service but do not guarantee uninterrupted availability. Features may change or improve over time.</p>
       </section>
-
       <section className="space-y-2">
         <h3 className="font-medium text-foreground">Payments</h3>
-        <p className="text-muted-foreground">
-          Paid features provide access to advanced reports and analytics. Billing is handled securely through third-party providers. Access duration depends on selected plan.
-        </p>
+        <p className="text-muted-foreground">Paid features provide access to advanced reports and analytics. Billing is handled securely through third-party providers. Access duration depends on selected plan.</p>
       </section>
-
       <section className="space-y-2">
         <h3 className="font-medium text-foreground">Limitation of Liability</h3>
-        <p className="text-muted-foreground">
-          AVIntelligence is provided as-is. We are not liable for decisions made using generated reports or insights. Users are responsible for verifying outputs before external use.
-        </p>
+        <p className="text-muted-foreground">AVIntelligence is provided as-is. We are not liable for decisions made using generated reports or insights. Users are responsible for verifying outputs before external use.</p>
       </section>
-
       <section className="space-y-2">
         <h3 className="font-medium text-foreground">Updates to Terms</h3>
-        <p className="text-muted-foreground">
-          We may update these terms as the service evolves. Continued use of the platform indicates acceptance of updated terms.
-        </p>
+        <p className="text-muted-foreground">We may update these terms as the service evolves. Continued use of the platform indicates acceptance of updated terms.</p>
       </section>
-
       <section className="space-y-2">
         <h3 className="font-medium text-foreground">Contact</h3>
         <p className="text-muted-foreground">support@avintph.com</p>
@@ -217,13 +167,7 @@ function TermsOfServiceContent() {
   )
 }
 
-function DeleteAccountModal({
-  isOpen,
-  onClose,
-}: {
-  isOpen: boolean
-  onClose: () => void
-}) {
+function DeleteAccountModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const [password, setPassword] = useState("")
 
   if (!isOpen) return null
@@ -237,37 +181,16 @@ function DeleteAccountModal({
             <AlertTriangle className="h-5 w-5 text-destructive" />
           </div>
           <div className="flex-1">
-            <h3 className="text-lg font-semibold text-foreground">
-              Delete your account?
-            </h3>
-            <p className="mt-2 text-sm text-muted-foreground">
-              This action cannot be undone. Enter your password to confirm.
-            </p>
+            <h3 className="text-lg font-semibold text-foreground">Delete your account?</h3>
+            <p className="mt-2 text-sm text-muted-foreground">This action cannot be undone. Enter your password to confirm.</p>
           </div>
         </div>
         <div className="mt-4">
-          <Input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="rounded-lg"
-          />
+          <Input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="rounded-lg" />
         </div>
         <div className="mt-6 flex gap-3">
-          <Button
-            variant="outline"
-            className="flex-1 rounded-lg"
-            onClick={onClose}
-          >
-            Cancel
-          </Button>
-          <Button
-            className="flex-1 rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            onClick={onClose}
-          >
-            Delete Account
-          </Button>
+          <Button variant="outline" className="flex-1 rounded-lg" onClick={onClose}>Cancel</Button>
+          <Button className="flex-1 rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={onClose}>Delete Account</Button>
         </div>
       </div>
     </div>
@@ -280,7 +203,9 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [expandedSection, setExpandedSection] = useState<ExpandedSection>(null)
   const [panelView, setPanelView] = useState<PanelView>("menu")
-  const giftCodeRef = useRef<HTMLDivElement>(null)
+  const [giftCode, setGiftCode] = useState("")
+  const [giftCodeApplied, setGiftCodeApplied] = useState(false)
+  const subscriptionRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -295,17 +220,14 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
   }, [])
 
   useEffect(() => {
-    if (isOpen && focusGiftCode && giftCodeRef.current) {
-      setExpandedSection("giftcode")
+    if (isOpen && focusGiftCode) {
+      setExpandedSection("subscription")
       setTimeout(() => {
-        giftCodeRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
-        const input = giftCodeRef.current?.querySelector("input")
-        input?.focus()
+        subscriptionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
       }, 300)
     }
   }, [isOpen, focusGiftCode])
 
-  // Reset state when panel closes
   useEffect(() => {
     if (!isOpen) {
       setExpandedSection(null)
@@ -319,12 +241,9 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
 
   const getPanelTitle = () => {
     switch (panelView) {
-      case "privacy":
-        return "Privacy Policy"
-      case "terms":
-        return "Terms of Service"
-      default:
-        return "Account"
+      case "privacy": return "Privacy Policy"
+      case "terms": return "Terms of Service"
+      default: return "Account"
     }
   }
 
@@ -376,226 +295,186 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto p-6">
-            {/* Privacy Policy View */}
             {panelView === "privacy" && <PrivacyPolicyContent />}
-
-            {/* Terms of Service View */}
             {panelView === "terms" && <TermsOfServiceContent />}
 
-            {/* Main Menu View */}
             {panelView === "menu" && (
-            <div className="space-y-6">
-              {/* Authentication Section */}
-              {!isSignedIn && (
-                <div className="space-y-5">
-                  {/* Google SSO */}
-                  <GoogleSignInButton />
-
-                  {/* Divider */}
-                  <div className="flex items-center gap-3">
-                    <div className="h-px flex-1 bg-border" />
-                    <span className="text-xs text-muted-foreground">or continue with email</span>
-                    <div className="h-px flex-1 bg-border" />
+              <div className="space-y-6">
+                {/* Authentication Section */}
+                {!isSignedIn && (
+                  <div className="space-y-5">
+                    <GoogleSignInButton />
+                    <div className="flex items-center gap-3">
+                      <div className="h-px flex-1 bg-border" />
+                      <span className="text-xs text-muted-foreground">or continue with email</span>
+                      <div className="h-px flex-1 bg-border" />
+                    </div>
+                    <div className="space-y-3">
+                      <Input type="email" placeholder="Email" className="rounded-lg" />
+                      <Input type="password" placeholder="Password" className="rounded-lg" />
+                    </div>
+                    <Button className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90">
+                      Sign In
+                    </Button>
+                    <div className="flex items-center justify-between text-sm">
+                      <button className="text-muted-foreground transition-colors hover:text-foreground">Create account</button>
+                      <button className="text-muted-foreground transition-colors hover:text-foreground">Forgot password</button>
+                    </div>
                   </div>
+                )}
 
-                  {/* Email login fields */}
-                  <div className="space-y-3">
-                    <Input
-                      type="email"
-                      placeholder="Email"
-                      className="rounded-lg"
-                    />
-                    <Input
-                      type="password"
-                      placeholder="Password"
-                      className="rounded-lg"
-                    />
-                  </div>
-                  <Button className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90">
-                    Sign In
-                  </Button>
-                  <div className="flex items-center justify-between text-sm">
-                    <button className="text-muted-foreground transition-colors hover:text-foreground">
-                      Create account
-                    </button>
-                    <button className="text-muted-foreground transition-colors hover:text-foreground">
-                      Forgot password
-                    </button>
-                  </div>
-                </div>
-              )}
+                {/* Account Settings */}
+                {isSignedIn && (
+                  <>
+                    {/* Subscription — includes gift code redemption */}
+                    <div ref={subscriptionRef} className="space-y-1">
+                      <AccordionItem
+                        label="Subscription"
+                        isExpanded={expandedSection === "subscription"}
+                        onToggle={() => toggleSection("subscription")}
+                      >
+                        <div className="space-y-4">
+                          {/* Current plan */}
+                          <div className="rounded-lg bg-muted/50 p-3">
+                            <p className="text-xs text-muted-foreground">Current plan</p>
+                            <p className="mt-1 text-sm font-medium text-foreground">Free</p>
+                            <p className="mt-0.5 text-xs text-muted-foreground">No renewal scheduled</p>
+                          </div>
 
-              {/* Account Settings (visible when signed in) */}
-              {isSignedIn && (
-                <>
-                  {/* Subscription Section */}
-                  <div className="space-y-1">
-                    <AccordionItem
-                      label="Subscription"
-                      isExpanded={expandedSection === "subscription"}
-                      onToggle={() => toggleSection("subscription")}
-                    >
-                      <div className="space-y-3">
-                        <div className="rounded-lg bg-muted/50 p-3">
-                          <p className="text-xs text-muted-foreground">Current plan</p>
-                          <p className="mt-1 text-sm font-medium text-foreground">Free</p>
-                        </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="w-full rounded-lg"
-                          disabled
-                        >
-                          Manage subscription
-                        </Button>
-                      </div>
-                    </AccordionItem>
-                    <button
-                      className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-muted"
-                      disabled
-                    >
-                      Billing
-                      <span className="text-xs text-muted-foreground">Coming soon</span>
-                    </button>
-                  </div>
-
-                  {/* Gift Code Section */}
-                  <div className="h-px bg-border" />
-                  <div ref={giftCodeRef} className="space-y-1">
-                    <AccordionItem
-                      label="Redeem Gift Code"
-                      isExpanded={expandedSection === "giftcode"}
-                      onToggle={() => toggleSection("giftcode")}
-                    >
-                      <div className="space-y-3">
-                        <div className="flex gap-2">
-                          <Input
-                            type="text"
-                            placeholder="Enter gift code"
-                            className="flex-1 rounded-lg"
-                          />
-                          <Button size="sm" className="rounded-lg bg-primary text-primary-foreground hover:bg-primary/90">
-                            Apply Code
+                          <Button variant="outline" size="sm" className="w-full rounded-lg" disabled>
+                            Manage subscription
                           </Button>
+
+                          {/* Divider */}
+                          <div className="h-px bg-border" />
+
+                          {/* Gift code redemption */}
+                          <div>
+                            <p className="mb-2 text-xs text-muted-foreground">
+                              Redeem a gift code to activate access.
+                            </p>
+                            <div className="flex gap-2">
+                              <Input
+                                type="text"
+                                placeholder="Enter gift code"
+                                value={giftCode}
+                                onChange={(e) => setGiftCode(e.target.value)}
+                                className="flex-1 rounded-lg"
+                              />
+                              <Button
+                                size="sm"
+                                className="rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
+                                onClick={() => {
+                                  if (giftCode.trim()) setGiftCodeApplied(true)
+                                }}
+                              >
+                                Apply
+                              </Button>
+                            </div>
+                            {giftCodeApplied && (
+                              <p className="mt-2 text-xs text-primary">
+                                Code applied successfully.
+                              </p>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </AccordionItem>
-                  </div>
+                      </AccordionItem>
 
-                  {/* Email Section */}
-                  <div className="h-px bg-border" />
-                  <div className="space-y-1">
-                    <AccordionItem
-                      label="Email"
-                      isExpanded={expandedSection === "email"}
-                      onToggle={() => toggleSection("email")}
-                    >
-                      <div className="space-y-3">
-                        <Input
-                          type="email"
-                          placeholder="New email"
-                          className="rounded-lg"
-                        />
-                        <Input
-                          type="password"
-                          placeholder="Password confirmation"
-                          className="rounded-lg"
-                        />
-                        <Button size="sm" className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90">
-                          Save email
-                        </Button>
-                        <p className="text-xs text-muted-foreground">
-                          Email change requires password confirmation for security.
-                        </p>
-                      </div>
-                    </AccordionItem>
+                      <button
+                        className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-muted"
+                        disabled
+                      >
+                        Billing
+                        <span className="text-xs text-muted-foreground">Coming soon</span>
+                      </button>
+                    </div>
 
-                    {/* Change Password Section */}
-                    <AccordionItem
-                      label="Change password"
-                      isExpanded={expandedSection === "password"}
-                      onToggle={() => toggleSection("password")}
-                    >
-                      <div className="space-y-3">
-                        <Input
-                          type="password"
-                          placeholder="Current password"
-                          className="rounded-lg"
-                        />
-                        <Input
-                          type="password"
-                          placeholder="New password"
-                          className="rounded-lg"
-                        />
-                        <Input
-                          type="password"
-                          placeholder="Confirm new password"
-                          className="rounded-lg"
-                        />
-                        <Button size="sm" className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90">
-                          Update password
-                        </Button>
-                        <p className="text-xs text-muted-foreground">
-                          Use a strong password.
-                        </p>
-                      </div>
-                    </AccordionItem>
-                  </div>
+                    {/* Email & Password */}
+                    <div className="h-px bg-border" />
+                    <div className="space-y-1">
+                      <AccordionItem
+                        label="Email"
+                        isExpanded={expandedSection === "email"}
+                        onToggle={() => toggleSection("email")}
+                      >
+                        <div className="space-y-3">
+                          <Input type="email" placeholder="New email" className="rounded-lg" />
+                          <Input type="password" placeholder="Password confirmation" className="rounded-lg" />
+                          <Button size="sm" className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90">
+                            Save email
+                          </Button>
+                          <p className="text-xs text-muted-foreground">Email change requires password confirmation for security.</p>
+                        </div>
+                      </AccordionItem>
 
-                  {/* Legal Section */}
-                  <div className="h-px bg-border" />
-                  <div className="space-y-1">
-                    <button
-                      onClick={() => setPanelView("privacy")}
-                      className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-muted"
-                    >
-                      Privacy
-                      <ChevronDown className="h-4 w-4 -rotate-90 text-muted-foreground" />
-                    </button>
-                    <button
-                      onClick={() => setPanelView("terms")}
-                      className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-muted"
-                    >
-                      Terms
-                      <ChevronDown className="h-4 w-4 -rotate-90 text-muted-foreground" />
-                    </button>
-                  </div>
+                      <AccordionItem
+                        label="Change password"
+                        isExpanded={expandedSection === "password"}
+                        onToggle={() => toggleSection("password")}
+                      >
+                        <div className="space-y-3">
+                          <Input type="password" placeholder="Current password" className="rounded-lg" />
+                          <Input type="password" placeholder="New password" className="rounded-lg" />
+                          <Input type="password" placeholder="Confirm new password" className="rounded-lg" />
+                          <Button size="sm" className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90">
+                            Update password
+                          </Button>
+                          <p className="text-xs text-muted-foreground">Use a strong password.</p>
+                        </div>
+                      </AccordionItem>
+                    </div>
 
-                  {/* Delete Account */}
-                  <div className="h-px bg-border" />
-                  <div className="space-y-1">
-                    <button
-                      onClick={() => setShowDeleteModal(true)}
-                      className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-destructive transition-colors hover:bg-destructive/10"
-                    >
-                      Delete account
-                      <ChevronDown className="h-4 w-4 -rotate-90" />
-                    </button>
-                  </div>
+                    {/* Legal */}
+                    <div className="h-px bg-border" />
+                    <div className="space-y-1">
+                      <button
+                        onClick={() => setPanelView("privacy")}
+                        className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-muted"
+                      >
+                        Privacy
+                        <ChevronDown className="h-4 w-4 -rotate-90 text-muted-foreground" />
+                      </button>
+                      <button
+                        onClick={() => setPanelView("terms")}
+                        className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-muted"
+                      >
+                        Terms
+                        <ChevronDown className="h-4 w-4 -rotate-90 text-muted-foreground" />
+                      </button>
+                    </div>
 
-                  {/* Sign Out */}
-                  <div className="h-px bg-border" />
-                  <div className="space-y-1">
-                    <button
-                      onClick={() => supabase.auth.signOut()}
-                      className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-muted"
-                    >
-                      Sign out
-                      <LogOut className="h-4 w-4 text-muted-foreground" />
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
+                    {/* Delete Account */}
+                    <div className="h-px bg-border" />
+                    <div className="space-y-1">
+                      <button
+                        onClick={() => setShowDeleteModal(true)}
+                        className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-destructive transition-colors hover:bg-destructive/10"
+                      >
+                        Delete account
+                        <ChevronDown className="h-4 w-4 -rotate-90" />
+                      </button>
+                    </div>
+
+                    {/* Sign Out */}
+                    <div className="h-px bg-border" />
+                    <div className="space-y-1">
+                      <button
+                        onClick={() => supabase.auth.signOut()}
+                        className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-muted"
+                      >
+                        Sign out
+                        <LogOut className="h-4 w-4 text-muted-foreground" />
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             )}
           </div>
         </div>
       </div>
 
-      <DeleteAccountModal
-        isOpen={showDeleteModal}
-        onClose={() => setShowDeleteModal(false)}
-      />
+      <DeleteAccountModal isOpen={showDeleteModal} onClose={() => setShowDeleteModal(false)} />
     </>
   )
 }

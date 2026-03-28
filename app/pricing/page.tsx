@@ -115,7 +115,7 @@ const plans: PricingCardProps[] = [
     price: "$6",
     description: "Full access for 24 hours",
     features: [
-      "24 hour access",
+      "Smart storage",
       "All available reports",
       "Full structured outputs",
       "Smart Dashboards",
@@ -128,6 +128,7 @@ const plans: PricingCardProps[] = [
     annualPrice: "$100",
     description: "For power users and teams",
     features: [
+      "Smart storage",
       "All available reports",
       "Advanced analytics",
       "Smart Dashboards",

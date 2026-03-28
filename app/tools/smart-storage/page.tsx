@@ -381,8 +381,13 @@ export default function SmartStoragePage() {
         if (jobError) throw jobError
 
         // Trigger Gemini extraction pipeline
-        supabase.functions.invoke("process-document", {
-          body: { file_id: fileRecord.id, job_id: jobRecord.id },
+        fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/process-document`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({ file_id: fileRecord.id, job_id: jobRecord.id }),
         }).catch((err) => console.error("process-document invoke error:", err))
       } catch (err: any) {
         console.error("Upload failed for", file.name, JSON.stringify(err), err?.message, err?.error, err?.statusCode)

@@ -25,6 +25,7 @@ import {
   Upload,
   ArrowLeft,
 } from "lucide-react"
+import { useRouter } from "next/navigation"
 
 // ── Document type normalization ───────────────────────────────────────────────
 
@@ -272,6 +273,13 @@ export default function SmartStoragePage() {
   const [showDateRange, setShowDateRange] = useState(false)
   const [dateRange, setDateRange] = useState<DateRange>({ preset: "this_year", ...getPresetRange("this_year") })
   const [reportAvailability, setReportAvailability] = useState<Record<string, boolean>>({})
+  const router = useRouter()
+
+  const REPORT_ROUTES: Record<string, string> = {
+    expense_summary: "/tools/smart-storage/reports/expense-summary",
+    income_summary: "/tools/smart-storage/reports/income-summary",
+    tax_bundle: "/tools/smart-storage/reports/tax-bundle",
+  }
 
   // ── Session ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -723,6 +731,11 @@ export default function SmartStoragePage() {
                 className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
                 disabled={!selectedReport || !reportAvailability[selectedReport]}
                 size="sm"
+                onClick={() => {
+                  if (selectedReport && REPORT_ROUTES[selectedReport]) {
+                    router.push(REPORT_ROUTES[selectedReport])
+                  }
+                }}
               >
                 Generate Report
               </Button>

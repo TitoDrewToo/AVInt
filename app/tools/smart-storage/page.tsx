@@ -373,8 +373,17 @@ export default function SmartStoragePage() {
           .insert({ user_id: session.user.id, filename: file.name, storage_path: storagePath, file_type: file.type, file_size: file.size, document_type: "unknown", upload_status: "uploaded" })
           .select().single()
         if (fileError) throw fileError
-        const { error: jobError } = await supabase.from("processing_jobs").insert({ file_id: fileRecord.id, status: "uploaded" })
+        const { data: jobRecord, error: jobError } = await supabase
+          .from("processing_jobs")
+          .insert({ file_id: fileRecord.id, status: "uploaded" })
+          .select()
+          .single()
         if (jobError) throw jobError
+
+        // Trigger Gemini extraction pipeline
+        supabase.functions.invoke("process-document", {
+          body: { file_id: fileRecord.id, job_id: jobRecord.id },
+        }).catch((err) => console.error("process-document invoke error:", err))
       } catch (err: any) {
         console.error("Upload failed for", file.name, JSON.stringify(err), err?.message, err?.error, err?.statusCode)
       }

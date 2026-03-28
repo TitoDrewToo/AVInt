@@ -5,9 +5,28 @@ const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY")!
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-auth",
+}
+
 serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders })
+  }
+  let body: any = {}
   try {
-    const { file_id, job_id } = await req.json()
+    const text = await req.text()
+    if (text) body = JSON.parse(text)
+  } catch {
+    return new Response(JSON.stringify({ error: "Invalid request body" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    })
+  }
+
+  try {
+    const { file_id, job_id } = body
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
@@ -111,7 +130,7 @@ Return the same fields you receive, normalized.`
       .eq("id", job_id)
 
     return new Response(JSON.stringify({ success: true, file_id }), {
-      headers: { "Content-Type": "application/json" },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     })
 
   } catch (error: any) {
@@ -132,7 +151,7 @@ Return the same fields you receive, normalized.`
 
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
-      headers: { "Content-Type": "application/json" },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     })
   }
 })

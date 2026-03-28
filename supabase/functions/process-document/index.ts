@@ -67,7 +67,7 @@ serve(async (req) => {
 
     // 6. Call Gemini API
     const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -170,10 +170,16 @@ Rules:
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          "x-supabase-auth": SUPABASE_SERVICE_ROLE_KEY,
         },
         body: JSON.stringify({ file_id, job_id }),
       }
     )
+
+    if (!normalizeResponse.ok) {
+      const errText = await normalizeResponse.text()
+      console.error("Normalize function failed:", errText)
+    }
 
     if (!normalizeResponse.ok) {
       console.error("Normalize function failed:", await normalizeResponse.text())

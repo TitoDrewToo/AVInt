@@ -382,7 +382,7 @@ export default function SmartStoragePage() {
 
         // Trigger Gemini extraction pipeline
         const { error: fnError } = await supabase.functions.invoke("process-document", {
-          body: JSON.stringify({ file_id: fileRecord.id, job_id: jobRecord.id }),
+          body: { file_id: fileRecord.id, job_id: jobRecord.id },
           headers: { "Content-Type": "application/json" },
         })
         if (fnError) console.error("process-document invoke error:", fnError)

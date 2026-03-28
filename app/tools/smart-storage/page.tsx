@@ -381,22 +381,19 @@ export default function SmartStoragePage() {
         if (jobError) throw jobError
 
         // Trigger Gemini extraction pipeline
-        // Debug: verify IDs before sending
-        console.log("fileRecord:", fileRecord)
-        console.log("jobRecord:", jobRecord)
-
-        // Trigger Gemini extraction pipeline via direct fetch
-        const supabaseUrl = "https://njbxbltgtxvhmcctdluz.supabase.co"
-        const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-        const fnRes = await fetch(`${supabaseUrl}/functions/v1/process-document`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${supabaseAnonKey}`,
-          },
-          body: JSON.stringify({ file_id: fileRecord.id, job_id: jobRecord.id }),
-        })
-        if (!fnRes.ok) console.error("process-document error:", await fnRes.text())
+        // Trigger Gemini extraction pipeline — fire and forget
+        const _fileId = fileRecord.id
+        const _jobId = jobRecord.id
+        setTimeout(() => {
+          fetch("https://njbxbltgtxvhmcctdluz.supabase.co/functions/v1/process-document", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+            },
+            body: JSON.stringify({ file_id: _fileId, job_id: _jobId }),
+          }).catch((err) => console.error("process-document fetch error:", err))
+        }, 0)
       } catch (err: any) {
         console.error("Upload failed for", file.name, JSON.stringify(err), err?.message, err?.error, err?.statusCode)
       }

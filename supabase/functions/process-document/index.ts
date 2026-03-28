@@ -5,9 +5,31 @@ const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY")!
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+}
+
 serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders })
+  }
+  // Read body once and store
+  let body: any = {}
   try {
-    const { file_id, job_id } = await req.json()
+    const text = await req.text()
+    if (text) body = JSON.parse(text)
+  } catch {
+    return new Response(JSON.stringify({ error: "Invalid or empty request body" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    })
+  }
+
+  try {
+    const { file_id, job_id } = body
+    console.log("Full body received:", JSON.stringify(body))
+    console.log("Received file_id:", file_id, "job_id:", job_id)
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
@@ -158,7 +180,7 @@ Rules:
     }
 
     return new Response(JSON.stringify({ success: true, file_id }), {
-      headers: { "Content-Type": "application/json" },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     })
 
   } catch (error: any) {
@@ -166,19 +188,18 @@ Rules:
 
     // Mark job as failed
     try {
-      const { job_id } = await new Response(req.body).json().catch(() => ({}))
-      if (job_id) {
+      if (body?.job_id) {
         const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
         await supabase
           .from("processing_jobs")
           .update({ status: "failed", error_message: error.message })
-          .eq("id", job_id)
+          .eq("id", body.job_id)
       }
     } catch {}
 
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
-      headers: { "Content-Type": "application/json" },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     })
   }
 })

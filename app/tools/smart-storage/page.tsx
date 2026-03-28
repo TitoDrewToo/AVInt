@@ -381,6 +381,10 @@ export default function SmartStoragePage() {
         if (jobError) throw jobError
 
         // Trigger Gemini extraction pipeline
+        // Debug: verify IDs before sending
+        console.log("fileRecord:", fileRecord)
+        console.log("jobRecord:", jobRecord)
+
         // Trigger Gemini extraction pipeline via direct fetch
         const supabaseUrl = "https://njbxbltgtxvhmcctdluz.supabase.co"
         const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!

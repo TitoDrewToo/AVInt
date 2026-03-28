@@ -252,7 +252,7 @@ export default function SmartStoragePage() {
 
   // Virtual folders (local state — DB-backed folders coming later)
   const [folders, setFolders] = useState<VirtualFolder[]>([
-    { id: "root", name: "Documents", parentId: null },
+
   ])
   const [newFolderName, setNewFolderName] = useState("")
   const [isCreatingFolder, setIsCreatingFolder] = useState(false)
@@ -332,11 +332,31 @@ export default function SmartStoragePage() {
     setReportAvailability(availability)
   }, [session])
 
+
+  const loadFolders = useCallback(async () => {
+    if (!session?.user?.id) return
+    const { data } = await supabase
+      .from("folders")
+      .select("id, name, parent_id, user_id")
+      .eq("user_id", session.user.id)
+      .order("created_at", { ascending: true })
+    if (data) {
+      setFolders(
+        data.map((f) => ({
+          id: f.id,
+          name: f.name,
+          parentId: f.parent_id,
+        }))
+      )
+    }
+  }, [session])
+
   useEffect(() => {
     checkProcessingState()
     loadFiles()
     checkReportAvailability()
-  }, [checkProcessingState, loadFiles, checkReportAvailability])
+    loadFolders()
+  }, [checkProcessingState, loadFiles, checkReportAvailability, loadFolders])
 
   // ── Upload ─────────────────────────────────────────────────────────────────
   const handleUpload = async (uploadFiles: FileList | File[]) => {
@@ -355,8 +375,8 @@ export default function SmartStoragePage() {
         if (fileError) throw fileError
         const { error: jobError } = await supabase.from("processing_jobs").insert({ file_id: fileRecord.id, status: "uploaded" })
         if (jobError) throw jobError
-      } catch (err) {
-        console.error("Upload failed for", file.name, err)
+      } catch (err: any) {
+        console.error("Upload failed for", file.name, JSON.stringify(err), err?.message, err?.error, err?.statusCode)
       }
     }
     await checkProcessingState()
@@ -372,18 +392,35 @@ export default function SmartStoragePage() {
   }
 
   // ── Folder management ──────────────────────────────────────────────────────
-  const createFolder = () => {
-    if (!newFolderName.trim()) return
-    const newFolder: VirtualFolder = { id: crypto.randomUUID(), name: newFolderName.trim(), parentId: currentFolderId }
-    setFolders((prev) => [...prev, newFolder])
+  const createFolder = async () => {
+    if (!newFolderName.trim() || !session?.user?.id) return
+    const { data, error } = await supabase
+      .from("folders")
+      .insert({
+        user_id: session.user.id,
+        name: newFolderName.trim(),
+        parent_id: currentFolderId === "root" ? null : currentFolderId,
+      })
+      .select()
+      .single()
+    if (!error && data) {
+      setFolders((prev) => [...prev, { id: data.id, name: data.name, parentId: data.parent_id }])
+    }
     setNewFolderName("")
     setIsCreatingFolder(false)
   }
 
   const startRename = (folder: VirtualFolder) => { setRenamingId(folder.id); setRenameValue(folder.name) }
-  const confirmRename = () => {
-    if (!renameValue.trim()) return
-    setFolders((prev) => prev.map((f) => f.id === renamingId ? { ...f, name: renameValue.trim() } : f))
+
+  const confirmRename = async () => {
+    if (!renameValue.trim() || !renamingId) return
+    const { error } = await supabase
+      .from("folders")
+      .update({ name: renameValue.trim() })
+      .eq("id", renamingId)
+    if (!error) {
+      setFolders((prev) => prev.map((f) => f.id === renamingId ? { ...f, name: renameValue.trim() } : f))
+    }
     setRenamingId(null)
   }
 
@@ -443,6 +480,18 @@ export default function SmartStoragePage() {
                   onSelect={() => setSelectedLeftFolder("Unclassified")}
                   level={1}
                 />
+                {folders.filter((f) => f.parentId === null).map((folder) => (
+                  <LeftFolderItem
+                    key={folder.id}
+                    name={folder.name}
+                    isSelected={selectedLeftFolder === folder.name}
+                    onSelect={() => {
+                      setSelectedLeftFolder(folder.name)
+                      openFolder(folder)
+                    }}
+                    level={1}
+                  />
+                ))}
                 {visibleClassificationFolders.map((name) => (
                   <LeftFolderItem
                     key={name}

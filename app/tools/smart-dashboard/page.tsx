@@ -20,6 +20,7 @@ import {
   LayoutGrid, X, Check, Plus, Zap
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import Link from "next/link"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -414,6 +415,7 @@ export default function SmartDashboardPage() {
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
   const [hasNewData, setHasNewData] = useState(false)
+  const [isPro, setIsPro] = useState(false)
   const [containerWidth, setContainerWidth] = useState(1200)
   const canvasRef = useRef<HTMLDivElement>(null)
 
@@ -523,6 +525,15 @@ export default function SmartDashboardPage() {
 
   useEffect(() => { loadLayout() }, [loadLayout])
   useEffect(() => { loadData() }, [loadData])
+  useEffect(() => {
+    if (!session?.user?.id) return
+    supabase
+      .from("subscriptions")
+      .select("status")
+      .eq("user_id", session.user.id)
+      .single()
+      .then(({ data }) => setIsPro(data?.status === "pro" || data?.status === "day_pass"))
+  }, [session])
 
   // ── Save layout ────────────────────────────────────────────────────────────
   const saveLayout = async () => {
@@ -671,20 +682,38 @@ export default function SmartDashboardPage() {
             )}
 
             {/* Advanced Analytics — conditional */}
-            <button className="flex h-7 items-center gap-1.5 rounded-lg border border-border px-3 text-xs text-muted-foreground transition-colors hover:bg-muted" disabled>
-              <Sparkles className="h-3.5 w-3.5" />
-              Advanced Analytics
-              <Lock className="h-3 w-3" />
-              {hasNewData && (
-                <span className="flex items-center gap-1 ml-1 text-primary">
-                  <span className="relative flex h-1.5 w-1.5">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
-                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
+            {isPro ? (
+              <button className="flex h-7 items-center gap-1.5 rounded-lg border border-border px-3 text-xs text-muted-foreground transition-colors hover:bg-muted">
+                <Sparkles className="h-3.5 w-3.5" />
+                Advanced Analytics
+                {hasNewData && (
+                  <span className="flex items-center gap-1 ml-1 text-primary">
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+                      <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
+                    </span>
+                    <span className="text-[10px] font-medium">New data</span>
                   </span>
-                  <span className="text-[10px] font-medium">New data</span>
-                </span>
-              )}
-            </button>
+                )}
+              </button>
+            ) : (
+              <Link href="/pricing">
+                <button className="flex h-7 items-center gap-1.5 rounded-lg border border-border px-3 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Advanced Analytics
+                  <Lock className="h-3 w-3" />
+                  {hasNewData && (
+                    <span className="flex items-center gap-1 ml-1 text-primary">
+                      <span className="relative flex h-1.5 w-1.5">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+                        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
+                      </span>
+                      <span className="text-[10px] font-medium">New data</span>
+                    </span>
+                  )}
+                </button>
+              </Link>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -718,9 +747,9 @@ export default function SmartDashboardPage() {
             ref={canvasRef}
             className="min-w-0 flex-1 overflow-y-auto p-6"
             style={{
-              backgroundColor: "hsl(var(--muted) / 0.2)",
-              backgroundImage: "radial-gradient(circle, hsl(var(--border)) 1px, transparent 1px)",
-              backgroundSize: "24px 24px",
+              backgroundColor: "hsl(var(--background))",
+              backgroundImage: "radial-gradient(circle, hsl(var(--muted-foreground) / 0.2) 1px, transparent 1px)",
+              backgroundSize: "20px 20px",
             }}
             onClick={(e) => { if (e.target === e.currentTarget) { setSelectedWidgetId(null); setShowColorPicker(false); setShowDateFilter(false) } }}
           >
@@ -825,10 +854,17 @@ export default function SmartDashboardPage() {
                   <p className="mb-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">Advanced</p>
                   <div className="space-y-0.5">
                     {WIDGET_LIBRARY.filter(w => w.isPremium).map((item) => (
-                      <div key={item.type} className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm text-muted-foreground/40">
+                      <button
+                        key={item.type}
+                        disabled={!isPro}
+                        onClick={() => isPro && addWidget(item.type, item.title, false)}
+                        className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
+                          isPro ? "text-foreground hover:bg-muted" : "text-muted-foreground/40 cursor-not-allowed"
+                        }`}
+                      >
                         <span>{item.title}</span>
-                        <Lock className="h-3.5 w-3.5" />
-                      </div>
+                        {isPro ? <Plus className="h-3.5 w-3.5 text-muted-foreground" /> : <Lock className="h-3.5 w-3.5" />}
+                      </button>
                     ))}
                   </div>
 

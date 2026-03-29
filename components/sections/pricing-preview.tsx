@@ -61,22 +61,20 @@ const plans: PricingCardProps[] = [
     name: "Gift Codes",
     price: "$6",
     features: [
-      "24 hour access",
-      "All available reports",
+      "Smart Storage",
       "Smart Dashboards",
     ],
   },
   {
     name: "Free",
     price: null,
-    features: ["Secure storage", "Document classification", "Basic dashboard access"],
+    features: ["Secure Storage", "Basic dashboard access"],
   },
   {
     name: "Day Pass",
     price: "$6",
     features: [
-      "24 hour access",
-      "All available reports",
+      "Smart Storage",
       "Smart Dashboards",
     ],
   },
@@ -84,7 +82,7 @@ const plans: PricingCardProps[] = [
     name: "Pro",
     price: "$12",
     annualPrice: "$100",
-    features: ["All available reports", "Advanced analytics", "Smart Dashboards"],
+    features: ["Smart Storage", "Smart Dashboards"],
   },
 ]
 

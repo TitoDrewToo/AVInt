@@ -528,14 +528,14 @@ export default function SmartStoragePage() {
 
           {/* LEFT PANE ─────────────────────────────────────────────────────── */}
           <aside className="flex w-[15%] min-w-[180px] flex-col border-r border-border bg-card overflow-hidden">
-            <div className="flex-1 overflow-y-auto p-2">
-
+            {/* Documents section — user folder tree */}
+            <div className="flex-[0.6] overflow-y-auto border-b border-border p-2">
               {/* Processing indicator */}
               <div className="mb-2 flex justify-end px-2">
                 <ProcessingIndicator active={isProcessing} />
               </div>
 
-              {/* Documents tree */}
+              {/* Documents tree — mirrors workspace structure */}
               <LeftFolderItem
                 name="Documents"
                 isOpen={docsOpen}
@@ -562,16 +562,36 @@ export default function SmartStoragePage() {
                     level={1}
                   />
                 ))}
-                {visibleClassificationFolders.map((name) => (
-                  <LeftFolderItem
-                    key={name}
-                    name={name}
-                    isSelected={selectedLeftFolder === name}
-                    onSelect={() => setSelectedLeftFolder(name)}
-                    level={1}
-                  />
-                ))}
               </LeftFolderItem>
+            </div>
+
+            {/* Classification section — system detected, read only */}
+            <div className="flex-[0.4] overflow-y-auto p-2">
+              <div className="mb-1 px-2">
+                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Classification
+                </span>
+              </div>
+              {visibleClassificationFolders.length === 0 ? (
+                <p className="px-2 text-[11px] text-muted-foreground/50">
+                  Detected types appear here
+                </p>
+              ) : (
+                <div className="space-y-0.5">
+                  {visibleClassificationFolders.map((name) => (
+                    <button
+                      key={name}
+                      onClick={() => setSelectedLeftFolder(name)}
+                      className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm transition-colors hover:bg-muted ${
+                        selectedLeftFolder === name ? "bg-muted text-foreground" : "text-muted-foreground"
+                      }`}
+                    >
+                      <Folder className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </aside>
 
@@ -709,11 +729,15 @@ export default function SmartStoragePage() {
               )}
 
               {/* Subfolders */}
-              {currentSubfolders.map((folder) => (
+              {viewMode === "list" && currentSubfolders.map((folder) => (
                 <div
                   key={folder.id}
                   onDoubleClick={() => openFolder(folder)}
-                  className="group grid cursor-pointer grid-cols-[1fr_120px_100px_80px] items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-muted"
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    setContextMenu({ x: e.clientX, y: e.clientY, fileId: folder.id, filename: folder.name })
+                  }}
+                  className="group grid cursor-pointer grid-cols-[1fr_120px_140px_80px] items-center gap-2 rounded px-3 py-1 text-sm transition-colors hover:bg-muted"
                 >
                   {renamingId === folder.id ? (
                     <div className="col-span-4 flex items-center gap-2">
@@ -736,18 +760,31 @@ export default function SmartStoragePage() {
                       </div>
                       <span className="text-muted-foreground">Folder</span>
                       <span className="text-muted-foreground">—</span>
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); startRename(folder) }}
-                          className="opacity-0 transition-opacity group-hover:opacity-100 text-muted-foreground hover:text-foreground"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
+                      <span className="text-muted-foreground">—</span>
                     </>
                   )}
                 </div>
               ))}
+
+              {/* Subfolders — grid view */}
+              {viewMode === "grid" && currentSubfolders.length > 0 && (
+                <div className="mb-2 grid grid-cols-6 gap-2">
+                  {currentSubfolders.map((folder) => (
+                    <div
+                      key={folder.id}
+                      onDoubleClick={() => openFolder(folder)}
+                      onContextMenu={(e) => {
+                        e.preventDefault()
+                        setContextMenu({ x: e.clientX, y: e.clientY, fileId: folder.id, filename: folder.name })
+                      }}
+                      className="flex flex-col items-center gap-1 rounded px-2 py-2 cursor-pointer select-none transition-colors hover:bg-muted"
+                    >
+                      <Folder className="h-8 w-8 text-primary/70" />
+                      <span className="w-full truncate text-center text-[11px] text-foreground leading-tight">{folder.name}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Files — list view */}
               {viewMode === "list" && files.map((file) => (
@@ -794,48 +831,74 @@ export default function SmartStoragePage() {
 
               {/* Files — grid view */}
               {viewMode === "grid" && files.length > 0 && (
-                <div className="grid grid-cols-4 gap-3 mt-2">
+                <div className="grid grid-cols-6 gap-1 mt-1">
                   {files.map((file) => (
                     <div
                       key={file.id}
                       onClick={(e) => handleFileClick(file.id, e)}
                       onContextMenu={(e) => handleFileRightClick(e, file.id, file.filename)}
-                      className={`flex flex-col items-center gap-2 rounded-xl border p-4 cursor-pointer select-none transition-colors ${
-                        selectedFiles.has(file.id) ? "border-primary bg-primary/10" : "border-border hover:border-primary/30 hover:bg-muted"
+                      className={`flex flex-col items-center gap-1 rounded px-2 py-2 cursor-pointer select-none transition-colors ${
+                        selectedFiles.has(file.id) ? "bg-primary/10 ring-1 ring-primary/30" : "hover:bg-muted"
                       }`}
                     >
-                      {fileIcon(file.file_type)}
-                      <span className="w-full truncate text-center text-xs text-foreground">{file.filename}</span>
-                      <span className="text-[10px] text-muted-foreground capitalize">
-                        {file.document_type === "unknown" ? "Processing…" : file.document_type.replace(/_/g, " ")}
-                      </span>
+                      <div className="flex h-10 w-10 items-center justify-center">
+                        {fileIcon(file.file_type)}
+                      </div>
+                      <span className="w-full truncate text-center text-[11px] text-foreground leading-tight">{file.filename}</span>
                     </div>
                   ))}
                 </div>
               )}
 
-              {/* Context menu */}
+              {/* Context menu — files and folders */}
               {contextMenu && (
                 <div
                   className="fixed z-50 min-w-[160px] rounded-xl border border-border bg-card py-1 shadow-xl"
                   style={{ left: contextMenu.x, top: contextMenu.y }}
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <button
-                    onClick={() => { setRenamingFileId(contextMenu.fileId); setRenameFileValue(contextMenu.filename); setContextMenu(null) }}
-                    className="flex w-full items-center gap-2 px-4 py-2 text-sm text-foreground transition-colors hover:bg-muted"
-                  >
-                    <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
-                    Rename
-                  </button>
-                  <div className="my-1 h-px bg-border" />
-                  <button
-                    onClick={() => handleDeleteFile(contextMenu.fileId)}
-                    className="flex w-full items-center gap-2 px-4 py-2 text-sm text-destructive transition-colors hover:bg-destructive/10"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                    Delete
-                  </button>
+                  {/* Check if it's a folder */}
+                  {folders.some(f => f.id === contextMenu.fileId) ? (
+                    <>
+                      <button
+                        onClick={() => { startRename(folders.find(f => f.id === contextMenu.fileId)!); setContextMenu(null) }}
+                        className="flex w-full items-center gap-2 px-4 py-2 text-sm text-foreground transition-colors hover:bg-muted"
+                      >
+                        <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                        Rename
+                      </button>
+                      <div className="my-1 h-px bg-border" />
+                      <button
+                        onClick={async () => {
+                          await supabase.from("folders").delete().eq("id", contextMenu.fileId)
+                          setFolders(prev => prev.filter(f => f.id !== contextMenu.fileId))
+                          setContextMenu(null)
+                        }}
+                        className="flex w-full items-center gap-2 px-4 py-2 text-sm text-destructive transition-colors hover:bg-destructive/10"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                        Delete folder
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => { setRenamingFileId(contextMenu.fileId); setRenameFileValue(contextMenu.filename); setContextMenu(null) }}
+                        className="flex w-full items-center gap-2 px-4 py-2 text-sm text-foreground transition-colors hover:bg-muted"
+                      >
+                        <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                        Rename
+                      </button>
+                      <div className="my-1 h-px bg-border" />
+                      <button
+                        onClick={() => handleDeleteFile(contextMenu.fileId)}
+                        className="flex w-full items-center gap-2 px-4 py-2 text-sm text-destructive transition-colors hover:bg-destructive/10"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                        Delete file
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
 

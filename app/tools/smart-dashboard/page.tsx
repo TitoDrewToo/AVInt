@@ -97,16 +97,16 @@ const DEFAULT_WIDGETS: Widget[] = [
 ]
 
 const DEFAULT_LAYOUT: LayoutItem[] = [
-  { i: "kpi-income",       x: 0,  y: 0,  w: 2, h: 2, minW: 2, minH: 2 },
-  { i: "kpi-expenses",     x: 2,  y: 0,  w: 2, h: 2, minW: 2, minH: 2 },
-  { i: "kpi-net",          x: 4,  y: 0,  w: 2, h: 2, minW: 2, minH: 2 },
-  { i: "kpi-docs",         x: 6,  y: 0,  w: 2, h: 2, minW: 2, minH: 2 },
-  { i: "kpi-tax-exposure", x: 8,  y: 0,  w: 2, h: 2, minW: 2, minH: 2 },
-  { i: "kpi-tax-ratio",    x: 10, y: 0,  w: 2, h: 2, minW: 2, minH: 2 },
-  { i: "area-chart",       x: 0,  y: 2,  w: 12, h: 5, minW: 4, minH: 3 },
-  { i: "bar-chart",        x: 0,  y: 7,  w: 4, h: 5, minW: 3, minH: 3 },
-  { i: "bar-deductible",   x: 4,  y: 7,  w: 4, h: 5, minW: 3, minH: 3 },
-  { i: "pie-chart",        x: 8,  y: 7,  w: 4, h: 5, minW: 3, minH: 3 },
+  { i: "kpi-income",       x: 0,  y: 0,  w: 2, h: 3, minW: 2, minH: 2 },
+  { i: "kpi-expenses",     x: 2,  y: 0,  w: 2, h: 3, minW: 2, minH: 2 },
+  { i: "kpi-net",          x: 4,  y: 0,  w: 2, h: 3, minW: 2, minH: 2 },
+  { i: "kpi-docs",         x: 6,  y: 0,  w: 2, h: 3, minW: 2, minH: 2 },
+  { i: "kpi-tax-exposure", x: 8,  y: 0,  w: 2, h: 3, minW: 2, minH: 2 },
+  { i: "kpi-tax-ratio",    x: 10, y: 0,  w: 2, h: 3, minW: 2, minH: 2 },
+  { i: "area-chart",       x: 0,  y: 3,  w: 12, h: 8, minW: 4, minH: 4 },
+  { i: "bar-chart",        x: 0,  y: 11, w: 4, h: 7, minW: 3, minH: 4 },
+  { i: "bar-deductible",   x: 4,  y: 11, w: 4, h: 7, minW: 3, minH: 4 },
+  { i: "pie-chart",        x: 8,  y: 11, w: 4, h: 7, minW: 3, minH: 4 },
 ]
 
 const WIDGET_LIBRARY = [
@@ -408,7 +408,7 @@ export default function SmartDashboardPage() {
   const [isDirty, setIsDirty] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [savedConfirm, setSavedConfirm] = useState(false)
-  const [showWidgetPanel, setShowWidgetPanel] = useState(false)
+  const [showWidgetPanel, setShowWidgetPanel] = useState(true)
   const [showDateFilter, setShowDateFilter] = useState(false)
   const [showColorPicker, setShowColorPicker] = useState(false)
   const [dateFrom, setDateFrom] = useState("")
@@ -546,7 +546,7 @@ export default function SmartDashboardPage() {
     const id = `${type}-${Date.now()}`
     const isKpi = type.startsWith("kpi")
     const defaultW = isKpi ? 2 : 4
-    const defaultH = isKpi ? 2 : 5
+    const defaultH = isKpi ? 3 : 7
     setWidgets(prev => [...prev, { id, type, title }])
     setLayout(prev => [...prev, { i: id, x: 0, y: Infinity, w: isKpi ? 3 : 6, h: isKpi ? 2 : 5, minW: isKpi ? 2 : 3, minH: isKpi ? 2 : 3 }])
     setIsDirty(true)
@@ -705,7 +705,7 @@ export default function SmartDashboardPage() {
               className={`flex h-7 items-center gap-1.5 rounded-lg border border-border px-3 text-xs transition-colors hover:bg-muted ${showWidgetPanel ? "bg-muted text-foreground" : "text-muted-foreground"}`}
             >
               <LayoutGrid className="h-3.5 w-3.5" />
-              Widgets
+              {showWidgetPanel ? "Hide" : "Widgets"}
             </button>
           </div>
         </div>
@@ -716,7 +716,12 @@ export default function SmartDashboardPage() {
           {/* CANVAS */}
           <div
             ref={canvasRef}
-            className="min-w-0 flex-1 overflow-y-auto bg-muted/20 p-6"
+            className="min-w-0 flex-1 overflow-y-auto p-6"
+            style={{
+              backgroundColor: "hsl(var(--muted) / 0.2)",
+              backgroundImage: "radial-gradient(circle, hsl(var(--border)) 1px, transparent 1px)",
+              backgroundSize: "24px 24px",
+            }}
             onClick={(e) => { if (e.target === e.currentTarget) { setSelectedWidgetId(null); setShowColorPicker(false); setShowDateFilter(false) } }}
           >
             {loading ? (
@@ -731,11 +736,11 @@ export default function SmartDashboardPage() {
                 className="layout"
                 layout={layout}
                 cols={12}
-                rowHeight={60}
+                rowHeight={36}
                 width={containerWidth}
                 onLayoutChange={handleLayoutChange}
                 draggableHandle=".drag-handle"
-                margin={[16, 16]}
+                margin={[10, 10]}
                 containerPadding={[0, 0]}
                 resizeHandles={["se", "sw", "ne", "nw", "e", "w", "s"]}
               >

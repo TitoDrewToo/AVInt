@@ -1,6 +1,57 @@
+"use client"
+
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { ArrowRight } from "lucide-react"
+
+import { useEffect, useState } from "react"
+import { supabase } from "@/lib/supabase"
+
+function TrustedCounter() {
+  const [displayCount, setDisplayCount] = useState(1)
+  const [direction, setDirection] = useState<"up" | null>(null)
+
+  useEffect(() => {
+    supabase
+      .from("user_counter")
+      .select("total_users")
+      .eq("id", 1)
+      .single()
+      .then(({ data }) => {
+        if (data?.total_users) setDisplayCount(data.total_users)
+      })
+
+    const channel = supabase
+      .channel("user_counter_realtime")
+      .on("postgres_changes", {
+        event: "UPDATE",
+        schema: "public",
+        table: "user_counter",
+      }, (payload) => {
+        const newCount = payload.new.total_users
+        setDirection("up")
+        setTimeout(() => {
+          setDisplayCount(newCount)
+          setTimeout(() => setDirection(null), 300)
+        }, 200)
+      })
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [])
+
+  return (
+    <span
+      className="font-medium text-primary inline-block transition-all duration-200"
+      style={{
+        transform: direction === "up" ? "translateY(-4px)" : "translateY(0)",
+        opacity: direction === "up" ? 0 : 1,
+      }}
+    >
+      {displayCount}
+    </span>
+  )
+}
 
 // Refined dimensional icon components
 function ChartBarIcon({ className }: { className?: string }) {

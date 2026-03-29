@@ -93,7 +93,7 @@ export default function SmartStorageProductPage() {
                   View Pricing
                 </Button>
               </Link>
-              <Link href="/smart-dashboard">
+              <Link href="/products/smart-dashboard">
                 <Button variant="outline" size="lg" className="rounded-xl">
                   Explore Dashboard
                 </Button>

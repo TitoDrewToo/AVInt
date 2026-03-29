@@ -71,7 +71,7 @@ const tools: ToolCardProps[] = [
     description:
       "Upload documents once. Automatically structure receipts, invoices, and records.",
     subtext: "Generate organized datasets ready for reporting.",
-    href: "/smart-storage",
+    href: "/products/smart-storage",
     icon: <StorageIcon className="h-6 w-6" />,
   },
   {
@@ -79,7 +79,7 @@ const tools: ToolCardProps[] = [
     description:
       "Transform structured information into clear visual insights.",
     subtext: "Interactive dashboards built from real activity data.",
-    href: "/smart-dashboard",
+    href: "/products/smart-dashboard",
     icon: <DashboardIcon className="h-6 w-6" />,
   },
 ]

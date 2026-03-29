@@ -158,7 +158,7 @@ const products: ProductCardProps[] = [
   {
     name: "Smart Storage",
     description: "Upload documents once. Generate structured reports automatically.",
-    href: "/smart-storage",
+    href: "/products/smart-storage",
     icon: <StorageIcon className="h-5 w-5" />,
   },
   {
@@ -166,7 +166,7 @@ const products: ProductCardProps[] = [
     description:
       "Visualize financial activity and trends derived from structured data.",
     status: "coming-soon",
-    href: "/smart-dashboard",
+    href: "/products/smart-dashboard",
     icon: <DashboardIcon className="h-5 w-5" />,
   },
 ]

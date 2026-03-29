@@ -79,16 +79,27 @@ function PricingCard({
         ))}
       </ul>
       {name === "Free" && isSignedIn ? null : (
-        <Link href={name === "Free" ? "/tools/smart-storage" : "/purchase/checkout"}>
-          <Button
-            className={`mt-8 w-full rounded-xl ${
-              highlighted ? "" : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
-            }`}
-            size="lg"
-          >
-            {name === "Gift Codes" ? "Purchase Code" : name === "Free" ? "Get Started" : "Purchase"}
-          </Button>
-        </Link>
+        name === "Free" ? (
+          <Link href="/tools/smart-storage">
+            <Button
+              className={`mt-8 w-full rounded-xl bg-secondary text-secondary-foreground hover:bg-secondary/80`}
+              size="lg"
+            >
+              Get Started
+            </Button>
+          </Link>
+        ) : (
+          <a href={CHECKOUT_URLS[name] ?? "#"}>
+            <Button
+              className={`mt-8 w-full rounded-xl ${
+                highlighted ? "" : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+              }`}
+              size="lg"
+            >
+              {name === "Gift Codes" ? "Purchase Code" : "Get Started"}
+            </Button>
+          </a>
+        )
       )}
     </div>
   )
@@ -147,6 +158,13 @@ const plans: PricingCardProps[] = [
     highlighted: true,
   },
 ]
+
+const CHECKOUT_URLS: Record<string, string> = {
+  "Day Pass": "https://avintelligence.lemonsqueezy.com/checkout/buy/9a1416cf-c8af-4df4-b4c6-8d20967214bc",
+  "Gift Codes": "https://avintelligence.lemonsqueezy.com/checkout/buy/1831b705-535d-4dd0-bd9d-65f29eba88b0",
+  "Pro Monthly": "https://avintelligence.lemonsqueezy.com/checkout/buy/0546a0f8-42f6-410e-a3f9-b6e326066159",
+  "Pro Annual": "https://avintelligence.lemonsqueezy.com/checkout/buy/deb076b5-4f7d-4d93-ad22-1a97693cc16e",
+}
 
 export default function PricingPage() {
   const [isAnnual, setIsAnnual] = useState(false)

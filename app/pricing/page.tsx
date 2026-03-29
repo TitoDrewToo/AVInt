@@ -5,6 +5,7 @@ import { Navbar } from "@/components/navbar"
 import { Footer } from "@/components/footer"
 import { Button } from "@/components/ui/button"
 import { Check } from "lucide-react"
+import Link from "next/link"
 
 interface PricingCardProps {
   name: string
@@ -75,14 +76,16 @@ function PricingCard({
           </li>
         ))}
       </ul>
-      <Button
-        className={`mt-8 w-full rounded-xl ${
-          highlighted ? "" : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
-        }`}
-        size="lg"
-      >
-        {name === "Gift Codes" ? "Purchase Code" : "Get Started"}
-      </Button>
+      <Link href={name === "Free" ? "/tools/smart-storage" : "/purchase/checkout"}>
+        <Button
+          className={`mt-8 w-full rounded-xl ${
+            highlighted ? "" : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+          }`}
+          size="lg"
+        >
+          {name === "Gift Codes" ? "Purchase Code" : name === "Free" ? "Get Started" : "Purchase"}
+        </Button>
+      </Link>
     </div>
   )
 }
@@ -93,9 +96,10 @@ const plans: PricingCardProps[] = [
     price: "$6",
     description: "Transferable 24-hour access",
     features: [
-      "24 hour access",
+      "Smart Storage",
       "All available reports",
       "Full structured outputs",
+      "Advanced Analytics",
       "Smart Dashboards",
       "Custom Dashboards",
     ],
@@ -105,7 +109,7 @@ const plans: PricingCardProps[] = [
     price: null,
     description: "For individuals getting started",
     features: [
-      "Secure storage",
+      "Secure Storage",
       "Document classification",
       "Basic dashboard access",
     ],
@@ -115,9 +119,10 @@ const plans: PricingCardProps[] = [
     price: "$6",
     description: "Full access for 24 hours",
     features: [
-      "Smart storage",
+      "Smart Storage",
       "All available reports",
       "Full structured outputs",
+      "Advanced Analytics",
       "Smart Dashboards",
       "Custom Dashboards",
     ],
@@ -126,11 +131,12 @@ const plans: PricingCardProps[] = [
     name: "Pro",
     price: "$12",
     annualPrice: "$100",
-    description: "For power users and teams",
+    description: "For power users and convenience",
     features: [
-      "Smart storage",
+      "Smart Storage",
       "All available reports",
-      "Advanced analytics",
+      "Full structured outputs",
+      "Advanced Analytics",
       "Smart Dashboards",
       "Custom Dashboards",
     ],

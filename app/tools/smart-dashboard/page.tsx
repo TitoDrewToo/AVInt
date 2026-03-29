@@ -26,6 +26,9 @@ import { Button } from "@/components/ui/button"
 interface WidgetColor {
   primary: string
   secondary: string
+  tertiary: string
+  quaternary: string
+  quinary: string
 }
 
 interface Widget {
@@ -63,14 +66,17 @@ interface CategoryData { name: string; value: number }
 const DEFAULT_WIDGET_COLORS: WidgetColor = {
   primary: "#6366f1",
   secondary: "#ef4444",
+  tertiary: "#f59e0b",
+  quaternary: "#10b981",
+  quinary: "#8b5cf6",
 }
 
-const COLOR_PRESETS = [
-  { primary: "#6366f1", secondary: "#ef4444" },
-  { primary: "#10b981", secondary: "#f59e0b" },
-  { primary: "#3b82f6", secondary: "#ec4899" },
-  { primary: "#8b5cf6", secondary: "#06b6d4" },
-  { primary: "#f97316", secondary: "#84cc16" },
+const COLOR_PRESETS: WidgetColor[] = [
+  { primary: "#6366f1", secondary: "#ef4444", tertiary: "#f59e0b", quaternary: "#10b981", quinary: "#8b5cf6" },
+  { primary: "#10b981", secondary: "#f59e0b", tertiary: "#3b82f6", quaternary: "#ec4899", quinary: "#06b6d4" },
+  { primary: "#3b82f6", secondary: "#ec4899", tertiary: "#f97316", quaternary: "#84cc16", quinary: "#8b5cf6" },
+  { primary: "#8b5cf6", secondary: "#06b6d4", tertiary: "#f59e0b", quaternary: "#ef4444", quinary: "#10b981" },
+  { primary: "#f97316", secondary: "#84cc16", tertiary: "#3b82f6", quaternary: "#ec4899", quinary: "#6366f1" },
 ]
 
 // ── Default layout ────────────────────────────────────────────────────────────
@@ -154,7 +160,7 @@ function WidgetContent({
 }) {
   const symbol = kpi.currency === "PHP" ? "₱" : "$"
   const colors = widget.colors ?? DEFAULT_WIDGET_COLORS
-  const MULTI_COLORS = [colors.primary, colors.secondary, "#f59e0b", "#10b981", "#8b5cf6"]
+  const MULTI_COLORS = [colors.primary, colors.secondary, colors.tertiary, colors.quaternary, colors.quinary]
 
   if (widget.type === "kpi-income") return (
     <div className="flex h-full flex-col justify-between">
@@ -357,9 +363,14 @@ export default function SmartDashboardPage() {
       if (canvasRef.current) setContainerWidth(canvasRef.current.offsetWidth - 48)
     }
     measure()
+    const observer = new ResizeObserver(measure)
+    if (canvasRef.current) observer.observe(canvasRef.current)
     window.addEventListener("resize", measure)
-    return () => window.removeEventListener("resize", measure)
-  }, [showWidgetPanel])
+    return () => {
+      observer.disconnect()
+      window.removeEventListener("resize", measure)
+    }
+  }, [])
 
   // ── Session ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -552,9 +563,11 @@ export default function SmartDashboardPage() {
                     onClick={() => setShowColorPicker(!showColorPicker)}
                     className="flex items-center gap-1.5 rounded-lg border border-border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted"
                   >
-                    <div className="flex items-center gap-1">
-                      <span className="h-4 w-4 rounded-full border border-white/20" style={{ background: selectedWidget.colors?.primary ?? DEFAULT_WIDGET_COLORS.primary }} />
-                      <span className="h-4 w-4 rounded-full border border-white/20" style={{ background: selectedWidget.colors?.secondary ?? DEFAULT_WIDGET_COLORS.secondary }} />
+                    <div className="flex items-center gap-0.5">
+                      {(["primary","secondary","tertiary","quaternary","quinary"] as const).map(k => (
+                        <span key={k} className="h-3.5 w-3.5 rounded-full border border-white/10"
+                          style={{ background: (selectedWidget.colors ?? DEFAULT_WIDGET_COLORS)[k] }} />
+                      ))}
                     </div>
                     <ChevronDown className="h-3 w-3" />
                   </button>
@@ -570,9 +583,10 @@ export default function SmartDashboardPage() {
                               onClick={() => { updateWidgetColor(selectedWidget.id, preset); setShowColorPicker(false) }}
                               className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-muted ${isActive ? "bg-muted" : ""}`}
                             >
-                              <div className="flex items-center gap-1.5">
-                                <span className="h-5 w-5 rounded-full" style={{ background: preset.primary }} />
-                                <span className="h-5 w-5 rounded-full" style={{ background: preset.secondary }} />
+                              <div className="flex items-center gap-1">
+                                {(["primary","secondary","tertiary","quaternary","quinary"] as const).map(k => (
+                                  <span key={k} className="h-4 w-4 rounded-full" style={{ background: preset[k] }} />
+                                ))}
                               </div>
                               <span className="text-xs text-foreground">Theme {i + 1}</span>
                               {isActive && <Check className="ml-auto h-3.5 w-3.5 text-primary" />}
@@ -636,7 +650,7 @@ export default function SmartDashboardPage() {
           {/* CANVAS */}
           <div
             ref={canvasRef}
-            className="flex-1 overflow-y-auto bg-muted/20 p-6"
+            className="min-w-0 flex-1 overflow-y-auto bg-muted/20 p-6"
             onClick={(e) => { if (e.target === e.currentTarget) { setSelectedWidgetId(null); setShowColorPicker(false); setShowDateFilter(false) } }}
           >
             {loading ? (

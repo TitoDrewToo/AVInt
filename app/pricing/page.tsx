@@ -15,6 +15,7 @@ interface PricingCardProps {
   features: string[]
   isAnnual?: boolean
   highlighted?: boolean
+  isSignedIn?: boolean
 }
 
 function PricingCard({
@@ -25,6 +26,7 @@ function PricingCard({
   features,
   isAnnual,
   highlighted,
+  isSignedIn,
 }: PricingCardProps) {
   const displayPrice = isAnnual && annualPrice ? annualPrice : price
 
@@ -76,16 +78,18 @@ function PricingCard({
           </li>
         ))}
       </ul>
-      <Link href={name === "Free" ? "/tools/smart-storage" : "/purchase/checkout"}>
-        <Button
-          className={`mt-8 w-full rounded-xl ${
-            highlighted ? "" : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
-          }`}
-          size="lg"
-        >
-          {name === "Gift Codes" ? "Purchase Code" : name === "Free" ? "Get Started" : "Purchase"}
-        </Button>
-      </Link>
+      {name === "Free" && isSignedIn ? null : (
+        <Link href={name === "Free" ? "/tools/smart-storage" : "/purchase/checkout"}>
+          <Button
+            className={`mt-8 w-full rounded-xl ${
+              highlighted ? "" : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+            }`}
+            size="lg"
+          >
+            {name === "Gift Codes" ? "Purchase Code" : name === "Free" ? "Get Started" : "Purchase"}
+          </Button>
+        </Link>
+      )}
     </div>
   )
 }
@@ -146,6 +150,17 @@ const plans: PricingCardProps[] = [
 
 export default function PricingPage() {
   const [isAnnual, setIsAnnual] = useState(false)
+  const [isSignedIn, setIsSignedIn] = useState(false)
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setIsSignedIn(!!data.session)
+    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
+      setIsSignedIn(!!s)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -196,7 +211,7 @@ export default function PricingPage() {
           {/* Cards */}
           <div className="mt-12 grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
             {plans.map((plan) => (
-              <PricingCard key={plan.name} {...plan} isAnnual={isAnnual} />
+              <PricingCard key={plan.name} {...plan} isAnnual={isAnnual} isSignedIn={isSignedIn} />
             ))}
           </div>
         </div>

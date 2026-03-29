@@ -78,7 +78,7 @@ export function HeroSection() {
                 ))}
               </div>
               <span className="text-sm text-muted-foreground">
-                Trusted by <span className="font-medium text-primary">42</span> users worldwide
+                Trusted by <TrustedCounter /> users worldwide
               </span>
             </div>
           </div>

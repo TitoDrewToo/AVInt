@@ -266,6 +266,11 @@ export default function SmartStoragePage() {
 
   // Upload
   const [isDragOver, setIsDragOver] = useState(false)
+  const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set())
+  const [viewMode, setViewMode] = useState<"list" | "grid">("list")
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; fileId: string; filename: string } | null>(null)
+  const [renamingFileId, setRenamingFileId] = useState<string | null>(null)
+  const [renameFileValue, setRenameFileValue] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Reports
@@ -418,6 +423,44 @@ export default function SmartStoragePage() {
     if (e.dataTransfer.files.length > 0) await handleUpload(e.dataTransfer.files)
   }
 
+  // ── File selection ────────────────────────────────────────────────────────
+  const handleFileClick = (fileId: string, e: React.MouseEvent) => {
+    if (e.metaKey || e.ctrlKey) {
+      setSelectedFiles(prev => {
+        const next = new Set(prev)
+        next.has(fileId) ? next.delete(fileId) : next.add(fileId)
+        return next
+      })
+    } else {
+      setSelectedFiles(new Set([fileId]))
+    }
+    setContextMenu(null)
+  }
+
+  const handleFileRightClick = (e: React.MouseEvent, fileId: string, filename: string) => {
+    e.preventDefault()
+    setContextMenu({ x: e.clientX, y: e.clientY, fileId, filename })
+    setSelectedFiles(new Set([fileId]))
+  }
+
+  const handleDeleteFile = async (fileId: string) => {
+    const file = files.find(f => f.id === fileId)
+    if (!file) return
+    await supabase.storage.from("documents").remove([file.storage_path])
+    await supabase.from("files").delete().eq("id", fileId)
+    setFiles(prev => prev.filter(f => f.id !== fileId))
+    setSelectedFiles(new Set())
+    setContextMenu(null)
+  }
+
+  const handleRenameFile = async (fileId: string, newName: string) => {
+    if (!newName.trim()) return
+    await supabase.from("files").update({ filename: newName.trim() }).eq("id", fileId)
+    setFiles(prev => prev.map(f => f.id === fileId ? { ...f, filename: newName.trim() } : f))
+    setRenamingFileId(null)
+    setContextMenu(null)
+  }
+
   // ── Folder management ──────────────────────────────────────────────────────
   const createFolder = async () => {
     if (!newFolderName.trim() || !session?.user?.id) return
@@ -538,6 +581,7 @@ export default function SmartStoragePage() {
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
+            onClick={() => { setContextMenu(null); setSelectedFiles(new Set()) }}
           >
             {/* Toolbar */}
             <div className="flex h-10 items-center gap-2 border-b border-border bg-card/50 px-4">
@@ -557,6 +601,31 @@ export default function SmartStoragePage() {
                   </span>
                 ))}
               </div>
+
+              {/* Selected file actions */}
+              {selectedFiles.size > 0 && (
+                <div className="flex items-center gap-1 border-r border-border pr-2 mr-1">
+                  <span className="text-xs text-muted-foreground">{selectedFiles.size} selected</span>
+                  <button
+                    onClick={() => {
+                      const fileId = [...selectedFiles][0]
+                      const file = files.find(f => f.id === fileId)
+                      if (file) { setRenamingFileId(fileId); setRenameFileValue(file.filename) }
+                    }}
+                    className="flex h-6 items-center gap-1 rounded px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <Pencil className="h-3 w-3" />
+                    Rename
+                  </button>
+                  <button
+                    onClick={() => { selectedFiles.forEach(id => handleDeleteFile(id)); setSelectedFiles(new Set()) }}
+                    className="flex h-6 items-center gap-1 rounded px-2 text-xs text-destructive transition-colors hover:bg-destructive/10"
+                  >
+                    <X className="h-3 w-3" />
+                    Delete
+                  </button>
+                </div>
+              )}
 
               {/* Toolbar actions */}
               <div className="flex items-center gap-1">
@@ -582,6 +651,29 @@ export default function SmartStoragePage() {
                   <Upload className="h-3.5 w-3.5" />
                   Upload
                 </button>
+                {/* View toggle */}
+                <div className="flex items-center rounded border border-border">
+                  <button
+                    onClick={() => setViewMode("list")}
+                    className={`flex h-6 w-6 items-center justify-center rounded-l text-xs transition-colors ${viewMode === "list" ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/50"}`}
+                  >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth={1.5}>
+                      <line x1="4" y1="4" x2="14" y2="4"/><line x1="4" y1="8" x2="14" y2="8"/><line x1="4" y1="12" x2="14" y2="12"/>
+                      <rect x="1" y="3" width="2" height="2" rx="0.5" fill="currentColor" stroke="none"/>
+                      <rect x="1" y="7" width="2" height="2" rx="0.5" fill="currentColor" stroke="none"/>
+                      <rect x="1" y="11" width="2" height="2" rx="0.5" fill="currentColor" stroke="none"/>
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => setViewMode("grid")}
+                    className={`flex h-6 w-6 items-center justify-center rounded-r text-xs transition-colors ${viewMode === "grid" ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/50"}`}
+                  >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth={1.5}>
+                      <rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/>
+                      <rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/>
+                    </svg>
+                  </button>
+                </div>
                 <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => e.target.files && handleUpload(e.target.files)} />
               </div>
             </div>
@@ -607,8 +699,8 @@ export default function SmartStoragePage() {
               )}
 
               {/* Column headers */}
-              {(currentSubfolders.length > 0 || files.length > 0) && (
-                <div className="mb-1 grid grid-cols-[1fr_120px_100px_80px] gap-2 px-3 py-1 text-xs text-muted-foreground">
+              {viewMode === "list" && (currentSubfolders.length > 0 || files.length > 0) && (
+                <div className="mb-1 grid grid-cols-[1fr_120px_140px_80px] gap-2 px-3 py-1 text-xs text-muted-foreground">
                   <span>Name</span>
                   <span>Type</span>
                   <span>Modified</span>
@@ -657,25 +749,95 @@ export default function SmartStoragePage() {
                 </div>
               ))}
 
-              {/* Files */}
-              {files.map((file) => (
+              {/* Files — list view */}
+              {viewMode === "list" && files.map((file) => (
                 <div
                   key={file.id}
-                  className="grid grid-cols-[1fr_120px_100px_80px] items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-muted"
+                  onClick={(e) => handleFileClick(file.id, e)}
+                  onContextMenu={(e) => handleFileRightClick(e, file.id, file.filename)}
+                  className={`grid grid-cols-[1fr_120px_140px_80px] items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition-colors cursor-pointer select-none ${
+                    selectedFiles.has(file.id) ? "bg-primary/10 text-foreground" : "hover:bg-muted"
+                  }`}
                 >
                   <div className="flex items-center gap-2">
                     {fileIcon(file.file_type)}
-                    <span className="truncate text-foreground">{file.filename}</span>
+                    {renamingFileId === file.id ? (
+                      <input
+                        autoFocus
+                        value={renameFileValue}
+                        onChange={(e) => setRenameFileValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleRenameFile(file.id, renameFileValue)
+                          if (e.key === "Escape") setRenamingFileId(null)
+                        }}
+                        onBlur={() => handleRenameFile(file.id, renameFileValue)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="flex-1 rounded border border-primary bg-background px-2 py-0.5 text-sm text-foreground focus:outline-none"
+                      />
+                    ) : (
+                      <span className="truncate text-foreground">{file.filename}</span>
+                    )}
                   </div>
                   <span className="truncate text-muted-foreground capitalize">
                     {file.document_type === "unknown" ? "Processing…" : file.document_type.replace(/_/g, " ")}
                   </span>
-                  <span className="text-muted-foreground">
+                  <span className="text-muted-foreground text-xs">
                     {new Date(file.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" })}
+                    {" "}
+                    <span className="text-muted-foreground/60">
+                      {new Date(file.created_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+                    </span>
                   </span>
                   <span className="text-right text-muted-foreground">{formatBytes(file.file_size)}</span>
                 </div>
               ))}
+
+              {/* Files — grid view */}
+              {viewMode === "grid" && files.length > 0 && (
+                <div className="grid grid-cols-4 gap-3 mt-2">
+                  {files.map((file) => (
+                    <div
+                      key={file.id}
+                      onClick={(e) => handleFileClick(file.id, e)}
+                      onContextMenu={(e) => handleFileRightClick(e, file.id, file.filename)}
+                      className={`flex flex-col items-center gap-2 rounded-xl border p-4 cursor-pointer select-none transition-colors ${
+                        selectedFiles.has(file.id) ? "border-primary bg-primary/10" : "border-border hover:border-primary/30 hover:bg-muted"
+                      }`}
+                    >
+                      {fileIcon(file.file_type)}
+                      <span className="w-full truncate text-center text-xs text-foreground">{file.filename}</span>
+                      <span className="text-[10px] text-muted-foreground capitalize">
+                        {file.document_type === "unknown" ? "Processing…" : file.document_type.replace(/_/g, " ")}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Context menu */}
+              {contextMenu && (
+                <div
+                  className="fixed z-50 min-w-[160px] rounded-xl border border-border bg-card py-1 shadow-xl"
+                  style={{ left: contextMenu.x, top: contextMenu.y }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <button
+                    onClick={() => { setRenamingFileId(contextMenu.fileId); setRenameFileValue(contextMenu.filename); setContextMenu(null) }}
+                    className="flex w-full items-center gap-2 px-4 py-2 text-sm text-foreground transition-colors hover:bg-muted"
+                  >
+                    <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                    Rename
+                  </button>
+                  <div className="my-1 h-px bg-border" />
+                  <button
+                    onClick={() => handleDeleteFile(contextMenu.fileId)}
+                    className="flex w-full items-center gap-2 px-4 py-2 text-sm text-destructive transition-colors hover:bg-destructive/10"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    Delete
+                  </button>
+                </div>
+              )}
 
               {/* Empty state */}
               {currentSubfolders.length === 0 && files.length === 0 && !isCreatingFolder && (

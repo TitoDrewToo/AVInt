@@ -55,6 +55,8 @@ interface KPIData {
   netPosition: number
   documentCount: number
   savingsRate: number
+  taxExposure: number
+  taxRatio: number
   currency: string
 }
 
@@ -82,23 +84,29 @@ const COLOR_PRESETS: WidgetColor[] = [
 // ── Default layout ────────────────────────────────────────────────────────────
 
 const DEFAULT_WIDGETS: Widget[] = [
-  { id: "kpi-income",   type: "kpi-income",   title: "Total Income" },
-  { id: "kpi-expenses", type: "kpi-expenses",  title: "Total Expenses" },
-  { id: "kpi-net",      type: "kpi-net",       title: "Net Position" },
-  { id: "kpi-docs",     type: "kpi-docs",      title: "Documents" },
-  { id: "area-chart",   type: "area-chart",    title: "Income vs Expenses" },
-  { id: "bar-chart",    type: "bar-chart",     title: "Expenses by Category" },
-  { id: "pie-chart",    type: "pie-chart",     title: "Document Distribution" },
+  { id: "kpi-income",      type: "kpi-income",      title: "Total Income" },
+  { id: "kpi-expenses",    type: "kpi-expenses",     title: "Total Expenses" },
+  { id: "kpi-net",         type: "kpi-net",          title: "Net Position" },
+  { id: "kpi-docs",        type: "kpi-docs",         title: "Documents" },
+  { id: "kpi-tax-exposure",type: "kpi-tax-exposure", title: "Est. Tax Exposure" },
+  { id: "kpi-tax-ratio",   type: "kpi-tax-ratio",    title: "Tax Burden Rate" },
+  { id: "area-chart",      type: "area-chart",       title: "Income vs Expenses" },
+  { id: "bar-chart",       type: "bar-chart",        title: "Expenses by Category" },
+  { id: "bar-deductible",  type: "bar-deductible",   title: "Deductible Expenses" },
+  { id: "pie-chart",       type: "pie-chart",        title: "Document Distribution" },
 ]
 
 const DEFAULT_LAYOUT: LayoutItem[] = [
-  { i: "kpi-income",   x: 0, y: 0, w: 3, h: 2, minW: 2, minH: 2 },
-  { i: "kpi-expenses", x: 3, y: 0, w: 3, h: 2, minW: 2, minH: 2 },
-  { i: "kpi-net",      x: 6, y: 0, w: 3, h: 2, minW: 2, minH: 2 },
-  { i: "kpi-docs",     x: 9, y: 0, w: 3, h: 2, minW: 2, minH: 2 },
-  { i: "area-chart",   x: 0, y: 2, w: 12, h: 5, minW: 4, minH: 3 },
-  { i: "bar-chart",    x: 0, y: 7, w: 6, h: 5, minW: 3, minH: 3 },
-  { i: "pie-chart",    x: 6, y: 7, w: 6, h: 5, minW: 3, minH: 3 },
+  { i: "kpi-income",       x: 0,  y: 0,  w: 2, h: 2, minW: 2, minH: 2 },
+  { i: "kpi-expenses",     x: 2,  y: 0,  w: 2, h: 2, minW: 2, minH: 2 },
+  { i: "kpi-net",          x: 4,  y: 0,  w: 2, h: 2, minW: 2, minH: 2 },
+  { i: "kpi-docs",         x: 6,  y: 0,  w: 2, h: 2, minW: 2, minH: 2 },
+  { i: "kpi-tax-exposure", x: 8,  y: 0,  w: 2, h: 2, minW: 2, minH: 2 },
+  { i: "kpi-tax-ratio",    x: 10, y: 0,  w: 2, h: 2, minW: 2, minH: 2 },
+  { i: "area-chart",       x: 0,  y: 2,  w: 12, h: 5, minW: 4, minH: 3 },
+  { i: "bar-chart",        x: 0,  y: 7,  w: 4, h: 5, minW: 3, minH: 3 },
+  { i: "bar-deductible",   x: 4,  y: 7,  w: 4, h: 5, minW: 3, minH: 3 },
+  { i: "pie-chart",        x: 8,  y: 7,  w: 4, h: 5, minW: 3, minH: 3 },
 ]
 
 const WIDGET_LIBRARY = [
@@ -106,8 +114,11 @@ const WIDGET_LIBRARY = [
   { type: "kpi-expenses",       title: "Expenses KPI",         isPremium: false },
   { type: "kpi-net",            title: "Net Position KPI",     isPremium: false },
   { type: "kpi-docs",           title: "Document Count KPI",   isPremium: false },
+  { type: "kpi-tax-exposure",   title: "Tax Exposure KPI",     isPremium: false },
+  { type: "kpi-tax-ratio",      title: "Tax Burden Rate KPI",  isPremium: false },
   { type: "area-chart",         title: "Income vs Expenses",   isPremium: false },
   { type: "bar-chart",          title: "Category Breakdown",   isPremium: false },
+  { type: "bar-deductible",     title: "Deductible Expenses",  isPremium: false },
   { type: "pie-chart",          title: "Doc Distribution",     isPremium: false },
   { type: "context-summary",    title: "Context Summary",      isPremium: true  },
   { type: "advanced-analytics", title: "Advanced Analytics",   isPremium: true  },
@@ -219,6 +230,36 @@ function WidgetContent({
     </div>
   )
 
+  if (widget.type === "kpi-tax-exposure") return (
+    <div className="flex h-full flex-col justify-between">
+      <div className="flex items-start justify-between">
+        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Est. Tax Exposure</p>
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: colors.tertiary + "20" }}>
+          <TrendingUp className="h-4 w-4" style={{ color: colors.tertiary }} />
+        </div>
+      </div>
+      <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
+        <AnimatedNumber value={kpi.taxExposure} prefix={symbol} />
+      </p>
+      <p className="text-xs text-muted-foreground">Gross income minus expenses</p>
+    </div>
+  )
+
+  if (widget.type === "kpi-tax-ratio") return (
+    <div className="flex h-full flex-col justify-between">
+      <div className="flex items-start justify-between">
+        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Tax Burden Rate</p>
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: colors.quaternary + "20" }}>
+          <Wallet className="h-4 w-4" style={{ color: colors.quaternary }} />
+        </div>
+      </div>
+      <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
+        {kpi.taxRatio.toFixed(1)}%
+      </p>
+      <p className="text-xs text-muted-foreground">Of gross income</p>
+    </div>
+  )
+
   if (widget.type === "area-chart") return (
     <div className="flex h-full flex-col">
       <p className="mb-3 text-xs text-muted-foreground">Monthly income vs expenses from your documents</p>
@@ -259,6 +300,27 @@ function WidgetContent({
             <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} tickFormatter={(v) => `${symbol}${(v/1000).toFixed(0)}k`} />
             <Tooltip content={<CustomTooltip symbol={symbol} />} />
             <Bar dataKey="value" name="Amount" radius={[6, 6, 0, 0]}>
+              {categoryData.map((_, i) => (
+                <Cell key={i} fill={MULTI_COLORS[i % MULTI_COLORS.length]} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  )
+
+  if (widget.type === "bar-deductible") return (
+    <div className="flex h-full flex-col">
+      <p className="mb-3 text-xs text-muted-foreground">Expense categories reducing tax exposure</p>
+      <div className="flex-1 min-h-0">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={categoryData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }} barSize={28}>
+            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+            <XAxis dataKey="name" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} tickFormatter={(v) => `${symbol}${(v/1000).toFixed(0)}k`} />
+            <Tooltip content={<CustomTooltip symbol={symbol} />} />
+            <Bar dataKey="value" name="Deductible" radius={[6, 6, 0, 0]}>
               {categoryData.map((_, i) => (
                 <Cell key={i} fill={MULTI_COLORS[i % MULTI_COLORS.length]} />
               ))}
@@ -336,7 +398,7 @@ export default function SmartDashboardPage() {
   const [session, setSession] = useState<Session | null>(null)
   const [sessionLoaded, setSessionLoaded] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [kpi, setKpi] = useState<KPIData>({ totalIncome: 0, totalExpenses: 0, netPosition: 0, documentCount: 0, savingsRate: 0, currency: "PHP" })
+  const [kpi, setKpi] = useState<KPIData>({ totalIncome: 0, totalExpenses: 0, netPosition: 0, documentCount: 0, savingsRate: 0, taxExposure: 0, taxRatio: 0, currency: "PHP" })
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([])
   const [categoryData, setCategoryData] = useState<CategoryData[]>([])
   const [docTypeData, setDocTypeData] = useState<CategoryData[]>([])
@@ -428,7 +490,9 @@ export default function SmartDashboardPage() {
     const totalExpenses = expenseFields.reduce((s: number, f: any) => s + parseFloat(f.total_amount ?? 0), 0)
     const netPosition = totalIncome - totalExpenses
 
-    setKpi({ totalIncome, totalExpenses, netPosition, documentCount: userFiles.length, savingsRate: totalIncome > 0 ? (netPosition / totalIncome) * 100 : 0, currency })
+    const taxExposure = Math.max(0, netPosition)
+    const taxRatio = totalIncome > 0 ? (taxExposure / totalIncome) * 100 : 0
+    setKpi({ totalIncome, totalExpenses, netPosition, documentCount: userFiles.length, savingsRate: totalIncome > 0 ? (netPosition / totalIncome) * 100 : 0, taxExposure, taxRatio, currency })
 
     const monthMap: Record<string, { expenses: number; income: number }> = {}
     fields.forEach((f: any) => {
@@ -481,6 +545,8 @@ export default function SmartDashboardPage() {
     if (widgets.some(w => w.type === type)) return
     const id = `${type}-${Date.now()}`
     const isKpi = type.startsWith("kpi")
+    const defaultW = isKpi ? 2 : 4
+    const defaultH = isKpi ? 2 : 5
     setWidgets(prev => [...prev, { id, type, title }])
     setLayout(prev => [...prev, { i: id, x: 0, y: Infinity, w: isKpi ? 3 : 6, h: isKpi ? 2 : 5, minW: isKpi ? 2 : 3, minH: isKpi ? 2 : 3 }])
     setIsDirty(true)

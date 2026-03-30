@@ -6,18 +6,17 @@ import { Footer } from "@/components/footer"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 import { supabase } from "@/lib/supabase"
 import type { Session } from "@supabase/supabase-js"
-import { motion, AnimatePresence } from "framer-motion"
 import GridLayout from "react-grid-layout"
 import "react-grid-layout/css/styles.css"
 import "react-resizable/css/styles.css"
 import {
-  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
+  AreaChart, Area, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from "recharts"
 import {
   TrendingUp, Receipt, Wallet, FileText,
   Save, Calendar, ChevronDown, Lock, Sparkles,
-  LayoutGrid, X, Check, Plus, Zap
+  X, Check, Plus, Zap
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
@@ -38,6 +37,7 @@ interface Widget {
   title: string
   isPremium?: boolean
   colors?: WidgetColor
+  chartVariant?: string
 }
 
 interface LayoutItem {
@@ -98,16 +98,16 @@ const DEFAULT_WIDGETS: Widget[] = [
 ]
 
 const DEFAULT_LAYOUT: LayoutItem[] = [
-  { i: "kpi-income",       x: 0,  y: 0,  w: 2, h: 3, minW: 2, minH: 2 },
-  { i: "kpi-expenses",     x: 2,  y: 0,  w: 2, h: 3, minW: 2, minH: 2 },
-  { i: "kpi-net",          x: 4,  y: 0,  w: 2, h: 3, minW: 2, minH: 2 },
-  { i: "kpi-docs",         x: 6,  y: 0,  w: 2, h: 3, minW: 2, minH: 2 },
-  { i: "kpi-tax-exposure", x: 8,  y: 0,  w: 2, h: 3, minW: 2, minH: 2 },
-  { i: "kpi-tax-ratio",    x: 10, y: 0,  w: 2, h: 3, minW: 2, minH: 2 },
-  { i: "area-chart",       x: 0,  y: 3,  w: 12, h: 8, minW: 4, minH: 4 },
-  { i: "bar-chart",        x: 0,  y: 11, w: 4, h: 7, minW: 3, minH: 4 },
-  { i: "bar-deductible",   x: 4,  y: 11, w: 4, h: 7, minW: 3, minH: 4 },
-  { i: "pie-chart",        x: 8,  y: 11, w: 4, h: 7, minW: 3, minH: 4 },
+  { i: "kpi-income",       x: 0,  y: 0,  w: 2, h: 3, minW: 2, minH: 1 },
+  { i: "kpi-expenses",     x: 2,  y: 0,  w: 2, h: 3, minW: 2, minH: 1 },
+  { i: "kpi-net",          x: 4,  y: 0,  w: 2, h: 3, minW: 2, minH: 1 },
+  { i: "kpi-docs",         x: 6,  y: 0,  w: 2, h: 3, minW: 2, minH: 1 },
+  { i: "kpi-tax-exposure", x: 8,  y: 0,  w: 2, h: 3, minW: 2, minH: 1 },
+  { i: "kpi-tax-ratio",    x: 10, y: 0,  w: 2, h: 3, minW: 2, minH: 1 },
+  { i: "area-chart",       x: 0,  y: 3,  w: 12, h: 8, minW: 4, minH: 3 },
+  { i: "bar-chart",        x: 0,  y: 11, w: 4, h: 7, minW: 3, minH: 3 },
+  { i: "bar-deductible",   x: 4,  y: 11, w: 4, h: 7, minW: 3, minH: 3 },
+  { i: "pie-chart",        x: 8,  y: 11, w: 4, h: 7, minW: 3, minH: 3 },
 ]
 
 const WIDGET_LIBRARY = [
@@ -122,8 +122,20 @@ const WIDGET_LIBRARY = [
   { type: "bar-deductible",     title: "Deductible Expenses",  isPremium: false },
   { type: "pie-chart",          title: "Doc Distribution",     isPremium: false },
   { type: "context-summary",    title: "Context Summary",      isPremium: true  },
-  { type: "advanced-analytics", title: "Advanced Analytics",   isPremium: true  },
 ]
+
+// ── Chart type options per widget ─────────────────────────────────────────────
+
+const CHART_TYPE_OPTIONS: Record<string, { label: string; value: string }[]> = {
+  "area-chart":     [{ label: "Area", value: "area" }, { label: "Bar", value: "bar" }, { label: "Line", value: "line" }],
+  "bar-chart":      [{ label: "Bar",  value: "bar"  }, { label: "Pie", value: "pie" }],
+  "bar-deductible": [{ label: "Bar",  value: "bar"  }, { label: "Pie", value: "pie" }],
+  "pie-chart":      [{ label: "Pie",  value: "pie"  }, { label: "Bar", value: "bar" }],
+}
+
+const CHART_DEFAULT: Record<string, string> = {
+  "area-chart": "area", "bar-chart": "bar", "bar-deductible": "bar", "pie-chart": "pie",
+}
 
 // ── Animated number ───────────────────────────────────────────────────────────
 
@@ -261,82 +273,105 @@ function WidgetContent({
     </div>
   )
 
-  if (widget.type === "area-chart") return (
-    <div className="flex h-full flex-col">
-      <p className="mb-3 text-xs text-muted-foreground">Monthly income vs expenses from your documents</p>
-      <div className="flex-1 min-h-0">
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={monthlyData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-            <defs>
-              <linearGradient id={`incomeGrad-${widget.id}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor={colors.primary} stopOpacity={0.25} />
-                <stop offset="95%" stopColor={colors.primary} stopOpacity={0} />
-              </linearGradient>
-              <linearGradient id={`expenseGrad-${widget.id}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor={colors.secondary} stopOpacity={0.2} />
-                <stop offset="95%" stopColor={colors.secondary} stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-            <XAxis dataKey="month" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} tickFormatter={(v) => `${symbol}${(v/1000).toFixed(0)}k`} />
-            <Tooltip content={<CustomTooltip symbol={symbol} />} />
-            <Legend wrapperStyle={{ fontSize: 12, color: "hsl(var(--foreground))" }} />
-            <Area type="monotone" dataKey="income" name="Income" stroke={colors.primary} strokeWidth={2.5} fill={`url(#incomeGrad-${widget.id})`} dot={{ fill: colors.primary, r: 3, strokeWidth: 0 }} activeDot={{ r: 5, strokeWidth: 0 }} />
-            <Area type="monotone" dataKey="expenses" name="Expenses" stroke={colors.secondary} strokeWidth={2.5} fill={`url(#expenseGrad-${widget.id})`} dot={{ fill: colors.secondary, r: 3, strokeWidth: 0 }} activeDot={{ r: 5, strokeWidth: 0 }} />
-          </AreaChart>
-        </ResponsiveContainer>
+  if (widget.type === "area-chart") {
+    const variant = widget.chartVariant ?? "area"
+    const axisProps = {
+      xAxis: <XAxis dataKey="month" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />,
+      yAxis: <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${symbol}${(v/1000).toFixed(0)}k`} />,
+      grid: <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />,
+      tooltip: <Tooltip content={<CustomTooltip symbol={symbol} />} />,
+      legend: <Legend wrapperStyle={{ fontSize: 12, color: "hsl(var(--foreground))" }} />,
+    }
+    return (
+      <div className="flex h-full flex-col">
+        <p className="mb-3 text-xs text-muted-foreground">Monthly income vs expenses from your documents</p>
+        <div className="flex-1 min-h-0">
+          <ResponsiveContainer width="100%" height="100%">
+            {variant === "bar" ? (
+              <BarChart data={monthlyData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }} barSize={20}>
+                {axisProps.grid}{axisProps.xAxis}{axisProps.yAxis}{axisProps.tooltip}{axisProps.legend}
+                <Bar dataKey="income" name="Income" fill={colors.primary} radius={[4,4,0,0]} />
+                <Bar dataKey="expenses" name="Expenses" fill={colors.secondary} radius={[4,4,0,0]} />
+              </BarChart>
+            ) : variant === "line" ? (
+              <LineChart data={monthlyData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                {axisProps.grid}{axisProps.xAxis}{axisProps.yAxis}{axisProps.tooltip}{axisProps.legend}
+                <Line type="monotone" dataKey="income" name="Income" stroke={colors.primary} strokeWidth={2.5} dot={{ fill: colors.primary, r: 3, strokeWidth: 0 }} activeDot={{ r: 5 }} />
+                <Line type="monotone" dataKey="expenses" name="Expenses" stroke={colors.secondary} strokeWidth={2.5} dot={{ fill: colors.secondary, r: 3, strokeWidth: 0 }} activeDot={{ r: 5 }} />
+              </LineChart>
+            ) : (
+              <AreaChart data={monthlyData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id={`incomeGrad-${widget.id}`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={colors.primary} stopOpacity={0.25} /><stop offset="95%" stopColor={colors.primary} stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id={`expenseGrad-${widget.id}`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={colors.secondary} stopOpacity={0.2} /><stop offset="95%" stopColor={colors.secondary} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                {axisProps.grid}{axisProps.xAxis}{axisProps.yAxis}{axisProps.tooltip}{axisProps.legend}
+                <Area type="monotone" dataKey="income" name="Income" stroke={colors.primary} strokeWidth={2.5} fill={`url(#incomeGrad-${widget.id})`} dot={{ fill: colors.primary, r: 3, strokeWidth: 0 }} activeDot={{ r: 5, strokeWidth: 0 }} />
+                <Area type="monotone" dataKey="expenses" name="Expenses" stroke={colors.secondary} strokeWidth={2.5} fill={`url(#expenseGrad-${widget.id})`} dot={{ fill: colors.secondary, r: 3, strokeWidth: 0 }} activeDot={{ r: 5, strokeWidth: 0 }} />
+              </AreaChart>
+            )}
+          </ResponsiveContainer>
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
 
-  if (widget.type === "bar-chart") return (
-    <div className="flex h-full flex-col">
-      <p className="mb-3 text-xs text-muted-foreground">Total spend per category</p>
-      <div className="flex-1 min-h-0">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={categoryData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }} barSize={28}>
-            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-            <XAxis dataKey="name" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} tickFormatter={(v) => `${symbol}${(v/1000).toFixed(0)}k`} />
-            <Tooltip content={<CustomTooltip symbol={symbol} />} />
-            <Bar dataKey="value" name="Amount" radius={[6, 6, 0, 0]}>
-              {categoryData.map((_, i) => (
-                <Cell key={i} fill={MULTI_COLORS[i % MULTI_COLORS.length]} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
+  if (widget.type === "bar-chart" || widget.type === "bar-deductible") {
+    const variant = widget.chartVariant ?? "bar"
+    const data = categoryData
+    const label = widget.type === "bar-deductible" ? "Expense categories reducing tax exposure" : "Total spend per category"
+    return (
+      <div className="flex h-full flex-col">
+        <p className="mb-3 text-xs text-muted-foreground">{label}</p>
+        <div className="flex-1 min-h-0">
+          <ResponsiveContainer width="100%" height="100%">
+            {variant === "pie" ? (
+              <PieChart>
+                <Pie data={data} cx="50%" cy="50%" innerRadius="30%" outerRadius="60%" paddingAngle={3} dataKey="value">
+                  {data.map((_, i) => <Cell key={i} fill={MULTI_COLORS[i % MULTI_COLORS.length]} strokeWidth={0} />)}
+                </Pie>
+                <Tooltip formatter={(v: any, n: any) => [v, n]} />
+                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, color: "hsl(var(--foreground))" }} />
+              </PieChart>
+            ) : (
+              <BarChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 0 }} barSize={28}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                <XAxis dataKey="name" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${symbol}${(v/1000).toFixed(0)}k`} />
+                <Tooltip content={<CustomTooltip symbol={symbol} />} />
+                <Bar dataKey="value" name={widget.type === "bar-deductible" ? "Deductible" : "Amount"} radius={[6, 6, 0, 0]}>
+                  {data.map((_, i) => <Cell key={i} fill={MULTI_COLORS[i % MULTI_COLORS.length]} />)}
+                </Bar>
+              </BarChart>
+            )}
+          </ResponsiveContainer>
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
 
-  if (widget.type === "bar-deductible") return (
-    <div className="flex h-full flex-col">
-      <p className="mb-3 text-xs text-muted-foreground">Expense categories reducing tax exposure</p>
-      <div className="flex-1 min-h-0">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={categoryData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }} barSize={28}>
-            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-            <XAxis dataKey="name" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} tickFormatter={(v) => `${symbol}${(v/1000).toFixed(0)}k`} />
-            <Tooltip content={<CustomTooltip symbol={symbol} />} />
-            <Bar dataKey="value" name="Deductible" radius={[6, 6, 0, 0]}>
-              {categoryData.map((_, i) => (
-                <Cell key={i} fill={MULTI_COLORS[i % MULTI_COLORS.length]} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-    </div>
-  )
-
-  if (widget.type === "pie-chart") return (
+  if (widget.type === "pie-chart") {
+    const variant = widget.chartVariant ?? "pie"
+    return (
     <div className="flex h-full flex-col">
       <p className="mb-2 text-xs text-muted-foreground">Breakdown by document type</p>
       <div className="flex-1 min-h-0">
         <ResponsiveContainer width="100%" height="100%">
+          {variant === "bar" ? (
+            <BarChart data={docTypeData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }} barSize={28}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+              <XAxis dataKey="name" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
+              <Tooltip />
+              <Bar dataKey="value" name="Count" radius={[6, 6, 0, 0]}>
+                {docTypeData.map((_, i) => <Cell key={i} fill={MULTI_COLORS[i % MULTI_COLORS.length]} />)}
+              </Bar>
+            </BarChart>
+          ) : (
           <PieChart>
             <Pie data={docTypeData} cx="50%" cy="50%" innerRadius="35%" outerRadius="60%" paddingAngle={3} dataKey="value">
               {docTypeData.map((_, i) => (
@@ -346,28 +381,23 @@ function WidgetContent({
             <Tooltip formatter={(v: any, n: any) => [v, n]} />
             <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, color: "hsl(var(--foreground))" }} />
           </PieChart>
+          )}
         </ResponsiveContainer>
       </div>
     </div>
   )
+  }
 
-  if (widget.type === "context-summary" || widget.type === "advanced-analytics") {
-    const isAdvanced = widget.type === "advanced-analytics"
+  if (widget.type === "context-summary") {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: colors.primary + "20" }}>
-          {isAdvanced
-            ? <Sparkles className="h-5 w-5" style={{ color: colors.primary }} />
-            : <FileText className="h-5 w-5" style={{ color: colors.primary }} />
-          }
+          <FileText className="h-5 w-5" style={{ color: colors.primary }} />
         </div>
         <div>
           <p className="text-sm font-medium text-foreground">{widget.title}</p>
-          <p className="mt-1 text-xs text-muted-foreground">Available on Pro plan</p>
+          <p className="mt-1 text-xs text-muted-foreground">AI-powered context summary</p>
         </div>
-        <Button size="sm" variant="outline" className="rounded-lg text-xs" disabled>
-          Upgrade to unlock
-        </Button>
       </div>
     )
   }
@@ -409,9 +439,9 @@ export default function SmartDashboardPage() {
   const [isDirty, setIsDirty] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [savedConfirm, setSavedConfirm] = useState(false)
-  const [showWidgetPanel, setShowWidgetPanel] = useState(true)
   const [showDateFilter, setShowDateFilter] = useState(false)
   const [showColorPicker, setShowColorPicker] = useState(false)
+  const [showAdvancedMenu, setShowAdvancedMenu] = useState(false)
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
   const [hasNewData, setHasNewData] = useState(false)
@@ -517,8 +547,9 @@ export default function SmartDashboardPage() {
     userFiles.forEach((f) => { typeMap[f.document_type] = (typeMap[f.document_type] ?? 0) + 1 })
     setDocTypeData(Object.entries(typeMap).map(([name, value]) => ({ name: name.charAt(0).toUpperCase() + name.slice(1), value })))
 
-    // Check for new data (simple heuristic — any fields without analytics run)
-    setHasNewData(fields.length > 0)
+    // Show "New data" only when document count has grown since last Advanced Analytics run
+    const lastCount = parseInt(typeof window !== "undefined" ? (localStorage.getItem("aa_last_field_count") ?? "0") : "0")
+    setHasNewData(fields.length > lastCount)
 
     setLoading(false)
   }, [session, dateFrom, dateTo])
@@ -552,7 +583,7 @@ export default function SmartDashboardPage() {
 
   // ── Widget management ──────────────────────────────────────────────────────
   const addWidget = (type: string, title: string, isPremium: boolean) => {
-    if (isPremium) return
+    if (isPremium && !isPro) return
     if (widgets.some(w => w.type === type)) return
     const id = `${type}-${Date.now()}`
     const isKpi = type.startsWith("kpi")
@@ -572,6 +603,11 @@ export default function SmartDashboardPage() {
 
   const updateWidgetColor = (widgetId: string, colors: WidgetColor) => {
     setWidgets(prev => prev.map(w => w.id === widgetId ? { ...w, colors } : w))
+    setIsDirty(true)
+  }
+
+  const updateWidgetChartVariant = (widgetId: string, variant: string) => {
+    setWidgets(prev => prev.map(w => w.id === widgetId ? { ...w, chartVariant: variant } : w))
     setIsDirty(true)
   }
 
@@ -630,6 +666,28 @@ export default function SmartDashboardPage() {
               )}
             </div>
 
+            {/* Chart type picker — only when applicable chart widget selected */}
+            {selectedWidget && CHART_TYPE_OPTIONS[selectedWidget.type] && (
+              <div className="flex items-center gap-1">
+                <div className="h-4 w-px bg-border mx-1" />
+                <span className="text-xs text-muted-foreground">Chart:</span>
+                <div className="flex items-center gap-0.5 rounded-lg border border-border p-0.5">
+                  {CHART_TYPE_OPTIONS[selectedWidget.type].map(opt => {
+                    const active = (selectedWidget.chartVariant ?? CHART_DEFAULT[selectedWidget.type]) === opt.value
+                    return (
+                      <button
+                        key={opt.value}
+                        onClick={() => updateWidgetChartVariant(selectedWidget.id, opt.value)}
+                        className={`rounded px-2 py-0.5 text-xs transition-colors ${active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
+                      >
+                        {opt.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Color picker — only when widget selected */}
             {selectedWidget && (
               <div className="relative flex items-center gap-1.5">
@@ -681,27 +739,15 @@ export default function SmartDashboardPage() {
               </div>
             )}
 
-            {/* Advanced Analytics — conditional */}
-            {isPro ? (
-              <button className="flex h-7 items-center gap-1.5 rounded-lg border border-border px-3 text-xs text-muted-foreground transition-colors hover:bg-muted">
-                <Sparkles className="h-3.5 w-3.5" />
-                Advanced Analytics
-                {hasNewData && (
-                  <span className="flex items-center gap-1 ml-1 text-primary">
-                    <span className="relative flex h-1.5 w-1.5">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
-                      <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
-                    </span>
-                    <span className="text-[10px] font-medium">New data</span>
-                  </span>
-                )}
-              </button>
-            ) : (
-              <Link href="/pricing">
-                <button className="flex h-7 items-center gap-1.5 rounded-lg border border-border px-3 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+            {/* Advanced Analytics — button only, generates widgets */}
+            <div className="relative">
+              {isPro ? (
+                <button
+                  onClick={() => { setShowAdvancedMenu(!showAdvancedMenu); setShowColorPicker(false); setShowDateFilter(false) }}
+                  className="flex h-7 items-center gap-1.5 rounded-lg border border-border px-3 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
                   <Sparkles className="h-3.5 w-3.5" />
                   Advanced Analytics
-                  <Lock className="h-3 w-3" />
                   {hasNewData && (
                     <span className="flex items-center gap-1 ml-1 text-primary">
                       <span className="relative flex h-1.5 w-1.5">
@@ -712,8 +758,42 @@ export default function SmartDashboardPage() {
                     </span>
                   )}
                 </button>
-              </Link>
-            )}
+              ) : (
+                <Link href="/pricing">
+                  <button className="flex h-7 items-center gap-1.5 rounded-lg border border-border px-3 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Advanced Analytics
+                    <Lock className="h-3 w-3" />
+                  </button>
+                </Link>
+              )}
+              {showAdvancedMenu && isPro && (
+                <div className="absolute left-0 top-9 z-30 min-w-[200px] rounded-xl border border-border bg-card p-3 shadow-xl">
+                  <p className="mb-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Generate Analysis</p>
+                  <div className="space-y-0.5">
+                    {[{ type: "context-summary", title: "Context Summary", desc: "AI overview of your documents" }].map(opt => {
+                      const added = widgets.some(w => w.type === opt.type)
+                      return (
+                        <button
+                          key={opt.type}
+                          disabled={added}
+                          onClick={() => {
+                            addWidget(opt.type, opt.title, true)
+                            localStorage.setItem("aa_last_field_count", String(999999))
+                            setHasNewData(false)
+                            setShowAdvancedMenu(false)
+                          }}
+                          className={`flex w-full flex-col rounded-lg px-3 py-2 text-left transition-colors ${added ? "opacity-40 cursor-not-allowed" : "hover:bg-muted"}`}
+                        >
+                          <span className="text-sm font-medium text-foreground">{opt.title}</span>
+                          <span className="text-xs text-muted-foreground">{opt.desc}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
@@ -728,13 +808,6 @@ export default function SmartDashboardPage() {
               {savedConfirm ? <><Check className="h-3.5 w-3.5" /> Saved</>
                 : isSaving ? <><div className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" /> Saving…</>
                 : <><Save className="h-3.5 w-3.5" /> Save Layout</>}
-            </button>
-            <button
-              onClick={() => setShowWidgetPanel(!showWidgetPanel)}
-              className={`flex h-7 items-center gap-1.5 rounded-lg border border-border px-3 text-xs transition-colors hover:bg-muted ${showWidgetPanel ? "bg-muted text-foreground" : "text-muted-foreground"}`}
-            >
-              <LayoutGrid className="h-3.5 w-3.5" />
-              {showWidgetPanel ? "Hide" : "Widgets"}
             </button>
           </div>
         </div>
@@ -751,7 +824,7 @@ export default function SmartDashboardPage() {
               backgroundImage: "radial-gradient(circle, hsl(var(--muted-foreground) / 0.2) 1px, transparent 1px)",
               backgroundSize: "20px 20px",
             }}
-            onClick={(e) => { if (e.target === e.currentTarget) { setSelectedWidgetId(null); setShowColorPicker(false); setShowDateFilter(false) } }}
+            onClick={(e) => { if (e.target === e.currentTarget) { setSelectedWidgetId(null); setShowColorPicker(false); setShowDateFilter(false); setShowAdvancedMenu(false) } }}
           >
             {loading ? (
               <div className="flex h-64 items-center justify-center">
@@ -783,6 +856,14 @@ export default function SmartDashboardPage() {
                         : "border-border hover:border-border/60 hover:shadow-md"
                     }`}
                   >
+                    {/* Corner grid markers — shown when selected */}
+                    {selectedWidgetId === widget.id && (<>
+                      <span className="pointer-events-none absolute -top-1 -left-1 h-2 w-2 rounded-full bg-primary" />
+                      <span className="pointer-events-none absolute -top-1 -right-1 h-2 w-2 rounded-full bg-primary" />
+                      <span className="pointer-events-none absolute -bottom-1 -left-1 h-2 w-2 rounded-full bg-primary" />
+                      <span className="pointer-events-none absolute -bottom-1 -right-1 h-2 w-2 rounded-full bg-primary" />
+                    </>)}
+
                     {/* Drag handle */}
                     <div className="drag-handle absolute left-0 right-0 top-0 h-8 cursor-grab rounded-t-2xl opacity-0 group-hover:opacity-100 transition-opacity" />
 
@@ -813,34 +894,44 @@ export default function SmartDashboardPage() {
             )}
           </div>
 
-          {/* RIGHT PANEL */}
-          <AnimatePresence>
-            {showWidgetPanel && (
-              <motion.aside
-                initial={{ width: 0, opacity: 0 }}
-                animate={{ width: 240, opacity: 1 }}
-                exit={{ width: 0, opacity: 0 }}
-                transition={{ duration: 0.2, ease: "easeOut" }}
-                className="flex shrink-0 flex-col overflow-hidden border-l border-border bg-card"
-              >
-                <div className="flex items-center justify-between border-b border-border px-4 py-3">
-                  <h2 className="text-sm font-semibold text-foreground">Widget Library</h2>
-                  <button onClick={() => setShowWidgetPanel(false)} className="text-muted-foreground hover:text-foreground">
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
+          {/* RIGHT PANEL — always visible */}
+          <aside className="flex w-60 shrink-0 flex-col overflow-hidden border-l border-border bg-card">
+            <div className="border-b border-border px-4 py-3">
+              <h2 className="text-sm font-semibold text-foreground">Widget Library</h2>
+            </div>
 
-                <div className="flex-1 overflow-y-auto p-3">
-                  <p className="mb-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">Standard</p>
+            <div className="flex-1 overflow-y-auto p-3">
+              <p className="mb-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">Standard</p>
+              <div className="space-y-0.5">
+                {WIDGET_LIBRARY.filter(w => !w.isPremium).map((item) => {
+                  const added = widgets.some(w => w.type === item.type)
+                  return (
+                    <button
+                      key={item.type}
+                      onClick={() => addWidget(item.type, item.title, false)}
+                      disabled={added}
+                      className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors ${added ? "text-muted-foreground/40 cursor-not-allowed" : "text-foreground hover:bg-muted"}`}
+                    >
+                      <span>{item.title}</span>
+                      {added ? <Check className="h-3.5 w-3.5 text-primary" /> : <Plus className="h-3.5 w-3.5 text-muted-foreground" />}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {isPro && (
+                <>
+                  <div className="my-3 h-px bg-border" />
+                  <p className="mb-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">Advanced</p>
                   <div className="space-y-0.5">
-                    {WIDGET_LIBRARY.filter(w => !w.isPremium).map((item) => {
+                    {WIDGET_LIBRARY.filter(w => w.isPremium).map((item) => {
                       const added = widgets.some(w => w.type === item.type)
                       return (
                         <button
                           key={item.type}
-                          onClick={() => addWidget(item.type, item.title, false)}
+                          onClick={() => addWidget(item.type, item.title, true)}
                           disabled={added}
-                          className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors ${added ? "text-muted-foreground/40 cursor-not-allowed" : "text-foreground hover:bg-muted"}`}
+                          className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${added ? "text-muted-foreground/40 cursor-not-allowed" : "text-foreground hover:bg-muted"}`}
                         >
                           <span>{item.title}</span>
                           {added ? <Check className="h-3.5 w-3.5 text-primary" /> : <Plus className="h-3.5 w-3.5 text-muted-foreground" />}
@@ -848,42 +939,25 @@ export default function SmartDashboardPage() {
                       )
                     })}
                   </div>
+                </>
+              )}
 
-                  <div className="my-3 h-px bg-border" />
-
-                  <p className="mb-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">Advanced</p>
-                  <div className="space-y-0.5">
-                    {WIDGET_LIBRARY.filter(w => w.isPremium).map((item) => (
-                      <button
-                        key={item.type}
-                        disabled={!isPro}
-                        onClick={() => isPro && addWidget(item.type, item.title, false)}
-                        className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
-                          isPro ? "text-foreground hover:bg-muted" : "text-muted-foreground/40 cursor-not-allowed"
-                        }`}
-                      >
-                        <span>{item.title}</span>
-                        {isPro ? <Plus className="h-3.5 w-3.5 text-muted-foreground" /> : <Lock className="h-3.5 w-3.5" />}
-                      </button>
-                    ))}
+              {!isPro && (
+                <div className="mt-3 rounded-xl border border-border bg-muted/30 p-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Zap className="h-3.5 w-3.5 text-primary" />
+                    <p className="text-xs font-medium text-foreground">Pro Plan</p>
                   </div>
-
-                  <div className="mt-3 rounded-xl border border-border bg-muted/30 p-3">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Zap className="h-3.5 w-3.5 text-primary" />
-                      <p className="text-xs font-medium text-foreground">Pro Plan</p>
-                    </div>
-                    <p className="text-xs text-muted-foreground mb-2">
-                      Unlock AI-powered Context Summary and Advanced Analytics widgets.
-                    </p>
-                    <Button size="sm" className="w-full rounded-lg text-xs" disabled>
-                      Upgrade to Pro
-                    </Button>
-                  </div>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Unlock AI-powered Context Summary and Advanced Analytics.
+                  </p>
+                  <Link href="/pricing">
+                    <Button size="sm" className="w-full rounded-lg text-xs">Upgrade to Pro</Button>
+                  </Link>
                 </div>
-              </motion.aside>
-            )}
-          </AnimatePresence>
+              )}
+            </div>
+          </aside>
         </div>
       </div>
 

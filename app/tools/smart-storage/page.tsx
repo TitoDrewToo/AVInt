@@ -296,11 +296,21 @@ export default function SmartStoragePage() {
   // Upload
   const [isDragOver, setIsDragOver] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set())
-  const [viewMode, setViewMode] = useState<"list" | "grid">("list")
+  const [viewMode, setViewMode] = useState<"list" | "grid">("grid")
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; fileId: string; filename: string } | null>(null)
   const [renamingFileId, setRenamingFileId] = useState<string | null>(null)
   const [renameFileValue, setRenameFileValue] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Canvas drag state
+  const CELL_W = 90
+  const CELL_H = 104
+  const GRID_PAD = 8
+  const canvasRef = useRef<HTMLDivElement>(null)
+  const [itemPositions, setItemPositions] = useState<Record<string, { col: number; row: number }>>({})
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  const [dragGhostPos, setDragGhostPos] = useState<{ x: number; y: number } | null>(null)
 
   // Reports
   const [selectedReport, setSelectedReport] = useState<string | null>(null)
@@ -400,6 +410,29 @@ export default function SmartStoragePage() {
     loadFolders()
   }, [checkProcessingState, loadFiles, checkReportAvailability, loadFolders])
 
+  // ── Auto-assign canvas positions ───────────────────────────────────────────
+  useEffect(() => {
+    const subfolderIds = folders
+      .filter(f => currentFolderId === "root" ? f.parentId === null : f.parentId === currentFolderId)
+      .map(f => f.id)
+    const allIds = [...subfolderIds, ...files.map(f => f.id)]
+    setItemPositions(prev => {
+      const next: Record<string, { col: number; row: number }> = {}
+      const occupied = new Set<string>()
+      for (const id of allIds) {
+        if (prev[id]) { next[id] = prev[id]; occupied.add(`${prev[id].col},${prev[id].row}`) }
+      }
+      for (const id of allIds) {
+        if (next[id]) continue
+        let col = 0, row = 0
+        while (occupied.has(`${col},${row}`)) { col++; if (col >= 8) { col = 0; row++ } }
+        next[id] = { col, row }
+        occupied.add(`${col},${row}`)
+      }
+      return next
+    })
+  }, [folders, files, currentFolderId])
+
   // ── Upload ─────────────────────────────────────────────────────────────────
   const handleUpload = async (uploadFiles: FileList | File[]) => {
     if (!session?.user?.id) return
@@ -490,6 +523,57 @@ export default function SmartStoragePage() {
     setContextMenu(null)
   }
 
+  // ── Canvas helpers ─────────────────────────────────────────────────────────
+  const findFreeSlot = (targetCol: number, targetRow: number, occupied: Set<string>) => {
+    if (!occupied.has(`${targetCol},${targetRow}`)) return { col: targetCol, row: targetRow }
+    for (let dist = 1; dist < 30; dist++) {
+      for (let dc = -dist; dc <= dist; dc++) {
+        for (let dr = -dist; dr <= dist; dr++) {
+          if (Math.abs(dc) + Math.abs(dr) === dist) {
+            const c = Math.max(0, targetCol + dc)
+            const r = Math.max(0, targetRow + dr)
+            if (!occupied.has(`${c},${r}`)) return { col: c, row: r }
+          }
+        }
+      }
+    }
+    return { col: targetCol, row: targetRow }
+  }
+
+  const handleCanvasPointerDown = (e: React.PointerEvent, id: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    setDraggingId(id)
+    setDragOffset({ x: e.clientX - rect.left, y: e.clientY - rect.top })
+    setDragGhostPos(null)
+  }
+
+  const handleCanvasPointerMove = (e: React.PointerEvent, id: string) => {
+    if (draggingId !== id || !canvasRef.current) return
+    const cr = canvasRef.current.getBoundingClientRect()
+    setDragGhostPos({ x: e.clientX - cr.left - dragOffset.x, y: e.clientY - cr.top - dragOffset.y })
+  }
+
+  const handleCanvasPointerUp = (e: React.PointerEvent, id: string) => {
+    if (draggingId !== id || !canvasRef.current) { setDraggingId(null); setDragGhostPos(null); return }
+    const cr = canvasRef.current.getBoundingClientRect()
+    const x = e.clientX - cr.left - dragOffset.x
+    const y = e.clientY - cr.top - dragOffset.y
+    const targetCol = Math.max(0, Math.round((x - GRID_PAD) / CELL_W))
+    const targetRow = Math.max(0, Math.round((y - GRID_PAD) / CELL_H))
+    const occupied = new Set(
+      Object.entries(itemPositions)
+        .filter(([itemId]) => itemId !== id)
+        .map(([, p]) => `${p.col},${p.row}`)
+    )
+    const { col, row } = findFreeSlot(targetCol, targetRow, occupied)
+    setItemPositions(prev => ({ ...prev, [id]: { col, row } }))
+    setDraggingId(null)
+    setDragGhostPos(null)
+  }
+
   // ── Folder management ──────────────────────────────────────────────────────
   const createFolder = async () => {
     if (!newFolderName.trim() || !session?.user?.id) return
@@ -545,6 +629,10 @@ export default function SmartStoragePage() {
   const currentSubfolders = folders.filter((f) =>
     currentFolderId === "root" ? f.parentId === null : f.parentId === currentFolderId
   )
+
+  const maxRow = Object.keys(itemPositions).length > 0
+    ? Math.max(...Object.values(itemPositions).map(p => p.row))
+    : 0
 
   // ── Auth guard ─────────────────────────────────────────────────────────────
   if (!sessionLoaded) return null
@@ -807,23 +895,76 @@ export default function SmartStoragePage() {
                 </div>
               ))}
 
-              {/* Subfolders — grid view */}
-              {viewMode === "grid" && currentSubfolders.length > 0 && (
-                <div className="mb-2 grid grid-cols-6 gap-2">
-                  {currentSubfolders.map((folder) => (
-                    <div
-                      key={folder.id}
-                      onDoubleClick={() => openFolder(folder)}
-                      onContextMenu={(e) => {
-                        e.preventDefault()
-                        setContextMenu({ x: e.clientX, y: e.clientY, fileId: folder.id, filename: folder.name })
-                      }}
-                      className="flex flex-col items-center gap-1 rounded px-2 py-2 cursor-pointer select-none transition-colors hover:bg-muted"
-                    >
-                      <Folder className="h-8 w-8 text-primary/70" />
-                      <span className="w-full truncate text-center text-[11px] text-foreground leading-tight">{folder.name}</span>
-                    </div>
-                  ))}
+              {/* Canvas — draggable snap-to-grid view */}
+              {viewMode === "grid" && (
+                <div
+                  ref={canvasRef}
+                  className="relative w-full"
+                  style={{ minHeight: `${Math.max(480, (maxRow + 3) * CELL_H + GRID_PAD * 2)}px` }}
+                >
+                  {currentSubfolders.map((folder) => {
+                    const pos = itemPositions[folder.id]
+                    if (!pos) return null
+                    const isDragging = draggingId === folder.id
+                    const left = isDragging && dragGhostPos ? dragGhostPos.x : GRID_PAD + pos.col * CELL_W
+                    const top  = isDragging && dragGhostPos ? dragGhostPos.y : GRID_PAD + pos.row * CELL_H
+                    return (
+                      <div
+                        key={folder.id}
+                        style={{ position: "absolute", left, top, width: CELL_W - 6, zIndex: isDragging ? 50 : 1 }}
+                        className={`flex flex-col items-center gap-1 rounded-lg px-1 py-2 select-none ${
+                          isDragging ? "opacity-90 shadow-xl ring-1 ring-primary/30 cursor-grabbing" : "hover:bg-muted cursor-grab"
+                        }`}
+                        onPointerDown={(e) => handleCanvasPointerDown(e, folder.id)}
+                        onPointerMove={(e) => handleCanvasPointerMove(e, folder.id)}
+                        onPointerUp={(e) => handleCanvasPointerUp(e, folder.id)}
+                        onDoubleClick={() => openFolder(folder)}
+                        onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, fileId: folder.id, filename: folder.name }) }}
+                      >
+                        <Folder className={`h-10 w-10 ${isDragging ? "text-primary" : "text-primary/70"}`} />
+                        <span className="w-full truncate text-center text-[11px] text-foreground leading-tight">{folder.name}</span>
+                      </div>
+                    )
+                  })}
+
+                  {files.map((file) => {
+                    const pos = itemPositions[file.id]
+                    if (!pos) return null
+                    const isDragging = draggingId === file.id
+                    const left = isDragging && dragGhostPos ? dragGhostPos.x : GRID_PAD + pos.col * CELL_W
+                    const top  = isDragging && dragGhostPos ? dragGhostPos.y : GRID_PAD + pos.row * CELL_H
+                    return (
+                      <div
+                        key={file.id}
+                        style={{ position: "absolute", left, top, width: CELL_W - 6, zIndex: isDragging ? 50 : 1 }}
+                        className={`flex flex-col items-center gap-1 rounded-lg px-1 py-2 select-none ${
+                          isDragging
+                            ? "opacity-90 shadow-xl ring-1 ring-primary/30 cursor-grabbing"
+                            : selectedFiles.has(file.id)
+                            ? "bg-primary/10 ring-1 ring-primary/30 cursor-grab"
+                            : "hover:bg-muted cursor-grab"
+                        }`}
+                        onPointerDown={(e) => handleCanvasPointerDown(e, file.id)}
+                        onPointerMove={(e) => handleCanvasPointerMove(e, file.id)}
+                        onPointerUp={(e) => handleCanvasPointerUp(e, file.id)}
+                        onClick={(e) => { if (!draggingId) handleFileClick(file.id, e) }}
+                        onContextMenu={(e) => handleFileRightClick(e, file.id, file.filename)}
+                      >
+                        <div className="flex h-10 w-10 items-center justify-center">
+                          {file.file_type === "application/pdf"
+                            ? <FileText className="h-9 w-9 text-primary/60" />
+                            : file.file_type.startsWith("image/")
+                            ? <ImageIcon className="h-9 w-9 text-blue-400/70" />
+                            : <File className="h-9 w-9 text-muted-foreground" />
+                          }
+                        </div>
+                        <span className="w-full truncate text-center text-[11px] text-foreground leading-tight">{file.filename}</span>
+                        <span className="w-full truncate text-center text-[10px] text-muted-foreground/60 capitalize leading-tight">
+                          {file.document_type === "unknown" ? "Processing…" : file.document_type.replace(/_/g, " ")}
+                        </span>
+                      </div>
+                    )
+                  })}
                 </div>
               )}
 
@@ -869,27 +1010,6 @@ export default function SmartStoragePage() {
                   <span className="text-right text-muted-foreground">{formatBytes(file.file_size)}</span>
                 </div>
               ))}
-
-              {/* Files — grid view */}
-              {viewMode === "grid" && files.length > 0 && (
-                <div className="grid grid-cols-6 gap-1 mt-1">
-                  {files.map((file) => (
-                    <div
-                      key={file.id}
-                      onClick={(e) => handleFileClick(file.id, e)}
-                      onContextMenu={(e) => handleFileRightClick(e, file.id, file.filename)}
-                      className={`flex flex-col items-center gap-1 rounded px-2 py-2 cursor-pointer select-none transition-colors ${
-                        selectedFiles.has(file.id) ? "bg-primary/10 ring-1 ring-primary/30" : "hover:bg-muted"
-                      }`}
-                    >
-                      <div className="flex h-10 w-10 items-center justify-center">
-                        {fileIcon(file.file_type)}
-                      </div>
-                      <span className="w-full truncate text-center text-[11px] text-foreground leading-tight">{file.filename}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
 
               {/* Context menu — files and folders */}
               {contextMenu && (
@@ -944,7 +1064,7 @@ export default function SmartStoragePage() {
               )}
 
               {/* Empty state */}
-              {currentSubfolders.length === 0 && files.length === 0 && !isCreatingFolder && (
+              {currentSubfolders.length === 0 && files.length === 0 && !isCreatingFolder && viewMode === "list" && (
                 <div className="flex h-full min-h-[300px] flex-col items-center justify-center gap-3">
                   <div className="flex items-end justify-center gap-2 opacity-20">
                     <div className="flex h-16 w-14 items-center justify-center rounded-lg bg-muted">

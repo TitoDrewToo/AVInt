@@ -456,11 +456,16 @@ export default function SmartDashboardPage() {
     const measure = () => {
       if (canvasRef.current) setContainerWidth(canvasRef.current.offsetWidth - 32)
     }
-    measure()
+    // Double rAF: first frame lets flex layout resolve, second guarantees paint is complete
+    const raf1 = requestAnimationFrame(() => {
+      const raf2 = requestAnimationFrame(measure)
+      return raf2
+    })
     const observer = new ResizeObserver(measure)
     if (canvasRef.current) observer.observe(canvasRef.current)
     window.addEventListener("resize", measure)
     return () => {
+      cancelAnimationFrame(raf1)
       observer.disconnect()
       window.removeEventListener("resize", measure)
     }

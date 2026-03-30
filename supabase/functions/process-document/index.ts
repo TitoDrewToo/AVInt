@@ -145,21 +145,23 @@ Rules:
       })
       .eq("id", file_id)
 
-    // 9. Insert into document_fields
+    // 9. Insert into document_fields — normalization_status starts as 'raw'
+    //    normalize-document function will update it to 'normalized' or 'failed'
     await supabase
       .from("document_fields")
       .insert({
         file_id,
-        vendor_name: extracted.vendor_name ?? null,
-        employer_name: extracted.employer_name ?? null,
-        document_date: extracted.document_date ?? null,
-        currency: extracted.currency ?? null,
-        total_amount: extracted.total_amount ?? null,
-        gross_income: extracted.gross_income ?? null,
-        net_income: extracted.net_income ?? null,
-        expense_category: extracted.expense_category ?? null,
-        confidence_score: extracted.confidence ?? null,
-        raw_json: extracted,
+        vendor_name:          extracted.vendor_name      ?? null,
+        employer_name:        extracted.employer_name    ?? null,
+        document_date:        extracted.document_date    ?? null,
+        currency:             extracted.currency         ?? null,
+        total_amount:         extracted.total_amount     ?? null,
+        gross_income:         extracted.gross_income     ?? null,
+        net_income:           extracted.net_income       ?? null,
+        expense_category:     extracted.expense_category ?? null,
+        confidence_score:     extracted.confidence       ?? null,
+        raw_json:             extracted,
+        normalization_status: "raw",
       })
 
     // 10. Call normalize-document function
@@ -177,12 +179,10 @@ Rules:
     )
 
     if (!normalizeResponse.ok) {
+      // normalize-document handles its own failure state in document_fields
+      // process-document still returns success — Gemini extraction completed
       const errText = await normalizeResponse.text()
-      console.error("Normalize function failed:", errText)
-    }
-
-    if (!normalizeResponse.ok) {
-      console.error("Normalize function failed:", await normalizeResponse.text())
+      console.error("Normalize function failed (non-fatal):", errText)
     }
 
     return new Response(JSON.stringify({ success: true, file_id }), {

@@ -16,7 +16,7 @@ import {
 import {
   TrendingUp, Receipt, Wallet, FileText,
   Save, Calendar, ChevronDown, Lock, Sparkles,
-  LayoutGrid, X, Check, Plus, Zap
+  LayoutGrid, X, Check, Plus, Zap, PanelRight
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
@@ -441,6 +441,7 @@ export default function SmartDashboardPage() {
   const [showDateFilter, setShowDateFilter] = useState(false)
   const [showColorPicker, setShowColorPicker] = useState(false)
   const [showAdvancedMenu, setShowAdvancedMenu] = useState(false)
+  const [showWidgetPanel, setShowWidgetPanel] = useState(true)
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
   const [hasNewData, setHasNewData] = useState(false)
@@ -902,7 +903,17 @@ export default function SmartDashboardPage() {
             )}
           </div>
 
-          {/* WIDGET PANEL — absolute overlay, covers right edge */}
+          {/* PANEL TOGGLE TAB */}
+          <button
+            onClick={() => setShowWidgetPanel(v => !v)}
+            className="absolute top-1/2 right-0 -translate-y-1/2 z-20 flex h-14 w-5 items-center justify-center rounded-l-lg border border-r-0 border-border bg-card text-muted-foreground shadow-md hover:text-foreground transition-colors"
+            title={showWidgetPanel ? "Hide panel" : "Show panel"}
+          >
+            <PanelRight className="h-3 w-3" />
+          </button>
+
+          {/* WIDGET PANEL — absolute overlay */}
+          {showWidgetPanel && (
           <aside className="absolute right-0 top-0 bottom-0 z-10 flex w-72 flex-col overflow-hidden border-l border-border bg-card/95 backdrop-blur-sm shadow-xl">
             <div className="border-b border-border px-4 py-3">
               <h2 className="text-sm font-semibold text-foreground">Widget Library</h2>
@@ -973,6 +984,7 @@ export default function SmartDashboardPage() {
               )}
             </div>
           </aside>
+          )}
         </div>
       </div>
     </div>

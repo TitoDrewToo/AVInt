@@ -987,7 +987,19 @@ export default function SmartStoragePage() {
                         onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, fileId: folder.id, filename: folder.name }) }}
                       >
                         <Folder className={`h-10 w-10 ${isDropTarget ? "text-primary" : isDragging ? "text-primary" : "text-primary/70"}`} />
-                        <span className="w-full truncate text-center text-[11px] text-foreground leading-tight">{folder.name}</span>
+                        {renamingId === folder.id ? (
+                          <input
+                            autoFocus
+                            value={renameValue}
+                            onChange={(e) => setRenameValue(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === "Enter") confirmRename(); if (e.key === "Escape") setRenamingId(null) }}
+                            onBlur={confirmRename}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-full rounded border border-primary bg-background px-1 py-0.5 text-center text-[11px] text-foreground focus:outline-none"
+                          />
+                        ) : (
+                          <span className="w-full truncate text-center text-[11px] text-foreground leading-tight">{folder.name}</span>
+                        )}
                       </div>
                     )
                   })}
@@ -1009,7 +1021,7 @@ export default function SmartStoragePage() {
                             ? "bg-primary/10 ring-1 ring-primary/30 cursor-grab"
                             : "hover:bg-muted cursor-grab"
                         }`}
-                        onPointerDown={(e) => handleCanvasPointerDown(e, file.id)}
+                        onPointerDown={(e) => { if (renamingFileId === file.id) return; handleCanvasPointerDown(e, file.id) }}
                         onPointerMove={(e) => handleCanvasPointerMove(e, file.id)}
                         onPointerUp={(e) => handleCanvasPointerUp(e, file.id, hoveredFolderId)}
                         onClick={(e) => { if (!draggingId) handleFileClick(file.id, e) }}
@@ -1023,7 +1035,19 @@ export default function SmartStoragePage() {
                             : <File className="h-9 w-9 text-muted-foreground" />
                           }
                         </div>
-                        <span className="w-full truncate text-center text-[11px] text-foreground leading-tight">{file.filename}</span>
+                        {renamingFileId === file.id ? (
+                          <input
+                            autoFocus
+                            value={renameFileValue}
+                            onChange={(e) => setRenameFileValue(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === "Enter") handleRenameFile(file.id, renameFileValue); if (e.key === "Escape") setRenamingFileId(null) }}
+                            onBlur={() => handleRenameFile(file.id, renameFileValue)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-full rounded border border-primary bg-background px-1 py-0.5 text-center text-[11px] text-foreground focus:outline-none"
+                          />
+                        ) : (
+                          <span className="w-full truncate text-center text-[11px] text-foreground leading-tight">{file.filename}</span>
+                        )}
                         <span className="w-full truncate text-center text-[10px] text-muted-foreground/60 capitalize leading-tight">
                           {file.document_type === "unknown" ? "Processing…" : file.document_type.replace(/_/g, " ")}
                         </span>

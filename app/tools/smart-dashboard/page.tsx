@@ -16,7 +16,7 @@ import {
 import {
   TrendingUp, Receipt, Wallet, FileText,
   Save, Calendar, ChevronDown, Lock, Sparkles,
-  X, Check, Plus, Zap
+  LayoutGrid, X, Check, Plus, Zap, PanelRight
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
@@ -98,16 +98,16 @@ const DEFAULT_WIDGETS: Widget[] = [
 ]
 
 const DEFAULT_LAYOUT: LayoutItem[] = [
-  { i: "kpi-income",       x: 0,  y: 0,  w: 2, h: 3, minW: 2, minH: 1 },
-  { i: "kpi-expenses",     x: 2,  y: 0,  w: 2, h: 3, minW: 2, minH: 1 },
-  { i: "kpi-net",          x: 4,  y: 0,  w: 2, h: 3, minW: 2, minH: 1 },
-  { i: "kpi-docs",         x: 6,  y: 0,  w: 2, h: 3, minW: 2, minH: 1 },
-  { i: "kpi-tax-exposure", x: 8,  y: 0,  w: 2, h: 3, minW: 2, minH: 1 },
-  { i: "kpi-tax-ratio",    x: 10, y: 0,  w: 2, h: 3, minW: 2, minH: 1 },
-  { i: "area-chart",       x: 0,  y: 3,  w: 12, h: 8, minW: 4, minH: 3 },
-  { i: "bar-chart",        x: 0,  y: 11, w: 4, h: 7, minW: 3, minH: 3 },
-  { i: "bar-deductible",   x: 4,  y: 11, w: 4, h: 7, minW: 3, minH: 3 },
-  { i: "pie-chart",        x: 8,  y: 11, w: 4, h: 7, minW: 3, minH: 3 },
+  { i: "kpi-income",       x: 0,  y: 0,  w: 2, h: 5,  minW: 2, minH: 1 },
+  { i: "kpi-expenses",     x: 2,  y: 0,  w: 2, h: 5,  minW: 2, minH: 1 },
+  { i: "kpi-net",          x: 4,  y: 0,  w: 2, h: 5,  minW: 2, minH: 1 },
+  { i: "kpi-docs",         x: 6,  y: 0,  w: 2, h: 5,  minW: 2, minH: 1 },
+  { i: "kpi-tax-exposure", x: 8,  y: 0,  w: 2, h: 5,  minW: 2, minH: 1 },
+  { i: "kpi-tax-ratio",    x: 10, y: 0,  w: 2, h: 5,  minW: 2, minH: 1 },
+  { i: "area-chart",       x: 0,  y: 5,  w: 12, h: 12, minW: 4, minH: 3 },
+  { i: "bar-chart",        x: 0,  y: 17, w: 4, h: 11, minW: 3, minH: 3 },
+  { i: "bar-deductible",   x: 4,  y: 17, w: 4, h: 11, minW: 3, minH: 3 },
+  { i: "pie-chart",        x: 8,  y: 17, w: 4, h: 11, minW: 3, minH: 3 },
 ]
 
 const WIDGET_LIBRARY = [
@@ -442,6 +442,7 @@ export default function SmartDashboardPage() {
   const [showDateFilter, setShowDateFilter] = useState(false)
   const [showColorPicker, setShowColorPicker] = useState(false)
   const [showAdvancedMenu, setShowAdvancedMenu] = useState(false)
+  const [showWidgetPanel, setShowWidgetPanel] = useState(true)
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
   const [hasNewData, setHasNewData] = useState(false)
@@ -454,7 +455,7 @@ export default function SmartDashboardPage() {
   // ── Measure canvas width ───────────────────────────────────────────────────
   useEffect(() => {
     const measure = () => {
-      if (canvasRef.current) setContainerWidth(canvasRef.current.offsetWidth - 48)
+      if (canvasRef.current) setContainerWidth(canvasRef.current.offsetWidth - 32)
     }
     measure()
     const observer = new ResizeObserver(measure)
@@ -484,7 +485,16 @@ export default function SmartDashboardPage() {
     if (data?.layout) {
       const saved = data.layout
       if (saved.widgets?.length) setWidgets(saved.widgets)
-      if (saved.gridLayout?.length) setLayout(saved.gridLayout)
+      if (saved.gridLayout?.length) {
+        // Always apply current minH/minW — never restore stale saved constraints
+        const constraints: Record<string, { minW: number; minH: number }> = {}
+        DEFAULT_LAYOUT.forEach(l => { constraints[l.i] = { minW: l.minW ?? 2, minH: l.minH ?? 1 } })
+        setLayout(saved.gridLayout.map((l: any) => ({
+          i: l.i, x: l.x, y: l.y, w: l.w, h: l.h,
+          minW: constraints[l.i]?.minW ?? 2,
+          minH: constraints[l.i]?.minH ?? 1,
+        })))
+      }
     }
   }, [session])
 
@@ -590,7 +600,7 @@ export default function SmartDashboardPage() {
     const defaultW = isKpi ? 2 : 4
     const defaultH = isKpi ? 3 : 7
     setWidgets(prev => [...prev, { id, type, title }])
-    setLayout(prev => [...prev, { i: id, x: 0, y: Infinity, w: isKpi ? 3 : 6, h: isKpi ? 2 : 5, minW: isKpi ? 2 : 3, minH: isKpi ? 2 : 3 }])
+    setLayout(prev => [...prev, { i: id, x: 0, y: Infinity, w: isKpi ? 3 : 6, h: isKpi ? 4 : 8, minW: isKpi ? 2 : 3, minH: isKpi ? 1 : 3 }])
     setIsDirty(true)
   }
 
@@ -623,7 +633,7 @@ export default function SmartDashboardPage() {
   const symbol = kpi.currency === "PHP" ? "₱" : kpi.currency === "EUR" ? "€" : kpi.currency === "GBP" ? "£" : "$"
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex h-screen flex-col overflow-hidden">
       <Navbar />
 
       <div className="flex flex-1 flex-col overflow-hidden">
@@ -812,13 +822,13 @@ export default function SmartDashboardPage() {
           </div>
         </div>
 
-        {/* CANVAS + RIGHT PANEL */}
-        <div className="flex flex-1 overflow-hidden">
+        {/* CANVAS + OVERLAY PANEL */}
+        <div className="relative flex-1 overflow-hidden">
 
-          {/* CANVAS */}
+          {/* CANVAS — full width */}
           <div
             ref={canvasRef}
-            className="min-w-0 flex-1 overflow-y-auto p-6"
+            className="absolute inset-0 overflow-y-auto p-4"
             style={{
               backgroundColor: "hsl(var(--background))",
               backgroundImage: "radial-gradient(circle, hsl(var(--muted-foreground) / 0.2) 1px, transparent 1px)",
@@ -838,7 +848,7 @@ export default function SmartDashboardPage() {
                 className="layout"
                 layout={layout}
                 cols={12}
-                rowHeight={36}
+                rowHeight={24}
                 width={containerWidth}
                 onLayoutChange={handleLayoutChange}
                 draggableHandle=".drag-handle"
@@ -868,18 +878,18 @@ export default function SmartDashboardPage() {
                     <div className="drag-handle absolute left-0 right-0 top-0 h-8 cursor-grab rounded-t-2xl opacity-0 group-hover:opacity-100 transition-opacity" />
 
                     {/* Widget header */}
-                    <div className="flex items-center justify-between px-5 pt-4 pb-2 shrink-0">
-                      <h3 className="text-sm font-semibold text-foreground">{widget.title}</h3>
+                    <div className="flex items-center justify-between px-4 pt-3 pb-1 shrink-0">
+                      <h3 className="text-xs font-semibold text-foreground">{widget.title}</h3>
                       <button
                         onClick={(e) => { e.stopPropagation(); removeWidget(widget.id) }}
-                        className="flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted hover:text-foreground"
+                        className="flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted hover:text-foreground"
                       >
-                        <X className="h-3 w-3" />
+                        <X className="h-2.5 w-2.5" />
                       </button>
                     </div>
 
                     {/* Widget content */}
-                    <div className="flex-1 min-h-0 px-5 pb-4">
+                    <div className="flex-1 min-h-0 overflow-hidden px-4 pb-3">
                       <WidgetContent
                         widget={widget}
                         kpi={kpi}
@@ -894,74 +904,83 @@ export default function SmartDashboardPage() {
             )}
           </div>
 
-          {/* RIGHT PANEL — always visible */}
-          <aside className="flex w-60 shrink-0 flex-col overflow-hidden border-l border-border bg-card">
-            <div className="border-b border-border px-4 py-3">
-              <h2 className="text-sm font-semibold text-foreground">Widget Library</h2>
-            </div>
+          {/* PANEL TOGGLE TAB — right edge */}
+          <button
+            onClick={() => setShowWidgetPanel(!showWidgetPanel)}
+            className="absolute right-0 top-1/2 -translate-y-1/2 z-20 flex h-14 w-5 items-center justify-center rounded-l-lg border border-r-0 border-border bg-card text-muted-foreground shadow-md hover:text-foreground transition-colors"
+            title={showWidgetPanel ? "Hide widgets" : "Show widgets"}
+          >
+            <PanelRight className="h-3 w-3" />
+          </button>
 
-            <div className="flex-1 overflow-y-auto p-3">
-              <p className="mb-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">Standard</p>
-              <div className="space-y-0.5">
-                {WIDGET_LIBRARY.filter(w => !w.isPremium).map((item) => {
-                  const added = widgets.some(w => w.type === item.type)
-                  return (
-                    <button
-                      key={item.type}
-                      onClick={() => addWidget(item.type, item.title, false)}
-                      disabled={added}
-                      className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors ${added ? "text-muted-foreground/40 cursor-not-allowed" : "text-foreground hover:bg-muted"}`}
-                    >
-                      <span>{item.title}</span>
-                      {added ? <Check className="h-3.5 w-3.5 text-primary" /> : <Plus className="h-3.5 w-3.5 text-muted-foreground" />}
-                    </button>
-                  )
-                })}
+          {/* WIDGET PANEL — floating overlay */}
+          {showWidgetPanel && (
+            <aside className="absolute right-0 top-0 bottom-0 z-10 flex w-56 flex-col overflow-hidden border-l border-border bg-card shadow-xl">
+              <div className="border-b border-border px-4 py-3">
+                <h2 className="text-sm font-semibold text-foreground">Widget Library</h2>
               </div>
 
-              {isPro && (
-                <>
-                  <div className="my-3 h-px bg-border" />
-                  <p className="mb-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">Advanced</p>
-                  <div className="space-y-0.5">
-                    {WIDGET_LIBRARY.filter(w => w.isPremium).map((item) => {
-                      const added = widgets.some(w => w.type === item.type)
-                      return (
-                        <button
-                          key={item.type}
-                          onClick={() => addWidget(item.type, item.title, true)}
-                          disabled={added}
-                          className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${added ? "text-muted-foreground/40 cursor-not-allowed" : "text-foreground hover:bg-muted"}`}
-                        >
-                          <span>{item.title}</span>
-                          {added ? <Check className="h-3.5 w-3.5 text-primary" /> : <Plus className="h-3.5 w-3.5 text-muted-foreground" />}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </>
-              )}
-
-              {!isPro && (
-                <div className="mt-3 rounded-xl border border-border bg-muted/30 p-3">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Zap className="h-3.5 w-3.5 text-primary" />
-                    <p className="text-xs font-medium text-foreground">Pro Plan</p>
-                  </div>
-                  <p className="text-xs text-muted-foreground mb-2">
-                    Unlock AI-powered Context Summary and Advanced Analytics.
-                  </p>
-                  <Link href="/pricing">
-                    <Button size="sm" className="w-full rounded-lg text-xs">Upgrade to Pro</Button>
-                  </Link>
+              <div className="flex-1 overflow-y-auto p-3">
+                <p className="mb-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">Standard</p>
+                <div className="space-y-0.5">
+                  {WIDGET_LIBRARY.filter(w => !w.isPremium).map((item) => {
+                    const added = widgets.some(w => w.type === item.type)
+                    return (
+                      <button
+                        key={item.type}
+                        onClick={() => addWidget(item.type, item.title, false)}
+                        disabled={added}
+                        className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors ${added ? "text-muted-foreground/40 cursor-not-allowed" : "text-foreground hover:bg-muted"}`}
+                      >
+                        <span>{item.title}</span>
+                        {added ? <Check className="h-3.5 w-3.5 text-primary" /> : <Plus className="h-3.5 w-3.5 text-muted-foreground" />}
+                      </button>
+                    )
+                  })}
                 </div>
-              )}
-            </div>
-          </aside>
+
+                {isPro && (
+                  <>
+                    <div className="my-3 h-px bg-border" />
+                    <p className="mb-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">Advanced</p>
+                    <div className="space-y-0.5">
+                      {WIDGET_LIBRARY.filter(w => w.isPremium).map((item) => {
+                        const added = widgets.some(w => w.type === item.type)
+                        return (
+                          <button
+                            key={item.type}
+                            onClick={() => addWidget(item.type, item.title, true)}
+                            disabled={added}
+                            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${added ? "text-muted-foreground/40 cursor-not-allowed" : "text-foreground hover:bg-muted"}`}
+                          >
+                            <span>{item.title}</span>
+                            {added ? <Check className="h-3.5 w-3.5 text-primary" /> : <Plus className="h-3.5 w-3.5 text-muted-foreground" />}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </>
+                )}
+
+                {!isPro && (
+                  <div className="mt-3 rounded-xl border border-border bg-muted/30 p-3">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Zap className="h-3.5 w-3.5 text-primary" />
+                      <p className="text-xs font-medium text-foreground">Pro Plan</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground mb-2">
+                      Unlock AI-powered Context Summary and Advanced Analytics.
+                    </p>
+                    <Link href="/pricing">
+                      <Button size="sm" className="w-full rounded-lg text-xs">Upgrade to Pro</Button>
+                    </Link>
+                  </div>
+                )}
+              </div>
+            </aside>
+          )}
         </div>
       </div>
-
-      <Footer />
     </div>
   )
 }

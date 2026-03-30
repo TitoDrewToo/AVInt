@@ -124,6 +124,51 @@ function GridIcon({ className }: { className?: string }) {
   )
 }
 
+function LoopCountUp({ target, suffix = "", className, loopDuration = 3500 }: { target: number; suffix?: string; className?: string; loopDuration?: number }) {
+  const [val, setVal] = useState(0)
+  const [blurred, setBlurred] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    const run = () => {
+      if (cancelled) return
+      setVal(0)
+      setBlurred(true)
+      // Blur for first ~5% of duration
+      const blurEnd = loopDuration * 0.08
+      setTimeout(() => { if (!cancelled) setBlurred(false) }, blurEnd)
+      const steps = 45
+      const stepDuration = (loopDuration * 0.75) / steps
+      let step = 0
+      const timer = setInterval(() => {
+        step++
+        const progress = step / steps
+        const eased = 1 - Math.pow(1 - progress, 3)
+        setVal(Math.floor(eased * target))
+        if (step >= steps) {
+          clearInterval(timer)
+          if (!cancelled) setTimeout(run, loopDuration * 0.2)
+        }
+      }, stepDuration)
+    }
+    run()
+    return () => { cancelled = true }
+  }, [target, loopDuration])
+
+  return (
+    <span
+      className={className}
+      style={{
+        filter: blurred ? "blur(5px)" : "blur(0)",
+        transition: blurred ? "none" : "filter 0.25s ease",
+        display: "inline-block",
+      }}
+    >
+      {val}{suffix}
+    </span>
+  )
+}
+
 function CountUp({ target, suffix = "", className }: { target: number; suffix?: string; className?: string }) {
   const [val, setVal] = useState(0)
   const [blurred, setBlurred] = useState(true)
@@ -262,9 +307,26 @@ export function HeroSection() {
                 .tag-invoice { animation: tagActive 3.6s ease-in-out infinite 0s; }
                 .tag-receipt { animation: tagActive 3.6s ease-in-out infinite 1.2s; }
                 .tag-report  { animation: tagActive 3.6s ease-in-out infinite 2.4s; }
-                .cube-invoice { animation: cubeSwap 3.6s ease-in-out infinite 0s; }
-                .cube-receipt { animation: cubeSwap 3.6s ease-in-out infinite 1.2s; }
-                .cube-report  { animation: cubeSwap 3.6s ease-in-out infinite 2.4s; }
+                @keyframes cubeActive {
+                  0%,22% { background:rgba(220,38,38,0.18); border-color:rgba(220,38,38,0.5); }
+                  27%,100% { background:rgba(220,38,38,0.04); border-color:rgba(220,38,38,0.12); }
+                }
+                .cube-1 { animation: cubeActive 4.8s ease-in-out infinite 0s; }
+                .cube-2 { animation: cubeActive 4.8s ease-in-out infinite 1.2s; }
+                .cube-3 { animation: cubeActive 4.8s ease-in-out infinite 2.4s; }
+                .cube-4 { animation: cubeActive 4.8s ease-in-out infinite 3.6s; }
+                @keyframes shimmerText {
+                  0% { background-position: -200% center; }
+                  100% { background-position: 200% center; }
+                }
+                .shimmer-text {
+                  background: linear-gradient(90deg, #d1d5db 25%, #f9fafb 50%, #d1d5db 75%);
+                  background-size: 200% 100%;
+                  animation: shimmerText 1.5s ease-in-out infinite;
+                  -webkit-background-clip: text;
+                  -webkit-text-fill-color: transparent;
+                  background-clip: text;
+                }
               `}</style>
 
               {/* Mid layer - Documents panel */}
@@ -307,9 +369,9 @@ export function HeroSection() {
                 </div>
                 {/* Animated bars + line */}
                 <div className="mt-4 h-28 w-full relative flex items-end gap-2 px-1">
-                  <div className="flex-1 rounded-sm bg-muted bar-1" />
-                  <div className="flex-1 rounded-sm bar-2" style={{ background: "rgba(220,38,38,0.35)" }} />
-                  <div className="flex-1 rounded-sm bg-muted bar-3" />
+                  <div className="flex-1 rounded-sm bg-muted bar-1" style={{ minHeight: "40%" }} />
+                  <div className="flex-1 rounded-sm bar-2" style={{ background: "rgba(220,38,38,0.35)", minHeight: "65%" }} />
+                  <div className="flex-1 rounded-sm bg-muted bar-3" style={{ minHeight: "50%" }} />
                   {/* SVG trend line overlay */}
                   <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 60" preserveAspectRatio="none">
                     <polyline
@@ -343,11 +405,11 @@ export function HeroSection() {
                 </div>
                 <div className="mt-4 flex gap-2">
                   <div className="flex-1 rounded-lg bg-muted p-2">
-                    <CountUp target={24} className="text-lg font-semibold text-foreground" />
+                    <LoopCountUp target={24} className="text-lg font-semibold text-foreground" loopDuration={3500} />
                     <div className="text-[10px] text-muted-foreground">Files</div>
                   </div>
                   <div className="flex-1 rounded-lg bg-primary/10 p-2">
-                    <CountUp target={89} suffix="%" className="text-lg font-semibold text-primary" />
+                    <LoopCountUp target={89} suffix="%" className="text-lg font-semibold text-primary" loopDuration={3500} />
                     <div className="text-[10px] text-muted-foreground">Complete</div>
                   </div>
                 </div>
@@ -356,26 +418,27 @@ export function HeroSection() {
                 </div>
               </div>
 
-              {/* Classification tags + cube bg */}
-              <div className="absolute right-12 bottom-28">
-                {/* Cycling cube backgrounds */}
-                <div className="absolute -bottom-8 right-0 flex gap-1.5 opacity-0">
-                  {["cube-invoice","cube-receipt","cube-report"].map((cls,i) => (
-                    <div key={i} className={`h-7 w-7 rounded-md bg-primary/10 border border-primary/20 ${cls}`} />
-                  ))}
-                </div>
+              {/* Classification tags + 4-cube grid */}
+              <div className="absolute right-12 bottom-20">
+                {/* Tags row */}
                 <div className="flex flex-wrap gap-1.5">
                   {[
                     { label: "invoice", cls: "tag-invoice" },
                     { label: "receipt", cls: "tag-receipt" },
                     { label: "report",  cls: "tag-report"  },
                   ].map(({ label, cls }) => (
-                    <span
-                      key={label}
-                      className={`rounded-md border px-2 py-1 text-[10px] shadow-sm ${cls}`}
-                    >
+                    <span key={label} className={`rounded-md border px-2 py-1 text-[10px] shadow-sm ${cls}`}>
                       {label}
                     </span>
+                  ))}
+                </div>
+                {/* 4-cube grid with cycling red highlight */}
+                <div className="mt-2 grid grid-cols-2 gap-1.5">
+                  {["cube-1","cube-2","cube-3","cube-4"].map((cls) => (
+                    <div
+                      key={cls}
+                      className={`h-7 w-14 rounded-md border ${cls}`}
+                    />
                   ))}
                 </div>
               </div>

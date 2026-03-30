@@ -659,12 +659,28 @@ export default function SmartDashboardPage() {
               {showDateFilter && (
                 <div className="absolute left-0 top-9 z-30 rounded-xl border border-border bg-card p-4 shadow-xl">
                   <div className="space-y-1">
-                    {[
-                      { label: "All time", from: "", to: "" },
-                      { label: "This year", from: `${new Date().getFullYear()}-01-01`, to: new Date().toISOString().slice(0,10) },
-                      { label: "Last 90 days", from: new Date(Date.now()-90*864e5).toISOString().slice(0,10), to: new Date().toISOString().slice(0,10) },
-                      { label: "Last 30 days", from: new Date(Date.now()-30*864e5).toISOString().slice(0,10), to: new Date().toISOString().slice(0,10) },
-                    ].map(p => (
+                    {(() => {
+                      const today = new Date()
+                      const fmt = (d: Date) => d.toISOString().slice(0, 10)
+                      const todayStr = fmt(today)
+
+                      // Last week: Mon–Sun of the previous calendar week
+                      const dayOfWeek = today.getDay() === 0 ? 7 : today.getDay() // 1=Mon…7=Sun
+                      const lastSun = new Date(today); lastSun.setDate(today.getDate() - dayOfWeek)
+                      const lastMon = new Date(lastSun); lastMon.setDate(lastSun.getDate() - 6)
+
+                      // Last month: full previous calendar month
+                      const firstOfThisMonth = new Date(today.getFullYear(), today.getMonth(), 1)
+                      const lastMonthEnd = new Date(firstOfThisMonth); lastMonthEnd.setDate(lastMonthEnd.getDate() - 1)
+                      const lastMonthStart = new Date(lastMonthEnd.getFullYear(), lastMonthEnd.getMonth(), 1)
+
+                      return [
+                        { label: "All time", from: "", to: "" },
+                        { label: "This year", from: `${today.getFullYear()}-01-01`, to: todayStr },
+                        { label: "Last week", from: fmt(lastMon), to: fmt(lastSun) },
+                        { label: "Last month", from: fmt(lastMonthStart), to: fmt(lastMonthEnd) },
+                      ]
+                    })().map(p => (
                       <button key={p.label} onClick={() => { setDateFrom(p.from); setDateTo(p.to); setShowDateFilter(false) }}
                         className={`block w-full rounded-lg px-3 py-1.5 text-left text-xs transition-colors hover:bg-muted ${dateFrom === p.from && dateTo === p.to ? "bg-primary/10 font-medium text-primary" : "text-foreground"}`}
                       >{p.label}</button>

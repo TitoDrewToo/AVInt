@@ -8,8 +8,16 @@ import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
 
 function TrustedCounter() {
-  const [displayCount, setDisplayCount] = useState(1)
-  const [direction, setDirection] = useState<"up" | null>(null)
+  const [displayCount, setDisplayCount] = useState<number | null>(null)
+  const [animating, setAnimating] = useState(false)
+
+  const animateTo = (newCount: number) => {
+    setAnimating(true)
+    setTimeout(() => {
+      setDisplayCount(newCount)
+      setTimeout(() => setAnimating(false), 400)
+    }, 250)
+  }
 
   useEffect(() => {
     supabase
@@ -18,7 +26,7 @@ function TrustedCounter() {
       .eq("id", 1)
       .single()
       .then(({ data }) => {
-        if (data?.total_users) setDisplayCount(data.total_users)
+        if (data?.total_users != null) setDisplayCount(data.total_users)
       })
 
     const channel = supabase
@@ -28,24 +36,22 @@ function TrustedCounter() {
         schema: "public",
         table: "user_counter",
       }, (payload) => {
-        const newCount = payload.new.total_users
-        setDirection("up")
-        setTimeout(() => {
-          setDisplayCount(newCount)
-          setTimeout(() => setDirection(null), 300)
-        }, 200)
+        animateTo(payload.new.total_users)
       })
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
   }, [])
 
+  if (displayCount === null) return <span className="font-medium text-primary">—</span>
+
   return (
     <span
-      className="font-medium text-primary inline-block transition-all duration-200"
+      className="font-medium text-primary inline-block"
       style={{
-        transform: direction === "up" ? "translateY(-4px)" : "translateY(0)",
-        opacity: direction === "up" ? 0 : 1,
+        transition: "transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.25s ease",
+        transform: animating ? "translateY(-6px)" : "translateY(0)",
+        opacity: animating ? 0 : 1,
       }}
     >
       {displayCount}

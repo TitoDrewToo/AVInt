@@ -122,17 +122,16 @@ export async function POST(req: NextRequest) {
     }
 
     // Update user_id if we can match by email
-    const { data: user } = await supabaseAdmin
-      .from("auth.users")
-      .select("id")
-      .eq("email", email)
-      .single()
-      .catch(() => ({ data: null }))
-
-    if (user?.id) {
-      await supabaseAdmin.from("subscriptions")
-        .update({ user_id: user.id })
-        .eq("email", email)
+    try {
+      const { data: { users } } = await supabaseAdmin.auth.admin.listUsers()
+      const matched = users?.find((u) => u.email === email)
+      if (matched?.id) {
+        await supabaseAdmin.from("subscriptions")
+          .update({ user_id: matched.id })
+          .eq("email", email)
+      }
+    } catch (e) {
+      console.warn("Could not match user_id for email:", email, e)
     }
 
     return NextResponse.json({ received: true })

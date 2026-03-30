@@ -455,10 +455,7 @@ export default function SmartDashboardPage() {
   // ── Measure canvas width ───────────────────────────────────────────────────
   useEffect(() => {
     const measure = () => {
-      if (canvasRef.current) {
-        const panelW = showWidgetPanel ? 224 : 0
-        setContainerWidth(canvasRef.current.offsetWidth - 32 - panelW)
-      }
+      if (canvasRef.current) setContainerWidth(canvasRef.current.offsetWidth - 32)
     }
     measure()
     const observer = new ResizeObserver(measure)
@@ -468,7 +465,7 @@ export default function SmartDashboardPage() {
       observer.disconnect()
       window.removeEventListener("resize", measure)
     }
-  }, [showWidgetPanel])
+  }, [])
 
   // ── Session ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -825,13 +822,13 @@ export default function SmartDashboardPage() {
           </div>
         </div>
 
-        {/* CANVAS + OVERLAY PANEL */}
-        <div className="relative flex-1 overflow-hidden">
+        {/* CANVAS + PANEL — flex row so canvas width is always accurate */}
+        <div className="flex flex-1 overflow-hidden">
 
-          {/* CANVAS — full width */}
+          {/* CANVAS */}
           <div
             ref={canvasRef}
-            className="absolute inset-0 overflow-y-auto p-4"
+            className="flex-1 overflow-y-auto p-4"
             style={{
               backgroundColor: "hsl(var(--background))",
               backgroundImage: "radial-gradient(circle, hsl(var(--muted-foreground) / 0.2) 1px, transparent 1px)",
@@ -907,18 +904,19 @@ export default function SmartDashboardPage() {
             )}
           </div>
 
-          {/* PANEL TOGGLE TAB — right edge */}
-          <button
-            onClick={() => setShowWidgetPanel(!showWidgetPanel)}
-            className="absolute right-0 top-1/2 -translate-y-1/2 z-20 flex h-14 w-5 items-center justify-center rounded-l-lg border border-r-0 border-border bg-card text-muted-foreground shadow-md hover:text-foreground transition-colors"
-            title={showWidgetPanel ? "Hide widgets" : "Show widgets"}
-          >
-            <PanelRight className="h-3 w-3" />
-          </button>
+          {/* PANEL TOGGLE TAB — sits between canvas and panel */}
+          <div className="relative flex-shrink-0">
+            <button
+              onClick={() => setShowWidgetPanel(!showWidgetPanel)}
+              className="absolute top-1/2 -translate-y-1/2 -left-5 z-20 flex h-14 w-5 items-center justify-center rounded-l-lg border border-r-0 border-border bg-card text-muted-foreground shadow-md hover:text-foreground transition-colors"
+              title={showWidgetPanel ? "Hide widgets" : "Show widgets"}
+            >
+              <PanelRight className="h-3 w-3" />
+            </button>
 
-          {/* WIDGET PANEL — floating overlay */}
+          {/* WIDGET PANEL — true sidebar, pushes canvas */}
           {showWidgetPanel && (
-            <aside className="absolute right-0 top-0 bottom-0 z-10 flex w-56 flex-col overflow-hidden border-l border-border bg-card shadow-xl">
+            <aside className="flex w-56 flex-col overflow-hidden border-l border-border bg-card shadow-xl h-full">
               <div className="border-b border-border px-4 py-3">
                 <h2 className="text-sm font-semibold text-foreground">Widget Library</h2>
               </div>
@@ -982,6 +980,7 @@ export default function SmartDashboardPage() {
               </div>
             </aside>
           )}
+          </div>
         </div>
       </div>
     </div>

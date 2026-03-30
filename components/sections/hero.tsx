@@ -8,15 +8,21 @@ import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
 
 function TrustedCounter() {
-  const [displayCount, setDisplayCount] = useState<number | null>(null)
-  const [animating, setAnimating] = useState(false)
+  const [current, setCurrent] = useState<number | null>(null)
+  const [next, setNext] = useState<number | null>(null)
+  const [phase, setPhase] = useState<"idle" | "exit" | "enter">("idle")
 
   const animateTo = (newCount: number) => {
-    setAnimating(true)
+    setPhase("exit")
     setTimeout(() => {
-      setDisplayCount(newCount)
-      setTimeout(() => setAnimating(false), 400)
-    }, 250)
+      setNext(newCount)
+      setPhase("enter")
+      setTimeout(() => {
+        setCurrent(newCount)
+        setNext(null)
+        setPhase("idle")
+      }, 350)
+    }, 300)
   }
 
   useEffect(() => {
@@ -26,7 +32,7 @@ function TrustedCounter() {
       .eq("id", 1)
       .single()
       .then(({ data }) => {
-        if (data?.total_users != null) setDisplayCount(data.total_users)
+        if (data?.total_users != null) setCurrent(data.total_users)
       })
 
     const channel = supabase
@@ -43,18 +49,38 @@ function TrustedCounter() {
     return () => { supabase.removeChannel(channel) }
   }, [])
 
-  if (displayCount === null) return <span className="font-medium text-primary">—</span>
+  if (current === null) return <span className="font-medium text-primary">—</span>
 
   return (
-    <span
-      className="font-medium text-primary inline-block"
-      style={{
-        transition: "transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.25s ease",
-        transform: animating ? "translateY(-6px)" : "translateY(0)",
-        opacity: animating ? 0 : 1,
-      }}
-    >
-      {displayCount}
+    <span className="relative inline-block overflow-hidden align-middle" style={{ height: "1.2em", minWidth: "1.5ch" }}>
+      <style>{`
+        @keyframes exitDown {
+          from { transform: translateY(0); opacity: 1; }
+          to { transform: translateY(100%); opacity: 0; }
+        }
+        @keyframes enterFromAbove {
+          from { transform: translateY(-100%); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+      `}</style>
+      {phase !== "enter" && (
+        <span
+          className="absolute inset-0 flex items-center justify-center font-medium text-primary"
+          style={{
+            animation: phase === "exit" ? "exitDown 0.3s cubic-bezier(0.4,0,0.2,1) forwards" : "none",
+          }}
+        >
+          {current}
+        </span>
+      )}
+      {phase === "enter" && next !== null && (
+        <span
+          className="absolute inset-0 flex items-center justify-center font-medium text-primary"
+          style={{ animation: "enterFromAbove 0.35s cubic-bezier(0.34,1.56,0.64,1) forwards" }}
+        >
+          {next}
+        </span>
+      )}
     </span>
   )
 }

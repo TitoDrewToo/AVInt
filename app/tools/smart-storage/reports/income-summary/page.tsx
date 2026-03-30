@@ -113,7 +113,10 @@ export default function IncomeSummaryPage() {
     loadIncome()
   }, [loadIncome])
 
-  const currency = income[0]?.currency ?? "PHP"
+  const _currencyCount = income[0].reduce((acc: Record<string, number>, r: any) => {
+    const c = r.currency ?? "USD"; acc[c] = (acc[c] ?? 0) + 1; return acc
+  }, {} as Record<string, number>)
+  const currency = Object.entries(_currencyCount).sort(([,a],[,b]) => (b as number) - (a as number))[0]?.[0] ?? "USD"
   const totalGross = income.reduce((sum, r) => sum + (r.gross_income ?? r.total_amount ?? 0), 0)
   const totalNet = income.reduce((sum, r) => sum + (r.net_income ?? 0), 0)
   const avgMonthly = income.length > 0 ? totalGross / income.length : 0

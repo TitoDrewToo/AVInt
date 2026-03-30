@@ -115,7 +115,10 @@ export default function TaxBundlePage() {
     loadData()
   }, [loadData])
 
-  const currency = rows[0]?.currency ?? "PHP"
+  const _currencyCount = rows[0].reduce((acc: Record<string, number>, r: any) => {
+    const c = r.currency ?? "USD"; acc[c] = (acc[c] ?? 0) + 1; return acc
+  }, {} as Record<string, number>)
+  const currency = Object.entries(_currencyCount).sort(([,a],[,b]) => (b as number) - (a as number))[0]?.[0] ?? "USD"
   const incomeRows = rows.filter(r => r.document_type === "payslip" || r.document_type === "income_statement")
   const expenseRows = rows.filter(r => r.document_type === "receipt" || r.document_type === "invoice")
 

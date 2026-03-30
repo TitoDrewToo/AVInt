@@ -170,7 +170,7 @@ function WidgetContent({
   categoryData: CategoryData[]
   docTypeData: CategoryData[]
 }) {
-  const symbol = kpi.currency === "PHP" ? "₱" : "$"
+  const symbol = kpi.currency === "PHP" ? "₱" : kpi.currency === "EUR" ? "€" : kpi.currency === "GBP" ? "£" : "$"
   const colors = widget.colors ?? DEFAULT_WIDGET_COLORS
   const MULTI_COLORS = [colors.primary, colors.secondary, colors.tertiary, colors.quaternary, colors.quinary]
 
@@ -484,7 +484,7 @@ export default function SmartDashboardPage() {
     const { data: fields } = await query
     if (!fields?.length) { setLoading(false); return }
 
-    const currency = (fields[0] as any)?.currency ?? "PHP"
+    const currency = (fields[0] as any)?.currency ?? "USD"
     const incomeFields = fields.filter((f: any) => ["payslip", "income_statement"].includes(f.files.document_type))
     const expenseFields = fields.filter((f: any) => ["receipt", "invoice"].includes(f.files.document_type))
 
@@ -584,7 +584,7 @@ export default function SmartDashboardPage() {
   if (!sessionLoaded) return null
   if (!session) return <AuthGuardModal isVisible={true} />
 
-  const symbol = kpi.currency === "PHP" ? "₱" : "$"
+  const symbol = kpi.currency === "PHP" ? "₱" : kpi.currency === "EUR" ? "€" : kpi.currency === "GBP" ? "£" : "$"
 
   return (
     <div className="flex min-h-screen flex-col">

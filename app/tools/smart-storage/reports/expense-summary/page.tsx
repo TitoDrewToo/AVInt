@@ -120,7 +120,13 @@ export default function ExpenseSummaryPage() {
 
   // Aggregations
   const totalExpenses = expenses.reduce((sum, e) => sum + (e.total_amount ?? 0), 0)
-  const currency = expenses[0]?.currency ?? "PHP"
+  // Use most common currency in dataset, fallback to USD
+  const currencyCount = expenses.reduce((acc: Record<string, number>, e) => {
+    const c = e.currency ?? "USD"
+    acc[c] = (acc[c] ?? 0) + 1
+    return acc
+  }, {})
+  const currency = Object.entries(currencyCount).sort(([,a],[,b]) => b - a)[0]?.[0] ?? "USD"
 
   const byCategory: CategorySummary[] = Object.values(
     expenses.reduce((acc: Record<string, CategorySummary>, row) => {

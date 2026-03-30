@@ -137,6 +137,7 @@ interface UploadedFile {
   document_type: string
   created_at: string
   storage_path: string
+  folder_id: string | null
 }
 
 function formatBytes(bytes: number): string {
@@ -311,6 +312,8 @@ export default function SmartStoragePage() {
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
   const [dragGhostPos, setDragGhostPos] = useState<{ x: number; y: number } | null>(null)
+  const [hoveredLeftFolderId, setHoveredLeftFolderId] = useState<string | null>(null)
+  const leftFolderRefs = useRef<Map<string, HTMLElement>>(new Map())
 
   // Reports
   const [selectedReport, setSelectedReport] = useState<string | null>(null)
@@ -349,7 +352,7 @@ export default function SmartStoragePage() {
     if (!session?.user?.id) return
     const { data } = await supabase
       .from("files")
-      .select("id, filename, file_type, file_size, document_type, created_at, storage_path")
+      .select("id, filename, file_type, file_size, document_type, created_at, storage_path, folder_id")
       .eq("user_id", session.user.id)
       .order("created_at", { ascending: false })
     if (data) {
@@ -415,7 +418,10 @@ export default function SmartStoragePage() {
     const subfolderIds = folders
       .filter(f => currentFolderId === "root" ? f.parentId === null : f.parentId === currentFolderId)
       .map(f => f.id)
-    const allIds = [...subfolderIds, ...files.map(f => f.id)]
+    const visibleFileIds = files
+      .filter(f => (f.folder_id ?? null) === (currentFolderId === "root" ? null : currentFolderId))
+      .map(f => f.id)
+    const allIds = [...subfolderIds, ...visibleFileIds]
     setItemPositions(prev => {
       const next: Record<string, { col: number; row: number }> = {}
       const occupied = new Set<string>()
@@ -540,6 +546,12 @@ export default function SmartStoragePage() {
     return { col: targetCol, row: targetRow }
   }
 
+  const moveFileToFolder = async (fileId: string, targetFolderId: string | null) => {
+    setFiles(prev => prev.map(f => f.id === fileId ? { ...f, folder_id: targetFolderId } : f))
+    setItemPositions(prev => { const next = { ...prev }; delete next[fileId]; return next })
+    await supabase.from("files").update({ folder_id: targetFolderId }).eq("id", fileId)
+  }
+
   const handleCanvasPointerDown = (e: React.PointerEvent, id: string) => {
     e.preventDefault()
     e.stopPropagation()
@@ -554,10 +566,36 @@ export default function SmartStoragePage() {
     if (draggingId !== id || !canvasRef.current) return
     const cr = canvasRef.current.getBoundingClientRect()
     setDragGhostPos({ x: e.clientX - cr.left - dragOffset.x, y: e.clientY - cr.top - dragOffset.y })
+    // Check left pane folder hover (only for files)
+    if (files.some(f => f.id === id)) {
+      let found: string | null = null
+      for (const [fid, el] of leftFolderRefs.current.entries()) {
+        const r = el.getBoundingClientRect()
+        if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) {
+          found = fid; break
+        }
+      }
+      setHoveredLeftFolderId(found)
+    }
   }
 
-  const handleCanvasPointerUp = (e: React.PointerEvent, id: string) => {
-    if (draggingId !== id || !canvasRef.current) { setDraggingId(null); setDragGhostPos(null); return }
+  const handleCanvasPointerUp = (e: React.PointerEvent, id: string, hoveredCanvasFolderId: string | null) => {
+    if (draggingId !== id) { setDraggingId(null); setDragGhostPos(null); setHoveredLeftFolderId(null); return }
+    const isFile = files.some(f => f.id === id)
+    // Drop onto left pane folder
+    if (isFile && hoveredLeftFolderId) {
+      moveFileToFolder(id, hoveredLeftFolderId)
+      setDraggingId(null); setDragGhostPos(null); setHoveredLeftFolderId(null)
+      return
+    }
+    // Drop onto canvas folder
+    if (isFile && hoveredCanvasFolderId) {
+      moveFileToFolder(id, hoveredCanvasFolderId)
+      setDraggingId(null); setDragGhostPos(null)
+      return
+    }
+    if (!canvasRef.current) { setDraggingId(null); setDragGhostPos(null); return }
+    // Snap to grid
     const cr = canvasRef.current.getBoundingClientRect()
     const x = e.clientX - cr.left - dragOffset.x
     const y = e.clientY - cr.top - dragOffset.y
@@ -570,8 +608,7 @@ export default function SmartStoragePage() {
     )
     const { col, row } = findFreeSlot(targetCol, targetRow, occupied)
     setItemPositions(prev => ({ ...prev, [id]: { col, row } }))
-    setDraggingId(null)
-    setDragGhostPos(null)
+    setDraggingId(null); setDragGhostPos(null)
   }
 
   // ── Folder management ──────────────────────────────────────────────────────
@@ -630,6 +667,25 @@ export default function SmartStoragePage() {
     currentFolderId === "root" ? f.parentId === null : f.parentId === currentFolderId
   )
 
+  // Files belonging to the current folder
+  const displayedFiles = files.filter(f =>
+    (f.folder_id ?? null) === (currentFolderId === "root" ? null : currentFolderId)
+  )
+
+  // Canvas folder being hovered during a file drag (position-based hit test)
+  const hoveredFolderId = (() => {
+    if (!draggingId || !dragGhostPos || !files.some(f => f.id === draggingId)) return null
+    const cx = dragGhostPos.x + (CELL_W - 6) / 2
+    const cy = dragGhostPos.y + CELL_H / 2
+    for (const folder of currentSubfolders) {
+      const pos = itemPositions[folder.id]
+      if (!pos) continue
+      const fl = GRID_PAD + pos.col * CELL_W, ft = GRID_PAD + pos.row * CELL_H
+      if (cx >= fl && cx <= fl + CELL_W - 6 && cy >= ft && cy <= ft + CELL_H) return folder.id
+    }
+    return null
+  })()
+
   const maxRow = Object.keys(itemPositions).length > 0
     ? Math.max(...Object.values(itemPositions).map(p => p.row))
     : 0
@@ -670,26 +726,31 @@ export default function SmartStoragePage() {
                   level={1}
                 />
                 {folders.filter((f) => f.parentId === null).map((folder) => (
-                  <LeftFolderItem
+                  <div
                     key={folder.id}
-                    name={folder.name}
-                    isSelected={selectedLeftFolder === folder.name}
-                    onSelect={() => {
-                      setSelectedLeftFolder(folder.name)
-                      openFolder(folder)
-                    }}
-                    level={1}
-                    onRename={() => startRename(folder)}
-                    onDelete={async () => {
-                      await supabase.from("folders").delete().eq("id", folder.id)
-                      setFolders(prev => prev.filter(f => f.id !== folder.id))
-                      if (currentFolderId === folder.id) {
-                        setCurrentFolderId("root")
-                        setBreadcrumb([{ id: "root", name: "Documents" }])
-                        setSelectedLeftFolder("Documents")
-                      }
-                    }}
-                  />
+                    ref={(el) => { if (el) leftFolderRefs.current.set(folder.id, el); else leftFolderRefs.current.delete(folder.id) }}
+                    className={`rounded transition-colors ${hoveredLeftFolderId === folder.id ? "ring-2 ring-primary bg-primary/10" : ""}`}
+                  >
+                    <LeftFolderItem
+                      name={folder.name}
+                      isSelected={selectedLeftFolder === folder.name}
+                      onSelect={() => {
+                        setSelectedLeftFolder(folder.name)
+                        openFolder(folder)
+                      }}
+                      level={1}
+                      onRename={() => startRename(folder)}
+                      onDelete={async () => {
+                        await supabase.from("folders").delete().eq("id", folder.id)
+                        setFolders(prev => prev.filter(f => f.id !== folder.id))
+                        if (currentFolderId === folder.id) {
+                          setCurrentFolderId("root")
+                          setBreadcrumb([{ id: "root", name: "Documents" }])
+                          setSelectedLeftFolder("Documents")
+                        }
+                      }}
+                    />
+                  </div>
                 ))}
               </LeftFolderItem>
             </div>
@@ -848,7 +909,7 @@ export default function SmartStoragePage() {
               )}
 
               {/* Column headers */}
-              {viewMode === "list" && (currentSubfolders.length > 0 || files.length > 0) && (
+              {viewMode === "list" && (currentSubfolders.length > 0 || displayedFiles.length > 0) && (
                 <div className="mb-1 grid grid-cols-[1fr_120px_140px_80px] gap-2 px-3 py-1 text-xs text-muted-foreground">
                   <span>Name</span>
                   <span>Type</span>
@@ -906,28 +967,31 @@ export default function SmartStoragePage() {
                     const pos = itemPositions[folder.id]
                     if (!pos) return null
                     const isDragging = draggingId === folder.id
+                    const isDropTarget = hoveredFolderId === folder.id
                     const left = isDragging && dragGhostPos ? dragGhostPos.x : GRID_PAD + pos.col * CELL_W
                     const top  = isDragging && dragGhostPos ? dragGhostPos.y : GRID_PAD + pos.row * CELL_H
                     return (
                       <div
                         key={folder.id}
                         style={{ position: "absolute", left, top, width: CELL_W - 6, zIndex: isDragging ? 50 : 1 }}
-                        className={`flex flex-col items-center gap-1 rounded-lg px-1 py-2 select-none ${
-                          isDragging ? "opacity-90 shadow-xl ring-1 ring-primary/30 cursor-grabbing" : "hover:bg-muted cursor-grab"
+                        className={`flex flex-col items-center gap-1 rounded-lg px-1 py-2 select-none transition-colors ${
+                          isDragging ? "opacity-90 shadow-xl ring-1 ring-primary/30 cursor-grabbing"
+                          : isDropTarget ? "bg-primary/15 ring-2 ring-primary cursor-grab"
+                          : "hover:bg-muted cursor-grab"
                         }`}
                         onPointerDown={(e) => handleCanvasPointerDown(e, folder.id)}
                         onPointerMove={(e) => handleCanvasPointerMove(e, folder.id)}
-                        onPointerUp={(e) => handleCanvasPointerUp(e, folder.id)}
+                        onPointerUp={(e) => handleCanvasPointerUp(e, folder.id, hoveredFolderId)}
                         onDoubleClick={() => openFolder(folder)}
                         onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, fileId: folder.id, filename: folder.name }) }}
                       >
-                        <Folder className={`h-10 w-10 ${isDragging ? "text-primary" : "text-primary/70"}`} />
+                        <Folder className={`h-10 w-10 ${isDropTarget ? "text-primary" : isDragging ? "text-primary" : "text-primary/70"}`} />
                         <span className="w-full truncate text-center text-[11px] text-foreground leading-tight">{folder.name}</span>
                       </div>
                     )
                   })}
 
-                  {files.map((file) => {
+                  {displayedFiles.map((file) => {
                     const pos = itemPositions[file.id]
                     if (!pos) return null
                     const isDragging = draggingId === file.id
@@ -946,7 +1010,7 @@ export default function SmartStoragePage() {
                         }`}
                         onPointerDown={(e) => handleCanvasPointerDown(e, file.id)}
                         onPointerMove={(e) => handleCanvasPointerMove(e, file.id)}
-                        onPointerUp={(e) => handleCanvasPointerUp(e, file.id)}
+                        onPointerUp={(e) => handleCanvasPointerUp(e, file.id, hoveredFolderId)}
                         onClick={(e) => { if (!draggingId) handleFileClick(file.id, e) }}
                         onContextMenu={(e) => handleFileRightClick(e, file.id, file.filename)}
                       >
@@ -969,7 +1033,7 @@ export default function SmartStoragePage() {
               )}
 
               {/* Files — list view */}
-              {viewMode === "list" && files.map((file) => (
+              {viewMode === "list" && displayedFiles.map((file) => (
                 <div
                   key={file.id}
                   onClick={(e) => handleFileClick(file.id, e)}
@@ -1064,7 +1128,7 @@ export default function SmartStoragePage() {
               )}
 
               {/* Empty state */}
-              {currentSubfolders.length === 0 && files.length === 0 && !isCreatingFolder && viewMode === "list" && (
+              {currentSubfolders.length === 0 && displayedFiles.length === 0 && !isCreatingFolder && viewMode === "list" && (
                 <div className="flex h-full min-h-[300px] flex-col items-center justify-center gap-3">
                   <div className="flex items-end justify-center gap-2 opacity-20">
                     <div className="flex h-16 w-14 items-center justify-center rounded-lg bg-muted">

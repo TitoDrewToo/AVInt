@@ -281,6 +281,9 @@ export default function SmartStoragePage() {
   const [breadcrumb, setBreadcrumb] = useState<{ id: string; name: string }[]>([{ id: "root", name: "Documents" }])
   const [selectedLeftFolder, setSelectedLeftFolder] = useState<string>("Documents")
   const [docsOpen, setDocsOpen] = useState(true)
+  // Classification view — null = normal folder view, string = active classification name
+  const [classificationView, setClassificationView] = useState<string | null>(null)
+  const [classificationSort, setClassificationSort] = useState<"date-desc" | "date-asc" | "name">("date-desc")
 
   // Virtual folders (local state — DB-backed folders coming later)
   const [folders, setFolders] = useState<VirtualFolder[]>([
@@ -664,14 +667,23 @@ export default function SmartStoragePage() {
     .filter(([, types]) => types.some((t) => detectedTypes.includes(t)))
     .map(([name]) => name)
 
-  const currentSubfolders = folders.filter((f) =>
+  const currentSubfolders = classificationView ? [] : folders.filter((f) =>
     currentFolderId === "root" ? f.parentId === null : f.parentId === currentFolderId
   )
 
-  // Files belonging to the current folder
-  const displayedFiles = files.filter(f =>
-    (f.folder_id ?? null) === (currentFolderId === "root" ? null : currentFolderId)
-  )
+  // Files — classification view shows all matching types across all folders, sorted by date
+  const displayedFiles = (() => {
+    if (classificationView) {
+      const types = CLASSIFICATION_FOLDER_MAP[classificationView] ?? []
+      const matched = files.filter(f => types.some(t => f.document_type?.includes(t) || t === f.document_type))
+      if (classificationSort === "date-desc") return [...matched].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      if (classificationSort === "date-asc")  return [...matched].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+      return [...matched].sort((a, b) => a.filename.localeCompare(b.filename))
+    }
+    return files.filter(f =>
+      (f.folder_id ?? null) === (currentFolderId === "root" ? null : currentFolderId)
+    )
+  })()
 
   // Canvas folder being hovered during a file drag (position-based hit test)
   const hoveredFolderId = (() => {
@@ -716,7 +728,7 @@ export default function SmartStoragePage() {
                 name="Documents"
                 isOpen={docsOpen}
                 isSelected={selectedLeftFolder === "Documents"}
-                onSelect={() => { setSelectedLeftFolder("Documents"); setCurrentFolderId("root"); setBreadcrumb([{ id: "root", name: "Documents" }]) }}
+                onSelect={() => { setSelectedLeftFolder("Documents"); setCurrentFolderId("root"); setBreadcrumb([{ id: "root", name: "Documents" }]); setClassificationView(null) }}
                 onToggle={() => setDocsOpen(!docsOpen)}
                 level={0}
               >
@@ -737,6 +749,7 @@ export default function SmartStoragePage() {
                       isSelected={selectedLeftFolder === folder.name}
                       onSelect={() => {
                         setSelectedLeftFolder(folder.name)
+                        setClassificationView(null)
                         openFolder(folder)
                       }}
                       level={1}
@@ -769,18 +782,26 @@ export default function SmartStoragePage() {
                 </p>
               ) : (
                 <div className="space-y-0.5">
-                  {visibleClassificationFolders.map((name) => (
-                    <button
-                      key={name}
-                      onClick={() => setSelectedLeftFolder(name)}
-                      className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm transition-colors hover:bg-muted ${
-                        selectedLeftFolder === name ? "bg-muted text-foreground" : "text-muted-foreground"
-                      }`}
-                    >
-                      <Folder className="h-3.5 w-3.5 shrink-0" />
-                      <span className="truncate">{name}</span>
-                    </button>
-                  ))}
+                  {visibleClassificationFolders.map((name) => {
+                    const count = (CLASSIFICATION_FOLDER_MAP[name] ?? []).reduce(
+                      (n, t) => n + files.filter(f => f.document_type === t).length, 0
+                    )
+                    return (
+                      <button
+                        key={name}
+                        onClick={() => { setSelectedLeftFolder(name); setClassificationView(name) }}
+                        className={`flex w-full items-center justify-between gap-2 rounded px-2 py-1 text-left text-sm transition-colors hover:bg-muted ${
+                          classificationView === name ? "bg-muted text-foreground" : "text-muted-foreground"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Folder className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate">{name}</span>
+                        </div>
+                        <span className="text-[10px] text-muted-foreground/60 shrink-0">{count}</span>
+                      </button>
+                    )
+                  })}
                 </div>
               )}
             </div>
@@ -796,21 +817,33 @@ export default function SmartStoragePage() {
           >
             {/* Toolbar */}
             <div className="flex h-10 items-center gap-2 border-b border-border bg-card/50 px-4">
-              {/* Breadcrumb */}
+              {/* Breadcrumb / classification header */}
               <div className="flex flex-1 items-center gap-1 text-sm">
-                {breadcrumb.map((crumb, index) => (
-                  <span key={crumb.id} className="flex items-center gap-1">
-                    {index > 0 && <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
+                {classificationView ? (
+                  <>
                     <button
-                      onClick={() => navigateBreadcrumb(crumb.id, crumb.name, index)}
-                      className={`rounded px-1 py-0.5 transition-colors hover:bg-muted ${
-                        index === breadcrumb.length - 1 ? "font-medium text-foreground" : "text-muted-foreground"
-                      }`}
-                    >
-                      {crumb.name}
-                    </button>
-                  </span>
-                ))}
+                      onClick={() => { setClassificationView(null); setSelectedLeftFolder("Documents") }}
+                      className="text-muted-foreground hover:text-foreground transition-colors px-1 py-0.5 rounded hover:bg-muted"
+                    >Classification</button>
+                    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="font-medium text-foreground px-1">{classificationView}</span>
+                    <span className="ml-2 text-[10px] text-muted-foreground/60 italic">read-only view · files not moved</span>
+                  </>
+                ) : (
+                  breadcrumb.map((crumb, index) => (
+                    <span key={crumb.id} className="flex items-center gap-1">
+                      {index > 0 && <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
+                      <button
+                        onClick={() => navigateBreadcrumb(crumb.id, crumb.name, index)}
+                        className={`rounded px-1 py-0.5 transition-colors hover:bg-muted ${
+                          index === breadcrumb.length - 1 ? "font-medium text-foreground" : "text-muted-foreground"
+                        }`}
+                      >
+                        {crumb.name}
+                      </button>
+                    </span>
+                  ))
+                )}
               </div>
 
               {/* Selected file actions */}
@@ -848,20 +881,33 @@ export default function SmartStoragePage() {
                     <ArrowLeft className="h-3.5 w-3.5" />
                   </button>
                 )}
-                <button
-                  onClick={() => setIsCreatingFolder(true)}
-                  className="flex h-7 items-center gap-1.5 rounded px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  New folder
-                </button>
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex h-7 items-center gap-1.5 rounded px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  <Upload className="h-3.5 w-3.5" />
-                  Upload
-                </button>
+                {!classificationView && (<>
+                  <button
+                    onClick={() => setIsCreatingFolder(true)}
+                    className="flex h-7 items-center gap-1.5 rounded px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    New folder
+                  </button>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex h-7 items-center gap-1.5 rounded px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <Upload className="h-3.5 w-3.5" />
+                    Upload
+                  </button>
+                </>)}
+                {classificationView && (
+                  <select
+                    value={classificationSort}
+                    onChange={(e) => setClassificationSort(e.target.value as typeof classificationSort)}
+                    className="h-7 rounded border border-border bg-card px-2 text-xs text-muted-foreground focus:outline-none"
+                  >
+                    <option value="date-desc">Newest first</option>
+                    <option value="date-asc">Oldest first</option>
+                    <option value="name">Name A–Z</option>
+                  </select>
+                )}
                 {/* View toggle */}
                 <div className="flex items-center rounded border border-border">
                   <button
@@ -910,7 +956,7 @@ export default function SmartStoragePage() {
               )}
 
               {/* Column headers */}
-              {viewMode === "list" && (currentSubfolders.length > 0 || displayedFiles.length > 0) && (
+              {(viewMode === "list" || classificationView) && (currentSubfolders.length > 0 || displayedFiles.length > 0) && (
                 <div className="mb-1 grid grid-cols-[1fr_120px_140px_80px] gap-2 px-3 py-1 text-xs text-muted-foreground">
                   <span>Name</span>
                   <span>Type</span>
@@ -958,7 +1004,7 @@ export default function SmartStoragePage() {
               ))}
 
               {/* Canvas — draggable snap-to-grid view */}
-              {viewMode === "grid" && (
+              {viewMode === "grid" && !classificationView && (
                 <div
                   ref={canvasRef}
                   className="relative w-full"
@@ -1057,8 +1103,8 @@ export default function SmartStoragePage() {
                 </div>
               )}
 
-              {/* Files — list view */}
-              {viewMode === "list" && displayedFiles.map((file) => (
+              {/* Files — list view (or classification view) */}
+              {(viewMode === "list" || classificationView) && displayedFiles.map((file) => (
                 <div
                   key={file.id}
                   onClick={(e) => handleFileClick(file.id, e)}

@@ -204,6 +204,20 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
   const [expandedSection, setExpandedSection] = useState<ExpandedSection>(null)
   const [panelView, setPanelView] = useState<PanelView>("menu")
   const [giftCode, setGiftCode] = useState("")
+  const [authMode, setAuthMode] = useState<"signin" | "signup" | "forgot">("signin")
+  const [authEmail, setAuthEmail] = useState("")
+  const [authPassword, setAuthPassword] = useState("")
+  const [authConfirmPassword, setAuthConfirmPassword] = useState("")
+  const [authError, setAuthError] = useState("")
+  const [authSuccess, setAuthSuccess] = useState("")
+  const [authLoading, setAuthLoading] = useState(false)
+  const [authMode, setAuthMode] = useState<"signin" | "signup" | "forgot">("signin")
+  const [authEmail, setAuthEmail] = useState("")
+  const [authPassword, setAuthPassword] = useState("")
+  const [authConfirmPassword, setAuthConfirmPassword] = useState("")
+  const [authError, setAuthError] = useState("")
+  const [authSuccess, setAuthSuccess] = useState("")
+  const [authLoading, setAuthLoading] = useState(false)
   const [giftCodeApplied, setGiftCodeApplied] = useState(false)
   const subscriptionRef = useRef<HTMLDivElement>(null)
 
@@ -232,6 +246,12 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
     if (!isOpen) {
       setExpandedSection(null)
       setPanelView("menu")
+      setAuthMode("signin")
+      setAuthEmail("")
+      setAuthPassword("")
+      setAuthConfirmPassword("")
+      setAuthError("")
+      setAuthSuccess("")
     }
   }, [isOpen])
 
@@ -309,17 +329,86 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                       <span className="text-xs text-muted-foreground">or continue with email</span>
                       <div className="h-px flex-1 bg-border" />
                     </div>
-                    <div className="space-y-3">
-                      <Input type="email" placeholder="Email" className="rounded-lg" />
-                      <Input type="password" placeholder="Password" className="rounded-lg" />
-                    </div>
-                    <Button className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90">
-                      Sign In
-                    </Button>
-                    <div className="flex items-center justify-between text-sm">
-                      <button className="text-muted-foreground transition-colors hover:text-foreground">Create account</button>
-                      <button className="text-muted-foreground transition-colors hover:text-foreground">Forgot password</button>
-                    </div>
+                    {/* Error / success messages */}
+                    {authError && <p className="text-xs text-destructive">{authError}</p>}
+                    {authSuccess && <p className="text-xs text-primary">{authSuccess}</p>}
+
+                    {/* Sign in form */}
+                    {authMode === "signin" && (
+                      <div className="space-y-3">
+                        <Input type="email" placeholder="Email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} className="rounded-lg" />
+                        <Input type="password" placeholder="Password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} className="rounded-lg" />
+                        <Button
+                          className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
+                          disabled={authLoading}
+                          onClick={async () => {
+                            setAuthError(""); setAuthLoading(true)
+                            const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword })
+                            setAuthLoading(false)
+                            if (error) setAuthError(error.message)
+                          }}
+                        >
+                          {authLoading ? "Signing in…" : "Sign In"}
+                        </Button>
+                        <div className="flex items-center justify-between text-sm">
+                          <button onClick={() => { setAuthMode("signup"); setAuthError(""); setAuthSuccess("") }} className="text-muted-foreground transition-colors hover:text-foreground">Create account</button>
+                          <button onClick={() => { setAuthMode("forgot"); setAuthError(""); setAuthSuccess("") }} className="text-muted-foreground transition-colors hover:text-foreground">Forgot password</button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Sign up form */}
+                    {authMode === "signup" && (
+                      <div className="space-y-3">
+                        <Input type="email" placeholder="Email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} className="rounded-lg" />
+                        <Input type="password" placeholder="Password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} className="rounded-lg" />
+                        <Input type="password" placeholder="Confirm password" value={authConfirmPassword} onChange={(e) => setAuthConfirmPassword(e.target.value)} className="rounded-lg" />
+                        <Button
+                          className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
+                          disabled={authLoading}
+                          onClick={async () => {
+                            setAuthError("")
+                            if (authPassword !== authConfirmPassword) { setAuthError("Passwords do not match"); return }
+                            if (authPassword.length < 6) { setAuthError("Password must be at least 6 characters"); return }
+                            setAuthLoading(true)
+                            const { error } = await supabase.auth.signUp({ email: authEmail, password: authPassword })
+                            setAuthLoading(false)
+                            if (error) setAuthError(error.message)
+                            else setAuthSuccess("Account created. Check your email to confirm.")
+                          }}
+                        >
+                          {authLoading ? "Creating account…" : "Create Account"}
+                        </Button>
+                        <button onClick={() => { setAuthMode("signin"); setAuthError(""); setAuthSuccess("") }} className="w-full text-center text-sm text-muted-foreground transition-colors hover:text-foreground">
+                          Already have an account? Sign in
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Forgot password form */}
+                    {authMode === "forgot" && (
+                      <div className="space-y-3">
+                        <Input type="email" placeholder="Email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} className="rounded-lg" />
+                        <Button
+                          className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
+                          disabled={authLoading}
+                          onClick={async () => {
+                            setAuthError(""); setAuthLoading(true)
+                            const { error } = await supabase.auth.resetPasswordForEmail(authEmail, {
+                              redirectTo: `${window.location.origin}/auth/reset`
+                            })
+                            setAuthLoading(false)
+                            if (error) setAuthError(error.message)
+                            else setAuthSuccess("Reset email sent. Check your inbox.")
+                          }}
+                        >
+                          {authLoading ? "Sending…" : "Send Reset Email"}
+                        </Button>
+                        <button onClick={() => { setAuthMode("signin"); setAuthError(""); setAuthSuccess("") }} className="w-full text-center text-sm text-muted-foreground transition-colors hover:text-foreground">
+                          Back to sign in
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
 

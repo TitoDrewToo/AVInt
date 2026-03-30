@@ -30,7 +30,7 @@ interface CategorySummary {
 function formatCurrency(amount: number, currency: string) {
   return new Intl.NumberFormat("en-PH", {
     style: "currency",
-    currency: currency || "PHP",
+    currency: currency || "USD",
     minimumFractionDigits: 2,
   }).format(amount)
 }
@@ -105,7 +105,7 @@ export default function ExpenseSummaryPage() {
         document_type: row.files.document_type,
         vendor_name: row.vendor_name,
         document_date: row.document_date,
-        total_amount: parseFloat(row.total_amount),
+        total_amount: row.total_amount != null ? parseFloat(row.total_amount) || 0 : 0,
         currency: row.currency,
         expense_category: row.expense_category,
         confidence_score: row.confidence_score,
@@ -297,7 +297,7 @@ export default function ExpenseSummaryPage() {
                             </span>
                           </td>
                           <td className="py-3 text-right font-medium text-foreground">
-                            {row.total_amount != null ? formatCurrency(row.total_amount, row.currency ?? "PHP") : "—"}
+                            {row.total_amount != null ? formatCurrency(row.total_amount, row.currency ?? currency) : "—"}
                           </td>
                         </tr>
                       ))}

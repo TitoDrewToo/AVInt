@@ -26,7 +26,7 @@ interface TaxRow {
 function formatCurrency(amount: number, currency: string) {
   return new Intl.NumberFormat("en-PH", {
     style: "currency",
-    currency: currency || "PHP",
+    currency: currency || "USD",
     minimumFractionDigits: 2,
   }).format(amount)
 }
@@ -115,7 +115,7 @@ export default function TaxBundlePage() {
     loadData()
   }, [loadData])
 
-  const _currencyCount = rows[0].reduce((acc: Record<string, number>, r: any) => {
+  const _currencyCount = rows.reduce((acc: Record<string, number>, r) => {
     const c = r.currency ?? "USD"; acc[c] = (acc[c] ?? 0) + 1; return acc
   }, {} as Record<string, number>)
   const currency = Object.entries(_currencyCount).sort(([,a],[,b]) => (b as number) - (a as number))[0]?.[0] ?? "USD"
@@ -218,7 +218,7 @@ export default function TaxBundlePage() {
                           <p className="text-xs text-muted-foreground capitalize">{row.document_type} · {row.document_date ? formatDate(row.document_date) : "—"}</p>
                         </div>
                         <p className="text-sm font-medium text-foreground">
-                          {formatCurrency(row.gross_income ?? row.total_amount ?? 0, row.currency ?? "PHP")}
+                          {formatCurrency(row.gross_income ?? row.total_amount ?? 0, row.currency ?? currency)}
                         </p>
                       </div>
                     ))}
@@ -238,7 +238,7 @@ export default function TaxBundlePage() {
                           <p className="text-xs text-muted-foreground capitalize">{row.document_type} · {row.expense_category ?? "—"} · {row.document_date ? formatDate(row.document_date) : "—"}</p>
                         </div>
                         <p className="text-sm font-medium text-foreground">
-                          {formatCurrency(row.total_amount ?? 0, row.currency ?? "PHP")}
+                          {formatCurrency(row.total_amount ?? 0, row.currency ?? currency)}
                         </p>
                       </div>
                     ))}

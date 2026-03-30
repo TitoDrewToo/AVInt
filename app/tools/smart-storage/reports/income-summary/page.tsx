@@ -25,7 +25,7 @@ interface IncomeRow {
 function formatCurrency(amount: number, currency: string) {
   return new Intl.NumberFormat("en-PH", {
     style: "currency",
-    currency: currency || "PHP",
+    currency: currency || "USD",
     minimumFractionDigits: 2,
   }).format(amount)
 }
@@ -113,13 +113,15 @@ export default function IncomeSummaryPage() {
     loadIncome()
   }, [loadIncome])
 
-  const _currencyCount = income[0].reduce((acc: Record<string, number>, r: any) => {
+  const _currencyCount = income.reduce((acc: Record<string, number>, r) => {
     const c = r.currency ?? "USD"; acc[c] = (acc[c] ?? 0) + 1; return acc
   }, {} as Record<string, number>)
   const currency = Object.entries(_currencyCount).sort(([,a],[,b]) => (b as number) - (a as number))[0]?.[0] ?? "USD"
   const totalGross = income.reduce((sum, r) => sum + (r.gross_income ?? r.total_amount ?? 0), 0)
   const totalNet = income.reduce((sum, r) => sum + (r.net_income ?? 0), 0)
-  const avgMonthly = income.length > 0 ? totalGross / income.length : 0
+  // Average by unique months not document count
+  const uniqueMonths = new Set(income.map(r => r.document_date?.slice(0, 7)).filter(Boolean)).size
+  const avgMonthly = uniqueMonths > 0 ? totalGross / uniqueMonths : totalGross
 
   if (!sessionLoaded) return null
   if (!session) return <AuthGuardModal isVisible={true} />
@@ -222,10 +224,10 @@ export default function IncomeSummaryPage() {
                             </span>
                           </td>
                           <td className="py-3 pr-4 text-right font-medium text-foreground">
-                            {formatCurrency(row.gross_income ?? row.total_amount ?? 0, row.currency ?? "PHP")}
+                            {formatCurrency(row.gross_income ?? row.total_amount ?? 0, row.currency ?? currency)}
                           </td>
                           <td className="py-3 text-right text-muted-foreground">
-                            {row.net_income ? formatCurrency(row.net_income, row.currency ?? "PHP") : "—"}
+                            {row.net_income ? formatCurrency(row.net_income, row.currency ?? currency) : "—"}
                           </td>
                         </tr>
                       ))}

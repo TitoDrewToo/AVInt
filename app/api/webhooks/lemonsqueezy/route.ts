@@ -55,19 +55,37 @@ export async function POST(req: NextRequest) {
 
   console.log("Parsed — email:", email, "product:", productName, "variant:", variantId, "status:", status)
 
-  // Map to internal status
-  let internalStatus = "free"
-  if (["active", "on_trial"].includes(status)) {
-    internalStatus = variantId.includes("day") || productName.toLowerCase().includes("day") ? "day_pass" : "pro"
-  } else if (["cancelled", "expired", "past_due", "unpaid", "paused"].includes(status)) {
-    internalStatus = "cancelled"
-  }
-
-  // Determine plan
+  // Determine plan first
   let plan = "monthly"
   if (productName.toLowerCase().includes("annual") || productName.toLowerCase().includes("yearly")) plan = "annual"
   if (productName.toLowerCase().includes("day")) plan = "day_pass"
   if (productName.toLowerCase().includes("gift")) plan = "gift_code"
+
+  // Map to internal status
+  let internalStatus = "free"
+  const isOneTimePaid = ["paid", "active", "on_trial"].includes(status) || eventName === "order_created"
+  if (isOneTimePaid) {
+    if (plan === "day_pass" || productName.toLowerCase().includes("day") || variantId.includes("day")) {
+      internalStatus = "day_pass"
+    } else if (plan === "gift_code" || productName.toLowerCase().includes("gift")) {
+      internalStatus = "gift_code"
+    } else {
+      internalStatus = "pro"
+    }
+  } else if (["cancelled", "expired", "past_due", "unpaid", "paused"].includes(status)) {
+    internalStatus = "cancelled"
+  }
+
+  // For day pass: set current_period_end to 24 hours from now if not provided
+  let resolvedPeriodEnd = currentPeriodEnd
+  if (plan === "day_pass" && !resolvedPeriodEnd) {
+    const expires = new Date()
+    expires.setHours(expires.getHours() + 24)
+    resolvedPeriodEnd = expires.toISOString()
+  }
+
+  // Extract order_id
+  const lsOrderId = String(data.order_id ?? payload?.data?.id ?? "")
 
   try {
     if (eventName === "order_created") {
@@ -101,9 +119,10 @@ export async function POST(req: NextRequest) {
               variant_id: variantId,
               lemonsqueezy_customer_id: lsCustomerId,
               lemonsqueezy_subscription_id: lsSubscriptionId,
+              lemonsqueezy_order_id: lsOrderId,
               status: internalStatus,
               plan,
-              current_period_end: currentPeriodEnd,
+              current_period_end: resolvedPeriodEnd,
               updated_at: new Date().toISOString(),
             })
             .eq("user_id", userId)
@@ -118,9 +137,10 @@ export async function POST(req: NextRequest) {
               variant_id: variantId,
               lemonsqueezy_customer_id: lsCustomerId,
               lemonsqueezy_subscription_id: lsSubscriptionId,
+              lemonsqueezy_order_id: lsOrderId,
               status: internalStatus,
               plan,
-              current_period_end: currentPeriodEnd,
+              current_period_end: resolvedPeriodEnd,
               updated_at: new Date().toISOString(),
             })
           console.log("Insert error:", insertError?.message)
@@ -135,9 +155,10 @@ export async function POST(req: NextRequest) {
             variant_id: variantId,
             lemonsqueezy_customer_id: lsCustomerId,
             lemonsqueezy_subscription_id: lsSubscriptionId,
+            lemonsqueezy_order_id: lsOrderId,
             status: internalStatus,
             plan,
-            current_period_end: currentPeriodEnd,
+            current_period_end: resolvedPeriodEnd,
             updated_at: new Date().toISOString(),
           })
         console.log("Insert (no user) error:", insertError?.message)
@@ -162,14 +183,16 @@ export async function POST(req: NextRequest) {
           await supabaseAdmin.from("subscriptions").update({
             email, product_name: productName, variant_id: variantId,
             lemonsqueezy_customer_id: lsCustomerId, lemonsqueezy_subscription_id: lsSubscriptionId,
-            status: internalStatus, plan, current_period_end: currentPeriodEnd,
+            lemonsqueezy_order_id: lsOrderId,
+            status: internalStatus, plan, current_period_end: resolvedPeriodEnd,
             updated_at: new Date().toISOString(),
           }).eq("user_id", userId)
         } else {
           await supabaseAdmin.from("subscriptions").insert({
             user_id: userId, email, product_name: productName, variant_id: variantId,
             lemonsqueezy_customer_id: lsCustomerId, lemonsqueezy_subscription_id: lsSubscriptionId,
-            status: internalStatus, plan, current_period_end: currentPeriodEnd,
+            lemonsqueezy_order_id: lsOrderId,
+            status: internalStatus, plan, current_period_end: resolvedPeriodEnd,
             updated_at: new Date().toISOString(),
           })
         }

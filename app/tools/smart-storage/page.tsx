@@ -117,7 +117,6 @@ const REPORTS: ReportDef[] = [
   { id: "transaction_summary", label: "Transaction Summary",      requires: "date_and_amount_2",   coreEnabled: false },
   { id: "contract_summary",    label: "Contract Summary",         requires: "contract_fields",     coreEnabled: false },
   { id: "key_terms",           label: "Key Terms Summary",        requires: "contract_fields",     coreEnabled: false },
-  { id: "general_summary",     label: "General Document Summary", requires: "any_file",            coreEnabled: false },
   { id: "financial_overview",  label: "Financial Overview",       requires: "expense_or_income",   coreEnabled: false },
 ]
 
@@ -162,6 +161,8 @@ function LeftFolderItem({
   onToggle,
   children,
   level = 0,
+  onRename,
+  onDelete,
 }: {
   name: string
   isOpen?: boolean
@@ -170,26 +171,54 @@ function LeftFolderItem({
   onToggle?: () => void
   children?: React.ReactNode
   level?: number
+  onRename?: () => void
+  onDelete?: () => void
 }) {
   return (
     <div>
-      <button
-        onClick={() => { onSelect(); onToggle?.() }}
-        className={`flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-sm transition-colors hover:bg-muted ${
+      <div
+        className={`group flex w-full items-center rounded text-sm transition-colors hover:bg-muted ${
           isSelected ? "bg-muted text-foreground" : "text-muted-foreground"
         }`}
         style={{ paddingLeft: `${level * 12 + 8}px` }}
       >
-        {children ? (
-          isOpen
-            ? <ChevronDown className="h-3.5 w-3.5 shrink-0" />
-            : <ChevronRight className="h-3.5 w-3.5 shrink-0" />
-        ) : <span className="w-3.5" />}
-        {isOpen
-          ? <FolderOpen className="h-4 w-4 shrink-0 text-primary/70" />
-          : <Folder className="h-4 w-4 shrink-0 text-muted-foreground" />}
-        <span className="truncate">{name}</span>
-      </button>
+        <button
+          onClick={() => { onSelect(); onToggle?.() }}
+          className="flex flex-1 min-w-0 items-center gap-1.5 py-1 text-left"
+        >
+          {children ? (
+            isOpen
+              ? <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+              : <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+          ) : <span className="w-3.5" />}
+          {isOpen
+            ? <FolderOpen className="h-4 w-4 shrink-0 text-primary/70" />
+            : <Folder className="h-4 w-4 shrink-0 text-muted-foreground" />}
+          <span className="truncate">{name}</span>
+        </button>
+        {(onRename || onDelete) && (
+          <div className="flex items-center gap-0.5 pr-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            {onRename && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onRename() }}
+                className="flex h-5 w-5 items-center justify-center rounded hover:bg-muted-foreground/20"
+                title="Rename"
+              >
+                <Pencil className="h-3 w-3" />
+              </button>
+            )}
+            {onDelete && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onDelete() }}
+                className="flex h-5 w-5 items-center justify-center rounded hover:bg-destructive/20 hover:text-destructive"
+                title="Delete"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+        )}
+      </div>
       {isOpen && children && <div>{children}</div>}
     </div>
   )
@@ -513,7 +542,9 @@ export default function SmartStoragePage() {
     .filter(([, types]) => types.some((t) => detectedTypes.includes(t)))
     .map(([name]) => name)
 
-  const currentSubfolders = folders.filter((f) => f.parentId === currentFolderId)
+  const currentSubfolders = folders.filter((f) =>
+    currentFolderId === "root" ? f.parentId === null : f.parentId === currentFolderId
+  )
 
   // ── Auth guard ─────────────────────────────────────────────────────────────
   if (!sessionLoaded) return null
@@ -560,6 +591,16 @@ export default function SmartStoragePage() {
                       openFolder(folder)
                     }}
                     level={1}
+                    onRename={() => startRename(folder)}
+                    onDelete={async () => {
+                      await supabase.from("folders").delete().eq("id", folder.id)
+                      setFolders(prev => prev.filter(f => f.id !== folder.id))
+                      if (currentFolderId === folder.id) {
+                        setCurrentFolderId("root")
+                        setBreadcrumb([{ id: "root", name: "Documents" }])
+                        setSelectedLeftFolder("Documents")
+                      }
+                    }}
                   />
                 ))}
               </LeftFolderItem>

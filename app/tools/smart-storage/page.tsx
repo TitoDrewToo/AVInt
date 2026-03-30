@@ -115,11 +115,10 @@ const REPORTS: ReportDef[] = [
   { id: "expense_summary",     label: "Expense Summary",          requires: "date_and_amount_2",  coreEnabled: true  },
   { id: "income_summary",      label: "Income Summary",           requires: "income_amount",       coreEnabled: true  },
   { id: "tax_bundle",          label: "Tax Bundle Summary",       requires: "expense_or_income",   coreEnabled: true  },
-  { id: "profit_loss",         label: "Profit & Loss Summary",    requires: "expense_or_income",   coreEnabled: false },
-  { id: "transaction_summary", label: "Transaction Summary",      requires: "date_and_amount_2",   coreEnabled: false },
+  { id: "profit_loss",         label: "Profit & Loss Summary",    requires: "expense_or_income",   coreEnabled: true  },
   { id: "contract_summary",    label: "Contract Summary",         requires: "contract_fields",     coreEnabled: false },
   { id: "key_terms",           label: "Key Terms Summary",        requires: "contract_fields",     coreEnabled: false },
-  { id: "financial_overview",  label: "Financial Overview",       requires: "expense_or_income",   coreEnabled: false },
+  { id: "business_expense",    label: "Business Expense Summary", requires: "expense_or_income",   coreEnabled: false },
 ]
 
 // ── Folder / File types ───────────────────────────────────────────────────────
@@ -329,8 +328,9 @@ export default function SmartStoragePage() {
 
   const REPORT_ROUTES: Record<string, string> = {
     expense_summary: "/tools/smart-storage/reports/expense-summary",
-    income_summary: "/tools/smart-storage/reports/income-summary",
-    tax_bundle: "/tools/smart-storage/reports/tax-bundle",
+    income_summary:  "/tools/smart-storage/reports/income-summary",
+    tax_bundle:      "/tools/smart-storage/reports/tax-bundle",
+    profit_loss:     "/tools/smart-storage/reports/profit-loss",
   }
 
   // ── Session ────────────────────────────────────────────────────────────────

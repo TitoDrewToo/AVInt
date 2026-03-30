@@ -111,17 +111,17 @@ const DEFAULT_LAYOUT: LayoutItem[] = [
 ]
 
 const WIDGET_LIBRARY = [
-  { type: "kpi-income",         title: "Income KPI",           isPremium: false },
-  { type: "kpi-expenses",       title: "Expenses KPI",         isPremium: false },
-  { type: "kpi-net",            title: "Net Position KPI",     isPremium: false },
-  { type: "kpi-docs",           title: "Document Count KPI",   isPremium: false },
-  { type: "kpi-tax-exposure",   title: "Tax Exposure KPI",     isPremium: false },
-  { type: "kpi-tax-ratio",      title: "Tax Burden Rate KPI",  isPremium: false },
-  { type: "area-chart",         title: "Income vs Expenses",   isPremium: false },
-  { type: "bar-chart",          title: "Category Breakdown",   isPremium: false },
-  { type: "bar-deductible",     title: "Deductible Expenses",  isPremium: false },
-  { type: "pie-chart",          title: "Doc Distribution",     isPremium: false },
-  { type: "context-summary",    title: "Context Summary",      isPremium: true  },
+  { type: "kpi-income",       title: "Income KPI",          desc: "Total income detected across all documents",           isPremium: false },
+  { type: "kpi-expenses",     title: "Expenses KPI",        desc: "Sum of all classified expense transactions",           isPremium: false },
+  { type: "kpi-net",          title: "Net Position KPI",    desc: "Income minus expenses with savings rate",              isPremium: false },
+  { type: "kpi-docs",         title: "Document Count KPI",  desc: "Number of financial documents processed",             isPremium: false },
+  { type: "kpi-tax-exposure", title: "Tax Exposure KPI",    desc: "Estimated tax liability based on net income",         isPremium: false },
+  { type: "kpi-tax-ratio",    title: "Tax Burden Rate KPI", desc: "Tax as a percentage of gross income",                 isPremium: false },
+  { type: "area-chart",       title: "Income vs Expenses",  desc: "Monthly trend of income and expenses over time",      isPremium: false },
+  { type: "bar-chart",        title: "Category Breakdown",  desc: "Total spending split by expense category",            isPremium: false },
+  { type: "bar-deductible",   title: "Deductible Expenses", desc: "Categories that reduce your taxable income",          isPremium: false },
+  { type: "pie-chart",        title: "Doc Distribution",    desc: "Breakdown of document types in your storage",         isPremium: false },
+  { type: "context-summary",  title: "Context Summary",     desc: "AI-generated financial narrative from your documents", isPremium: true  },
 ]
 
 // ── Chart type options per widget ─────────────────────────────────────────────
@@ -821,13 +821,13 @@ export default function SmartDashboardPage() {
           </div>
         </div>
 
-        {/* CANVAS + PANEL — flex row so canvas width is always accurate */}
-        <div className="flex flex-1 overflow-hidden">
+        {/* CANVAS + PANEL */}
+        <div className="relative flex-1 overflow-hidden">
 
-          {/* CANVAS */}
+          {/* CANVAS — full width, panel overlays on top */}
           <div
             ref={canvasRef}
-            className="flex-1 overflow-y-auto p-4"
+            className="absolute inset-0 overflow-y-auto p-4"
             style={{
               backgroundColor: "hsl(var(--background))",
               backgroundImage: "radial-gradient(circle, hsl(var(--muted-foreground) / 0.2) 1px, transparent 1px)",
@@ -903,15 +903,16 @@ export default function SmartDashboardPage() {
             )}
           </div>
 
-          {/* WIDGET PANEL — always-visible sidebar */}
-          <aside className="flex w-56 flex-shrink-0 flex-col overflow-hidden border-l border-border bg-card">
+          {/* WIDGET PANEL — absolute overlay, covers right edge */}
+          <aside className="absolute right-0 top-0 bottom-0 z-10 flex w-72 flex-col overflow-hidden border-l border-border bg-card/95 backdrop-blur-sm shadow-xl">
             <div className="border-b border-border px-4 py-3">
               <h2 className="text-sm font-semibold text-foreground">Widget Library</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">Click to add widgets to your dashboard</p>
             </div>
 
             <div className="flex-1 overflow-y-auto p-3">
               <p className="mb-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">Standard</p>
-              <div className="space-y-0.5">
+              <div className="space-y-1">
                 {WIDGET_LIBRARY.filter(w => !w.isPremium).map((item) => {
                   const added = widgets.some(w => w.type === item.type)
                   return (
@@ -919,10 +920,13 @@ export default function SmartDashboardPage() {
                       key={item.type}
                       onClick={() => addWidget(item.type, item.title, false)}
                       disabled={added}
-                      className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors ${added ? "text-muted-foreground/40 cursor-not-allowed" : "text-foreground hover:bg-muted"}`}
+                      className={`flex w-full items-start justify-between rounded-lg px-3 py-2.5 text-left transition-colors ${added ? "opacity-40 cursor-not-allowed" : "hover:bg-muted"}`}
                     >
-                      <span>{item.title}</span>
-                      {added ? <Check className="h-3.5 w-3.5 text-primary" /> : <Plus className="h-3.5 w-3.5 text-muted-foreground" />}
+                      <div className="flex-1 min-w-0 pr-2">
+                        <p className={`text-sm font-medium leading-tight ${added ? "text-muted-foreground" : "text-foreground"}`}>{item.title}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{item.desc}</p>
+                      </div>
+                      {added ? <Check className="h-3.5 w-3.5 text-primary mt-0.5 flex-shrink-0" /> : <Plus className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />}
                     </button>
                   )
                 })}
@@ -932,7 +936,7 @@ export default function SmartDashboardPage() {
                 <>
                   <div className="my-3 h-px bg-border" />
                   <p className="mb-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">Advanced</p>
-                  <div className="space-y-0.5">
+                  <div className="space-y-1">
                     {WIDGET_LIBRARY.filter(w => w.isPremium).map((item) => {
                       const added = widgets.some(w => w.type === item.type)
                       return (
@@ -940,10 +944,13 @@ export default function SmartDashboardPage() {
                           key={item.type}
                           onClick={() => addWidget(item.type, item.title, true)}
                           disabled={added}
-                          className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${added ? "text-muted-foreground/40 cursor-not-allowed" : "text-foreground hover:bg-muted"}`}
+                          className={`flex w-full items-start justify-between rounded-lg px-3 py-2.5 text-left transition-colors ${added ? "opacity-40 cursor-not-allowed" : "hover:bg-muted"}`}
                         >
-                          <span>{item.title}</span>
-                          {added ? <Check className="h-3.5 w-3.5 text-primary" /> : <Plus className="h-3.5 w-3.5 text-muted-foreground" />}
+                          <div className="flex-1 min-w-0 pr-2">
+                            <p className={`text-sm font-medium leading-tight ${added ? "text-muted-foreground" : "text-foreground"}`}>{item.title}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{item.desc}</p>
+                          </div>
+                          {added ? <Check className="h-3.5 w-3.5 text-primary mt-0.5 flex-shrink-0" /> : <Plus className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />}
                         </button>
                       )
                     })}

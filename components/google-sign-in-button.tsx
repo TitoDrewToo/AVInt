@@ -40,6 +40,11 @@ export function GoogleSignInButton({ onClick, className }: GoogleSignInButtonPro
   const handleClick = async () => {
     await supabase.auth.signInWithOAuth({
       provider: "google",
+      options: {
+        redirectTo: typeof window !== "undefined"
+          ? `${window.location.origin}/auth/callback`
+          : "https://www.avintph.com/auth/callback",
+      },
     })
     onClick?.()
   }

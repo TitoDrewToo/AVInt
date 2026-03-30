@@ -25,6 +25,7 @@ import {
   Upload,
   ArrowLeft,
   FolderOutput,
+  Download,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 
@@ -513,6 +514,17 @@ export default function SmartStoragePage() {
     e.preventDefault()
     setContextMenu({ x: e.clientX, y: e.clientY, fileId, filename })
     setSelectedFiles(new Set([fileId]))
+  }
+
+  const handleDownloadFile = async (fileId: string) => {
+    const file = files.find(f => f.id === fileId)
+    if (!file) return
+    const { data } = await supabase.storage.from("documents").createSignedUrl(file.storage_path, 60)
+    if (!data?.signedUrl) return
+    const a = document.createElement("a")
+    a.href = data.signedUrl
+    a.download = file.filename
+    a.click()
   }
 
   const handleDeleteFile = async (fileId: string) => {
@@ -1201,6 +1213,14 @@ export default function SmartStoragePage() {
                           </>
                         )
                       })()}
+                      <div className="my-1 h-px bg-border" />
+                      <button
+                        onClick={() => { handleDownloadFile(contextMenu.fileId); setContextMenu(null) }}
+                        className="flex w-full items-center gap-2 px-4 py-2 text-sm text-foreground transition-colors hover:bg-muted"
+                      >
+                        <Download className="h-3.5 w-3.5 text-muted-foreground" />
+                        Download
+                      </button>
                       <div className="my-1 h-px bg-border" />
                       <button
                         onClick={() => handleDeleteFile(contextMenu.fileId)}

@@ -14,22 +14,43 @@ interface ProductCardProps {
 }
 
 function StatusBadge({ status }: { status: StatusType }) {
+  if (status === "coming-soon") return null
+
   const styles = {
     live: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-400 dark:border-emerald-800",
     development: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-800",
-    "coming-soon": "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/50 dark:text-blue-400 dark:border-blue-800",
+    "coming-soon": "",
+  }
+
+  const dotColors = {
+    live: "bg-emerald-500",
+    development: "bg-amber-500",
+    "coming-soon": "",
   }
 
   const labels = {
     live: "Live Testing",
     development: "In Development",
-    "coming-soon": "Coming Soon",
+    "coming-soon": "",
   }
 
   return (
-    <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${styles[status]}`}
-    >
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${styles[status]}`}>
+      <style>{`
+        @keyframes badgePulse {
+          0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 0 currentColor; }
+          50% { opacity: 0.7; transform: scale(1.2); box-shadow: 0 0 0 3px transparent; }
+        }
+        @keyframes glowRing {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(var(--pulse-color), 0.4); }
+          50% { box-shadow: 0 0 0 4px rgba(var(--pulse-color), 0); }
+        }
+        .dot-live { animation: badgePulse 2s ease-in-out infinite; }
+        .dot-dev { animation: badgePulse 2.5s ease-in-out infinite 0.5s; }
+      `}</style>
+      <span
+        className={`h-1.5 w-1.5 rounded-full ${dotColors[status]} ${status === "live" ? "dot-live" : "dot-dev"}`}
+      />
       {labels[status]}
     </span>
   )
@@ -165,7 +186,6 @@ const products: ProductCardProps[] = [
     name: "Smart Dashboard",
     description:
       "Visualize financial activity and trends derived from structured data.",
-    status: "coming-soon",
     href: "/products/smart-dashboard",
     icon: <DashboardIcon className="h-5 w-5" />,
   },

@@ -16,7 +16,7 @@ import {
 import {
   TrendingUp, Receipt, Wallet, FileText,
   Save, Calendar, ChevronDown, Lock, Sparkles,
-  LayoutGrid, X, Check, Plus, Zap, PanelRight
+  LayoutGrid, X, Check, Plus, Zap
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
@@ -442,7 +442,6 @@ export default function SmartDashboardPage() {
   const [showDateFilter, setShowDateFilter] = useState(false)
   const [showColorPicker, setShowColorPicker] = useState(false)
   const [showAdvancedMenu, setShowAdvancedMenu] = useState(false)
-  const [showWidgetPanel, setShowWidgetPanel] = useState(true)
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
   const [hasNewData, setHasNewData] = useState(false)
@@ -904,83 +903,70 @@ export default function SmartDashboardPage() {
             )}
           </div>
 
-          {/* PANEL TOGGLE TAB — sits between canvas and panel */}
-          <div className="relative flex-shrink-0">
-            <button
-              onClick={() => setShowWidgetPanel(!showWidgetPanel)}
-              className="absolute top-1/2 -translate-y-1/2 -left-5 z-20 flex h-14 w-5 items-center justify-center rounded-l-lg border border-r-0 border-border bg-card text-muted-foreground shadow-md hover:text-foreground transition-colors"
-              title={showWidgetPanel ? "Hide widgets" : "Show widgets"}
-            >
-              <PanelRight className="h-3 w-3" />
-            </button>
+          {/* WIDGET PANEL — always-visible sidebar */}
+          <aside className="flex w-56 flex-shrink-0 flex-col overflow-hidden border-l border-border bg-card">
+            <div className="border-b border-border px-4 py-3">
+              <h2 className="text-sm font-semibold text-foreground">Widget Library</h2>
+            </div>
 
-          {/* WIDGET PANEL — true sidebar, pushes canvas */}
-          {showWidgetPanel && (
-            <aside className="flex w-56 flex-col overflow-hidden border-l border-border bg-card shadow-xl h-full">
-              <div className="border-b border-border px-4 py-3">
-                <h2 className="text-sm font-semibold text-foreground">Widget Library</h2>
+            <div className="flex-1 overflow-y-auto p-3">
+              <p className="mb-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">Standard</p>
+              <div className="space-y-0.5">
+                {WIDGET_LIBRARY.filter(w => !w.isPremium).map((item) => {
+                  const added = widgets.some(w => w.type === item.type)
+                  return (
+                    <button
+                      key={item.type}
+                      onClick={() => addWidget(item.type, item.title, false)}
+                      disabled={added}
+                      className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors ${added ? "text-muted-foreground/40 cursor-not-allowed" : "text-foreground hover:bg-muted"}`}
+                    >
+                      <span>{item.title}</span>
+                      {added ? <Check className="h-3.5 w-3.5 text-primary" /> : <Plus className="h-3.5 w-3.5 text-muted-foreground" />}
+                    </button>
+                  )
+                })}
               </div>
 
-              <div className="flex-1 overflow-y-auto p-3">
-                <p className="mb-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">Standard</p>
-                <div className="space-y-0.5">
-                  {WIDGET_LIBRARY.filter(w => !w.isPremium).map((item) => {
-                    const added = widgets.some(w => w.type === item.type)
-                    return (
-                      <button
-                        key={item.type}
-                        onClick={() => addWidget(item.type, item.title, false)}
-                        disabled={added}
-                        className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors ${added ? "text-muted-foreground/40 cursor-not-allowed" : "text-foreground hover:bg-muted"}`}
-                      >
-                        <span>{item.title}</span>
-                        {added ? <Check className="h-3.5 w-3.5 text-primary" /> : <Plus className="h-3.5 w-3.5 text-muted-foreground" />}
-                      </button>
-                    )
-                  })}
-                </div>
-
-                {isPro && (
-                  <>
-                    <div className="my-3 h-px bg-border" />
-                    <p className="mb-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">Advanced</p>
-                    <div className="space-y-0.5">
-                      {WIDGET_LIBRARY.filter(w => w.isPremium).map((item) => {
-                        const added = widgets.some(w => w.type === item.type)
-                        return (
-                          <button
-                            key={item.type}
-                            onClick={() => addWidget(item.type, item.title, true)}
-                            disabled={added}
-                            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${added ? "text-muted-foreground/40 cursor-not-allowed" : "text-foreground hover:bg-muted"}`}
-                          >
-                            <span>{item.title}</span>
-                            {added ? <Check className="h-3.5 w-3.5 text-primary" /> : <Plus className="h-3.5 w-3.5 text-muted-foreground" />}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </>
-                )}
-
-                {!isPro && (
-                  <div className="mt-3 rounded-xl border border-border bg-muted/30 p-3">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Zap className="h-3.5 w-3.5 text-primary" />
-                      <p className="text-xs font-medium text-foreground">Pro Plan</p>
-                    </div>
-                    <p className="text-xs text-muted-foreground mb-2">
-                      Unlock AI-powered Context Summary and Advanced Analytics.
-                    </p>
-                    <Link href="/pricing">
-                      <Button size="sm" className="w-full rounded-lg text-xs">Upgrade to Pro</Button>
-                    </Link>
+              {isPro && (
+                <>
+                  <div className="my-3 h-px bg-border" />
+                  <p className="mb-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">Advanced</p>
+                  <div className="space-y-0.5">
+                    {WIDGET_LIBRARY.filter(w => w.isPremium).map((item) => {
+                      const added = widgets.some(w => w.type === item.type)
+                      return (
+                        <button
+                          key={item.type}
+                          onClick={() => addWidget(item.type, item.title, true)}
+                          disabled={added}
+                          className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${added ? "text-muted-foreground/40 cursor-not-allowed" : "text-foreground hover:bg-muted"}`}
+                        >
+                          <span>{item.title}</span>
+                          {added ? <Check className="h-3.5 w-3.5 text-primary" /> : <Plus className="h-3.5 w-3.5 text-muted-foreground" />}
+                        </button>
+                      )
+                    })}
                   </div>
-                )}
-              </div>
-            </aside>
-          )}
-          </div>
+                </>
+              )}
+
+              {!isPro && (
+                <div className="mt-3 rounded-xl border border-border bg-muted/30 p-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Zap className="h-3.5 w-3.5 text-primary" />
+                    <p className="text-xs font-medium text-foreground">Pro Plan</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Unlock AI-powered Context Summary and Advanced Analytics.
+                  </p>
+                  <Link href="/pricing">
+                    <Button size="sm" className="w-full rounded-lg text-xs">Upgrade to Pro</Button>
+                  </Link>
+                </div>
+              )}
+            </div>
+          </aside>
         </div>
       </div>
     </div>

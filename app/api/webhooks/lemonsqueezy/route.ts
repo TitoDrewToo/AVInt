@@ -71,42 +71,113 @@ export async function POST(req: NextRequest) {
 
   try {
     if (eventName === "order_created") {
-      // For one-time purchases (day pass, gift codes)
-      await supabaseAdmin.from("subscriptions").upsert({
-        email,
-        product_name: productName,
-        variant_id: variantId,
-        lemonsqueezy_customer_id: lsCustomerId,
-        lemonsqueezy_subscription_id: lsSubscriptionId,
-        status: internalStatus,
-        plan,
-        current_period_end: currentPeriodEnd,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: "email" })
+      // Match user by email first
+      let userId: string | null = null
+      try {
+        const { data: { users } } = await supabaseAdmin.auth.admin.listUsers()
+        const matched = users?.find((u) => u.email === email)
+        userId = matched?.id ?? null
+        console.log("Matched user_id:", userId, "for email:", email)
+      } catch (e) {
+        console.warn("Could not match user:", e)
+      }
 
-      // Increment user counter
-      await supabaseAdmin.rpc("increment_user_counter")
+      // Check if subscription already exists for this user
+      if (userId) {
+        const { data: existing, error: fetchError } = await supabaseAdmin
+          .from("subscriptions")
+          .select("id")
+          .eq("user_id", userId)
+          .single()
 
+        console.log("Existing subscription:", existing, "fetchError:", fetchError?.message)
+
+        if (existing) {
+          const { error: updateError } = await supabaseAdmin
+            .from("subscriptions")
+            .update({
+              email,
+              product_name: productName,
+              variant_id: variantId,
+              lemonsqueezy_customer_id: lsCustomerId,
+              lemonsqueezy_subscription_id: lsSubscriptionId,
+              status: internalStatus,
+              plan,
+              current_period_end: currentPeriodEnd,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("user_id", userId)
+          console.log("Update error:", updateError?.message)
+        } else {
+          const { error: insertError } = await supabaseAdmin
+            .from("subscriptions")
+            .insert({
+              user_id: userId,
+              email,
+              product_name: productName,
+              variant_id: variantId,
+              lemonsqueezy_customer_id: lsCustomerId,
+              lemonsqueezy_subscription_id: lsSubscriptionId,
+              status: internalStatus,
+              plan,
+              current_period_end: currentPeriodEnd,
+              updated_at: new Date().toISOString(),
+            })
+          console.log("Insert error:", insertError?.message)
+        }
+      } else {
+        // No user account yet — insert by email only
+        const { error: insertError } = await supabaseAdmin
+          .from("subscriptions")
+          .insert({
+            email,
+            product_name: productName,
+            variant_id: variantId,
+            lemonsqueezy_customer_id: lsCustomerId,
+            lemonsqueezy_subscription_id: lsSubscriptionId,
+            status: internalStatus,
+            plan,
+            current_period_end: currentPeriodEnd,
+            updated_at: new Date().toISOString(),
+          })
+        console.log("Insert (no user) error:", insertError?.message)
+      }
+
+      try { await supabaseAdmin.rpc("increment_user_counter") } catch (e) { console.warn("rpc error:", e) }
       console.log("order_created processed for:", email)
     }
 
     if (["subscription_created", "subscription_updated"].includes(eventName)) {
-      await supabaseAdmin.from("subscriptions").upsert({
-        email,
-        product_name: productName,
-        variant_id: variantId,
-        lemonsqueezy_customer_id: lsCustomerId,
-        lemonsqueezy_subscription_id: lsSubscriptionId,
-        status: internalStatus,
-        plan,
-        current_period_end: currentPeriodEnd,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: "email" })
+      let userId: string | null = null
+      try {
+        const { data: { users } } = await supabaseAdmin.auth.admin.listUsers()
+        userId = users?.find((u) => u.email === email)?.id ?? null
+      } catch (e) { console.warn("Could not match user:", e) }
 
-      if (eventName === "subscription_created") {
-        await supabaseAdmin.rpc("increment_user_counter")
+      if (userId) {
+        const { data: existing } = await supabaseAdmin
+          .from("subscriptions").select("id").eq("user_id", userId).single()
+
+        if (existing) {
+          await supabaseAdmin.from("subscriptions").update({
+            email, product_name: productName, variant_id: variantId,
+            lemonsqueezy_customer_id: lsCustomerId, lemonsqueezy_subscription_id: lsSubscriptionId,
+            status: internalStatus, plan, current_period_end: currentPeriodEnd,
+            updated_at: new Date().toISOString(),
+          }).eq("user_id", userId)
+        } else {
+          await supabaseAdmin.from("subscriptions").insert({
+            user_id: userId, email, product_name: productName, variant_id: variantId,
+            lemonsqueezy_customer_id: lsCustomerId, lemonsqueezy_subscription_id: lsSubscriptionId,
+            status: internalStatus, plan, current_period_end: currentPeriodEnd,
+            updated_at: new Date().toISOString(),
+          })
+        }
       }
 
+      if (eventName === "subscription_created") {
+        try { await supabaseAdmin.rpc("increment_user_counter") } catch (e) { console.warn("rpc error:", e) }
+      }
       console.log(eventName, "processed for:", email)
     }
 

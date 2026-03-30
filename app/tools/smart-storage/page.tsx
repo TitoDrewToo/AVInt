@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { Navbar } from "@/components/navbar"
-import { Footer } from "@/components/footer"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ProcessingIndicator } from "@/components/ui/processing-indicator"
@@ -340,17 +339,33 @@ export default function SmartStoragePage() {
     return () => subscription.unsubscribe()
   }, [])
 
-  // ── Processing indicator ───────────────────────────────────────────────────
+  // ── Processing indicator + polling ────────────────────────────────────────
   const checkProcessingState = useCallback(async () => {
     if (!session?.user?.id) return
     const { data: userFiles } = await supabase.from("files").select("id").eq("user_id", session.user.id)
-    if (!userFiles?.length) { setIsProcessing(false); return }
+    if (!userFiles?.length) { setIsProcessing(false); return false }
     const { data: activeJobs } = await supabase
       .from("processing_jobs").select("status")
       .in("file_id", userFiles.map((f) => f.id))
       .in("status", ["uploaded", "processing"])
-    setIsProcessing((activeJobs?.length ?? 0) > 0)
+    const stillActive = (activeJobs?.length ?? 0) > 0
+    setIsProcessing(stillActive)
+    return stillActive
   }, [session])
+
+  // Poll every 3s while processing — stops when jobs complete, then refreshes files
+  useEffect(() => {
+    if (!isProcessing) return
+    const interval = setInterval(async () => {
+      const stillActive = await checkProcessingState()
+      if (!stillActive) {
+        clearInterval(interval)
+        await loadFiles()
+        await checkReportAvailability()
+      }
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [isProcessing, checkProcessingState, loadFiles, checkReportAvailability])
 
   // ── Load files ─────────────────────────────────────────────────────────────
   const loadFiles = useCallback(async () => {
@@ -1325,7 +1340,6 @@ export default function SmartStoragePage() {
         </div>
       </main>
 
-      <Footer />
     </div>
   )
 }

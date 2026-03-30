@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { Navbar } from "@/components/navbar"
-import { Footer } from "@/components/footer"
 import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
@@ -439,7 +438,6 @@ export default function ProfitLossPage() {
           )}
         </div>
       </main>
-      <Footer />
     </div>
   )
 }

@@ -521,10 +521,7 @@ export default function SmartStoragePage() {
     if (!file) return
     const { data } = await supabase.storage.from("documents").createSignedUrl(file.storage_path, 60)
     if (!data?.signedUrl) return
-    const a = document.createElement("a")
-    a.href = data.signedUrl
-    a.download = file.filename
-    a.click()
+    window.open(data.signedUrl, "_blank", "noopener,noreferrer")
   }
 
   const handleDeleteFile = async (fileId: string) => {

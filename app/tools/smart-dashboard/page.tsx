@@ -455,7 +455,10 @@ export default function SmartDashboardPage() {
   // ── Measure canvas width ───────────────────────────────────────────────────
   useEffect(() => {
     const measure = () => {
-      if (canvasRef.current) setContainerWidth(canvasRef.current.offsetWidth - 32)
+      if (canvasRef.current) {
+        const panelW = showWidgetPanel ? 224 : 0
+        setContainerWidth(canvasRef.current.offsetWidth - 32 - panelW)
+      }
     }
     measure()
     const observer = new ResizeObserver(measure)
@@ -465,7 +468,7 @@ export default function SmartDashboardPage() {
       observer.disconnect()
       window.removeEventListener("resize", measure)
     }
-  }, [])
+  }, [showWidgetPanel])
 
   // ── Session ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -557,9 +560,9 @@ export default function SmartDashboardPage() {
     userFiles.forEach((f) => { typeMap[f.document_type] = (typeMap[f.document_type] ?? 0) + 1 })
     setDocTypeData(Object.entries(typeMap).map(([name, value]) => ({ name: name.charAt(0).toUpperCase() + name.slice(1), value })))
 
-    // Show "New data" only when document count has grown since last Advanced Analytics run
-    const lastCount = parseInt(typeof window !== "undefined" ? (localStorage.getItem("aa_last_field_count") ?? "0") : "0")
-    setHasNewData(fields.length > lastCount)
+    // Show "New data" only if user has run Advanced Analytics before AND new docs arrived since
+    const lastCountRaw = typeof window !== "undefined" ? localStorage.getItem("aa_last_field_count") : null
+    setHasNewData(lastCountRaw !== null && fields.length > parseInt(lastCountRaw))
 
     setLoading(false)
   }, [session, dateFrom, dateTo])

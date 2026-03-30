@@ -215,44 +215,56 @@ export function HeroSection() {
                   0% { background-position: -200% center; }
                   100% { background-position: 200% center; }
                 }
-                @keyframes docDot {
-                  0%,100% { opacity:0.2; } 25% { opacity:1; }
+                @keyframes docDotAnim {
+                  0%,100% { opacity:0.15; } 25% { opacity:1; }
                 }
-                @keyframes barFloat {
-                  0%,100% { height: var(--h-base); }
-                  50% { height: var(--h-peak); }
-                }
+                @keyframes bar1 { 0%,100% { height:40%; } 50% { height:58%; } }
+                @keyframes bar2 { 0%,100% { height:65%; } 50% { height:82%; } }
+                @keyframes bar3 { 0%,100% { height:50%; } 50% { height:72%; } }
                 @keyframes lineTrace {
-                  0% { stroke-dashoffset: 60; }
-                  100% { stroke-dashoffset: 0; }
+                  0%,100% { stroke-dashoffset: 60; opacity:0.4; }
+                  50% { stroke-dashoffset: 0; opacity:1; }
                 }
-                @keyframes progressFill {
-                  0% { width: 0%; }
-                  60% { width: 89%; }
-                  100% { width: 89%; }
+                @keyframes dotPulse {
+                  0%,100% { opacity:0.3; r:2; }
+                  50% { opacity:1; r:3; }
                 }
-                @keyframes countUp24 {
-                  0% { content: "0"; } 20%{ content:"5"; } 40%{content:"12";} 60%{content:"18";} 80%{content:"22";} 100%{content:"24";}
+                @keyframes progressLoop {
+                  0% { width:0%; opacity:1; }
+                  70% { width:89%; opacity:1; }
+                  85% { width:89%; opacity:1; }
+                  95% { width:89%; opacity:0; }
+                  96% { width:0%; opacity:0; }
+                  100% { width:0%; opacity:1; }
                 }
-                @keyframes tagCycle {
-                  0%,28% { opacity:1; transform:scale(1); }
-                  33%,99% { opacity:0.3; transform:scale(0.97); }
-                  100% { opacity:1; }
+                @keyframes tagActive {
+                  0%,30% { opacity:1; font-weight:600; border-color:rgba(220,38,38,0.6); background:rgba(220,38,38,0.1); color:rgb(220,38,38); }
+                  35%,100% { opacity:0.4; font-weight:400; border-color:rgba(0,0,0,0.1); background:transparent; color:inherit; }
+                }
+                @keyframes cubeSwap {
+                  0%,30% { opacity:0.5; transform:scale(1); }
+                  35%,100% { opacity:0; transform:scale(0.8); }
                 }
                 .shimmer-bar {
-                  background: linear-gradient(90deg, hsl(var(--muted)) 25%, hsl(var(--muted-foreground)/0.15) 50%, hsl(var(--muted)) 75%);
+                  background: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 50%, #e5e7eb 75%);
                   background-size: 200% 100%;
-                  animation: shimmer 2s ease-in-out infinite;
+                  animation: shimmer 1.8s ease-in-out infinite;
                 }
                 .shimmer-bar-red {
-                  background: linear-gradient(90deg, hsl(var(--primary)/0.3) 25%, hsl(var(--primary)/0.6) 50%, hsl(var(--primary)/0.3) 75%);
+                  background: linear-gradient(90deg, rgba(220,38,38,0.2) 25%, rgba(220,38,38,0.45) 50%, rgba(220,38,38,0.2) 75%);
                   background-size: 200% 100%;
-                  animation: shimmer 2s ease-in-out infinite;
+                  animation: shimmer 1.8s ease-in-out infinite 0.3s;
                 }
-                .progress-fill { animation: progressFill 2.5s cubic-bezier(0.4,0,0.2,1) forwards; }
-                .tag-invoice { animation: tagCycle 3.6s ease-in-out infinite 0s; }
-                .tag-receipt { animation: tagCycle 3.6s ease-in-out infinite 1.2s; }
-                .tag-report  { animation: tagCycle 3.6s ease-in-out infinite 2.4s; }
+                .bar-1 { animation: bar1 2.2s ease-in-out infinite 0s; }
+                .bar-2 { animation: bar2 2.6s ease-in-out infinite 0.4s; }
+                .bar-3 { animation: bar3 2.4s ease-in-out infinite 0.8s; }
+                .progress-loop { animation: progressLoop 3.5s cubic-bezier(0.4,0,0.2,1) infinite; }
+                .tag-invoice { animation: tagActive 3.6s ease-in-out infinite 0s; }
+                .tag-receipt { animation: tagActive 3.6s ease-in-out infinite 1.2s; }
+                .tag-report  { animation: tagActive 3.6s ease-in-out infinite 2.4s; }
+                .cube-invoice { animation: cubeSwap 3.6s ease-in-out infinite 0s; }
+                .cube-receipt { animation: cubeSwap 3.6s ease-in-out infinite 1.2s; }
+                .cube-report  { animation: cubeSwap 3.6s ease-in-out infinite 2.4s; }
               `}</style>
 
               {/* Mid layer - Documents panel */}
@@ -267,18 +279,15 @@ export function HeroSection() {
                 </div>
                 <div className="mt-4 space-y-2.5">
                   {[
-                    { dotDelay: "0s", barClass: "shimmer-bar", rightClass: "shimmer-bar", rightW: "w-12" },
-                    { dotDelay: "0.6s", barClass: "shimmer-bar", rightClass: "shimmer-bar", rightW: "w-16" },
+                    { dotDelay: "0s",   barClass: "shimmer-bar", rightClass: "shimmer-bar",     rightW: "w-12" },
+                    { dotDelay: "0.6s", barClass: "shimmer-bar", rightClass: "shimmer-bar",     rightW: "w-16" },
                     { dotDelay: "1.2s", barClass: "shimmer-bar", rightClass: "shimmer-bar-red", rightW: "w-10" },
-                    { dotDelay: "1.8s", barClass: "shimmer-bar", rightClass: "shimmer-bar", rightW: "w-14" },
+                    { dotDelay: "1.8s", barClass: "shimmer-bar", rightClass: "shimmer-bar",     rightW: "w-14" },
                   ].map((row, i) => (
                     <div key={i} className="flex items-center gap-3">
                       <div
-                        className="h-2 w-2 rounded-full"
-                        style={{
-                          background: "hsl(var(--primary))",
-                          animation: `docDot 2.4s ease-in-out infinite ${row.dotDelay}`,
-                        }}
+                        className="h-2 w-2 rounded-full bg-primary"
+                        style={{ animation: `docDotAnim 2.4s ease-in-out infinite ${row.dotDelay}` }}
                       />
                       <div className={`h-2.5 flex-1 rounded ${row.barClass}`} />
                       <div className={`h-2.5 ${row.rightW} rounded ${row.rightClass}`} />
@@ -298,34 +307,24 @@ export function HeroSection() {
                 </div>
                 {/* Animated bars + line */}
                 <div className="mt-4 h-28 w-full relative flex items-end gap-2 px-1">
-                  {[
-                    { base: "40%", peak: "55%", delay: "0s", dim: true },
-                    { base: "65%", peak: "80%", delay: "0.4s", dim: false },
-                    { base: "50%", peak: "70%", delay: "0.8s", dim: true },
-                  ].map((bar, i) => (
-                    <div key={i} className="flex-1 rounded-sm" style={{
-                      background: bar.dim ? "hsl(var(--muted))" : "hsl(var(--primary)/0.4)",
-                      "--h-base": bar.base,
-                      "--h-peak": bar.peak,
-                      height: bar.base,
-                      animation: `barFloat ${2 + i * 0.3}s ease-in-out infinite ${bar.delay}`,
-                    } as React.CSSProperties} />
-                  ))}
+                  <div className="flex-1 rounded-sm bg-muted bar-1" />
+                  <div className="flex-1 rounded-sm bar-2" style={{ background: "rgba(220,38,38,0.35)" }} />
+                  <div className="flex-1 rounded-sm bg-muted bar-3" />
                   {/* SVG trend line overlay */}
                   <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 60" preserveAspectRatio="none">
                     <polyline
                       points="15,42 45,28 75,18"
                       fill="none"
-                      stroke="hsl(var(--primary))"
+                      stroke="rgb(220,38,38)"
                       strokeWidth="2"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       strokeDasharray="60"
-                      style={{ animation: "lineTrace 2s ease-in-out infinite alternate" }}
+                      style={{ animation: "lineTrace 3s ease-in-out infinite" }}
                     />
-                    {[[15,42],[45,28],[75,18]].map(([x,y],i) => (
-                      <circle key={i} cx={x} cy={y} r="2.5" fill="hsl(var(--primary))"
-                        style={{ animation: `docDot 2s ease-in-out infinite ${i*0.4}s` }} />
+                    {([[15,42],[45,28],[75,18]] as [number,number][]).map(([x,y],i) => (
+                      <circle key={i} cx={x} cy={y} r="2.5" fill="rgb(220,38,38)"
+                        style={{ animation: `dotPulse 2s ease-in-out infinite ${i*0.4}s` }} />
                     ))}
                   </svg>
                 </div>
@@ -353,29 +352,32 @@ export function HeroSection() {
                   </div>
                 </div>
                 <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                  <div className="h-full rounded-full bg-primary progress-fill" />
+                  <div className="h-full rounded-full bg-primary progress-loop" />
                 </div>
               </div>
 
-              {/* Classification tags */}
-              <div className="absolute right-12 bottom-28 flex flex-wrap gap-1.5">
-                {[
-                  { label: "invoice", cls: "tag-invoice" },
-                  { label: "receipt", cls: "tag-receipt" },
-                  { label: "report",  cls: "tag-report"  },
-                ].map(({ label, cls }) => (
-                  <span
-                    key={label}
-                    className={`rounded-md border px-2 py-1 text-[10px] shadow-sm transition-all ${cls}`}
-                    style={{
-                      borderColor: "hsl(var(--primary)/0.3)",
-                      background: "hsl(var(--primary)/0.08)",
-                      color: "hsl(var(--primary))",
-                    }}
-                  >
-                    {label}
-                  </span>
-                ))}
+              {/* Classification tags + cube bg */}
+              <div className="absolute right-12 bottom-28">
+                {/* Cycling cube backgrounds */}
+                <div className="absolute -bottom-8 right-0 flex gap-1.5 opacity-0">
+                  {["cube-invoice","cube-receipt","cube-report"].map((cls,i) => (
+                    <div key={i} className={`h-7 w-7 rounded-md bg-primary/10 border border-primary/20 ${cls}`} />
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { label: "invoice", cls: "tag-invoice" },
+                    { label: "receipt", cls: "tag-receipt" },
+                    { label: "report",  cls: "tag-report"  },
+                  ].map(({ label, cls }) => (
+                    <span
+                      key={label}
+                      className={`rounded-md border px-2 py-1 text-[10px] shadow-sm ${cls}`}
+                    >
+                      {label}
+                    </span>
+                  ))}
+                </div>
               </div>
             </div>
           </div>

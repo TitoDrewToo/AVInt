@@ -2,6 +2,7 @@ import { Navbar } from "@/components/navbar"
 import { Footer } from "@/components/footer"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
+import { StartFreeButton } from "@/components/start-free-button"
 import { 
   FileSearch, 
   FileText, 
@@ -189,9 +190,7 @@ export default function SmartStorageProductPage() {
               Upload once. Use repeatedly.
             </h2>
             <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
-              <Button size="lg" className="rounded-xl bg-primary text-primary-foreground hover:bg-primary/90">
-                Start Free
-              </Button>
+              <StartFreeButton tool="smart-storage" />
               <Link href="/pricing">
                 <Button variant="outline" size="lg" className="rounded-xl">
                   View Pricing

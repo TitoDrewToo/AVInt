@@ -1115,18 +1115,22 @@ export default function SmartStoragePage() {
                         <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
                         Rename
                       </button>
-                      {files.find(f => f.id === contextMenu.fileId)?.folder_id && (
-                        <>
-                          <div className="my-1 h-px bg-border" />
-                          <button
-                            onClick={() => { moveFileToFolder(contextMenu.fileId, null); setContextMenu(null) }}
-                            className="flex w-full items-center gap-2 px-4 py-2 text-sm text-foreground transition-colors hover:bg-muted"
-                          >
-                            <FolderOutput className="h-3.5 w-3.5 text-muted-foreground" />
-                            Move up
-                          </button>
-                        </>
-                      )}
+                      {files.find(f => f.id === contextMenu.fileId)?.folder_id && (() => {
+                        const fileFolderId = files.find(f => f.id === contextMenu.fileId)!.folder_id!
+                        const parentFolderId = folders.find(f => f.id === fileFolderId)?.parentId ?? null
+                        return (
+                          <>
+                            <div className="my-1 h-px bg-border" />
+                            <button
+                              onClick={() => { moveFileToFolder(contextMenu.fileId, parentFolderId); setContextMenu(null) }}
+                              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-foreground transition-colors hover:bg-muted"
+                            >
+                              <FolderOutput className="h-3.5 w-3.5 text-muted-foreground" />
+                              Move up
+                            </button>
+                          </>
+                        )
+                      })()}
                       <div className="my-1 h-px bg-border" />
                       <button
                         onClick={() => handleDeleteFile(contextMenu.fileId)}

@@ -211,13 +211,6 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
   const [authError, setAuthError] = useState("")
   const [authSuccess, setAuthSuccess] = useState("")
   const [authLoading, setAuthLoading] = useState(false)
-  const [authMode, setAuthMode] = useState<"signin" | "signup" | "forgot">("signin")
-  const [authEmail, setAuthEmail] = useState("")
-  const [authPassword, setAuthPassword] = useState("")
-  const [authConfirmPassword, setAuthConfirmPassword] = useState("")
-  const [authError, setAuthError] = useState("")
-  const [authSuccess, setAuthSuccess] = useState("")
-  const [authLoading, setAuthLoading] = useState(false)
   const [giftCodeApplied, setGiftCodeApplied] = useState(false)
   const subscriptionRef = useRef<HTMLDivElement>(null)
 

@@ -7,6 +7,14 @@ import { Button } from "@/components/ui/button"
 import { Check } from "lucide-react"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
+import { AuthGuardModal } from "@/components/auth-guard-modal"
+
+const CHECKOUT_URLS: Record<string, string> = {
+  "Day Pass": "https://avintelligence.lemonsqueezy.com/checkout/buy/9a1416cf-c8af-4df4-b4c6-8d20967214bc",
+  "Gift Codes": "https://avintelligence.lemonsqueezy.com/checkout/buy/1831b705-535d-4dd0-bd9d-65f29eba88b0",
+  "Pro Monthly": "https://avintelligence.lemonsqueezy.com/checkout/buy/0546a0f8-42f6-410e-a3f9-b6e326066159",
+  "Pro Annual": "https://avintelligence.lemonsqueezy.com/checkout/buy/deb076b5-4f7d-4d93-ad22-1a97693cc16e",
+}
 
 interface PricingCardProps {
   name: string
@@ -16,52 +24,40 @@ interface PricingCardProps {
   features: string[]
   isAnnual?: boolean
   highlighted?: boolean
-  isSignedIn?: boolean
+  isSignedIn: boolean
+  onRequireAuth: (checkoutUrl: string) => void
 }
 
 function PricingCard({
-  name,
-  price,
-  annualPrice,
-  description,
-  features,
-  isAnnual,
-  highlighted,
-  isSignedIn,
+  name, price, annualPrice, description, features,
+  isAnnual, highlighted, isSignedIn, onRequireAuth,
 }: PricingCardProps) {
   const displayPrice = isAnnual && annualPrice ? annualPrice : price
+  const checkoutUrl = name === "Pro"
+    ? (isAnnual ? CHECKOUT_URLS["Pro Annual"] : CHECKOUT_URLS["Pro Monthly"])
+    : CHECKOUT_URLS[name] ?? "#"
+
+  const handlePaidClick = () => {
+    if (!isSignedIn) {
+      onRequireAuth(checkoutUrl)
+    } else {
+      window.location.href = checkoutUrl
+    }
+  }
 
   return (
-    <div
-      className={`flex flex-col rounded-2xl border p-8 ${
-        highlighted
-          ? "border-primary bg-card shadow-lg"
-          : "border-border bg-card"
-      }`}
-    >
+    <div className={`flex flex-col rounded-2xl border p-8 ${highlighted ? "border-primary bg-card shadow-lg" : "border-border bg-card"}`}>
       <h3 className="text-xl font-semibold text-foreground">{name}</h3>
       <p className="mt-2 text-sm text-muted-foreground">{description}</p>
       {displayPrice !== null && (
         <div className="mt-6 flex items-center">
-          <span className="text-4xl font-semibold text-foreground">
-            {displayPrice}
-          </span>
-          {name === "Gift Codes" && (
-            <span className="ml-1 text-muted-foreground">/ code</span>
-          )}
-          {name === "Day Pass" && (
-            <span className="ml-1 text-muted-foreground">/ day</span>
-          )}
+          <span className="text-4xl font-semibold text-foreground">{displayPrice}</span>
+          {name === "Gift Codes" && <span className="ml-1 text-muted-foreground">/ code</span>}
+          {name === "Day Pass" && <span className="ml-1 text-muted-foreground">/ day</span>}
           {name === "Pro" && (
             <>
-              <span className="ml-1 text-muted-foreground">
-                /{isAnnual ? "year" : "month"}
-              </span>
-              {isAnnual && (
-                <span className="ml-2 text-sm font-medium text-primary">
-                  30% off
-                </span>
-              )}
+              <span className="ml-1 text-muted-foreground">/{isAnnual ? "year" : "month"}</span>
+              {isAnnual && <span className="ml-2 text-sm font-medium text-primary">30% off</span>}
             </>
           )}
         </div>
@@ -79,158 +75,114 @@ function PricingCard({
           </li>
         ))}
       </ul>
-      {name === "Free" && isSignedIn ? null : (
-        name === "Free" ? (
+      {name === "Free" ? (
+        isSignedIn ? null : (
           <Link href="/tools/smart-storage">
-            <Button
-              className={`mt-8 w-full rounded-xl bg-secondary text-secondary-foreground hover:bg-secondary/80`}
-              size="lg"
-            >
+            <Button className="mt-8 w-full rounded-xl bg-secondary text-secondary-foreground hover:bg-secondary/80" size="lg">
               Get Started
             </Button>
           </Link>
-        ) : (
-          <a href={CHECKOUT_URLS[name] ?? "#"}>
-            <Button
-              className={`mt-8 w-full rounded-xl ${
-                highlighted ? "" : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
-              }`}
-              size="lg"
-            >
-              {name === "Gift Codes" ? "Purchase Code" : "Get Started"}
-            </Button>
-          </a>
         )
+      ) : (
+        <Button
+          className={`mt-8 w-full rounded-xl ${highlighted ? "" : "bg-secondary text-secondary-foreground hover:bg-secondary/80"}`}
+          size="lg"
+          onClick={handlePaidClick}
+        >
+          {name === "Gift Codes" ? "Purchase Code" : "Get Started"}
+        </Button>
       )}
     </div>
   )
 }
 
-const plans: PricingCardProps[] = [
+const plans = [
   {
     name: "Gift Codes",
     price: "$6",
     description: "Transferable 24-hour access",
-    features: [
-      "Smart Storage",
-      "All available reports",
-      "Full structured outputs",
-      "Advanced Analytics",
-      "Smart Dashboards",
-      "Custom Dashboards",
-    ],
+    features: ["Smart Storage", "All available reports", "Full structured outputs", "Advanced Analytics", "Smart Dashboards", "Custom Dashboards"],
   },
   {
     name: "Free",
     price: null,
     description: "For individuals getting started",
-    features: [
-      "Secure Storage",
-      "Document classification",
-      "Basic dashboard access",
-    ],
+    features: ["Secure Storage", "Document classification", "Basic dashboard access"],
   },
   {
     name: "Day Pass",
     price: "$6",
     description: "Full access for 24 hours",
-    features: [
-      "Smart Storage",
-      "All available reports",
-      "Full structured outputs",
-      "Advanced Analytics",
-      "Smart Dashboards",
-      "Custom Dashboards",
-    ],
+    features: ["Smart Storage", "All available reports", "Full structured outputs", "Advanced Analytics", "Smart Dashboards", "Custom Dashboards"],
   },
   {
     name: "Pro",
     price: "$12",
     annualPrice: "$100",
     description: "For power users and convenience",
-    features: [
-      "Smart Storage",
-      "All available reports",
-      "Full structured outputs",
-      "Advanced Analytics",
-      "Smart Dashboards",
-      "Custom Dashboards",
-    ],
+    features: ["Smart Storage", "All available reports", "Full structured outputs", "Advanced Analytics", "Smart Dashboards", "Custom Dashboards"],
     highlighted: true,
   },
 ]
 
-const CHECKOUT_URLS: Record<string, string> = {
-  "Day Pass": "https://avintelligence.lemonsqueezy.com/checkout/buy/9a1416cf-c8af-4df4-b4c6-8d20967214bc",
-  "Gift Codes": "https://avintelligence.lemonsqueezy.com/checkout/buy/1831b705-535d-4dd0-bd9d-65f29eba88b0",
-  "Pro Monthly": "https://avintelligence.lemonsqueezy.com/checkout/buy/0546a0f8-42f6-410e-a3f9-b6e326066159",
-  "Pro Annual": "https://avintelligence.lemonsqueezy.com/checkout/buy/deb076b5-4f7d-4d93-ad22-1a97693cc16e",
-}
-
 export default function PricingPage() {
   const [isAnnual, setIsAnnual] = useState(false)
   const [isSignedIn, setIsSignedIn] = useState(false)
+  const [pendingCheckoutUrl, setPendingCheckoutUrl] = useState<string | null>(null)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setIsSignedIn(!!data.session)
-    })
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
-      setIsSignedIn(!!s)
-    })
+    supabase.auth.getSession().then(({ data }) => setIsSignedIn(!!data.session))
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => setIsSignedIn(!!s))
     return () => subscription.unsubscribe()
   }, [])
+
+  const handleRequireAuth = (checkoutUrl: string) => {
+    setPendingCheckoutUrl(checkoutUrl)
+  }
+
+  const handleAuthSuccess = () => {
+    setPendingCheckoutUrl(null)
+    if (pendingCheckoutUrl) {
+      window.location.href = pendingCheckoutUrl
+    }
+  }
 
   return (
     <div className="flex min-h-screen flex-col">
       <Navbar />
+      <AuthGuardModal
+        isVisible={!!pendingCheckoutUrl}
+        onSuccess={handleAuthSuccess}
+      />
       <main className="flex-1 px-6 py-24">
         <div className="mx-auto max-w-6xl">
-          {/* Header */}
           <div className="text-center">
             <h1 className="text-4xl font-semibold tracking-tight text-foreground md:text-5xl">
               Simple, transparent pricing
             </h1>
-            <p className="mt-4 text-lg text-muted-foreground">
-              Choose the plan that works best for you
-            </p>
+            <p className="mt-4 text-lg text-muted-foreground">Choose the plan that works best for you</p>
           </div>
-
-          {/* Toggle */}
           <div className="mt-12 flex items-center justify-center gap-3">
-            <span
-              className={`text-sm ${
-                !isAnnual ? "text-foreground" : "text-muted-foreground"
-              }`}
-            >
-              Monthly
-            </span>
+            <span className={`text-sm ${!isAnnual ? "text-foreground" : "text-muted-foreground"}`}>Monthly</span>
             <button
               onClick={() => setIsAnnual(!isAnnual)}
-              className={`relative h-6 w-11 rounded-full transition-colors ${
-                isAnnual ? "bg-primary" : "bg-muted"
-              }`}
+              className={`relative h-6 w-11 rounded-full transition-colors ${isAnnual ? "bg-primary" : "bg-muted"}`}
             >
-              <span
-                className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-card shadow-sm transition-transform ${
-                  isAnnual ? "translate-x-5" : "translate-x-0"
-                }`}
-              />
+              <span className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-card shadow-sm transition-transform ${isAnnual ? "translate-x-5" : "translate-x-0"}`} />
             </button>
-            <span
-              className={`text-sm ${
-                isAnnual ? "text-foreground" : "text-muted-foreground"
-              }`}
-            >
-              Annually
-              <span className="ml-1 text-xs text-primary">(30% savings)</span>
+            <span className={`text-sm ${isAnnual ? "text-foreground" : "text-muted-foreground"}`}>
+              Annually<span className="ml-1 text-xs text-primary">(30% savings)</span>
             </span>
           </div>
-
-          {/* Cards */}
           <div className="mt-12 grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
             {plans.map((plan) => (
-              <PricingCard key={plan.name} {...plan} isAnnual={isAnnual} isSignedIn={isSignedIn} />
+              <PricingCard
+                key={plan.name}
+                {...plan}
+                isAnnual={isAnnual}
+                isSignedIn={isSignedIn}
+                onRequireAuth={handleRequireAuth}
+              />
             ))}
           </div>
         </div>

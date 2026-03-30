@@ -45,7 +45,7 @@ function PricingCard({
   const checkoutUrl = name === "Pro"
     ? (isAnnual ? CHECKOUT_URLS["Pro Annual"] : CHECKOUT_URLS["Pro Monthly"])
     : CHECKOUT_URLS[name] ?? "#"
-  const active = isCardActive(name, activeStatus)
+  const active = isCardActive(name, activeStatus) && name !== "Gift Codes"
 
   const handlePaidClick = () => {
     if (!isSignedIn) {
@@ -110,7 +110,7 @@ function PricingCard({
             </Button>
           </Link>
         )
-      ) : active ? (
+      ) : (active && name !== "Gift Codes") ? (
         <Link href="/tools/smart-storage">
           <Button className="mt-8 w-full rounded-xl" size="lg">
             Go to Smart Storage

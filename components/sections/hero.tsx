@@ -276,10 +276,10 @@ export function HeroSection() {
                 }
                 @keyframes progressLoop {
                   0% { width:0%; opacity:1; }
-                  70% { width:89%; opacity:1; }
-                  85% { width:89%; opacity:1; }
-                  95% { width:89%; opacity:0; }
-                  96% { width:0%; opacity:0; }
+                  75% { width:100%; opacity:1; }
+                  88% { width:100%; opacity:1; }
+                  96% { width:100%; opacity:0; }
+                  97% { width:0%; opacity:0; }
                   100% { width:0%; opacity:1; }
                 }
                 @keyframes tagActive {
@@ -303,7 +303,7 @@ export function HeroSection() {
                 .bar-1 { animation: bar1 2.2s ease-in-out infinite 0s; }
                 .bar-2 { animation: bar2 2.6s ease-in-out infinite 0.4s; }
                 .bar-3 { animation: bar3 2.4s ease-in-out infinite 0.8s; }
-                .progress-loop { animation: progressLoop 3.5s cubic-bezier(0.4,0,0.2,1) infinite; }
+                .progress-loop { animation: progressLoop 4.2s cubic-bezier(0.4,0,0.2,1) infinite; }
                 .tag-invoice { animation: tagActive 3.6s ease-in-out infinite 0s; }
                 .tag-receipt { animation: tagActive 3.6s ease-in-out infinite 1.2s; }
                 .tag-report  { animation: tagActive 3.6s ease-in-out infinite 2.4s; }
@@ -405,11 +405,11 @@ export function HeroSection() {
                 </div>
                 <div className="mt-4 flex gap-2">
                   <div className="flex-1 rounded-lg bg-muted p-2">
-                    <LoopCountUp target={24} className="text-lg font-semibold text-foreground" loopDuration={3500} />
+                    <LoopCountUp target={24} className="text-lg font-semibold text-foreground" loopDuration={4200} />
                     <div className="text-[10px] text-muted-foreground">Files</div>
                   </div>
                   <div className="flex-1 rounded-lg bg-primary/10 p-2">
-                    <LoopCountUp target={89} suffix="%" className="text-lg font-semibold text-primary" loopDuration={3500} />
+                    <LoopCountUp target={100} suffix="%" className="text-lg font-semibold text-primary" loopDuration={4200} />
                     <div className="text-[10px] text-muted-foreground">Complete</div>
                   </div>
                 </div>

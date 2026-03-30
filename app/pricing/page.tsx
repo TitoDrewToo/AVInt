@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Navbar } from "@/components/navbar"
 import { Footer } from "@/components/footer"
 import { Button } from "@/components/ui/button"
-import { Check } from "lucide-react"
+import { Check, CheckCircle } from "lucide-react"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
@@ -25,17 +25,27 @@ interface PricingCardProps {
   isAnnual?: boolean
   highlighted?: boolean
   isSignedIn: boolean
+  activeStatus: string | null
   onRequireAuth: (checkoutUrl: string) => void
+}
+
+function isCardActive(name: string, activeStatus: string | null): boolean {
+  if (!activeStatus) return false
+  if (name === "Day Pass" && activeStatus === "day_pass") return true
+  if (name === "Pro" && activeStatus === "pro") return true
+  if (name === "Gift Codes" && activeStatus === "gift_code") return true
+  return false
 }
 
 function PricingCard({
   name, price, annualPrice, description, features,
-  isAnnual, highlighted, isSignedIn, onRequireAuth,
+  isAnnual, highlighted, isSignedIn, activeStatus, onRequireAuth,
 }: PricingCardProps) {
   const displayPrice = isAnnual && annualPrice ? annualPrice : price
   const checkoutUrl = name === "Pro"
     ? (isAnnual ? CHECKOUT_URLS["Pro Annual"] : CHECKOUT_URLS["Pro Monthly"])
     : CHECKOUT_URLS[name] ?? "#"
+  const active = isCardActive(name, activeStatus)
 
   const handlePaidClick = () => {
     if (!isSignedIn) {
@@ -46,7 +56,23 @@ function PricingCard({
   }
 
   return (
-    <div className={`flex flex-col rounded-2xl border p-8 ${highlighted ? "border-primary bg-card shadow-lg" : "border-border bg-card"}`}>
+    <div className={`relative flex flex-col rounded-2xl border p-8 transition-all ${
+      active
+        ? "border-primary bg-card shadow-lg ring-1 ring-primary/30"
+        : highlighted
+        ? "border-primary bg-card shadow-lg"
+        : "border-border bg-card"
+    }`}>
+      {/* Active badge */}
+      {active && (
+        <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+          <span className="flex items-center gap-1 rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground">
+            <CheckCircle className="h-3 w-3" />
+            Active
+          </span>
+        </div>
+      )}
+
       <h3 className="text-xl font-semibold text-foreground">{name}</h3>
       <p className="mt-2 text-sm text-muted-foreground">{description}</p>
       {displayPrice !== null && (
@@ -75,6 +101,7 @@ function PricingCard({
           </li>
         ))}
       </ul>
+
       {name === "Free" ? (
         isSignedIn ? null : (
           <Link href="/tools/smart-storage">
@@ -83,6 +110,12 @@ function PricingCard({
             </Button>
           </Link>
         )
+      ) : active ? (
+        <Link href="/tools/smart-storage">
+          <Button className="mt-8 w-full rounded-xl" size="lg">
+            Go to Smart Storage
+          </Button>
+        </Link>
       ) : (
         <Button
           className={`mt-8 w-full rounded-xl ${highlighted ? "" : "bg-secondary text-secondary-foreground hover:bg-secondary/80"}`}
@@ -128,32 +161,54 @@ const plans = [
 export default function PricingPage() {
   const [isAnnual, setIsAnnual] = useState(false)
   const [isSignedIn, setIsSignedIn] = useState(false)
+  const [activeStatus, setActiveStatus] = useState<string | null>(null)
   const [pendingCheckoutUrl, setPendingCheckoutUrl] = useState<string | null>(null)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setIsSignedIn(!!data.session))
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => setIsSignedIn(!!s))
+    supabase.auth.getSession().then(async ({ data }) => {
+      setIsSignedIn(!!data.session)
+      if (data.session?.user?.email) {
+        await fetchSubscription(data.session.user.email)
+      }
+    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_e, s) => {
+      setIsSignedIn(!!s)
+      if (s?.user?.email) {
+        await fetchSubscription(s.user.email)
+      } else {
+        setActiveStatus(null)
+      }
+    })
     return () => subscription.unsubscribe()
   }, [])
 
-  const handleRequireAuth = (checkoutUrl: string) => {
-    setPendingCheckoutUrl(checkoutUrl)
+  const fetchSubscription = async (email: string) => {
+    const { data } = await supabase
+      .from("subscriptions")
+      .select("status, current_period_end")
+      .eq("email", email)
+      .single()
+    if (!data) return
+    // Check day pass expiry client-side
+    if (data.status === "day_pass" && data.current_period_end) {
+      const expired = new Date(data.current_period_end) < new Date()
+      setActiveStatus(expired ? null : "day_pass")
+    } else {
+      setActiveStatus(["pro", "gift_code"].includes(data.status) ? data.status : null)
+    }
   }
+
+  const handleRequireAuth = (checkoutUrl: string) => setPendingCheckoutUrl(checkoutUrl)
 
   const handleAuthSuccess = () => {
     setPendingCheckoutUrl(null)
-    if (pendingCheckoutUrl) {
-      window.location.href = pendingCheckoutUrl
-    }
+    if (pendingCheckoutUrl) window.location.href = pendingCheckoutUrl
   }
 
   return (
     <div className="flex min-h-screen flex-col">
       <Navbar />
-      <AuthGuardModal
-        isVisible={!!pendingCheckoutUrl}
-        onSuccess={handleAuthSuccess}
-      />
+      <AuthGuardModal isVisible={!!pendingCheckoutUrl} onSuccess={handleAuthSuccess} />
       <main className="flex-1 px-6 py-24">
         <div className="mx-auto max-w-6xl">
           <div className="text-center">
@@ -181,6 +236,7 @@ export default function PricingPage() {
                 {...plan}
                 isAnnual={isAnnual}
                 isSignedIn={isSignedIn}
+                activeStatus={activeStatus}
                 onRequireAuth={handleRequireAuth}
               />
             ))}

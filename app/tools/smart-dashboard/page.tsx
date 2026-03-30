@@ -120,7 +120,6 @@ const WIDGET_LIBRARY = [
   { type: "area-chart",       title: "Income vs Expenses",  desc: "Monthly trend of income and expenses over time",      isPremium: false },
   { type: "bar-chart",        title: "Category Breakdown",  desc: "Total spending split by expense category",            isPremium: false },
   { type: "bar-deductible",   title: "Deductible Expenses", desc: "Categories that reduce your taxable income",          isPremium: false },
-  { type: "pie-chart",        title: "Doc Distribution",    desc: "Breakdown of document types in your storage",         isPremium: false },
   { type: "context-summary",  title: "Context Summary",     desc: "AI-generated financial narrative from your documents", isPremium: true  },
 ]
 

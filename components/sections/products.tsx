@@ -60,10 +60,16 @@ function StatusBadge({ status }: { status: StatusType }) {
 function PicklePalIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <style>{`
+        @keyframes pp-ring { 0%,100%{opacity:0.3;r:3} 50%{opacity:1;r:3.5} }
+        @keyframes pp-core { 0%,100%{opacity:1} 50%{opacity:0.4} }
+        .pp-r { animation: pp-ring 2s ease-in-out infinite; }
+        .pp-c { animation: pp-core 2s ease-in-out infinite; }
+      `}</style>
       <circle cx="12" cy="12" r="9" className="fill-muted stroke-border" strokeWidth="0.5" />
       <circle cx="12" cy="12" r="6" className="fill-card stroke-border" strokeWidth="0.5" />
-      <circle cx="12" cy="12" r="3" className="fill-primary/20 stroke-primary/40" strokeWidth="0.5" />
-      <circle cx="12" cy="12" r="1" className="fill-primary" />
+      <circle cx="12" cy="12" r="3" fill="rgba(220,38,38,0.2)" stroke="rgba(220,38,38,0.4)" strokeWidth="0.5" className="pp-r" />
+      <circle cx="12" cy="12" r="1" fill="rgb(220,38,38)" className="pp-c" />
     </svg>
   )
 }
@@ -71,11 +77,19 @@ function PicklePalIcon({ className }: { className?: string }) {
 function HooperIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <style>{`
+        @keyframes hoop-ellipse { 0%,100%{opacity:0.3;ry:3} 50%{opacity:1;ry:4} }
+        @keyframes hoop-spoke { 0%,100%{opacity:0.2} 50%{opacity:0.8} }
+        .he { animation: hoop-ellipse 2.2s ease-in-out infinite; }
+        .hs1 { animation: hoop-spoke 2.2s ease-in-out infinite 0s; }
+        .hs2 { animation: hoop-spoke 2.2s ease-in-out infinite 0.4s; }
+        .hs3 { animation: hoop-spoke 2.2s ease-in-out infinite 0.8s; }
+      `}</style>
       <circle cx="12" cy="12" r="9" className="fill-muted stroke-border" strokeWidth="0.5" />
-      <path d="M12 3C12 3 12 12 12 12" className="stroke-border" strokeWidth="0.5" />
-      <path d="M12 12C12 12 19.5 7.5 19.5 7.5" className="stroke-border" strokeWidth="0.5" />
-      <path d="M12 12C12 12 4.5 7.5 4.5 7.5" className="stroke-border" strokeWidth="0.5" />
-      <ellipse cx="12" cy="12" rx="9" ry="3" className="fill-none stroke-primary/40" strokeWidth="1" />
+      <path d="M12 3L12 12" stroke="rgb(220,38,38)" strokeWidth="0.5" strokeOpacity="0.5" className="hs1" />
+      <path d="M12 12L19.5 7.5" stroke="rgb(220,38,38)" strokeWidth="0.5" strokeOpacity="0.5" className="hs2" />
+      <path d="M12 12L4.5 7.5" stroke="rgb(220,38,38)" strokeWidth="0.5" strokeOpacity="0.5" className="hs3" />
+      <ellipse cx="12" cy="12" rx="9" ry="3" fill="none" stroke="rgb(220,38,38)" strokeOpacity="0.4" strokeWidth="1" className="he" />
     </svg>
   )
 }
@@ -83,12 +97,21 @@ function HooperIcon({ className }: { className?: string }) {
 function StorageIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <style>{`
+        @keyframes prod-upload { 0%,100%{transform:translateY(0);opacity:1} 40%{transform:translateY(-2px);opacity:0.5} 70%{transform:translateY(-1px);opacity:1} }
+        @keyframes prod-dot { 0%,100%{opacity:1} 50%{opacity:0.2} }
+        .pu { animation: prod-upload 2s ease-in-out infinite; transform-origin: 11px 11px; }
+        .pd { animation: prod-dot 1.2s ease-in-out infinite; }
+      `}</style>
       <rect x="6" y="2" width="14" height="18" rx="1.5" className="fill-muted stroke-border" strokeWidth="0.5" />
       <rect x="4" y="4" width="14" height="18" rx="1.5" className="fill-card stroke-border" strokeWidth="0.5" />
       <rect x="7" y="8" width="8" height="1" rx="0.5" className="fill-muted-foreground/30" />
       <rect x="7" y="11" width="6" height="1" rx="0.5" className="fill-muted-foreground/20" />
       <rect x="7" y="14" width="7" height="1" rx="0.5" className="fill-muted-foreground/20" />
-      <circle cx="16" cy="6" r="2.5" className="fill-primary" />
+      <g className="pu">
+        <path d="M11 15v-5M11 10l-2 2M11 10l2 2" stroke="rgb(220,38,38)" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
+      </g>
+      <circle cx="16" cy="6" r="2.5" fill="rgb(220,38,38)" className="pd" />
     </svg>
   )
 }
@@ -96,13 +119,23 @@ function StorageIcon({ className }: { className?: string }) {
 function DashboardIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <style>{`
+        @keyframes pb1 { 0%,100%{height:5px;y:14px} 50%{height:7px;y:12px} }
+        @keyframes pb2 { 0%,100%{height:8px;y:11px} 50%{height:10px;y:9px} }
+        @keyframes pb3 { 0%,100%{height:6px;y:13px} 50%{height:8px;y:11px} }
+        @keyframes pl { 0%{stroke-dashoffset:20;opacity:0.3} 60%{stroke-dashoffset:0;opacity:1} 100%{stroke-dashoffset:0;opacity:1} }
+        .pb1 { animation: pb1 2.2s ease-in-out infinite 0s; }
+        .pb2 { animation: pb2 2.6s ease-in-out infinite 0.35s; }
+        .pb3 { animation: pb3 2.4s ease-in-out infinite 0.7s; }
+        .pl { stroke-dasharray:20; animation: pl 2.4s ease-in-out infinite; }
+      `}</style>
       <rect x="2" y="3" width="20" height="18" rx="2" className="fill-card stroke-border" strokeWidth="0.5" />
       <rect x="2" y="3" width="20" height="4" rx="2" className="fill-muted stroke-border" strokeWidth="0.5" />
       <circle cx="5" cy="5" r="1" className="fill-primary/60" />
-      <rect x="4" y="14" width="3" height="5" rx="0.5" className="fill-muted" />
-      <rect x="9" y="11" width="3" height="8" rx="0.5" className="fill-primary/30" />
-      <rect x="14" y="13" width="3" height="6" rx="0.5" className="fill-muted" />
-      <path d="M5.5 12L10.5 9L15.5 10.5" className="stroke-primary" strokeWidth="1" strokeLinecap="round" />
+      <rect x="4" y="14" width="3" height="5" rx="0.5" className="fill-muted pb1" />
+      <rect x="9" y="11" width="3" height="8" rx="0.5" className="fill-primary/30 pb2" />
+      <rect x="14" y="13" width="3" height="6" rx="0.5" className="fill-muted pb3" />
+      <path d="M5.5 12L10.5 9L15.5 10.5" stroke="rgb(220,38,38)" strokeWidth="1" strokeLinecap="round" className="pl" />
     </svg>
   )
 }

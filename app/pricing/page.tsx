@@ -6,6 +6,7 @@ import { Footer } from "@/components/footer"
 import { Button } from "@/components/ui/button"
 import { Check } from "lucide-react"
 import Link from "next/link"
+import { supabase } from "@/lib/supabase"
 
 interface PricingCardProps {
   name: string

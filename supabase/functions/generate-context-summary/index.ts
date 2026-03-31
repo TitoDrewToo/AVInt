@@ -7,7 +7,7 @@ const SUPABASE_URL           = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 
 // Switch between providers via Supabase Secret AI_PROVIDER = "anthropic" | "openai"
-const AI_PROVIDER = Deno.env.get("AI_PROVIDER") ?? "anthropic"
+const AI_PROVIDER = Deno.env.get("SUMMARY_PROVIDER") ?? Deno.env.get("AI_PROVIDER") ?? "anthropic"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

@@ -66,6 +66,7 @@ interface LayoutItem {
   h: number
   minW?: number
   minH?: number
+  static?: boolean
 }
 
 interface KPIData {
@@ -127,6 +128,41 @@ const DEFAULT_LAYOUT: LayoutItem[] = [
   { i: "bar-deductible",   x: 4,  y: 17, w: 4, h: 11, minW: 3, minH: 3 },
   { i: "pie-chart",        x: 8,  y: 17, w: 4, h: 11, minW: 3, minH: 3 },
 ]
+
+// ── Mobile layout derivation ──────────────────────────────────────────────────
+// Translates a saved 12-col desktop layout into a 4-col mobile layout.
+// Never persisted — computed at render time so desktop config is untouched.
+function toMobileLayout(desktopLayout: LayoutItem[]): LayoutItem[] {
+  // Sort by desktop reading order: top row first, then left to right
+  const sorted = [...desktopLayout].sort((a, b) => a.y !== b.y ? a.y - b.y : a.x - b.x)
+
+  const MOBILE_COLS = 4
+  const mobile: LayoutItem[] = []
+  let curX = 0
+  let curY = 0
+  let rowH = 0
+
+  for (const item of sorted) {
+    // w≤2 on 12-col desktop → half width (w=2) on 4-col mobile
+    // w>2  → full width (w=4)
+    const mw = item.w <= 2 ? 2 : MOBILE_COLS
+    // height: keep proportional but enforce a minimum for charts
+    const mh = item.h
+
+    // Wrap to next row if it won't fit
+    if (curX + mw > MOBILE_COLS) {
+      curY += rowH
+      curX = 0
+      rowH = 0
+    }
+
+    mobile.push({ ...item, x: curX, y: curY, w: mw, h: mh, static: true })
+    curX += mw
+    rowH = Math.max(rowH, mh)
+  }
+
+  return mobile
+}
 
 const WIDGET_MIN_SIZE: Record<string, { minW: number; minH: number }> = {
   "kpi-income":      { minW: 2, minH: 2 },
@@ -943,8 +979,8 @@ export default function SmartDashboardPage() {
               )}
             </div>
 
-            {/* Advanced Analytics — always position 2, beta-gated */}
-            {(() => {
+            {/* Advanced Analytics — desktop only */}
+            {!isMobile && (() => {
               const betaEmail = process.env.NEXT_PUBLIC_AA_BETA_EMAIL
               const isBetaUser = betaEmail && session?.user?.email === betaEmail
               const canUseAA = isPro && isBetaUser
@@ -1000,8 +1036,8 @@ export default function SmartDashboardPage() {
               )
             })()}
 
-            {/* Color picker — only when widget selected */}
-            {selectedWidget && (
+            {/* Color picker — desktop only, when widget selected */}
+            {!isMobile && selectedWidget && (
               <div className="relative flex items-center gap-1.5">
                 <div className="h-4 w-px bg-border mx-1" />
                 <span className="text-xs text-muted-foreground">Color:</span>
@@ -1050,8 +1086,8 @@ export default function SmartDashboardPage() {
               </div>
             )}
 
-            {/* Chart type picker — last, only when applicable chart widget selected */}
-            {selectedWidget && CHART_TYPE_OPTIONS[selectedWidget.type] && (
+            {/* Chart type picker — desktop only */}
+            {!isMobile && selectedWidget && CHART_TYPE_OPTIONS[selectedWidget.type] && (
               <div className="flex items-center gap-1">
                 <div className="h-4 w-px bg-border mx-1" />
                 <span className="text-xs text-muted-foreground">Chart:</span>
@@ -1074,26 +1110,21 @@ export default function SmartDashboardPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Mobile: open Visualizations as a sheet */}
-            <button
-              className="flex md:hidden h-7 items-center gap-1.5 rounded-lg border border-border px-3 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
-              onClick={() => setMobileWidgetPanelOpen(true)}
-            >
-              <LayoutGrid className="h-3.5 w-3.5" />
-              Widgets
-            </button>
-            {isDirty && <span className="hidden sm:inline text-xs text-muted-foreground">Unsaved changes</span>}
-            <button
-              onClick={saveLayout}
-              disabled={!isDirty || isSaving}
-              className={`flex h-7 items-center gap-1.5 rounded-lg px-3 text-xs transition-all ${
-                isDirty ? "bg-primary text-primary-foreground hover:bg-primary/90" : "border border-border text-muted-foreground opacity-50 cursor-not-allowed"
-              }`}
-            >
-              {savedConfirm ? <><Check className="h-3.5 w-3.5" /> Saved</>
-                : isSaving ? <><div className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" /> Saving…</>
-                : <><Save className="h-3.5 w-3.5" /> Save Layout</>}
-            </button>
+            {/* Desktop only — save layout controls */}
+            {!isMobile && <>
+              {isDirty && <span className="text-xs text-muted-foreground">Unsaved changes</span>}
+              <button
+                onClick={saveLayout}
+                disabled={!isDirty || isSaving}
+                className={`flex h-7 items-center gap-1.5 rounded-lg px-3 text-xs transition-all ${
+                  isDirty ? "bg-primary text-primary-foreground hover:bg-primary/90" : "border border-border text-muted-foreground opacity-50 cursor-not-allowed"
+                }`}
+              >
+                {savedConfirm ? <><Check className="h-3.5 w-3.5" /> Saved</>
+                  : isSaving ? <><div className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" /> Saving…</>
+                  : <><Save className="h-3.5 w-3.5" /> Save Layout</>}
+              </button>
+            </>}
           </div>
         </div>
 
@@ -1121,37 +1152,41 @@ export default function SmartDashboardPage() {
             ) : (
               <GridLayout
                 className="layout"
-                layout={layout}
-                cols={12}
+                layout={isMobile ? toMobileLayout(layout) : layout}
+                cols={isMobile ? 4 : 12}
                 rowHeight={24}
                 width={containerWidth}
-                onLayoutChange={handleLayoutChange}
-                draggableHandle=".drag-handle"
+                onLayoutChange={isMobile ? (() => {}) : handleLayoutChange}
+                draggableHandle={isMobile ? undefined : ".drag-handle"}
+                isDraggable={!isMobile}
+                isResizable={!isMobile}
                 margin={[10, 10]}
                 containerPadding={[0, 0]}
-                resizeHandles={["se", "sw", "ne", "nw", "e", "w", "s"]}
+                resizeHandles={isMobile ? [] : ["se", "sw", "ne", "nw", "e", "w", "s"]}
               >
                 {widgets.map((widget) => (
                   <div
                     key={widget.id}
-                    onClick={(e) => { e.stopPropagation(); setSelectedWidgetId(widget.id); setShowColorPicker(false); setShowDateFilter(false); setContextMenu(null) }}
-                    onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ x: e.clientX, y: e.clientY, widgetId: widget.id }) }}
-                    className={`group relative flex flex-col rounded-2xl border bg-card shadow-sm transition-all cursor-pointer ${
-                      selectedWidgetId === widget.id
-                        ? "border-primary ring-2 ring-primary/20"
-                        : "border-border hover:border-border/60 hover:shadow-md"
+                    onClick={isMobile ? undefined : (e) => { e.stopPropagation(); setSelectedWidgetId(widget.id); setShowColorPicker(false); setShowDateFilter(false); setContextMenu(null) }}
+                    onContextMenu={isMobile ? undefined : (e) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ x: e.clientX, y: e.clientY, widgetId: widget.id }) }}
+                    className={`group relative flex flex-col rounded-2xl border bg-card shadow-sm transition-all ${
+                      isMobile
+                        ? "border-border"
+                        : selectedWidgetId === widget.id
+                          ? "border-primary ring-2 ring-primary/20 cursor-pointer"
+                          : "border-border hover:border-border/60 hover:shadow-md cursor-pointer"
                     }`}
                   >
-                    {/* Corner grid markers — shown when selected */}
-                    {selectedWidgetId === widget.id && (<>
+                    {/* Corner grid markers — desktop selected state only */}
+                    {!isMobile && selectedWidgetId === widget.id && (<>
                       <span className="pointer-events-none absolute -top-1 -left-1 h-2 w-2 rounded-full bg-primary" />
                       <span className="pointer-events-none absolute -top-1 -right-1 h-2 w-2 rounded-full bg-primary" />
                       <span className="pointer-events-none absolute -bottom-1 -left-1 h-2 w-2 rounded-full bg-primary" />
                       <span className="pointer-events-none absolute -bottom-1 -right-1 h-2 w-2 rounded-full bg-primary" />
                     </>)}
 
-                    {/* Drag handle */}
-                    <div className="drag-handle absolute left-0 right-0 top-0 h-8 cursor-grab rounded-t-2xl opacity-0 group-hover:opacity-100 transition-opacity" />
+                    {/* Drag handle — desktop only */}
+                    {!isMobile && <div className="drag-handle absolute left-0 right-0 top-0 h-8 cursor-grab rounded-t-2xl opacity-0 group-hover:opacity-100 transition-opacity" />}
 
                     {/* Widget header */}
                     <div className="flex items-center px-4 pt-3 pb-1 shrink-0">
@@ -1186,8 +1221,8 @@ export default function SmartDashboardPage() {
               </GridLayout>
             )}
 
-            {/* Right-click context menu */}
-            {contextMenu && (
+            {/* Right-click context menu — desktop only */}
+            {!isMobile && contextMenu && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setContextMenu(null)} />
                 <div

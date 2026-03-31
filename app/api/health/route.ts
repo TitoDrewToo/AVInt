@@ -14,22 +14,25 @@ async function fetchProviderStatus(url: string): Promise<string> {
   }
 }
 
+function worstOf(...indicators: string[]): "operational" | "degraded" | "outage" {
+  if (indicators.some((s) => ["major", "critical"].includes(s))) return "outage"
+  if (indicators.some((s) => ["minor", "maintenance"].includes(s))) return "degraded"
+  return "operational"
+}
+
 export async function GET() {
-  const [supabase, lemon] = await Promise.all([
+  const [supabase, lemon, openai, anthropic, gemini] = await Promise.all([
     fetchProviderStatus("https://status.supabase.com/api/v2/status.json"),
     fetchProviderStatus("https://lmsqueezy.statuspage.io/api/v2/status.json"),
+    fetchProviderStatus("https://status.openai.com/api/v2/status.json"),
+    fetchProviderStatus("https://status.anthropic.com/api/v2/status.json"),
+    fetchProviderStatus("https://status.google.com/api/v2/status.json"),
   ])
 
-  const indicators = [supabase, lemon]
-  const anyMajor = indicators.some((s) => ["major", "critical"].includes(s))
-  const anyMinor = indicators.some((s) => s === "minor" || s === "maintenance")
-  const allClear = indicators.every((s) => s === "none" || s === "unknown")
-
-  const overall: "operational" | "degraded" | "outage" =
-    anyMajor ? "outage" : anyMinor ? "degraded" : allClear ? "operational" : "degraded"
+  const overall = worstOf(supabase, lemon, openai, anthropic, gemini)
 
   return NextResponse.json({
     overall,
-    providers: { supabase, lemon },
+    providers: { supabase, lemon, openai, anthropic, gemini },
   })
 }

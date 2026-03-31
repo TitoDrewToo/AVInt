@@ -60,26 +60,6 @@ const dashboardModules = [
     )
   },
   {
-    title: "Document Type Distribution",
-    visualization: (
-      <div className="flex h-20 items-center justify-center">
-        <svg viewBox="0 0 60 60" className="h-16 w-16">
-          <circle cx="30" cy="30" r="25" fill="none" stroke="currentColor" strokeWidth="8" className="text-primary/20" />
-          <circle
-            cx="30" cy="30" r="25" fill="none" stroke="currentColor" strokeWidth="8"
-            strokeDasharray="95 62" strokeDashoffset="157" className="text-primary"
-            style={{ animation: "sd-donut 2.4s ease-in-out infinite", transformOrigin: "30px 30px" }}
-          />
-          <circle
-            cx="30" cy="30" r="25" fill="none" stroke="currentColor" strokeWidth="8"
-            strokeDasharray="40 117" strokeDashoffset="-95" className="text-primary/60"
-            style={{ animation: "sd-donut2 2.4s .5s ease-in-out infinite", transformOrigin: "30px 30px" }}
-          />
-        </svg>
-      </div>
-    )
-  },
-  {
     title: "Activity Timeline",
     visualization: (
       <div className="flex h-20 items-center justify-center px-4">
@@ -99,6 +79,48 @@ const dashboardModules = [
       </div>
     )
   },
+  {
+    title: "Context Summary",
+    visualization: (
+      <div className="flex h-20 flex-col justify-center gap-1.5 px-1">
+        <div className="flex items-center gap-1.5">
+          <svg viewBox="0 0 12 12" className="h-3 w-3 flex-shrink-0 text-primary" fill="currentColor"
+            style={{ animation: "sd-spark 1.8s ease-in-out infinite" }}>
+            <path d="M6 0l1.2 3.8L11 6l-3.8 1.2L6 12l-1.2-4.8L0 6l4.8-1.2z"/>
+          </svg>
+          <div className="h-1.5 w-14 origin-left rounded-full bg-primary"
+            style={{ animation: "sd-text 2.4s ease-in-out infinite" }} />
+        </div>
+        <div className="h-1.5 w-full origin-left rounded-full bg-primary/40"
+          style={{ animation: "sd-text 2.4s .3s ease-in-out infinite" }} />
+        <div className="h-1.5 w-10/12 origin-left rounded-full bg-primary/35"
+          style={{ animation: "sd-text 2.4s .6s ease-in-out infinite" }} />
+        <div className="h-1.5 w-11/12 origin-left rounded-full bg-primary/30"
+          style={{ animation: "sd-text 2.4s .9s ease-in-out infinite" }} />
+        <div className="h-1.5 w-7/12 origin-left rounded-full bg-primary/25"
+          style={{ animation: "sd-text 2.4s 1.2s ease-in-out infinite" }} />
+      </div>
+    )
+  },
+  {
+    title: "Advanced Analytics",
+    visualization: (
+      <div className="relative flex h-20 items-end justify-center gap-1.5 px-2">
+        <div className="h-8  w-4 origin-bottom rounded-t bg-primary/50" style={{ animation: "sd-bar 2s .1s ease-in-out infinite" }} />
+        <div className="h-12 w-4 origin-bottom rounded-t bg-primary/70" style={{ animation: "sd-bar 2s .3s ease-in-out infinite" }} />
+        <div className="h-6  w-4 origin-bottom rounded-t bg-primary/40" style={{ animation: "sd-bar 2s .5s ease-in-out infinite" }} />
+        <div className="h-16 w-4 origin-bottom rounded-t bg-primary"    style={{ animation: "sd-bar 2s .7s ease-in-out infinite" }} />
+        <div className="h-10 w-4 origin-bottom rounded-t bg-primary/60" style={{ animation: "sd-bar 2s .9s ease-in-out infinite" }} />
+        {/* Insight sparkle above tallest bar */}
+        <div className="absolute bottom-[4.2rem] left-1/2 -translate-x-1/2">
+          <svg viewBox="0 0 10 10" className="h-3.5 w-3.5 text-primary" fill="currentColor"
+            style={{ animation: "sd-spark 1.5s ease-in-out infinite" }}>
+            <path d="M5 0l1 3.5 3.5 1-3.5 1-1 3.5-1-3.5-3.5-1 3.5-1z"/>
+          </svg>
+        </div>
+      </div>
+    )
+  },
 ]
 
 export default function SmartDashboardProductPage() {
@@ -108,12 +130,12 @@ export default function SmartDashboardProductPage() {
 
       {/* Global keyframes for dashboard visualizations */}
       <style>{`
-        @keyframes sd-bar    { 0%,100%{transform:scaleY(.15);opacity:.25} 60%{transform:scaleY(1);opacity:1} }
-        @keyframes sd-draw   { 0%{stroke-dashoffset:105;opacity:.2} 70%,100%{stroke-dashoffset:0;opacity:1} }
-        @keyframes sd-dot    { 0%,100%{transform:scale(.3);opacity:.2} 70%,100%{transform:scale(1);opacity:1} }
-        @keyframes sd-donut  { 0%{stroke-dashoffset:157;opacity:.2} 70%,100%{stroke-dashoffset:0;opacity:1} }
-        @keyframes sd-donut2 { 0%{stroke-dashoffset:-157;opacity:.1} 70%,100%{stroke-dashoffset:-95;opacity:1} }
+        @keyframes sd-bar     { 0%,100%{transform:scaleY(.15);opacity:.25} 60%{transform:scaleY(1);opacity:1} }
+        @keyframes sd-draw    { 0%{stroke-dashoffset:105;opacity:.2} 70%,100%{stroke-dashoffset:0;opacity:1} }
+        @keyframes sd-dot     { 0%,100%{transform:scale(.3);opacity:.2} 70%,100%{transform:scale(1);opacity:1} }
         @keyframes sd-timeline{ 0%,100%{transform:scale(1);opacity:.4} 50%{transform:scale(1.5);opacity:1} }
+        @keyframes sd-text    { 0%,100%{transform:scaleX(.1);opacity:.15} 55%{transform:scaleX(1);opacity:1} }
+        @keyframes sd-spark   { 0%,100%{transform:scale(.5) rotate(0deg);opacity:.3} 50%{transform:scale(1.2) rotate(20deg);opacity:1} }
       `}</style>
 
       <main className="flex-1">

@@ -130,23 +130,25 @@ const DEFAULT_LAYOUT: LayoutItem[] = [
 ]
 
 // ── Mobile layout derivation ──────────────────────────────────────────────────
-// Translates a saved 12-col desktop layout into a 4-col mobile layout.
+// Translates a saved 12-col desktop layout into a mobile-friendly 12-col layout.
+// Keeps cols=12 so containerWidth math is identical — only widget sizes change:
+//   w ≤ 2 on desktop  →  w=6  (half screen, two per row)
+//   w  > 2 on desktop  →  w=12 (full screen, one per row)
 // Never persisted — computed at render time so desktop config is untouched.
 function toMobileLayout(desktopLayout: LayoutItem[]): LayoutItem[] {
+  const MOBILE_COLS = 12
+  const HALF = 6
+
   // Sort by desktop reading order: top row first, then left to right
   const sorted = [...desktopLayout].sort((a, b) => a.y !== b.y ? a.y - b.y : a.x - b.x)
 
-  const MOBILE_COLS = 4
   const mobile: LayoutItem[] = []
   let curX = 0
   let curY = 0
   let rowH = 0
 
   for (const item of sorted) {
-    // w≤2 on 12-col desktop → half width (w=2) on 4-col mobile
-    // w>2  → full width (w=4)
-    const mw = item.w <= 2 ? 2 : MOBILE_COLS
-    // height: keep proportional but enforce a minimum for charts
+    const mw = item.w <= 2 ? HALF : MOBILE_COLS
     const mh = item.h
 
     // Wrap to next row if it won't fit
@@ -1153,7 +1155,7 @@ export default function SmartDashboardPage() {
               <GridLayout
                 className="layout"
                 layout={isMobile ? toMobileLayout(layout) : layout}
-                cols={isMobile ? 4 : 12}
+                cols={12}
                 rowHeight={24}
                 width={containerWidth}
                 onLayoutChange={isMobile ? (() => {}) : handleLayoutChange}

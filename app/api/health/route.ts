@@ -97,7 +97,10 @@ export async function GET() {
     checkGemini(),
   ])
 
-  const overall = worstOf(supabase, lemon, openai, anthropic, gemini)
+  // LemonSqueezy only drags overall to outage — minor/degraded payments issues don't affect core indicator
+  const core = worstOf(supabase, openai, anthropic, gemini)
+  const overall: "operational" | "degraded" | "outage" =
+    lemon === "major" || lemon === "critical" ? "outage" : core
 
   return NextResponse.json({
     overall,

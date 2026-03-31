@@ -353,20 +353,6 @@ export default function SmartStoragePage() {
     return stillActive
   }, [session])
 
-  // Poll every 3s while processing — stops when jobs complete, then refreshes files
-  useEffect(() => {
-    if (!isProcessing) return
-    const interval = setInterval(async () => {
-      const stillActive = await checkProcessingState()
-      if (!stillActive) {
-        clearInterval(interval)
-        await loadFiles()
-        await checkReportAvailability()
-      }
-    }, 3000)
-    return () => clearInterval(interval)
-  }, [isProcessing, checkProcessingState, loadFiles, checkReportAvailability])
-
   // ── Load files ─────────────────────────────────────────────────────────────
   const loadFiles = useCallback(async () => {
     if (!session?.user?.id) return
@@ -407,6 +393,19 @@ export default function SmartStoragePage() {
     setReportAvailability(availability)
   }, [session])
 
+  // Poll every 3s while processing — stops when jobs complete, then refreshes files
+  useEffect(() => {
+    if (!isProcessing) return
+    const interval = setInterval(async () => {
+      const stillActive = await checkProcessingState()
+      if (!stillActive) {
+        clearInterval(interval)
+        await loadFiles()
+        await checkReportAvailability()
+      }
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [isProcessing, checkProcessingState, loadFiles, checkReportAvailability])
 
   const loadFolders = useCallback(async () => {
     if (!session?.user?.id) return

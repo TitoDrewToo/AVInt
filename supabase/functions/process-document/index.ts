@@ -4,6 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY")!
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -171,8 +172,7 @@ Rules:
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-          "x-supabase-auth": SUPABASE_SERVICE_ROLE_KEY,
+          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
         },
         body: JSON.stringify({ file_id, job_id }),
       }

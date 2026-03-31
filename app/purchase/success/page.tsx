@@ -1,24 +1,13 @@
 "use client"
 
+import { useEffect, useState, Suspense } from "react"
+import { useSearchParams } from "next/navigation"
 import { Navbar } from "@/components/navbar"
 import { Footer } from "@/components/footer"
 import { Button } from "@/components/ui/button"
-import { CheckCircle, Copy } from "lucide-react"
+import { CheckCircle, Copy, Check } from "lucide-react"
 import Link from "next/link"
-import { useState } from "react"
-
-// Placeholder gift codes for UI preview
-const placeholderCodes = ["SSG-AX92-KLM1", "SSG-QT77-BN21"]
-
-// ─────────────────────────────────────────────
-// future: trigger transactional email confirmation
-// subscription confirmation OR gift code delivery email
-//
-// placement: call after successful purchase verification
-// expected inputs: user email, purchase type, plan name, gift codes (if applicable)
-// email designs: minimal, dark/light adaptive, strong typography — consistent with site aesthetic
-// provider: TBD (Resend / Postmark / similar)
-// ─────────────────────────────────────────────
+import { supabase } from "@/lib/supabase"
 
 function CopyableCode({ code }: { code: string }) {
   const [copied, setCopied] = useState(false)
@@ -36,17 +25,46 @@ function CopyableCode({ code }: { code: string }) {
         onClick={handleCopy}
         className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
       >
-        <Copy className="h-3.5 w-3.5" />
+        {copied ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
         {copied ? "Copied" : "Copy"}
       </button>
     </div>
   )
 }
 
-export default function PurchaseSuccessPage() {
-  // UI placeholder — will be driven by query params after LemonSqueezy integration
-  // e.g. /purchase/success?type=gift or /purchase/success?type=subscription
-  const isGiftCodePurchase = true
+function SuccessContent() {
+  const params = useSearchParams()
+  const type = params.get("type") // "subscription" | "gift"
+  const isGift = type === "gift"
+
+  const [giftCodes, setGiftCodes] = useState<string[]>([])
+  const [loadingCodes, setLoadingCodes] = useState(isGift)
+
+  useEffect(() => {
+    if (!isGift) return
+
+    const fetchCodes = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      const email = session?.user?.email
+      if (!email) { setLoadingCodes(false); return }
+
+      // Fetch gift codes purchased by this user in the last 10 minutes
+      const { data } = await supabase
+        .from("gift_codes")
+        .select("code")
+        .eq("purchased_by_email", email)
+        .eq("status", "pending")
+        .gte("created_at", new Date(Date.now() - 10 * 60 * 1000).toISOString())
+        .order("created_at", { ascending: false })
+
+      if (data && data.length > 0) {
+        setGiftCodes(data.map((r) => r.code))
+      }
+      setLoadingCodes(false)
+    }
+
+    fetchCodes()
+  }, [isGift])
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -62,22 +80,41 @@ export default function PurchaseSuccessPage() {
               </div>
             </div>
 
-            <h1 className="mt-6 text-2xl font-semibold text-foreground">Purchase successful</h1>
-            <p className="mt-2 text-sm text-muted-foreground">Access is now active.</p>
-
-            {/* Gift codes — conditionally shown */}
-            {isGiftCodePurchase && (
-              <div className="mt-8 text-left">
-                <p className="mb-3 text-sm font-medium text-foreground">Your gift codes</p>
-                <div className="space-y-2">
-                  {placeholderCodes.map((code) => (
-                    <CopyableCode key={code} code={code} />
-                  ))}
-                </div>
-                <p className="mt-3 text-xs text-muted-foreground">
-                  Each code grants 24 hour access to Smart Storage.
+            {isGift ? (
+              <>
+                <h1 className="mt-6 text-2xl font-semibold text-foreground">Gift codes ready</h1>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Share these codes — each grants 24-hour full access.
                 </p>
-              </div>
+
+                <div className="mt-8 text-left">
+                  {loadingCodes ? (
+                    <div className="flex items-center justify-center py-6">
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                    </div>
+                  ) : giftCodes.length > 0 ? (
+                    <div className="space-y-2">
+                      {giftCodes.map((code) => (
+                        <CopyableCode key={code} code={code} />
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-center text-sm text-muted-foreground">
+                      Codes are being generated — check your email or refresh in a moment.
+                    </p>
+                  )}
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    Each code grants 24-hour access to Smart Storage, all reports, and dashboards.
+                  </p>
+                </div>
+              </>
+            ) : (
+              <>
+                <h1 className="mt-6 text-2xl font-semibold text-foreground">You&apos;re all set</h1>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Your access is now active. Head to Smart Storage to get started.
+                </p>
+              </>
             )}
 
             <Link href="/tools/smart-storage">
@@ -85,10 +122,32 @@ export default function PurchaseSuccessPage() {
                 Go to Smart Storage
               </Button>
             </Link>
+
+            <Link href="/pricing">
+              <p className="mt-3 text-xs text-muted-foreground underline-offset-2 hover:underline cursor-pointer">
+                Back to pricing
+              </p>
+            </Link>
           </div>
         </div>
       </main>
       <Footer />
     </div>
+  )
+}
+
+export default function PurchaseSuccessPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen flex-col">
+        <Navbar />
+        <main className="flex flex-1 items-center justify-center">
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        </main>
+        <Footer />
+      </div>
+    }>
+      <SuccessContent />
+    </Suspense>
   )
 }

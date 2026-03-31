@@ -60,10 +60,13 @@ function PricingCard({
   const supersededByPro = isPro && name === "Day Pass"
 
   const handlePaidClick = () => {
+    // Append LemonSqueezy redirect_url so it returns to /purchase/process after payment
+    const returnUrl = `${window.location.origin}/purchase/process`
+    const urlWithRedirect = `${checkoutUrl}?checkout[redirect_url]=${encodeURIComponent(returnUrl)}`
     if (!isSignedIn) {
-      onRequireAuth(checkoutUrl)
+      onRequireAuth(urlWithRedirect)
     } else {
-      window.location.href = checkoutUrl
+      window.location.href = urlWithRedirect
     }
   }
 

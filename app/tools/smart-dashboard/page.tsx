@@ -663,6 +663,7 @@ export default function SmartDashboardPage() {
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${currentSession?.access_token}`,
+          "apikey": process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
         },
         body: JSON.stringify({ user_id: session.user.id }),
       })

@@ -33,21 +33,33 @@ async function checkSupabase(): Promise<string> {
   }
 }
 
-// Direct Gemini models list — cheapest call that confirms key + service are alive
+// Gemini — parse Google Cloud public incidents feed (no API key, no cost)
+// Active incidents (end === null) affecting Generative AI / Vertex AI = degraded/outage
 async function checkGemini(): Promise<string> {
-  const key = process.env.GEMINI_API_KEY
-  if (!key) return "unknown"
+  const GEMINI_PRODUCTS = ["generative", "vertex", "ai platform", "gemini"]
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models?key=${key}`,
-      { signal: AbortSignal.timeout(5000), next: { revalidate: 60 } }
+    const res = await fetch("https://status.cloud.google.com/incidents.json", {
+      signal: AbortSignal.timeout(5000),
+      next: { revalidate: 60 },
+    })
+    if (!res.ok) return "unknown"
+    const incidents: any[] = await res.json()
+    const active = incidents.filter((i) => i.end === null)
+    const affected = active.some((i) =>
+      (i.affected_products ?? []).some((p: any) =>
+        GEMINI_PRODUCTS.some((kw) => p.title?.toLowerCase().includes(kw))
+      )
     )
-    if (res.ok) return "none"
-    if (res.status >= 500) return "major"
-    if (res.status === 429) return "minor"  // rate limited, but service is up
-    return "none" // other 4xx = API is reachable
+    if (!affected) return "none"
+    const severe = active.some((i) =>
+      i.severity === "high" &&
+      (i.affected_products ?? []).some((p: any) =>
+        GEMINI_PRODUCTS.some((kw) => p.title?.toLowerCase().includes(kw))
+      )
+    )
+    return severe ? "major" : "minor"
   } catch {
-    return "major"
+    return "unknown"
   }
 }
 

@@ -204,6 +204,8 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
   const [expandedSection, setExpandedSection] = useState<ExpandedSection>(null)
   const [panelView, setPanelView] = useState<PanelView>("menu")
   const [giftCode, setGiftCode] = useState("")
+  const [giftCodeLoading, setGiftCodeLoading] = useState(false)
+  const [giftCodeError, setGiftCodeError] = useState("")
   const [authMode, setAuthMode] = useState<"signin" | "signup" | "forgot">("signin")
   const [authEmail, setAuthEmail] = useState("")
   const [authPassword, setAuthPassword] = useState("")
@@ -440,22 +442,50 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                                 type="text"
                                 placeholder="Enter gift code"
                                 value={giftCode}
-                                onChange={(e) => setGiftCode(e.target.value)}
+                                onChange={(e) => { setGiftCode(e.target.value); setGiftCodeError("") }}
                                 className="flex-1 rounded-lg"
+                                disabled={giftCodeApplied}
                               />
                               <Button
                                 size="sm"
                                 className="rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
-                                onClick={() => {
-                                  if (giftCode.trim()) setGiftCodeApplied(true)
+                                disabled={!giftCode.trim() || giftCodeLoading || giftCodeApplied}
+                                onClick={async () => {
+                                  if (!session?.user) return
+                                  setGiftCodeLoading(true)
+                                  setGiftCodeError("")
+                                  try {
+                                    const res = await fetch("/api/redeem-gift", {
+                                      method: "POST",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({
+                                        code:    giftCode.trim(),
+                                        user_id: session.user.id,
+                                        email:   session.user.email,
+                                      }),
+                                    })
+                                    const data = await res.json()
+                                    if (!res.ok) {
+                                      setGiftCodeError(data.error ?? "Failed to redeem code")
+                                    } else {
+                                      setGiftCodeApplied(true)
+                                    }
+                                  } catch {
+                                    setGiftCodeError("Something went wrong. Please try again.")
+                                  } finally {
+                                    setGiftCodeLoading(false)
+                                  }
                                 }}
                               >
-                                Apply
+                                {giftCodeLoading ? "Applying…" : "Apply"}
                               </Button>
                             </div>
+                            {giftCodeError && (
+                              <p className="mt-2 text-xs text-destructive">{giftCodeError}</p>
+                            )}
                             {giftCodeApplied && (
                               <p className="mt-2 text-xs text-primary">
-                                Code applied successfully.
+                                Gift code applied — access is now active.
                               </p>
                             )}
                           </div>

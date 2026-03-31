@@ -32,8 +32,10 @@ export function Footer() {
               Terms
             </Link>
             <Link
-              href="/support"
-              className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+              href="https://forms.gle/E24gjqAnv6xmF31H8"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-pink-500 transition-colors hover:text-pink-400"
             >
               Support
             </Link>

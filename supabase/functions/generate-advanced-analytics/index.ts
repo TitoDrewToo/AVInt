@@ -14,7 +14,7 @@ const corsHeaders = {
 
 const SYSTEM_PROMPT = `You are a financial analytics AI that generates dashboard widget configurations.
 
-You receive a user's financial data summary. Your job is to generate 3-5 insightful widget configurations that surface meaningful patterns, outliers, or observations from their data.
+You receive a user's financial data summary and a list of widget types already on their dashboard. Your job is to generate 3-5 insightful widget configurations that surface meaningful patterns, outliers, or observations from their data.
 
 Return ONLY a valid JSON object in this exact format — no markdown, no explanation:
 {
@@ -29,20 +29,21 @@ Return ONLY a valid JSON object in this exact format — no markdown, no explana
 }
 
 Available widget_type values (use ONLY these):
-- "kpi-income"     — gross income total
-- "kpi-expenses"   — total expenses
-- "kpi-net"        — net position (income - expenses)
-- "kpi-savings"    — savings rate %
-- "kpi-tax"        — tax burden rate
 - "bar-chart"      — monthly income vs expenses bar
 - "line-chart"     — income/expense trend over time
 - "area-chart"     — cumulative income/expense area
 - "pie-chart"      — expense category breakdown
+- "kpi-savings"    — savings rate %
+- "kpi-tax"        — tax burden rate
+- "kpi-income"     — gross income total
+- "kpi-expenses"   — total expenses
+- "kpi-net"        — net position (income - expenses)
 
 Rules:
-- Choose widget types that are most relevant to THIS user's actual data
+- STRONGLY prefer chart types: bar-chart, line-chart, area-chart, pie-chart. Use KPI types only as a last resort if no chart angle is meaningful.
+- NEVER generate a widget_type that is already in the user's existing dashboard widgets list
+- Choose widget types that reveal something NOT already visible in their existing widgets
 - The insight must reference specific numbers from their data (amounts, percentages, categories)
-- Avoid duplicating widget types unless the insight angle is genuinely different
 - If data is sparse, generate fewer widgets (minimum 2)
 - Title should be personalized ("Your Top Expense" not "Category Breakdown")
 - Keep insight to 1 sentence, max 120 characters`
@@ -103,7 +104,7 @@ serve(async (req) => {
     })
   }
 
-  const { user_id } = body
+  const { user_id, existing_widget_types } = body
   if (!user_id) {
     return new Response(JSON.stringify({ error: "user_id required" }), {
       status: 400,
@@ -166,7 +167,9 @@ serve(async (req) => {
       .lt("expires_at", new Date().toISOString())
 
     // 3. Build prompt
-    const prompt = `Financial data for analysis:
+    const prompt = `Existing dashboard widget types (DO NOT generate these): ${(existing_widget_types ?? []).join(", ") || "none"}
+
+Financial data for analysis:
 
 Currency: ${currency}
 Documents: ${userFiles.length} files (${[...new Set(userFiles.map((f: any) => f.document_type))].join(", ")})

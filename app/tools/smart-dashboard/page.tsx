@@ -541,6 +541,7 @@ export default function SmartDashboardPage() {
   const [analyticsToast, setAnalyticsToast] = useState<string | null>(null)
   const [standardOpen, setStandardOpen] = useState(true)
   const [advancedOpen, setAdvancedOpen] = useState(true)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; widgetId: string } | null>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
 
   const selectedWidget = widgets.find(w => w.id === selectedWidgetId)
@@ -655,9 +656,9 @@ export default function SmartDashboardPage() {
     userFiles.forEach((f) => { typeMap[f.document_type] = (typeMap[f.document_type] ?? 0) + 1 })
     setDocTypeData(Object.entries(typeMap).map(([name, value]) => ({ name: name.charAt(0).toUpperCase() + name.slice(1), value })))
 
-    // Show "New data" only if user has run Advanced Analytics before AND new docs arrived since
+    // Show "New data" on first visit (never run) OR when new docs arrived since last run
     const lastCountRaw = typeof window !== "undefined" ? localStorage.getItem("aa_last_field_count") : null
-    setHasNewData(lastCountRaw !== null && fields.length > parseInt(lastCountRaw))
+    setHasNewData(lastCountRaw === null || fields.length > parseInt(lastCountRaw))
 
     setLoading(false)
   }, [session, dateFrom, dateTo])
@@ -749,7 +750,7 @@ export default function SmartDashboardPage() {
           "Authorization": `Bearer ${cur?.access_token}`,
           "apikey": process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
         },
-        body: JSON.stringify({ user_id: session.user.id }),
+        body: JSON.stringify({ user_id: session.user.id, existing_widget_types: widgets.map(w => w.type) }),
       })
       if (res.ok) {
         const data = await res.json()
@@ -1088,7 +1089,8 @@ export default function SmartDashboardPage() {
                 {widgets.map((widget) => (
                   <div
                     key={widget.id}
-                    onClick={(e) => { e.stopPropagation(); setSelectedWidgetId(widget.id); setShowColorPicker(false); setShowDateFilter(false) }}
+                    onClick={(e) => { e.stopPropagation(); setSelectedWidgetId(widget.id); setShowColorPicker(false); setShowDateFilter(false); setContextMenu(null) }}
+                    onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ x: e.clientX, y: e.clientY, widgetId: widget.id }) }}
                     className={`group relative flex flex-col rounded-2xl border bg-card shadow-sm transition-all cursor-pointer ${
                       selectedWidgetId === widget.id
                         ? "border-primary ring-2 ring-primary/20"
@@ -1107,14 +1109,8 @@ export default function SmartDashboardPage() {
                     <div className="drag-handle absolute left-0 right-0 top-0 h-8 cursor-grab rounded-t-2xl opacity-0 group-hover:opacity-100 transition-opacity" />
 
                     {/* Widget header */}
-                    <div className="flex items-center justify-between px-4 pt-3 pb-1 shrink-0">
+                    <div className="flex items-center px-4 pt-3 pb-1 shrink-0">
                       <h3 className="text-xs font-semibold text-foreground">{widget.title}</h3>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); removeWidget(widget.id) }}
-                        className="flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted hover:text-foreground"
-                      >
-                        <X className="h-2.5 w-2.5" />
-                      </button>
                     </div>
 
                     {/* Widget content */}
@@ -1143,6 +1139,25 @@ export default function SmartDashboardPage() {
                   </div>
                 ))}
               </GridLayout>
+            )}
+
+            {/* Right-click context menu */}
+            {contextMenu && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setContextMenu(null)} />
+                <div
+                  className="fixed z-50 min-w-[150px] rounded-xl border border-border bg-card py-1 shadow-xl"
+                  style={{ left: contextMenu.x, top: contextMenu.y }}
+                >
+                  <button
+                    onClick={() => { removeWidget(contextMenu.widgetId); setContextMenu(null) }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-destructive transition-colors hover:bg-muted"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    Remove widget
+                  </button>
+                </div>
+              </>
             )}
 
             {/* Analytics toast notification */}

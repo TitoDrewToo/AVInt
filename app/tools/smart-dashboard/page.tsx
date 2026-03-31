@@ -21,6 +21,8 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
+import { Sheet, SheetContent } from "@/components/ui/sheet"
+import { useIsMobile } from "@/hooks/use-mobile"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -554,6 +556,8 @@ export default function SmartDashboardPage() {
   const [showColorPicker, setShowColorPicker] = useState(false)
   const [showAdvancedMenu, setShowAdvancedMenu] = useState(false)
   const [showWidgetPanel, setShowWidgetPanel] = useState(true)
+  const [mobileWidgetPanelOpen, setMobileWidgetPanelOpen] = useState(false)
+  const isMobile = useIsMobile()
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
   const [hasNewData, setHasNewData] = useState(false)
@@ -886,8 +890,8 @@ export default function SmartDashboardPage() {
       <div className="flex flex-1 flex-col overflow-hidden">
 
         {/* TOP TOOLBAR */}
-        <div className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-card px-4">
-          <div className="flex items-center gap-2">
+        <div className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-card px-4 gap-2">
+          <div className="flex flex-1 items-center gap-2 overflow-x-auto scrollbar-none min-w-0">
 
             {/* Date filter */}
             <div className="relative">
@@ -1070,7 +1074,15 @@ export default function SmartDashboardPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            {isDirty && <span className="text-xs text-muted-foreground">Unsaved changes</span>}
+            {/* Mobile: open Visualizations as a sheet */}
+            <button
+              className="flex md:hidden h-7 items-center gap-1.5 rounded-lg border border-border px-3 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+              onClick={() => setMobileWidgetPanelOpen(true)}
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+              Widgets
+            </button>
+            {isDirty && <span className="hidden sm:inline text-xs text-muted-foreground">Unsaved changes</span>}
             <button
               onClick={saveLayout}
               disabled={!isDirty || isSaving}
@@ -1208,18 +1220,18 @@ export default function SmartDashboardPage() {
             )}
           </div>
 
-          {/* PANEL TOGGLE TAB */}
+          {/* PANEL TOGGLE TAB — desktop only */}
           <button
             onClick={() => setShowWidgetPanel(v => !v)}
-            className="absolute top-1/2 right-0 -translate-y-1/2 z-20 flex h-14 w-5 items-center justify-center rounded-l-lg border border-r-0 border-border bg-card text-muted-foreground shadow-md hover:text-foreground transition-colors"
+            className="hidden md:flex absolute top-1/2 right-0 -translate-y-1/2 z-20 h-14 w-5 items-center justify-center rounded-l-lg border border-r-0 border-border bg-card text-muted-foreground shadow-md hover:text-foreground transition-colors"
             title={showWidgetPanel ? "Hide panel" : "Show panel"}
           >
             <PanelRight className="h-3 w-3" />
           </button>
 
-          {/* VISUALIZATIONS PANEL — absolute overlay */}
+          {/* VISUALIZATIONS PANEL — desktop absolute overlay */}
           {showWidgetPanel && (
-          <aside className="absolute right-0 top-0 bottom-0 z-10 flex w-72 flex-col overflow-hidden border-l border-border bg-card/95 backdrop-blur-sm shadow-xl">
+          <aside className="hidden md:flex absolute right-0 top-0 bottom-0 z-10 w-72 flex-col overflow-hidden border-l border-border bg-card/95 backdrop-blur-sm shadow-xl">
             <div className="border-b border-border px-4 py-3">
               <h2 className="text-sm font-semibold text-foreground">Visualizations</h2>
               <p className="text-xs text-muted-foreground mt-0.5">Add visualizations to your dashboard</p>
@@ -1349,6 +1361,127 @@ export default function SmartDashboardPage() {
           )}
         </div>
       </div>
+
+      {/* MOBILE — Visualizations sheet */}
+      <Sheet open={mobileWidgetPanelOpen} onOpenChange={setMobileWidgetPanelOpen}>
+        <SheetContent side="right" className="w-80 p-0 flex flex-col gap-0">
+          <div className="border-b border-border px-4 py-3">
+            <h2 className="text-sm font-semibold text-foreground">Visualizations</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Add visualizations to your dashboard</p>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3">
+
+            {/* Standard section */}
+            <button
+              onClick={() => setStandardOpen(v => !v)}
+              className="flex w-full items-center justify-between px-1 mb-2"
+            >
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Standard</p>
+              <ChevronRight className={`h-3 w-3 text-muted-foreground transition-transform ${standardOpen ? "rotate-90" : ""}`} />
+            </button>
+            {standardOpen && (
+              <div className="space-y-1 mb-3">
+                {WIDGET_LIBRARY.filter(w => !w.isPremium).map((item) => {
+                  const added = widgets.some(w => w.type === item.type)
+                  return (
+                    <button
+                      key={item.type}
+                      onClick={() => { addWidget(item.type, item.title, false); setMobileWidgetPanelOpen(false) }}
+                      disabled={added}
+                      className={`flex w-full items-start justify-between rounded-lg px-3 py-2.5 text-left transition-colors ${added ? "opacity-40 cursor-not-allowed" : "hover:bg-muted"}`}
+                    >
+                      <div className="flex-1 min-w-0 pr-2">
+                        <p className={`text-sm font-medium leading-tight ${added ? "text-muted-foreground" : "text-foreground"}`}>{item.title}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{item.desc}</p>
+                      </div>
+                      {added ? <Check className="h-3.5 w-3.5 text-primary mt-0.5 flex-shrink-0" /> : <Plus className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+
+            {isPro && (
+              <>
+                <div className="my-2 h-px bg-border" />
+                <button
+                  onClick={() => setAdvancedOpen(v => !v)}
+                  className="flex w-full items-center justify-between px-1 mb-2"
+                >
+                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Advanced</p>
+                  <ChevronRight className={`h-3 w-3 text-muted-foreground transition-transform ${advancedOpen ? "rotate-90" : ""}`} />
+                </button>
+                {advancedOpen && (
+                  <div className="space-y-1">
+                    {(() => {
+                      const item = WIDGET_LIBRARY.find(w => w.type === "context-summary")!
+                      const added = widgets.some(w => w.type === item.type)
+                      return (
+                        <button
+                          key={item.type}
+                          onClick={() => { addWidget(item.type, item.title, true); setMobileWidgetPanelOpen(false) }}
+                          disabled={added}
+                          className={`flex w-full items-start justify-between rounded-lg px-3 py-2.5 text-left transition-colors ${added ? "opacity-40 cursor-not-allowed" : "hover:bg-muted"}`}
+                        >
+                          <div className="flex-1 min-w-0 pr-2">
+                            <p className={`text-sm font-medium leading-tight ${added ? "text-muted-foreground" : "text-foreground"}`}>{item.title}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{item.desc}</p>
+                          </div>
+                          {added ? <Check className="h-3.5 w-3.5 text-primary mt-0.5 flex-shrink-0" /> : <Plus className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />}
+                        </button>
+                      )
+                    })()}
+                    {advancedWidgetsList.length > 0 && <div className="my-1 h-px bg-border/50" />}
+                    {advancedWidgetsList.map((aw) => {
+                      const plotted = widgets.some(w => w.advancedId === aw.id)
+                      return (
+                        <div key={aw.id} className="group flex w-full items-start gap-1 rounded-lg px-2 py-2 hover:bg-muted">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium leading-tight text-foreground truncate">{aw.title}</p>
+                            {aw.insight && <p className="text-xs text-muted-foreground mt-0.5 leading-snug line-clamp-2">{aw.insight}</p>}
+                          </div>
+                          <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
+                            <button
+                              onClick={() => toggleStarAdvancedWidget(aw)}
+                              className={`flex h-5 w-5 items-center justify-center rounded transition-colors hover:text-yellow-400 ${aw.is_starred ? "text-yellow-400" : "text-muted-foreground"}`}
+                            >
+                              <Star className={`h-3 w-3 ${aw.is_starred ? "fill-current" : ""}`} />
+                            </button>
+                            <button
+                              onClick={() => { plotAdvancedWidget(aw); setMobileWidgetPanelOpen(false) }}
+                              disabled={plotted}
+                              className={`flex h-5 w-5 items-center justify-center rounded transition-colors ${plotted ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
+                            >
+                              {plotted ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                    {advancedWidgetsList.length === 0 && (
+                      <p className="px-3 py-2 text-xs text-muted-foreground italic">Run Advanced Analytics to generate visualizations</p>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
+            {!isPro && (
+              <div className="mt-3 rounded-xl border border-border bg-muted/30 p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <Zap className="h-3.5 w-3.5 text-primary" />
+                  <p className="text-xs font-medium text-foreground">Pro Plan</p>
+                </div>
+                <p className="text-xs text-muted-foreground mb-2">Unlock AI-powered Context Summary and Advanced Analytics.</p>
+                <Link href="/pricing">
+                  <Button size="sm" className="w-full rounded-lg text-xs">Upgrade to Pro</Button>
+                </Link>
+              </div>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
+
     </div>
   )
 }

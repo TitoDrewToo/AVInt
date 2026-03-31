@@ -27,7 +27,11 @@ import {
   Download,
   PenLine,
   Tag,
+  Menu,
+  BarChart2,
 } from "lucide-react"
+import { Sheet, SheetContent } from "@/components/ui/sheet"
+import { useIsMobile } from "@/hooks/use-mobile"
 import { ManualEntryModal, ReclassifyModal } from "@/components/ui/document-modals"
 import { useRouter } from "next/navigation"
 
@@ -308,6 +312,9 @@ export default function SmartStoragePage() {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; fileId: string; filename: string } | null>(null)
   const [manualEntryOpen, setManualEntryOpen] = useState(false)
   const [reclassifyTarget, setReclassifyTarget] = useState<{ fileId: string; filename: string } | null>(null)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [mobileReportsOpen, setMobileReportsOpen] = useState(false)
+  const isMobile = useIsMobile()
   const [renamingFileId, setRenamingFileId] = useState<string | null>(null)
   const [renameFileValue, setRenameFileValue] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -753,7 +760,7 @@ export default function SmartStoragePage() {
         <div className="flex flex-1 overflow-hidden">
 
           {/* LEFT PANE ─────────────────────────────────────────────────────── */}
-          <aside className="flex w-[15%] min-w-[180px] flex-col border-r border-border bg-card overflow-hidden">
+          <aside className="hidden md:flex w-[15%] min-w-[180px] flex-col border-r border-border bg-card overflow-hidden">
             {/* Documents section — user folder tree */}
             <div className="flex-[0.6] overflow-y-auto border-b border-border p-2">
               {/* Processing indicator */}
@@ -858,7 +865,7 @@ export default function SmartStoragePage() {
 
           {/* CENTER PANE ────────────────────────────────────────────────────── */}
           <div
-            className={`relative flex w-[65%] flex-col overflow-hidden bg-background transition-colors ${isDragOver ? "bg-primary/5" : ""}`}
+            className={`relative flex w-full md:w-[65%] flex-col overflow-hidden bg-background transition-colors ${isDragOver ? "bg-primary/5" : ""}`}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
@@ -866,8 +873,16 @@ export default function SmartStoragePage() {
           >
             {/* Toolbar */}
             <div className="flex h-10 items-center gap-2 border-b border-border bg-card/50 px-4">
+              {/* Mobile nav trigger */}
+              <button
+                className="flex md:hidden h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                onClick={() => setMobileNavOpen(true)}
+              >
+                <Menu className="h-4 w-4" />
+              </button>
+
               {/* Breadcrumb / classification header */}
-              <div className="flex flex-1 items-center gap-1 text-sm">
+              <div className="flex flex-1 items-center gap-1 text-sm overflow-hidden">
                 {classificationView ? (
                   <>
                     <button
@@ -876,7 +891,7 @@ export default function SmartStoragePage() {
                     >Classification</button>
                     <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
                     <span className="font-medium text-foreground px-1">{classificationView}</span>
-                    <span className="ml-2 text-[10px] text-muted-foreground/60 italic">read-only view · files not moved</span>
+                    <span className="hidden sm:inline ml-2 text-[10px] text-muted-foreground/60 italic">read-only view · files not moved</span>
                   </>
                 ) : (
                   breadcrumb.map((crumb, index) => (
@@ -964,6 +979,15 @@ export default function SmartStoragePage() {
                     <option value="name">Name A–Z</option>
                   </select>
                 )}
+                {/* Mobile reports trigger */}
+                <button
+                  className="flex md:hidden h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                  onClick={() => setMobileReportsOpen(true)}
+                  title="Reports"
+                >
+                  <BarChart2 className="h-4 w-4" />
+                </button>
+
                 {/* View toggle */}
                 <div className="flex items-center rounded border border-border">
                   <button
@@ -1312,7 +1336,7 @@ export default function SmartStoragePage() {
           </div>
 
           {/* RIGHT PANE ─────────────────────────────────────────────────────── */}
-          <aside className="flex w-[20%] min-w-[180px] flex-col border-l border-border bg-card overflow-hidden">
+          <aside className="hidden md:flex w-[20%] min-w-[180px] flex-col border-l border-border bg-card overflow-hidden">
             <div className="border-b border-border px-4 py-3">
               <h2 className="text-sm font-semibold text-foreground">Reports</h2>
             </div>
@@ -1379,6 +1403,153 @@ export default function SmartStoragePage() {
 
         </div>
       </main>
+
+      {/* MOBILE — Left nav sheet */}
+      <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+        <SheetContent side="left" className="w-72 p-0 flex flex-col gap-0">
+          {/* Documents section */}
+          <div className="flex-[0.6] overflow-y-auto border-b border-border p-2">
+            <div className="mb-2 flex justify-end px-2">
+              <ProcessingIndicator active={isProcessing} />
+            </div>
+            <LeftFolderItem
+              name="Documents"
+              isOpen={docsOpen}
+              isSelected={selectedLeftFolder === "Documents"}
+              onSelect={() => { setSelectedLeftFolder("Documents"); setCurrentFolderId("root"); setBreadcrumb([{ id: "root", name: "Documents" }]); setClassificationView(null); setMobileNavOpen(false) }}
+              onToggle={() => setDocsOpen(!docsOpen)}
+              level={0}
+            >
+              <LeftFolderItem
+                name="Unclassified"
+                isSelected={selectedLeftFolder === "Unclassified"}
+                onSelect={() => { setSelectedLeftFolder("Unclassified"); setMobileNavOpen(false) }}
+                level={1}
+              />
+              {folders.filter((f) => f.parentId === null).map((folder) => (
+                <div
+                  key={folder.id}
+                  className={`rounded transition-colors ${hoveredLeftFolderId === folder.id ? "ring-2 ring-primary bg-primary/10" : ""}`}
+                >
+                  <LeftFolderItem
+                    name={folder.name}
+                    isSelected={selectedLeftFolder === folder.name}
+                    onSelect={() => { setSelectedLeftFolder(folder.name); setClassificationView(null); openFolder(folder); setMobileNavOpen(false) }}
+                    level={1}
+                    onRename={() => { startRename(folder); setMobileNavOpen(false) }}
+                    onDelete={async () => {
+                      await supabase.from("folders").delete().eq("id", folder.id)
+                      setFolders(prev => prev.filter(f => f.id !== folder.id))
+                      if (currentFolderId === folder.id) {
+                        setCurrentFolderId("root")
+                        setBreadcrumb([{ id: "root", name: "Documents" }])
+                        setSelectedLeftFolder("Documents")
+                      }
+                      setMobileNavOpen(false)
+                    }}
+                  />
+                </div>
+              ))}
+            </LeftFolderItem>
+          </div>
+
+          {/* Classification section */}
+          <div className="flex-[0.4] overflow-y-auto p-2">
+            <div className="mb-1 px-2">
+              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Classification</span>
+            </div>
+            <div className="space-y-0.5">
+              <button
+                onClick={() => { setSelectedLeftFolder("Manual Entries"); setClassificationView("Manual Entries"); setMobileNavOpen(false) }}
+                className={`flex w-full items-center justify-between gap-2 rounded px-2 py-1 text-left text-sm transition-colors hover:bg-muted ${classificationView === "Manual Entries" ? "bg-muted text-foreground" : "text-muted-foreground"}`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <PenLine className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">Manual Entries</span>
+                </div>
+                {manualEntriesCount > 0 && <span className="text-[10px] text-muted-foreground/60 shrink-0">{manualEntriesCount}</span>}
+              </button>
+              {visibleClassificationFolders.map((name) => {
+                const count = (CLASSIFICATION_FOLDER_MAP[name] ?? []).reduce(
+                  (n, t) => n + files.filter(f => f.document_type === t).length, 0
+                )
+                return (
+                  <button
+                    key={name}
+                    onClick={() => { setSelectedLeftFolder(name); setClassificationView(name); setMobileNavOpen(false) }}
+                    className={`flex w-full items-center justify-between gap-2 rounded px-2 py-1 text-left text-sm transition-colors hover:bg-muted ${classificationView === name ? "bg-muted text-foreground" : "text-muted-foreground"}`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Folder className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{name}</span>
+                    </div>
+                    <span className="text-[10px] text-muted-foreground/60 shrink-0">{count}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* MOBILE — Reports sheet */}
+      <Sheet open={mobileReportsOpen} onOpenChange={setMobileReportsOpen}>
+        <SheetContent side="right" className="w-72 p-0 flex flex-col gap-0">
+          <div className="border-b border-border px-4 py-3">
+            <h2 className="text-sm font-semibold text-foreground">Reports</h2>
+          </div>
+          <div className="flex flex-col gap-3 p-3">
+            <button
+              onClick={() => setShowDateRange(!showDateRange)}
+              className="flex w-full items-center justify-between rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <span className="flex items-center gap-1.5">
+                <Calendar className="h-3.5 w-3.5" />
+                {dateRange.preset === "custom" ? `${dateRange.from} – ${dateRange.to}` : PRESET_LABELS[dateRange.preset]}
+              </span>
+              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showDateRange ? "rotate-180" : ""}`} />
+            </button>
+            {showDateRange && (
+              <div className="rounded-lg border border-border bg-muted/30 p-3">
+                <DateRangeSelector dateRange={dateRange} onChange={setDateRange} />
+              </div>
+            )}
+            <Button
+              className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
+              disabled={!selectedReport || !reportAvailability[selectedReport]}
+              size="sm"
+              onClick={() => {
+                if (selectedReport && REPORT_ROUTES[selectedReport]) {
+                  router.push(REPORT_ROUTES[selectedReport])
+                }
+                setMobileReportsOpen(false)
+              }}
+            >
+              Generate Report
+            </Button>
+          </div>
+          <div className="flex-1 overflow-y-auto px-3 pb-3">
+            <div className="space-y-0.5">
+              {REPORTS.map((report) => {
+                const enabled = report.coreEnabled && (reportAvailability[report.id] ?? false)
+                const isSelected = selectedReport === report.id
+                return (
+                  <button
+                    key={report.id}
+                    disabled={!enabled}
+                    onClick={() => { enabled && setSelectedReport(report.id) }}
+                    className={`w-full rounded px-2 py-1.5 text-left text-sm transition-colors ${
+                      isSelected ? "bg-primary/10 text-primary" : enabled ? "text-foreground hover:bg-muted" : "cursor-not-allowed text-muted-foreground/35"
+                    }`}
+                  >
+                    {report.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* Manual Entry Modal */}
       <ManualEntryModal

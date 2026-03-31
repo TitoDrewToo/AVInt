@@ -15,8 +15,8 @@ import {
 } from "recharts"
 import {
   TrendingUp, Receipt, Wallet, FileText,
-  Save, Calendar, ChevronDown, Lock, Sparkles,
-  LayoutGrid, X, Check, Plus, Zap, PanelRight
+  Save, Calendar, ChevronDown, ChevronRight, Lock, Sparkles,
+  LayoutGrid, X, Check, Plus, Zap, PanelRight, Star
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
@@ -38,6 +38,21 @@ interface Widget {
   isPremium?: boolean
   colors?: WidgetColor
   chartVariant?: string
+  advancedId?: string   // references advanced_widgets.id
+  insight?: string      // AI-generated insight text
+}
+
+interface AdvancedWidget {
+  id: string
+  user_id: string
+  widget_type: string
+  title: string
+  description: string | null
+  insight: string | null
+  is_starred: boolean
+  is_plotted: boolean
+  created_at: string
+  expires_at: string | null
 }
 
 interface LayoutItem {
@@ -109,6 +124,23 @@ const DEFAULT_LAYOUT: LayoutItem[] = [
   { i: "bar-deductible",   x: 4,  y: 17, w: 4, h: 11, minW: 3, minH: 3 },
   { i: "pie-chart",        x: 8,  y: 17, w: 4, h: 11, minW: 3, minH: 3 },
 ]
+
+const WIDGET_MIN_SIZE: Record<string, { minW: number; minH: number }> = {
+  "kpi-income":      { minW: 2, minH: 2 },
+  "kpi-expenses":    { minW: 2, minH: 2 },
+  "kpi-net":         { minW: 2, minH: 2 },
+  "kpi-docs":        { minW: 2, minH: 2 },
+  "kpi-tax-exposure":{ minW: 2, minH: 2 },
+  "kpi-tax-ratio":   { minW: 2, minH: 2 },
+  "kpi-savings":     { minW: 2, minH: 2 },
+  "kpi-tax":         { minW: 2, minH: 2 },
+  "bar-chart":       { minW: 3, minH: 3 },
+  "bar-deductible":  { minW: 3, minH: 3 },
+  "line-chart":      { minW: 3, minH: 3 },
+  "area-chart":      { minW: 3, minH: 3 },
+  "pie-chart":       { minW: 2, minH: 3 },
+  "context-summary": { minW: 3, minH: 3 },
+}
 
 const WIDGET_LIBRARY = [
   { type: "kpi-income",       title: "Income KPI",          desc: "Total income detected across all documents",           isPremium: false },
@@ -504,6 +536,11 @@ export default function SmartDashboardPage() {
   const [contextSummary, setContextSummary] = useState<string | null>(null)
   const [contextSummaryDate, setContextSummaryDate] = useState<string | null>(null)
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false)
+  const [advancedWidgetsList, setAdvancedWidgetsList] = useState<AdvancedWidget[]>([])
+  const [isRunningAnalytics, setIsRunningAnalytics] = useState(false)
+  const [analyticsToast, setAnalyticsToast] = useState<string | null>(null)
+  const [standardOpen, setStandardOpen] = useState(true)
+  const [advancedOpen, setAdvancedOpen] = useState(true)
   const canvasRef = useRef<HTMLDivElement>(null)
 
   const selectedWidget = widgets.find(w => w.id === selectedWidgetId)
@@ -653,6 +690,81 @@ export default function SmartDashboardPage() {
 
   useEffect(() => { loadContextSummary() }, [loadContextSummary])
 
+  // ── Advanced widgets ────────────────────────────────────────────────────────
+  const loadAdvancedWidgets = useCallback(async () => {
+    if (!session?.user?.id) return
+    const { data } = await supabase
+      .from("advanced_widgets")
+      .select("*")
+      .eq("user_id", session.user.id)
+      .or("expires_at.is.null,expires_at.gt." + new Date().toISOString())
+      .order("is_starred", { ascending: false })
+      .order("created_at", { ascending: false })
+    if (data) setAdvancedWidgetsList(data)
+  }, [session])
+
+  useEffect(() => { loadAdvancedWidgets() }, [loadAdvancedWidgets])
+
+  const toggleStarAdvancedWidget = async (aw: AdvancedWidget) => {
+    const newStarred = !aw.is_starred
+    const expiresAt  = newStarred || aw.is_plotted
+      ? null
+      : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+    await supabase.from("advanced_widgets").update({ is_starred: newStarred, expires_at: expiresAt }).eq("id", aw.id)
+    setAdvancedWidgetsList(prev => prev
+      .map(w => w.id === aw.id ? { ...w, is_starred: newStarred, expires_at: expiresAt } : w)
+      .sort((a, b) => (b.is_starred ? 1 : 0) - (a.is_starred ? 1 : 0))
+    )
+  }
+
+  const plotAdvancedWidget = async (aw: AdvancedWidget) => {
+    if (widgets.some(w => w.advancedId === aw.id)) return
+    await supabase.from("advanced_widgets").update({ is_plotted: true, expires_at: null }).eq("id", aw.id)
+    setAdvancedWidgetsList(prev => prev.map(w => w.id === aw.id ? { ...w, is_plotted: true, expires_at: null } : w))
+    const newWidget: Widget = {
+      id:         `adv-${aw.id}`,
+      type:       aw.widget_type,
+      title:      aw.title,
+      isPremium:  true,
+      colors:     DEFAULT_WIDGET_COLORS,
+      advancedId: aw.id,
+      insight:    aw.insight ?? undefined,
+    }
+    const lastY = layout.length ? Math.max(...layout.map(l => l.y + l.h)) : 0
+    const minSize = WIDGET_MIN_SIZE[aw.widget_type] ?? { minW: 2, minH: 2 }
+    setWidgets(prev => [...prev, newWidget])
+    setLayout(prev => [...prev, { i: newWidget.id, x: 0, y: lastY, w: minSize.minW + 2, h: minSize.minH + 2, minW: minSize.minW, minH: minSize.minH }])
+    setIsDirty(true)
+  }
+
+  const runAdvancedAnalytics = async () => {
+    if (!session?.user?.id || !isPro || isRunningAnalytics) return
+    setIsRunningAnalytics(true)
+    try {
+      const { data: { session: cur } } = await supabase.auth.getSession()
+      const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-advanced-analytics`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${cur?.access_token}`,
+          "apikey": process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
+        },
+        body: JSON.stringify({ user_id: session.user.id }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        await loadAdvancedWidgets()
+        localStorage.setItem("aa_last_field_count", String(999999))
+        setHasNewData(false)
+        setShowAdvancedMenu(false)
+        setAnalyticsToast(`${data.count} new visualization${data.count !== 1 ? "s" : ""} available. Check the Advanced section of your Visualizations panel.`)
+        setTimeout(() => setAnalyticsToast(null), 7000)
+      }
+    } finally {
+      setIsRunningAnalytics(false)
+    }
+  }
+
   const generateContextSummary = async () => {
     if (!session?.user?.id || !isPro || isGeneratingSummary) return
     setIsGeneratingSummary(true)
@@ -706,6 +818,13 @@ export default function SmartDashboardPage() {
   }
 
   const removeWidget = (id: string) => {
+    const widget = widgets.find(w => w.id === id)
+    if (widget?.advancedId) {
+      const aw = advancedWidgetsList.find(a => a.id === widget.advancedId)
+      const expiresAt = aw?.is_starred ? null : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+      supabase.from("advanced_widgets").update({ is_plotted: false, expires_at: expiresAt }).eq("id", widget.advancedId)
+      setAdvancedWidgetsList(prev => prev.map(a => a.id === widget.advancedId ? { ...a, is_plotted: false, expires_at: expiresAt } : a))
+    }
     setWidgets(prev => prev.filter(w => w.id !== id))
     setLayout(prev => prev.filter(l => l.i !== id))
     if (selectedWidgetId === id) setSelectedWidgetId(null)
@@ -895,29 +1014,22 @@ export default function SmartDashboardPage() {
                 </Link>
               )}
               {showAdvancedMenu && isPro && (
-                <div className="absolute left-0 top-9 z-30 min-w-[200px] rounded-xl border border-border bg-card p-3 shadow-xl">
-                  <p className="mb-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Generate Analysis</p>
-                  <div className="space-y-0.5">
-                    {[{ type: "context-summary", title: "Context Summary", desc: "AI overview of your documents" }].map(opt => {
-                      const added = widgets.some(w => w.type === opt.type)
-                      return (
-                        <button
-                          key={opt.type}
-                          disabled={added}
-                          onClick={() => {
-                            addWidget(opt.type, opt.title, true)
-                            localStorage.setItem("aa_last_field_count", String(999999))
-                            setHasNewData(false)
-                            setShowAdvancedMenu(false)
-                          }}
-                          className={`flex w-full flex-col rounded-lg px-3 py-2 text-left transition-colors ${added ? "opacity-40 cursor-not-allowed" : "hover:bg-muted"}`}
-                        >
-                          <span className="text-sm font-medium text-foreground">{opt.title}</span>
-                          <span className="text-xs text-muted-foreground">{opt.desc}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
+                <div className="absolute left-0 top-9 z-30 min-w-[220px] rounded-xl border border-border bg-card p-3 shadow-xl">
+                  <p className="mb-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">AI Analysis</p>
+                  <button
+                    onClick={runAdvancedAnalytics}
+                    disabled={isRunningAnalytics}
+                    className="flex w-full flex-col rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted disabled:opacity-50"
+                  >
+                    <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+                      {isRunningAnalytics ? (
+                        <><div className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" /> Generating…</>
+                      ) : (
+                        <><Sparkles className="h-3.5 w-3.5 text-primary" /> Run Advanced Analytics</>
+                      )}
+                    </span>
+                    <span className="mt-0.5 text-xs text-muted-foreground">Generate new AI-powered visualizations</span>
+                  </button>
                 </div>
               )}
             </div>
@@ -1020,9 +1132,31 @@ export default function SmartDashboardPage() {
                         onGenerateSummary={generateContextSummary}
                       />
                     </div>
+
+                    {/* AI insight strip — only on advanced widgets */}
+                    {widget.insight && (
+                      <div className="shrink-0 mx-4 mb-3 flex items-start gap-1.5 rounded-lg bg-primary/5 px-2.5 py-2">
+                        <Sparkles className="mt-0.5 h-3 w-3 flex-shrink-0 text-primary" />
+                        <p className="text-xs leading-snug text-muted-foreground">{widget.insight}</p>
+                      </div>
+                    )}
                   </div>
                 ))}
               </GridLayout>
+            )}
+
+            {/* Analytics toast notification */}
+            {analyticsToast && (
+              <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-xl">
+                <Sparkles className="h-4 w-4 flex-shrink-0 text-primary" />
+                <p className="text-sm text-foreground">{analyticsToast}</p>
+                <button
+                  onClick={() => setAnalyticsToast(null)}
+                  className="ml-1 flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
             )}
           </div>
 
@@ -1035,59 +1169,116 @@ export default function SmartDashboardPage() {
             <PanelRight className="h-3 w-3" />
           </button>
 
-          {/* WIDGET PANEL — absolute overlay */}
+          {/* VISUALIZATIONS PANEL — absolute overlay */}
           {showWidgetPanel && (
           <aside className="absolute right-0 top-0 bottom-0 z-10 flex w-72 flex-col overflow-hidden border-l border-border bg-card/95 backdrop-blur-sm shadow-xl">
             <div className="border-b border-border px-4 py-3">
-              <h2 className="text-sm font-semibold text-foreground">Widget Library</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">Click to add widgets to your dashboard</p>
+              <h2 className="text-sm font-semibold text-foreground">Visualizations</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">Add visualizations to your dashboard</p>
             </div>
 
             <div className="flex-1 overflow-y-auto p-3">
-              <p className="mb-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">Standard</p>
-              <div className="space-y-1">
-                {WIDGET_LIBRARY.filter(w => !w.isPremium).map((item) => {
-                  const added = widgets.some(w => w.type === item.type)
-                  return (
-                    <button
-                      key={item.type}
-                      onClick={() => addWidget(item.type, item.title, false)}
-                      disabled={added}
-                      className={`flex w-full items-start justify-between rounded-lg px-3 py-2.5 text-left transition-colors ${added ? "opacity-40 cursor-not-allowed" : "hover:bg-muted"}`}
-                    >
-                      <div className="flex-1 min-w-0 pr-2">
-                        <p className={`text-sm font-medium leading-tight ${added ? "text-muted-foreground" : "text-foreground"}`}>{item.title}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{item.desc}</p>
-                      </div>
-                      {added ? <Check className="h-3.5 w-3.5 text-primary mt-0.5 flex-shrink-0" /> : <Plus className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />}
-                    </button>
-                  )
-                })}
-              </div>
+
+              {/* Standard section — collapsible */}
+              <button
+                onClick={() => setStandardOpen(v => !v)}
+                className="flex w-full items-center justify-between px-1 mb-2"
+              >
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Standard</p>
+                <ChevronRight className={`h-3 w-3 text-muted-foreground transition-transform ${standardOpen ? "rotate-90" : ""}`} />
+              </button>
+              {standardOpen && (
+                <div className="space-y-1 mb-3">
+                  {WIDGET_LIBRARY.filter(w => !w.isPremium).map((item) => {
+                    const added = widgets.some(w => w.type === item.type)
+                    return (
+                      <button
+                        key={item.type}
+                        onClick={() => addWidget(item.type, item.title, false)}
+                        disabled={added}
+                        className={`flex w-full items-start justify-between rounded-lg px-3 py-2.5 text-left transition-colors ${added ? "opacity-40 cursor-not-allowed" : "hover:bg-muted"}`}
+                      >
+                        <div className="flex-1 min-w-0 pr-2">
+                          <p className={`text-sm font-medium leading-tight ${added ? "text-muted-foreground" : "text-foreground"}`}>{item.title}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{item.desc}</p>
+                        </div>
+                        {added ? <Check className="h-3.5 w-3.5 text-primary mt-0.5 flex-shrink-0" /> : <Plus className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
 
               {isPro && (
                 <>
-                  <div className="my-3 h-px bg-border" />
-                  <p className="mb-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">Advanced</p>
-                  <div className="space-y-1">
-                    {WIDGET_LIBRARY.filter(w => w.isPremium).map((item) => {
-                      const added = widgets.some(w => w.type === item.type)
-                      return (
-                        <button
-                          key={item.type}
-                          onClick={() => addWidget(item.type, item.title, true)}
-                          disabled={added}
-                          className={`flex w-full items-start justify-between rounded-lg px-3 py-2.5 text-left transition-colors ${added ? "opacity-40 cursor-not-allowed" : "hover:bg-muted"}`}
-                        >
-                          <div className="flex-1 min-w-0 pr-2">
-                            <p className={`text-sm font-medium leading-tight ${added ? "text-muted-foreground" : "text-foreground"}`}>{item.title}</p>
-                            <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{item.desc}</p>
+                  <div className="my-2 h-px bg-border" />
+
+                  {/* Advanced section — collapsible */}
+                  <button
+                    onClick={() => setAdvancedOpen(v => !v)}
+                    className="flex w-full items-center justify-between px-1 mb-2"
+                  >
+                    <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Advanced</p>
+                    <ChevronRight className={`h-3 w-3 text-muted-foreground transition-transform ${advancedOpen ? "rotate-90" : ""}`} />
+                  </button>
+                  {advancedOpen && (
+                    <div className="space-y-1">
+                      {/* Context Summary — always first */}
+                      {(() => {
+                        const item = WIDGET_LIBRARY.find(w => w.type === "context-summary")!
+                        const added = widgets.some(w => w.type === item.type)
+                        return (
+                          <button
+                            key={item.type}
+                            onClick={() => addWidget(item.type, item.title, true)}
+                            disabled={added}
+                            className={`flex w-full items-start justify-between rounded-lg px-3 py-2.5 text-left transition-colors ${added ? "opacity-40 cursor-not-allowed" : "hover:bg-muted"}`}
+                          >
+                            <div className="flex-1 min-w-0 pr-2">
+                              <p className={`text-sm font-medium leading-tight ${added ? "text-muted-foreground" : "text-foreground"}`}>{item.title}</p>
+                              <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{item.desc}</p>
+                            </div>
+                            {added ? <Check className="h-3.5 w-3.5 text-primary mt-0.5 flex-shrink-0" /> : <Plus className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />}
+                          </button>
+                        )
+                      })()}
+
+                      {/* AI-generated widgets — starred first, then chronological */}
+                      {advancedWidgetsList.length > 0 && <div className="my-1 h-px bg-border/50" />}
+                      {advancedWidgetsList.map((aw) => {
+                        const plotted = widgets.some(w => w.advancedId === aw.id)
+                        return (
+                          <div key={aw.id} className="group flex w-full items-start gap-1 rounded-lg px-2 py-2 hover:bg-muted">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium leading-tight text-foreground truncate">{aw.title}</p>
+                              {aw.insight && <p className="text-xs text-muted-foreground mt-0.5 leading-snug line-clamp-2">{aw.insight}</p>}
+                            </div>
+                            <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
+                              <button
+                                onClick={() => toggleStarAdvancedWidget(aw)}
+                                className={`flex h-5 w-5 items-center justify-center rounded transition-colors hover:text-yellow-400 ${aw.is_starred ? "text-yellow-400" : "text-muted-foreground opacity-0 group-hover:opacity-100"}`}
+                                title={aw.is_starred ? "Unpin" : "Pin"}
+                              >
+                                <Star className={`h-3 w-3 ${aw.is_starred ? "fill-current" : ""}`} />
+                              </button>
+                              <button
+                                onClick={() => plotAdvancedWidget(aw)}
+                                disabled={plotted}
+                                className={`flex h-5 w-5 items-center justify-center rounded transition-colors ${plotted ? "text-primary" : "text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground"}`}
+                                title={plotted ? "On canvas" : "Add to canvas"}
+                              >
+                                {plotted ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+                              </button>
+                            </div>
                           </div>
-                          {added ? <Check className="h-3.5 w-3.5 text-primary mt-0.5 flex-shrink-0" /> : <Plus className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />}
-                        </button>
-                      )
-                    })}
-                  </div>
+                        )
+                      })}
+
+                      {advancedWidgetsList.length === 0 && (
+                        <p className="px-3 py-2 text-xs text-muted-foreground italic">Run Advanced Analytics to generate visualizations</p>
+                      )}
+                    </div>
+                  )}
                 </>
               )}
 

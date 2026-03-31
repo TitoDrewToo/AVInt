@@ -174,12 +174,18 @@ function CustomTooltip({ active, payload, label, symbol }: any) {
 
 function WidgetContent({
   widget, kpi, monthlyData, categoryData, docTypeData,
+  contextSummary, contextSummaryDate, isGeneratingSummary, isPro, onGenerateSummary,
 }: {
   widget: Widget
   kpi: KPIData
   monthlyData: MonthlyData[]
   categoryData: CategoryData[]
   docTypeData: CategoryData[]
+  contextSummary: string | null
+  contextSummaryDate: string | null
+  isGeneratingSummary: boolean
+  isPro: boolean
+  onGenerateSummary: () => void
 }) {
   const symbol = kpi.currency === "PHP" ? "₱" : kpi.currency === "EUR" ? "€" : kpi.currency === "GBP" ? "£" : "$"
   const colors = widget.colors ?? DEFAULT_WIDGET_COLORS
@@ -388,15 +394,63 @@ function WidgetContent({
   }
 
   if (widget.type === "context-summary") {
+    if (!isPro) {
+      return (
+        <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: colors.primary + "20" }}>
+            <Lock className="h-5 w-5" style={{ color: colors.primary }} />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-foreground">Context Summary</p>
+            <p className="mt-1 text-xs text-muted-foreground">Pro feature — upgrade to generate</p>
+          </div>
+        </div>
+      )
+    }
+    if (contextSummary) {
+      return (
+        <div className="flex h-full flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: colors.primary + "20" }}>
+                <Sparkles className="h-3.5 w-3.5" style={{ color: colors.primary }} />
+              </div>
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">AI Summary</p>
+            </div>
+            <button
+              onClick={onGenerateSummary}
+              disabled={isGeneratingSummary}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
+            >
+              {isGeneratingSummary ? "Generating..." : "Refresh"}
+            </button>
+          </div>
+          <p className="flex-1 overflow-auto text-sm leading-relaxed text-foreground">{contextSummary}</p>
+          {contextSummaryDate && (
+            <p className="text-xs text-muted-foreground">
+              Generated {new Date(contextSummaryDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+            </p>
+          )}
+        </div>
+      )
+    }
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: colors.primary + "20" }}>
-          <FileText className="h-5 w-5" style={{ color: colors.primary }} />
+          <Sparkles className="h-5 w-5" style={{ color: colors.primary }} />
         </div>
         <div>
-          <p className="text-sm font-medium text-foreground">{widget.title}</p>
-          <p className="mt-1 text-xs text-muted-foreground">AI-powered context summary</p>
+          <p className="text-sm font-medium text-foreground">Context Summary</p>
+          <p className="mt-1 text-xs text-muted-foreground">AI-generated financial narrative</p>
         </div>
+        <button
+          onClick={onGenerateSummary}
+          disabled={isGeneratingSummary}
+          className="mt-1 rounded-lg px-4 py-2 text-xs font-medium text-white transition-opacity disabled:opacity-50"
+          style={{ background: colors.primary }}
+        >
+          {isGeneratingSummary ? "Generating..." : "Generate Summary"}
+        </button>
       </div>
     )
   }
@@ -447,6 +501,9 @@ export default function SmartDashboardPage() {
   const [hasNewData, setHasNewData] = useState(false)
   const [isPro, setIsPro] = useState(false)
   const [containerWidth, setContainerWidth] = useState(1200)
+  const [contextSummary, setContextSummary] = useState<string | null>(null)
+  const [contextSummaryDate, setContextSummaryDate] = useState<string | null>(null)
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false)
   const canvasRef = useRef<HTMLDivElement>(null)
 
   const selectedWidget = widgets.find(w => w.id === selectedWidgetId)
@@ -579,6 +636,45 @@ export default function SmartDashboardPage() {
       .single()
       .then(({ data }) => setIsPro(data?.status === "pro" || data?.status === "day_pass"))
   }, [session])
+
+  // ── Context summary ────────────────────────────────────────────────────────
+  const loadContextSummary = useCallback(async () => {
+    if (!session?.user?.id) return
+    const { data } = await supabase
+      .from("context_summaries")
+      .select("summary, generated_at")
+      .eq("user_id", session.user.id)
+      .single()
+    if (data) {
+      setContextSummary(data.summary)
+      setContextSummaryDate(data.generated_at)
+    }
+  }, [session])
+
+  useEffect(() => { loadContextSummary() }, [loadContextSummary])
+
+  const generateContextSummary = async () => {
+    if (!session?.user?.id || !isPro || isGeneratingSummary) return
+    setIsGeneratingSummary(true)
+    try {
+      const { data: { session: currentSession } } = await supabase.auth.getSession()
+      const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-context-summary`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${currentSession?.access_token}`,
+        },
+        body: JSON.stringify({ user_id: session.user.id }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setContextSummary(data.summary)
+        setContextSummaryDate(new Date().toISOString())
+      }
+    } finally {
+      setIsGeneratingSummary(false)
+    }
+  }
 
   // ── Save layout ────────────────────────────────────────────────────────────
   const saveLayout = async () => {
@@ -916,6 +1012,11 @@ export default function SmartDashboardPage() {
                         monthlyData={monthlyData}
                         categoryData={categoryData}
                         docTypeData={docTypeData}
+                        contextSummary={contextSummary}
+                        contextSummaryDate={contextSummaryDate}
+                        isGeneratingSummary={isGeneratingSummary}
+                        isPro={isPro}
+                        onGenerateSummary={generateContextSummary}
                       />
                     </div>
                   </div>

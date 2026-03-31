@@ -87,6 +87,12 @@ export async function POST(req: NextRequest) {
   // Extract order_id
   const lsOrderId = String(data.order_id ?? payload?.data?.id ?? "")
 
+  // Extract license key — present on gift product orders when License Keys are enabled
+  // LemonSqueezy puts license key data in payload.included[] or payload.data.attributes.license_key
+  const licenseKeyData = payload?.included?.find((i: any) => i.type === "license-keys")
+  const licenseKey: string | null = licenseKeyData?.attributes?.key ?? data?.license_key ?? null
+  const licenseKeyId: string | null = licenseKeyData?.id ?? null
+
   // Resolve user_id from email once — reused across all event handlers
   let userId: string | null = null
   try {
@@ -162,6 +168,22 @@ export async function POST(req: NextRequest) {
             updated_at: new Date().toISOString(),
           })
         console.log("Insert (no user) error:", insertError?.message)
+      }
+
+      // Store license key if this is a gift code purchase
+      if (plan === "gift_code" && licenseKey) {
+        const { error: giftError } = await supabaseAdmin
+          .from("gift_codes")
+          .insert({
+            code:                    licenseKey,
+            status:                  "pending",
+            plan:                    "monthly",
+            purchased_by_email:      email,
+            lemonsqueezy_order_id:   lsOrderId,
+            lemonsqueezy_license_id: licenseKeyId,
+          })
+        if (giftError) console.error("Gift code insert error:", giftError.message)
+        else console.log("Gift code stored:", licenseKey)
       }
 
       try { await supabaseAdmin.rpc("increment_user_counter") } catch (e) { console.warn("rpc error:", e) }

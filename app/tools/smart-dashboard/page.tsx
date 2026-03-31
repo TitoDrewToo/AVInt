@@ -913,6 +913,55 @@ export default function SmartDashboardPage() {
               )}
             </div>
 
+            {/* Advanced Analytics — always position 2 */}
+            <div className="relative">
+              {isPro ? (
+                <button
+                  onClick={() => { setShowAdvancedMenu(!showAdvancedMenu); setShowColorPicker(false); setShowDateFilter(false) }}
+                  className="flex h-7 items-center gap-1.5 rounded-lg border border-border px-3 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Advanced Analytics
+                  {hasNewData && (
+                    <span className="flex items-center gap-1 ml-1 text-primary">
+                      <span className="relative flex h-1.5 w-1.5">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+                        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
+                      </span>
+                      <span className="text-[10px] font-medium">New data</span>
+                    </span>
+                  )}
+                </button>
+              ) : (
+                <Link href="/pricing">
+                  <button className="flex h-7 items-center gap-1.5 rounded-lg border border-border px-3 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Advanced Analytics
+                    <Lock className="h-3 w-3" />
+                  </button>
+                </Link>
+              )}
+              {showAdvancedMenu && isPro && (
+                <div className="absolute left-0 top-9 z-30 min-w-[220px] rounded-xl border border-border bg-card p-3 shadow-xl">
+                  <p className="mb-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">AI Analysis</p>
+                  <button
+                    onClick={runAdvancedAnalytics}
+                    disabled={isRunningAnalytics}
+                    className="flex w-full flex-col rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted disabled:opacity-50"
+                  >
+                    <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+                      {isRunningAnalytics ? (
+                        <><div className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" /> Generating…</>
+                      ) : (
+                        <><Sparkles className="h-3.5 w-3.5 text-primary" /> Run Advanced Analytics</>
+                      )}
+                    </span>
+                    <span className="mt-0.5 text-xs text-muted-foreground">Generate new AI-powered visualizations</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
             {/* Chart type picker — only when applicable chart widget selected */}
             {selectedWidget && CHART_TYPE_OPTIONS[selectedWidget.type] && (
               <div className="flex items-center gap-1">
@@ -982,58 +1031,8 @@ export default function SmartDashboardPage() {
                 <span className="text-xs text-muted-foreground truncate max-w-[120px]">
                   {selectedWidget.title}
                 </span>
-                <div className="h-4 w-px bg-border mx-1" />
               </div>
             )}
-
-            {/* Advanced Analytics — button only, generates widgets */}
-            <div className="relative">
-              {isPro ? (
-                <button
-                  onClick={() => { setShowAdvancedMenu(!showAdvancedMenu); setShowColorPicker(false); setShowDateFilter(false) }}
-                  className="flex h-7 items-center gap-1.5 rounded-lg border border-border px-3 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  <Sparkles className="h-3.5 w-3.5" />
-                  Advanced Analytics
-                  {hasNewData && (
-                    <span className="flex items-center gap-1 ml-1 text-primary">
-                      <span className="relative flex h-1.5 w-1.5">
-                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
-                        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
-                      </span>
-                      <span className="text-[10px] font-medium">New data</span>
-                    </span>
-                  )}
-                </button>
-              ) : (
-                <Link href="/pricing">
-                  <button className="flex h-7 items-center gap-1.5 rounded-lg border border-border px-3 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
-                    <Sparkles className="h-3.5 w-3.5" />
-                    Advanced Analytics
-                    <Lock className="h-3 w-3" />
-                  </button>
-                </Link>
-              )}
-              {showAdvancedMenu && isPro && (
-                <div className="absolute left-0 top-9 z-30 min-w-[220px] rounded-xl border border-border bg-card p-3 shadow-xl">
-                  <p className="mb-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">AI Analysis</p>
-                  <button
-                    onClick={runAdvancedAnalytics}
-                    disabled={isRunningAnalytics}
-                    className="flex w-full flex-col rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted disabled:opacity-50"
-                  >
-                    <span className="flex items-center gap-2 text-sm font-medium text-foreground">
-                      {isRunningAnalytics ? (
-                        <><div className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" /> Generating…</>
-                      ) : (
-                        <><Sparkles className="h-3.5 w-3.5 text-primary" /> Run Advanced Analytics</>
-                      )}
-                    </span>
-                    <span className="mt-0.5 text-xs text-muted-foreground">Generate new AI-powered visualizations</span>
-                  </button>
-                </div>
-              )}
-            </div>
           </div>
 
           <div className="flex items-center gap-2">

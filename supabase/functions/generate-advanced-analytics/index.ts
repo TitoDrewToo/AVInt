@@ -14,7 +14,7 @@ const corsHeaders = {
 
 const SYSTEM_PROMPT = `You are a financial analytics AI that generates dashboard widget configurations.
 
-You receive a user's financial data summary and a list of widget types already on their dashboard. Your job is to generate 3-5 insightful widget configurations that surface meaningful patterns, outliers, or observations from their data.
+You receive a user's financial data summary and a list of widget types already on their dashboard. Generate exactly 2-3 widget configurations — prioritize quality and insight over quantity.
 
 Return ONLY a valid JSON object in this exact format — no markdown, no explanation:
 {
@@ -29,24 +29,19 @@ Return ONLY a valid JSON object in this exact format — no markdown, no explana
 }
 
 Available widget_type values (use ONLY these):
-- "bar-chart"      — monthly income vs expenses bar
-- "line-chart"     — income/expense trend over time
-- "area-chart"     — cumulative income/expense area
-- "pie-chart"      — expense category breakdown
-- "kpi-savings"    — savings rate %
-- "kpi-tax"        — tax burden rate
-- "kpi-income"     — gross income total
-- "kpi-expenses"   — total expenses
-- "kpi-net"        — net position (income - expenses)
+- "bar-chart"   — monthly income vs expenses bar comparison
+- "line-chart"  — income/expense trend over time
+- "area-chart"  — cumulative income/expense area
+- "pie-chart"   — expense category breakdown
 
 Rules:
-- STRONGLY prefer chart types: bar-chart, line-chart, area-chart, pie-chart. Use KPI types only as a last resort if no chart angle is meaningful.
-- NEVER generate a widget_type that is already in the user's existing dashboard widgets list
-- Choose widget types that reveal something NOT already visible in their existing widgets
-- The insight must reference specific numbers from their data (amounts, percentages, categories)
-- If data is sparse, generate fewer widgets (minimum 2)
-- Title should be personalized ("Your Top Expense" not "Category Breakdown")
-- Keep insight to 1 sentence, max 120 characters`
+- You MUST use ONLY chart types above. KPI widgets are forbidden — they are already covered by the standard dashboard.
+- HARD RULE: never output a widget_type that appears in the existing dashboard list. If all 4 chart types are already used, return {"widgets": []}.
+- Each widget must show a genuinely different angle of the data (e.g. trend vs breakdown vs comparison).
+- The insight MUST reference specific numbers, percentages, or category names from the data.
+- Title should be specific to this user's data ("Office Dominates Spending" not "Spending Breakdown").
+- Keep insight to 1 sentence, max 120 characters.
+- Maximum 3 widgets. If data is sparse (under 3 months or under 5 transactions), return only 1-2.`
 
 async function callAI(prompt: string): Promise<string> {
   if (AI_PROVIDER === "anthropic") {

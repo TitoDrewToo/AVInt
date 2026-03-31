@@ -222,13 +222,68 @@ export async function POST(req: NextRequest) {
 
     if (["subscription_cancelled", "subscription_expired"].includes(eventName)) {
       await supabaseAdmin.from("subscriptions")
-        .update({
-          status: "cancelled",
-          updated_at: new Date().toISOString(),
-        })
+        .update({ status: "cancelled", updated_at: new Date().toISOString() })
         .eq("lemonsqueezy_subscription_id", lsSubscriptionId)
-
       console.log(eventName, "processed for:", email)
+    }
+
+    // Refund — downgrade to free immediately
+    if (eventName === "order_refunded") {
+      await supabaseAdmin.from("subscriptions")
+        .update({ status: "free", plan: null, current_period_end: null, updated_at: new Date().toISOString() })
+        .eq("lemonsqueezy_order_id", lsOrderId)
+      console.log("order_refunded processed for:", email, "order:", lsOrderId)
+    }
+
+    // Subscription resumed — restore pro access
+    if (eventName === "subscription_resumed") {
+      if (userId) {
+        await supabaseAdmin.from("subscriptions")
+          .update({ status: "pro", current_period_end: resolvedPeriodEnd, updated_at: new Date().toISOString() })
+          .eq("user_id", userId)
+      }
+      console.log("subscription_resumed processed for:", email)
+    }
+
+    // Subscription paused — treat as cancelled (no access)
+    if (eventName === "subscription_paused") {
+      await supabaseAdmin.from("subscriptions")
+        .update({ status: "cancelled", updated_at: new Date().toISOString() })
+        .eq("lemonsqueezy_subscription_id", lsSubscriptionId)
+      console.log("subscription_paused processed for:", email)
+    }
+
+    // License key created — store gift code (fires separately from order_created)
+    // Belt-and-suspenders: order_created already extracts from payload.included[]
+    // This catches cases where license_key_created fires as a separate event
+    if (eventName === "license_key_created") {
+      const key: string | null = data?.key ?? licenseKey
+      const keyId: string | null = String(payload?.data?.id ?? licenseKeyId ?? "")
+      if (key) {
+        // Upsert — avoid duplicate if order_created already inserted it
+        const { data: existing } = await supabaseAdmin
+          .from("gift_codes")
+          .select("id")
+          .eq("code", key)
+          .single()
+
+        if (!existing) {
+          const { error: giftError } = await supabaseAdmin
+            .from("gift_codes")
+            .insert({
+              code:                    key,
+              status:                  "pending",
+              plan:                    plan === "gift_code" ? "monthly" : plan,
+              purchased_by_email:      email,
+              lemonsqueezy_order_id:   lsOrderId,
+              lemonsqueezy_license_id: keyId,
+            })
+          if (giftError) console.error("license_key_created insert error:", giftError.message)
+          else console.log("Gift code stored via license_key_created:", key)
+        } else {
+          console.log("Gift code already exists, skipping duplicate insert:", key)
+        }
+      }
     }
 
     // Retroactively link user_id if we resolved one (covers email-only inserts)

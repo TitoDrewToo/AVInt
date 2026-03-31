@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
+import { useTheme } from "next-themes"
 import { Navbar } from "@/components/navbar"
 import { Footer } from "@/components/footer"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
@@ -222,6 +223,10 @@ function WidgetContent({
   const symbol = kpi.currency === "PHP" ? "₱" : kpi.currency === "EUR" ? "€" : kpi.currency === "GBP" ? "£" : "$"
   const colors = widget.colors ?? DEFAULT_WIDGET_COLORS
   const MULTI_COLORS = [colors.primary, colors.secondary, colors.tertiary, colors.quaternary, colors.quinary]
+  const { resolvedTheme } = useTheme()
+  const axisTickColor = resolvedTheme === "dark" ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.5)"
+  const gridStroke    = resolvedTheme === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)"
+  const legendColor   = resolvedTheme === "dark" ? "rgba(255,255,255,0.8)"  : "rgba(0,0,0,0.8)"
 
   if (widget.type === "kpi-income") return (
     <div className="flex h-full flex-col justify-between">
@@ -313,11 +318,11 @@ function WidgetContent({
   if (widget.type === "area-chart") {
     const variant = widget.chartVariant ?? "area"
     const axisProps = {
-      xAxis: <XAxis dataKey="month" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />,
-      yAxis: <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${symbol}${(v/1000).toFixed(0)}k`} />,
-      grid: <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />,
+      xAxis: <XAxis dataKey="month" tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} />,
+      yAxis: <YAxis tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${symbol}${(v/1000).toFixed(0)}k`} />,
+      grid: <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />,
       tooltip: <Tooltip content={<CustomTooltip symbol={symbol} />} />,
-      legend: <Legend wrapperStyle={{ fontSize: 12, color: "hsl(var(--foreground))" }} />,
+      legend: <Legend wrapperStyle={{ fontSize: 12, color: legendColor }} />,
     }
     return (
       <div className="flex h-full flex-col">
@@ -357,6 +362,27 @@ function WidgetContent({
     )
   }
 
+  if (widget.type === "line-chart") {
+    return (
+      <div className="flex h-full flex-col">
+        <p className="mb-3 text-xs text-muted-foreground">{widget.title ?? "Trend over time"}</p>
+        <div className="flex-1 min-h-0">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={monthlyData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
+              <XAxis dataKey="month" tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${symbol}${(v/1000).toFixed(0)}k`} />
+              <Tooltip content={<CustomTooltip symbol={symbol} />} />
+              <Legend wrapperStyle={{ fontSize: 12, color: legendColor }} />
+              <Line type="monotone" dataKey="income" name="Income" stroke={colors.primary} strokeWidth={2.5} dot={{ fill: colors.primary, r: 3, strokeWidth: 0 }} activeDot={{ r: 5 }} />
+              <Line type="monotone" dataKey="expenses" name="Expenses" stroke={colors.secondary} strokeWidth={2.5} dot={{ fill: colors.secondary, r: 3, strokeWidth: 0 }} activeDot={{ r: 5 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    )
+  }
+
   if (widget.type === "bar-chart" || widget.type === "bar-deductible") {
     const variant = widget.chartVariant ?? "bar"
     const data = categoryData
@@ -372,13 +398,13 @@ function WidgetContent({
                   {data.map((_, i) => <Cell key={i} fill={MULTI_COLORS[i % MULTI_COLORS.length]} strokeWidth={0} />)}
                 </Pie>
                 <Tooltip content={<CustomTooltip />} />
-                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, color: "hsl(var(--foreground))" }} />
+                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, color: legendColor }} />
               </PieChart>
             ) : (
               <BarChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 0 }} barSize={28}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                <XAxis dataKey="name" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${symbol}${(v/1000).toFixed(0)}k`} />
+                <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
+                <XAxis dataKey="name" tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${symbol}${(v/1000).toFixed(0)}k`} />
                 <Tooltip content={<CustomTooltip symbol={symbol} />} />
                 <Bar dataKey="value" name={widget.type === "bar-deductible" ? "Deductible" : "Amount"} radius={[6, 6, 0, 0]}>
                   {data.map((_, i) => <Cell key={i} fill={MULTI_COLORS[i % MULTI_COLORS.length]} />)}
@@ -400,9 +426,9 @@ function WidgetContent({
         <ResponsiveContainer width="100%" height="100%">
           {variant === "bar" ? (
             <BarChart data={docTypeData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }} barSize={28}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-              <XAxis dataKey="name" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
+              <XAxis dataKey="name" tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} />
               <Tooltip content={<CustomTooltip />} />
               <Bar dataKey="value" name="Count" radius={[6, 6, 0, 0]}>
                 {docTypeData.map((_, i) => <Cell key={i} fill={MULTI_COLORS[i % MULTI_COLORS.length]} />)}
@@ -416,7 +442,7 @@ function WidgetContent({
               ))}
             </Pie>
             <Tooltip content={<CustomTooltip />} />
-            <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, color: "hsl(var(--foreground))" }} />
+            <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, color: legendColor }} />
           </PieChart>
           )}
         </ResponsiveContainer>

@@ -45,7 +45,19 @@ function PricingCard({
   const checkoutUrl = name === "Pro"
     ? (isAnnual ? CHECKOUT_URLS["Pro Annual"] : CHECKOUT_URLS["Pro Monthly"])
     : CHECKOUT_URLS[name] ?? "#"
+
+  // Is this card the user's current active plan?
   const active = isCardActive(name, activeStatus) && name !== "Gift Codes"
+
+  // Does the user have a higher/equal plan that makes this card irrelevant?
+  const isPro = activeStatus === "pro"
+  const isDayPass = activeStatus === "day_pass"
+  const isGiftCode = activeStatus === "gift_code"
+
+  // Day pass or gift code users can upgrade to Pro
+  const canUpgradeToPro = (isDayPass || isGiftCode) && name === "Pro"
+  // Pro users shouldn't see a Day Pass button — they already have more
+  const supersededByPro = isPro && name === "Day Pass"
 
   const handlePaidClick = () => {
     if (!isSignedIn) {
@@ -53,6 +65,76 @@ function PricingCard({
     } else {
       window.location.href = checkoutUrl
     }
+  }
+
+  const renderButton = () => {
+    // Free card
+    if (name === "Free") {
+      return isSignedIn ? null : (
+        <Link href="/tools/smart-storage">
+          <Button className="mt-8 w-full rounded-xl bg-secondary text-secondary-foreground hover:bg-secondary/80" size="lg">
+            Get Started
+          </Button>
+        </Link>
+      )
+    }
+
+    // Gift Codes — always purchasable (buying for someone else)
+    if (name === "Gift Codes") {
+      return (
+        <Button
+          className="mt-8 w-full rounded-xl bg-secondary text-secondary-foreground hover:bg-secondary/80"
+          size="lg"
+          onClick={handlePaidClick}
+        >
+          Purchase Code
+        </Button>
+      )
+    }
+
+    // This card is the user's active plan
+    if (active) {
+      return (
+        <Link href="/tools/smart-storage">
+          <Button className="mt-8 w-full rounded-xl" size="lg">
+            Go to Smart Storage
+          </Button>
+        </Link>
+      )
+    }
+
+    // Pro card — day pass or gift code user can upgrade immediately
+    if (canUpgradeToPro) {
+      return (
+        <Button
+          className="mt-8 w-full rounded-xl"
+          size="lg"
+          onClick={handlePaidClick}
+        >
+          Upgrade to Pro
+        </Button>
+      )
+    }
+
+    // Day Pass card — pro user already has full access, no action needed
+    if (supersededByPro) {
+      return (
+        <p className="mt-8 text-center text-sm text-muted-foreground">
+          Included in your Pro plan
+        </p>
+      )
+    }
+
+    // Default — not signed in or no active sub
+    return (
+      <Button
+        className={`mt-8 w-full rounded-xl ${highlighted ? "" : "bg-secondary text-secondary-foreground hover:bg-secondary/80"}`}
+        size="lg"
+        onClick={handlePaidClick}
+      >
+        Get Started
+      </Button>
+    )
   }
 
   return (
@@ -102,29 +184,7 @@ function PricingCard({
         ))}
       </ul>
 
-      {name === "Free" ? (
-        isSignedIn ? null : (
-          <Link href="/tools/smart-storage">
-            <Button className="mt-8 w-full rounded-xl bg-secondary text-secondary-foreground hover:bg-secondary/80" size="lg">
-              Get Started
-            </Button>
-          </Link>
-        )
-      ) : (active && name !== "Gift Codes") ? (
-        <Link href="/tools/smart-storage">
-          <Button className="mt-8 w-full rounded-xl" size="lg">
-            Go to Smart Storage
-          </Button>
-        </Link>
-      ) : (
-        <Button
-          className={`mt-8 w-full rounded-xl ${highlighted ? "" : "bg-secondary text-secondary-foreground hover:bg-secondary/80"}`}
-          size="lg"
-          onClick={handlePaidClick}
-        >
-          {name === "Gift Codes" ? "Purchase Code" : "Get Started"}
-        </Button>
-      )}
+      {renderButton()}
     </div>
   )
 }

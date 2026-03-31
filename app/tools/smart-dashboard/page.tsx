@@ -7,7 +7,10 @@ import { Footer } from "@/components/footer"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 import { supabase } from "@/lib/supabase"
 import type { Session } from "@supabase/supabase-js"
-import GridLayout from "react-grid-layout"
+import GridLayoutBase, { Layout as RGLLayout } from "react-grid-layout"
+// react-grid-layout v2 changed its TS prop types — cast to any to keep v1-style props working at runtime
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const GridLayout = GridLayoutBase as any
 import "react-grid-layout/css/styles.css"
 import "react-resizable/css/styles.css"
 import {
@@ -910,8 +913,9 @@ export default function SmartDashboardPage() {
     setIsDirty(true)
   }
 
-  const handleLayoutChange = (newLayout: any[]) => {
-    setLayout(newLayout.map(l => ({ i: l.i, x: l.x, y: l.y, w: l.w, h: l.h, minW: l.minW, minH: l.minH })))
+  const handleLayoutChange = (newLayout: RGLLayout) => {
+    // RGLLayout items are readonly — spread into our mutable LayoutItem shape
+    setLayout((newLayout as any[]).map((l: any) => ({ i: l.i, x: l.x, y: l.y, w: l.w, h: l.h, minW: l.minW, minH: l.minH })))
     setIsDirty(true)
   }
 
@@ -1158,8 +1162,8 @@ export default function SmartDashboardPage() {
                 cols={12}
                 rowHeight={24}
                 width={containerWidth}
-                onLayoutChange={isMobile ? (() => {}) : handleLayoutChange}
-                draggableHandle={isMobile ? undefined : ".drag-handle"}
+                onLayoutChange={handleLayoutChange}
+                draggableHandle={isMobile ? ".no-drag" : ".drag-handle"}
                 isDraggable={!isMobile}
                 isResizable={!isMobile}
                 margin={[10, 10]}

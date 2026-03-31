@@ -16,10 +16,11 @@ serve(async (req) => {
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-  // Fetch all document_fields with normalization_status = 'raw'
+  // Fetch all document_fields with normalization_status = 'raw' — full row so normalize-document
+  // can use the data directly without a second lookup (avoids a known query issue)
   const { data: rawRows, error } = await supabase
     .from("document_fields")
-    .select("id, file_id")
+    .select("*")
     .eq("normalization_status", "raw")
 
   if (error) {
@@ -47,7 +48,7 @@ serve(async (req) => {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
         },
-        body: JSON.stringify({ file_id: row.file_id }),
+        body: JSON.stringify({ file_id: row.file_id, fields: row }),
       })
 
       if (res.ok) {

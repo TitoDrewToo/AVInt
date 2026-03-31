@@ -66,25 +66,25 @@ serve(async (req) => {
   }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-  const { file_id, job_id } = body
-
-  console.log("normalize-document called with file_id:", file_id, "job_id:", job_id)
+  const { file_id, job_id, fields: inlineFields } = body
 
   try {
-    // 1. Get the raw document_fields row
-    const { data: fieldsArr, error: fieldsError } = await supabase
-      .from("document_fields")
-      .select("*")
-      .eq("file_id", file_id)
-      .order("created_at", { ascending: false })
-      .limit(1)
+    // 1. Use inline fields if provided (from reprocess-documents), otherwise query DB
+    let fields: any
+    if (inlineFields) {
+      fields = inlineFields
+    } else {
+      const { data: fieldsArr, error: fieldsError } = await supabase
+        .from("document_fields")
+        .select("*")
+        .eq("file_id", file_id)
+        .order("created_at", { ascending: false })
+        .limit(1)
 
-    console.log("document_fields query result — count:", fieldsArr?.length, "error:", fieldsError?.message)
-
-    if (fieldsError) throw new Error(`document_fields query error: ${fieldsError.message}`)
-    if (!fieldsArr?.length) throw new Error("document_fields not found for file_id: " + file_id)
-
-    const fields = fieldsArr[0]
+      if (fieldsError) throw new Error(`document_fields query error: ${fieldsError.message}`)
+      if (!fieldsArr?.length) throw new Error("document_fields not found for file_id: " + file_id)
+      fields = fieldsArr[0]
+    }
 
     // 2. Build input for OpenAI — send both extracted fields AND full raw_json
     //    so OpenAI can pull additional context Gemini surfaced but didn't map

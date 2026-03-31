@@ -1,13 +1,129 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
+const OPENAI_API_KEY            = Deno.env.get("OPENAI_API_KEY")!
 const SUPABASE_URL              = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-const SUPABASE_ANON_KEY         = Deno.env.get("SUPABASE_ANON_KEY")!
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+}
+
+const SYSTEM_PROMPT = `You are a financial document normalization AI.
+
+You receive:
+- A set of fields already extracted from a document by Gemini OCR
+- The full raw_json output from Gemini, which may contain additional context
+
+Your job is to return a single clean JSON object with ALL of the following fields.
+Return ONLY valid JSON. No markdown, no code blocks, no explanation.
+
+Fields to return:
+{
+  "vendor_name":        string or null  — clean company name, remove store/branch numbers, title case
+  "employer_name":      string or null  — clean employer name, title case
+  "document_date":      string or null  — ISO date YYYY-MM-DD, infer from context if needed
+  "currency":           string or null  — ISO 4217 code: USD, PHP, SGD, EUR, GBP, etc
+  "total_amount":       number or null  — final total paid/charged, must be a number not string
+  "gross_income":       number or null  — gross pay before deductions
+  "net_income":         number or null  — take-home pay after deductions
+  "tax_amount":         number or null  — VAT, withholding tax, or any tax line extracted
+  "discount_amount":    number or null  — any discount or promo deducted
+  "expense_category":   string or null  — one of: Food, Transport, Utilities, Healthcare, Entertainment, Shopping, Travel, Office, Salary, Tax, Legal, Other
+  "invoice_number":     string or null  — invoice/receipt/reference number
+  "payment_method":     string or null  — Cash, Credit Card, Debit Card, Bank Transfer, GCash, PayMaya, Check, Other
+  "period_start":       string or null  — pay period start date YYYY-MM-DD (payslips/statements)
+  "period_end":         string or null  — pay period end date YYYY-MM-DD (payslips/statements)
+  "counterparty_name":  string or null  — other named party in contracts/agreements
+  "line_items":         array or null   — [{"description": string, "amount": number, "quantity": number or null}]
+  "confidence_score":   number          — your confidence 0.0–1.0 in the overall extraction
+}
+
+Rules:
+- Prefer values inferred from raw_json over the pre-extracted fields if raw_json has more detail
+- All amount fields must be numbers, never strings
+- If a field truly cannot be determined, return null — do not guess
+- Normalize inconsistent casing, remove trailing punctuation from names
+- For Philippine documents: PHP currency, common vendors include Jollibee, SM, Grab, etc.`
+
+async function normalizeRow(supabase: any, row: any): Promise<void> {
+  const userInput = {
+    extracted: {
+      vendor_name:      row.vendor_name,
+      employer_name:    row.employer_name,
+      document_date:    row.document_date,
+      currency:         row.currency,
+      total_amount:     row.total_amount,
+      gross_income:     row.gross_income,
+      net_income:       row.net_income,
+      expense_category: row.expense_category,
+      confidence_score: row.confidence_score,
+    },
+    raw_json: row.raw_json,
+  }
+
+  const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      temperature: 0,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user",   content: JSON.stringify(userInput) },
+      ],
+      max_tokens: 1024,
+    }),
+  })
+
+  if (!openaiResponse.ok) {
+    const err = await openaiResponse.text()
+    throw new Error(`OpenAI API error: ${err}`)
+  }
+
+  const openaiData = await openaiResponse.json()
+  const rawText = openaiData.choices?.[0]?.message?.content
+  if (!rawText) throw new Error("No response from OpenAI")
+
+  let normalized: any
+  try {
+    normalized = JSON.parse(rawText.replace(/```json|```/g, "").trim())
+  } catch {
+    throw new Error(`Failed to parse OpenAI output: ${rawText}`)
+  }
+
+  const now = new Date().toISOString()
+
+  await supabase
+    .from("document_fields")
+    .update({
+      vendor_name:       normalized.vendor_name       ?? row.vendor_name,
+      employer_name:     normalized.employer_name     ?? row.employer_name,
+      document_date:     normalized.document_date     ?? row.document_date,
+      currency:          normalized.currency          ?? row.currency,
+      total_amount:      normalized.total_amount      ?? row.total_amount,
+      gross_income:      normalized.gross_income      ?? row.gross_income,
+      net_income:        normalized.net_income        ?? row.net_income,
+      expense_category:  normalized.expense_category  ?? row.expense_category,
+      confidence_score:  normalized.confidence_score  ?? row.confidence_score,
+      tax_amount:        normalized.tax_amount        ?? null,
+      discount_amount:   normalized.discount_amount   ?? null,
+      invoice_number:    normalized.invoice_number    ?? null,
+      payment_method:    normalized.payment_method    ?? null,
+      period_start:      normalized.period_start      ?? null,
+      period_end:        normalized.period_end        ?? null,
+      counterparty_name: normalized.counterparty_name ?? null,
+      line_items:        normalized.line_items        ?? row.raw_json?.line_items ?? null,
+      normalization_status: "normalized",
+      normalized_at:        now,
+      normalization_error:  null,
+    })
+    .eq("id", row.id)
 }
 
 serve(async (req) => {
@@ -17,8 +133,6 @@ serve(async (req) => {
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-  // Fetch all document_fields with normalization_status = 'raw' — full row so normalize-document
-  // can use the data directly without a second lookup (avoids a known query issue)
   const { data: rawRows, error } = await supabase
     .from("document_fields")
     .select("*")
@@ -43,23 +157,15 @@ serve(async (req) => {
 
   for (const row of rawRows) {
     try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/normalize-document`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({ file_id: row.file_id, fields: row }),
-      })
-
-      if (res.ok) {
-        results.push({ file_id: row.file_id, status: "normalized" })
-      } else {
-        const errText = await res.text()
-        results.push({ file_id: row.file_id, status: "failed", error: errText })
-      }
+      await normalizeRow(supabase, row)
+      results.push({ file_id: row.file_id, status: "normalized" })
     } catch (err: any) {
-      results.push({ file_id: row.file_id, status: "error", error: err.message })
+      console.error(`Failed to normalize file_id ${row.file_id}:`, err.message)
+      await supabase
+        .from("document_fields")
+        .update({ normalization_status: "failed", normalization_error: err.message })
+        .eq("id", row.id)
+      results.push({ file_id: row.file_id, status: "failed", error: err.message })
     }
   }
 

@@ -5,19 +5,19 @@ import Link from "next/link"
 import { StartFreeButton } from "@/components/start-free-button"
 
 const dashboardModules = [
-  { 
+  {
     title: "Spending by Category",
     visualization: (
       <div className="flex h-20 items-end justify-center gap-1.5">
-        <div className="h-12 w-4 rounded-t bg-primary/60" />
-        <div className="h-16 w-4 rounded-t bg-primary/80" />
-        <div className="h-8 w-4 rounded-t bg-primary/40" />
-        <div className="h-20 w-4 rounded-t bg-primary" />
-        <div className="h-10 w-4 rounded-t bg-primary/50" />
+        <div className="h-12 w-4 origin-bottom rounded-t bg-primary/60" style={{ animation: "sd-bar 2s ease-in-out infinite" }} />
+        <div className="h-16 w-4 origin-bottom rounded-t bg-primary/80" style={{ animation: "sd-bar 2s .25s ease-in-out infinite" }} />
+        <div className="h-8  w-4 origin-bottom rounded-t bg-primary/40" style={{ animation: "sd-bar 2s .5s ease-in-out infinite" }} />
+        <div className="h-20 w-4 origin-bottom rounded-t bg-primary"    style={{ animation: "sd-bar 2s .75s ease-in-out infinite" }} />
+        <div className="h-10 w-4 origin-bottom rounded-t bg-primary/50" style={{ animation: "sd-bar 2s 1s ease-in-out infinite" }} />
       </div>
     )
   },
-  { 
+  {
     title: "Monthly Activity Trend",
     visualization: (
       <div className="flex h-20 items-center justify-center">
@@ -28,77 +28,73 @@ const dashboardModules = [
             strokeWidth="2"
             strokeLinecap="round"
             strokeLinejoin="round"
+            strokeDasharray="105"
             points="5,30 20,25 35,28 50,15 65,18 80,10 95,12"
+            style={{ animation: "sd-draw 2.5s ease-in-out infinite" }}
           />
-          <circle cx="5" cy="30" r="2" fill="currentColor" />
-          <circle cx="20" cy="25" r="2" fill="currentColor" />
-          <circle cx="35" cy="28" r="2" fill="currentColor" />
-          <circle cx="50" cy="15" r="2" fill="currentColor" />
-          <circle cx="65" cy="18" r="2" fill="currentColor" />
-          <circle cx="80" cy="10" r="2" fill="currentColor" />
-          <circle cx="95" cy="12" r="2" fill="currentColor" />
+          {([
+            [5,30],[20,25],[35,28],[50,15],[65,18],[80,10],[95,12]
+          ] as [number,number][]).map(([cx,cy], i) => (
+            <circle key={i} cx={cx} cy={cy} r="2" fill="currentColor"
+              style={{ animation: `sd-dot 2.5s ${i * 0.18}s ease-in-out infinite` }} />
+          ))}
         </svg>
       </div>
     )
   },
-  { 
+  {
     title: "Income vs Expense",
     visualization: (
       <div className="flex h-20 items-center justify-center gap-6">
         <div className="flex flex-col items-center">
-          <div className="h-14 w-8 rounded bg-primary" />
+          <div className="h-14 w-8 origin-bottom rounded bg-primary"
+            style={{ animation: "sd-bar 2s ease-in-out infinite" }} />
           <span className="mt-1 text-[10px] text-muted-foreground">In</span>
         </div>
         <div className="flex flex-col items-center">
-          <div className="h-10 w-8 rounded bg-primary/50" />
+          <div className="h-10 w-8 origin-bottom rounded bg-primary/50"
+            style={{ animation: "sd-bar 2s .4s ease-in-out infinite" }} />
           <span className="mt-1 text-[10px] text-muted-foreground">Out</span>
         </div>
       </div>
     )
   },
-  { 
+  {
     title: "Document Type Distribution",
     visualization: (
       <div className="flex h-20 items-center justify-center">
         <svg viewBox="0 0 60 60" className="h-16 w-16">
-          <circle cx="30" cy="30" r="25" fill="none" stroke="currentColor" strokeWidth="8" className="text-primary/30" />
-          <circle 
-            cx="30" 
-            cy="30" 
-            r="25" 
-            fill="none" 
-            stroke="currentColor" 
-            strokeWidth="8" 
-            strokeDasharray="95 62"
-            strokeDashoffset="0"
-            className="text-primary" 
+          <circle cx="30" cy="30" r="25" fill="none" stroke="currentColor" strokeWidth="8" className="text-primary/20" />
+          <circle
+            cx="30" cy="30" r="25" fill="none" stroke="currentColor" strokeWidth="8"
+            strokeDasharray="95 62" strokeDashoffset="157" className="text-primary"
+            style={{ animation: "sd-donut 2.4s ease-in-out infinite", transformOrigin: "30px 30px" }}
           />
-          <circle 
-            cx="30" 
-            cy="30" 
-            r="25" 
-            fill="none" 
-            stroke="currentColor" 
-            strokeWidth="8" 
-            strokeDasharray="40 117"
-            strokeDashoffset="-95"
-            className="text-primary/60" 
+          <circle
+            cx="30" cy="30" r="25" fill="none" stroke="currentColor" strokeWidth="8"
+            strokeDasharray="40 117" strokeDashoffset="-95" className="text-primary/60"
+            style={{ animation: "sd-donut2 2.4s .5s ease-in-out infinite", transformOrigin: "30px 30px" }}
           />
         </svg>
       </div>
     )
   },
-  { 
+  {
     title: "Activity Timeline",
     visualization: (
       <div className="flex h-20 items-center justify-center px-4">
         <div className="relative flex w-full items-center">
           <div className="h-0.5 w-full bg-border" />
-          <div className="absolute left-[10%] h-3 w-3 rounded-full bg-primary" />
-          <div className="absolute left-[30%] h-3 w-3 rounded-full bg-primary/70" />
-          <div className="absolute left-[55%] h-3 w-3 rounded-full bg-primary/80" />
-          <div className="absolute left-[75%] h-3 w-3 rounded-full bg-primary/60" />
-          <div className="absolute left-[90%] h-3 w-3 rounded-full bg-primary" />
+          {([["10%",0],["30%",1],["55%",2],["75%",3],["90%",4]] as [string,number][]).map(([left,i]) => (
+            <div key={i} className="absolute h-3 w-3 rounded-full bg-primary"
+              style={{
+                left,
+                opacity: i % 2 === 0 ? 1 : 0.6,
+                animation: `sd-timeline 2s ${i * 0.3}s ease-in-out infinite`,
+                transformOrigin: "center",
+              }}
+            />
+          ))}
         </div>
       </div>
     )
@@ -109,6 +105,17 @@ export default function SmartDashboardProductPage() {
   return (
     <div className="flex min-h-screen flex-col">
       <Navbar />
+
+      {/* Global keyframes for dashboard visualizations */}
+      <style>{`
+        @keyframes sd-bar    { 0%,100%{transform:scaleY(.15);opacity:.25} 60%{transform:scaleY(1);opacity:1} }
+        @keyframes sd-draw   { 0%{stroke-dashoffset:105;opacity:.2} 70%,100%{stroke-dashoffset:0;opacity:1} }
+        @keyframes sd-dot    { 0%,100%{transform:scale(.3);opacity:.2} 70%,100%{transform:scale(1);opacity:1} }
+        @keyframes sd-donut  { 0%{stroke-dashoffset:157;opacity:.2} 70%,100%{stroke-dashoffset:0;opacity:1} }
+        @keyframes sd-donut2 { 0%{stroke-dashoffset:-157;opacity:.1} 70%,100%{stroke-dashoffset:-95;opacity:1} }
+        @keyframes sd-timeline{ 0%,100%{transform:scale(1);opacity:.4} 50%{transform:scale(1.5);opacity:1} }
+      `}</style>
+
       <main className="flex-1">
         {/* Hero */}
         <section className="px-6 py-24 md:py-32">

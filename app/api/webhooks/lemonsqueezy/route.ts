@@ -87,18 +87,18 @@ export async function POST(req: NextRequest) {
   // Extract order_id
   const lsOrderId = String(data.order_id ?? payload?.data?.id ?? "")
 
+  // Resolve user_id from email once — reused across all event handlers
+  let userId: string | null = null
+  try {
+    const { data: { users } } = await supabaseAdmin.auth.admin.listUsers()
+    userId = users?.find((u) => u.email === email)?.id ?? null
+    console.log("Matched user_id:", userId, "for email:", email)
+  } catch (e) {
+    console.warn("Could not match user:", e)
+  }
+
   try {
     if (eventName === "order_created") {
-      // Match user by email first
-      let userId: string | null = null
-      try {
-        const { data: { users } } = await supabaseAdmin.auth.admin.listUsers()
-        const matched = users?.find((u) => u.email === email)
-        userId = matched?.id ?? null
-        console.log("Matched user_id:", userId, "for email:", email)
-      } catch (e) {
-        console.warn("Could not match user:", e)
-      }
 
       // Check if subscription already exists for this user
       if (userId) {
@@ -169,12 +169,6 @@ export async function POST(req: NextRequest) {
     }
 
     if (["subscription_created", "subscription_updated"].includes(eventName)) {
-      let userId: string | null = null
-      try {
-        const { data: { users } } = await supabaseAdmin.auth.admin.listUsers()
-        userId = users?.find((u) => u.email === email)?.id ?? null
-      } catch (e) { console.warn("Could not match user:", e) }
-
       if (userId) {
         const { data: existing } = await supabaseAdmin
           .from("subscriptions").select("id").eq("user_id", userId).single()
@@ -215,17 +209,12 @@ export async function POST(req: NextRequest) {
       console.log(eventName, "processed for:", email)
     }
 
-    // Update user_id if we can match by email
-    try {
-      const { data: { users } } = await supabaseAdmin.auth.admin.listUsers()
-      const matched = users?.find((u) => u.email === email)
-      if (matched?.id) {
-        await supabaseAdmin.from("subscriptions")
-          .update({ user_id: matched.id })
-          .eq("email", email)
-      }
-    } catch (e) {
-      console.warn("Could not match user_id for email:", email, e)
+    // Retroactively link user_id if we resolved one (covers email-only inserts)
+    if (userId) {
+      await supabaseAdmin.from("subscriptions")
+        .update({ user_id: userId })
+        .eq("email", email)
+        .is("user_id", null)
     }
 
     return NextResponse.json({ received: true })

@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from "next/server"
 import crypto from "crypto"
 import { createClient } from "@supabase/supabase-js"
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+function getSupabaseAdmin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+}
 
 function verifySignature(payload: string, signature: string, secret: string): boolean {
   const hmac = crypto.createHmac("sha256", secret)
@@ -14,6 +16,7 @@ function verifySignature(payload: string, signature: string, secret: string): bo
 }
 
 export async function POST(req: NextRequest) {
+  const supabaseAdmin = getSupabaseAdmin()
   const rawBody = await req.text()
   const signature = req.headers.get("x-signature") ?? ""
   const secret = process.env.LEMONSQUEEZY_WEBHOOK_SECRET ?? ""

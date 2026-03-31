@@ -2,8 +2,10 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 const OPENAI_API_KEY            = Deno.env.get("OPENAI_API_KEY")!
+const ANTHROPIC_API_KEY         = Deno.env.get("ANTHROPIC_API_KEY")!
 const SUPABASE_URL              = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+const AI_PROVIDER               = Deno.env.get("AI_PROVIDER") ?? "anthropic"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -47,6 +49,46 @@ Rules:
 - Normalize inconsistent casing, remove trailing punctuation from names
 - For Philippine documents: PHP currency, common vendors include Jollibee, SM, Grab, etc.`
 
+async function callAI(systemPrompt: string, userInput: any): Promise<string> {
+  if (AI_PROVIDER === "anthropic") {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 1024,
+        system: systemPrompt + "\n\nIMPORTANT: Return ONLY a valid JSON object. No markdown, no code blocks.",
+        messages: [{ role: "user", content: JSON.stringify(userInput) }],
+      }),
+    })
+    if (!res.ok) throw new Error(`Anthropic API error: ${await res.text()}`)
+    const data = await res.json()
+    return data.content?.[0]?.text ?? ""
+  } else {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${OPENAI_API_KEY}` },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        temperature: 0,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user",   content: JSON.stringify(userInput) },
+        ],
+        max_tokens: 1024,
+      }),
+    })
+    if (!res.ok) throw new Error(`OpenAI API error: ${await res.text()}`)
+    const data = await res.json()
+    return data.choices?.[0]?.message?.content ?? ""
+  }
+}
+
 async function normalizeRow(supabase: any, row: any): Promise<void> {
   const userInput = {
     extracted: {
@@ -63,38 +105,14 @@ async function normalizeRow(supabase: any, row: any): Promise<void> {
     raw_json: row.raw_json,
   }
 
-  const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      temperature: 0,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user",   content: JSON.stringify(userInput) },
-      ],
-      max_tokens: 1024,
-    }),
-  })
-
-  if (!openaiResponse.ok) {
-    const err = await openaiResponse.text()
-    throw new Error(`OpenAI API error: ${err}`)
-  }
-
-  const openaiData = await openaiResponse.json()
-  const rawText = openaiData.choices?.[0]?.message?.content
-  if (!rawText) throw new Error("No response from OpenAI")
+  const rawText = await callAI(SYSTEM_PROMPT, userInput)
+  if (!rawText) throw new Error("Empty response from AI")
 
   let normalized: any
   try {
     normalized = JSON.parse(rawText.replace(/```json|```/g, "").trim())
   } catch {
-    throw new Error(`Failed to parse OpenAI output: ${rawText}`)
+    throw new Error(`Failed to parse AI output: ${rawText}`)
   }
 
   const now = new Date().toISOString()

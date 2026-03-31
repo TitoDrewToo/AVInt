@@ -25,7 +25,10 @@ import {
   ArrowLeft,
   FolderOutput,
   Download,
+  PenLine,
+  Tag,
 } from "lucide-react"
+import { ManualEntryModal, ReclassifyModal } from "@/components/ui/document-modals"
 import { useRouter } from "next/navigation"
 
 // ── Document type normalization ───────────────────────────────────────────────
@@ -147,6 +150,7 @@ function formatBytes(bytes: number): string {
 }
 
 function fileIcon(fileType: string) {
+  if (fileType === "manual") return <PenLine className="h-4 w-4 shrink-0 text-primary/70" />
   if (fileType.startsWith("image/")) return <ImageIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
   if (fileType === "application/pdf") return <FileText className="h-4 w-4 shrink-0 text-primary/60" />
   return <File className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -302,6 +306,8 @@ export default function SmartStoragePage() {
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set())
   const [viewMode, setViewMode] = useState<"list" | "grid">("grid")
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; fileId: string; filename: string } | null>(null)
+  const [manualEntryOpen, setManualEntryOpen] = useState(false)
+  const [reclassifyTarget, setReclassifyTarget] = useState<{ fileId: string; filename: string } | null>(null)
   const [renamingFileId, setRenamingFileId] = useState<string | null>(null)
   const [renameFileValue, setRenameFileValue] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -688,6 +694,8 @@ export default function SmartStoragePage() {
     setBreadcrumb((prev) => prev.slice(0, index + 1))
   }
 
+  const manualEntriesCount = files.filter(f => f.file_type === "manual").length
+
   // ── Dynamic classification folders ────────────────────────────────────────
   const visibleClassificationFolders = Object.entries(CLASSIFICATION_FOLDER_MAP)
     .filter(([, types]) => types.some((t) => detectedTypes.includes(t)))
@@ -700,8 +708,12 @@ export default function SmartStoragePage() {
   // Files — classification view shows all matching types across all folders, sorted by date
   const displayedFiles = (() => {
     if (classificationView) {
-      const types = CLASSIFICATION_FOLDER_MAP[classificationView] ?? []
-      const matched = files.filter(f => types.some(t => f.document_type?.includes(t) || t === f.document_type))
+      const matched = classificationView === "Manual Entries"
+        ? files.filter(f => f.file_type === "manual")
+        : (() => {
+            const types = CLASSIFICATION_FOLDER_MAP[classificationView] ?? []
+            return files.filter(f => types.some(t => f.document_type?.includes(t) || t === f.document_type))
+          })()
       if (classificationSort === "date-desc") return [...matched].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       if (classificationSort === "date-asc")  return [...matched].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
       return [...matched].sort((a, b) => a.filename.localeCompare(b.filename))
@@ -802,34 +814,45 @@ export default function SmartStoragePage() {
                   Classification
                 </span>
               </div>
-              {visibleClassificationFolders.length === 0 ? (
-                <p className="px-2 text-[11px] text-muted-foreground/50">
-                  Detected types appear here
-                </p>
-              ) : (
-                <div className="space-y-0.5">
-                  {visibleClassificationFolders.map((name) => {
-                    const count = (CLASSIFICATION_FOLDER_MAP[name] ?? []).reduce(
-                      (n, t) => n + files.filter(f => f.document_type === t).length, 0
-                    )
-                    return (
-                      <button
-                        key={name}
-                        onClick={() => { setSelectedLeftFolder(name); setClassificationView(name) }}
-                        className={`flex w-full items-center justify-between gap-2 rounded px-2 py-1 text-left text-sm transition-colors hover:bg-muted ${
-                          classificationView === name ? "bg-muted text-foreground" : "text-muted-foreground"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <Folder className="h-3.5 w-3.5 shrink-0" />
-                          <span className="truncate">{name}</span>
-                        </div>
-                        <span className="text-[10px] text-muted-foreground/60 shrink-0">{count}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
+              <div className="space-y-0.5">
+                {/* Manual Entries — always shown */}
+                <button
+                  onClick={() => { setSelectedLeftFolder("Manual Entries"); setClassificationView("Manual Entries") }}
+                  className={`flex w-full items-center justify-between gap-2 rounded px-2 py-1 text-left text-sm transition-colors hover:bg-muted ${
+                    classificationView === "Manual Entries" ? "bg-muted text-foreground" : "text-muted-foreground"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <PenLine className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">Manual Entries</span>
+                  </div>
+                  {manualEntriesCount > 0 && <span className="text-[10px] text-muted-foreground/60 shrink-0">{manualEntriesCount}</span>}
+                </button>
+                {/* Detected document type folders */}
+                {visibleClassificationFolders.map((name) => {
+                  const count = (CLASSIFICATION_FOLDER_MAP[name] ?? []).reduce(
+                    (n, t) => n + files.filter(f => f.document_type === t).length, 0
+                  )
+                  return (
+                    <button
+                      key={name}
+                      onClick={() => { setSelectedLeftFolder(name); setClassificationView(name) }}
+                      className={`flex w-full items-center justify-between gap-2 rounded px-2 py-1 text-left text-sm transition-colors hover:bg-muted ${
+                        classificationView === name ? "bg-muted text-foreground" : "text-muted-foreground"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Folder className="h-3.5 w-3.5 shrink-0" />
+                        <span className="truncate">{name}</span>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground/60 shrink-0">{count}</span>
+                    </button>
+                  )
+                })}
+                {visibleClassificationFolders.length === 0 && manualEntriesCount === 0 && (
+                  <p className="px-2 text-[11px] text-muted-foreground/50">Detected types appear here</p>
+                )}
+              </div>
             </div>
           </aside>
 
@@ -921,6 +944,13 @@ export default function SmartStoragePage() {
                   >
                     <Upload className="h-3.5 w-3.5" />
                     Upload
+                  </button>
+                  <button
+                    onClick={() => setManualEntryOpen(true)}
+                    className="flex h-7 items-center gap-1.5 rounded px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <PenLine className="h-3.5 w-3.5" />
+                    Add Entry
                   </button>
                 </>)}
                 {classificationView && (
@@ -1229,6 +1259,14 @@ export default function SmartStoragePage() {
                       })()}
                       <div className="my-1 h-px bg-border" />
                       <button
+                        onClick={() => { setReclassifyTarget({ fileId: contextMenu.fileId, filename: contextMenu.filename }); setContextMenu(null) }}
+                        className="flex w-full items-center gap-2 px-4 py-2 text-sm text-foreground transition-colors hover:bg-muted"
+                      >
+                        <Tag className="h-3.5 w-3.5 text-muted-foreground" />
+                        Reclassify
+                      </button>
+                      <div className="my-1 h-px bg-border" />
+                      <button
                         onClick={() => { handleDownloadFile(contextMenu.fileId); setContextMenu(null) }}
                         className="flex w-full items-center gap-2 px-4 py-2 text-sm text-foreground transition-colors hover:bg-muted"
                       >
@@ -1341,6 +1379,29 @@ export default function SmartStoragePage() {
 
         </div>
       </main>
+
+      {/* Manual Entry Modal */}
+      <ManualEntryModal
+        isOpen={manualEntryOpen}
+        userId={session?.user?.id ?? ""}
+        onClose={() => setManualEntryOpen(false)}
+        onCreated={(file) => {
+          setFiles(prev => [file as any, ...prev])
+          setManualEntryOpen(false)
+        }}
+      />
+
+      {/* Reclassify Modal */}
+      <ReclassifyModal
+        isOpen={reclassifyTarget !== null}
+        fileId={reclassifyTarget?.fileId ?? null}
+        filename={reclassifyTarget?.filename ?? ""}
+        onClose={() => setReclassifyTarget(null)}
+        onSaved={(fileId, newType) => {
+          setFiles(prev => prev.map(f => f.id === fileId ? { ...f, document_type: newType } : f))
+          setReclassifyTarget(null)
+        }}
+      />
 
     </div>
   )

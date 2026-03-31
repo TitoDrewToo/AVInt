@@ -33,6 +33,25 @@ async function checkSupabase(): Promise<string> {
   }
 }
 
+// LemonSqueezy — custom status page, scrape the HTML for impact keywords
+async function checkLemonSqueezy(): Promise<string> {
+  try {
+    const res = await fetch("https://status.lemonsqueezy.com", {
+      signal: AbortSignal.timeout(5000),
+      next: { revalidate: 60 },
+    })
+    if (!res.ok) return "unknown"
+    const html = await res.text()
+    const lower = html.toLowerCase()
+    if (lower.includes("major outage") || lower.includes("service outage")) return "major"
+    if (lower.includes("service may be impacted") || lower.includes("degraded") || lower.includes("partial")) return "minor"
+    if (lower.includes("all systems") && lower.includes("operational")) return "none"
+    return "none"
+  } catch {
+    return "unknown"
+  }
+}
+
 // Gemini — parse Google Cloud public incidents feed (no API key, no cost)
 // Active incidents (end === null) affecting Generative AI / Vertex AI = degraded/outage
 async function checkGemini(): Promise<string> {
@@ -72,7 +91,7 @@ function worstOf(...indicators: string[]): "operational" | "degraded" | "outage"
 export async function GET() {
   const [supabase, lemon, openai, anthropic, gemini] = await Promise.all([
     checkSupabase(),
-    fetchStatusPage("https://status.lemonsqueezy.com/api/v2/status.json"),
+    checkLemonSqueezy(),
     fetchStatusPage("https://status.openai.com/api/v2/status.json"),
     fetchStatusPage("https://status.anthropic.com/api/v2/status.json"),
     checkGemini(),

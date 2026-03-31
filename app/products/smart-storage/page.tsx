@@ -3,76 +3,186 @@ import { Footer } from "@/components/footer"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { StartFreeButton } from "@/components/start-free-button"
-import { 
-  FileSearch, 
-  FileText, 
-  Database, 
-  FileBarChart, 
-  Shield, 
-  FolderOpen,
-  Upload,
-  Layers,
-  FileOutput
-} from "lucide-react"
 
-const supportedFiles = [
-  "Receipts",
-  "Invoices", 
-  "Income records",
-  "Contracts",
-  "Statements",
-]
+// ── Animated capability icons ──────────────────────────────────────────────────
+
+function IconFileSearch() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+      <style>{`
+        @keyframes fsi-p{0%,100%{transform:scale(1)}50%{transform:scale(1.2)}}
+        .fsi-m{animation:fsi-p 2s ease-in-out infinite;transform-origin:10px 15.5px}
+      `}</style>
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/>
+      <line x1="8" y1="11" x2="16" y2="11"/>
+      <line x1="8" y1="13.5" x2="12" y2="13.5"/>
+      <circle className="fsi-m" cx="10" cy="15.5" r="2.2"/>
+      <line x1="11.6" y1="17" x2="14" y2="19.5" strokeWidth="1.8"/>
+    </svg>
+  )
+}
+
+function IconFileText() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+      <style>{`
+        @keyframes ftx-f{0%,100%{opacity:.15}50%{opacity:1}}
+        .ftx-l1{animation:ftx-f 2.2s ease-in-out infinite}
+        .ftx-l2{animation:ftx-f 2.2s .45s ease-in-out infinite}
+        .ftx-l3{animation:ftx-f 2.2s .9s ease-in-out infinite}
+      `}</style>
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/>
+      <line className="ftx-l1" x1="8" y1="11" x2="16" y2="11"/>
+      <line className="ftx-l2" x1="8" y1="14" x2="16" y2="14"/>
+      <line className="ftx-l3" x1="8" y1="17" x2="13" y2="17"/>
+    </svg>
+  )
+}
+
+function IconDatabase() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+      <style>{`
+        @keyframes dbl-g{0%,100%{opacity:.2}50%{opacity:1}}
+        .dbl-1{animation:dbl-g 2.4s ease-in-out infinite}
+        .dbl-2{animation:dbl-g 2.4s .6s ease-in-out infinite}
+        .dbl-3{animation:dbl-g 2.4s 1.2s ease-in-out infinite}
+      `}</style>
+      <ellipse className="dbl-1" cx="12" cy="5" rx="9" ry="3"/>
+      <path d="M3 5v4c0 1.657 4.03 3 9 3s9-1.343 9-3V5"/>
+      <path className="dbl-2" d="M3 9v4c0 1.657 4.03 3 9 3s9-1.343 9-3V9"/>
+      <path className="dbl-3" d="M3 13v4c0 1.657 4.03 3 9 3s9-1.343 9-3v-4"/>
+    </svg>
+  )
+}
+
+function IconFileBarChart() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+      <style>{`
+        @keyframes fbc-g{0%,100%{transform:scaleY(.2);opacity:.3}55%{transform:scaleY(1);opacity:1}}
+        .fbc-b1{animation:fbc-g 2s ease-in-out infinite;transform-origin:9px 18px}
+        .fbc-b2{animation:fbc-g 2s .35s ease-in-out infinite;transform-origin:13px 18px}
+        .fbc-b3{animation:fbc-g 2s .7s ease-in-out infinite;transform-origin:17px 18px}
+      `}</style>
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/>
+      <rect className="fbc-b1" x="7.5" y="13" width="3" height="5" rx="0.5"/>
+      <rect className="fbc-b2" x="11.5" y="10" width="3" height="8" rx="0.5"/>
+      <rect className="fbc-b3" x="15.5" y="15" width="3" height="3" rx="0.5"/>
+    </svg>
+  )
+}
+
+function IconShield() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+      <style>{`
+        @keyframes shld-p{0%{r:5;opacity:.7}100%{r:11;opacity:0}}
+        .shld-r{animation:shld-p 2s ease-in-out infinite}
+      `}</style>
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+      <circle className="shld-r" cx="12" cy="11" r="5" fill="none" stroke="currentColor" strokeWidth="1"/>
+    </svg>
+  )
+}
+
+function IconFolderOpen() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+      <style>{`
+        @keyframes fo-rise{0%,100%{transform:translateY(3px);opacity:0}40%,60%{transform:translateY(0);opacity:1}}
+        .fo-doc{animation:fo-rise 2.4s ease-in-out infinite;transform-origin:12px 15px}
+      `}</style>
+      <path d="M20 20a2 2 0 002-2V8a2 2 0 00-2-2h-7.9a2 2 0 01-1.69-.9L9.6 3.9A2 2 0 007.93 3H4a2 2 0 00-2 2v13a2 2 0 002 2Z"/>
+      <path d="M2 10h20"/>
+      <g className="fo-doc">
+        <rect x="10" y="13" width="4" height="4.5" rx="0.5" strokeWidth="1.2"/>
+        <line x1="11.2" y1="14.5" x2="12.8" y2="14.5" strokeWidth="1"/>
+        <line x1="11.2" y1="15.8" x2="12.8" y2="15.8" strokeWidth="1"/>
+      </g>
+    </svg>
+  )
+}
+
+// ── Animated workflow icons ────────────────────────────────────────────────────
+
+function IconUpload() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
+      <style>{`
+        @keyframes upl-mv{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+        @keyframes upl-dot{0%,100%{opacity:1}50%{opacity:.2}}
+        .upl-g{animation:upl-mv 2s ease-in-out infinite;transform-origin:12px 11px}
+        .upl-d{animation:upl-dot 1.2s ease-in-out infinite}
+      `}</style>
+      <g className="upl-g">
+        <line x1="12" y1="17" x2="12" y2="7"/>
+        <polyline points="7 12 12 7 17 12"/>
+      </g>
+      <line x1="5" y1="20" x2="19" y2="20"/>
+      <circle className="upl-d" cx="12" cy="4" r="1.5" fill="currentColor" stroke="none"/>
+    </svg>
+  )
+}
+
+function IconLayers() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
+      <style>{`
+        @keyframes lay-up{0%,100%{transform:translateY(0);opacity:.4}50%{transform:translateY(-2.5px);opacity:1}}
+        .lay-1{animation:lay-up 2.2s ease-in-out infinite;transform-origin:12px 8.5px}
+        .lay-2{animation:lay-up 2.2s .4s ease-in-out infinite;transform-origin:12px 12px}
+        .lay-3{animation:lay-up 2.2s .8s ease-in-out infinite;transform-origin:12px 17px}
+      `}</style>
+      <polygon className="lay-1" points="12 2 22 8.5 12 15 2 8.5 12 2"/>
+      <polyline className="lay-2" points="2 12 12 18.5 22 12"/>
+      <polyline className="lay-3" points="2 17 12 23 22 17"/>
+    </svg>
+  )
+}
+
+function IconFileOutput() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
+      <style>{`
+        @keyframes fout-a{0%,100%{transform:translateX(0)}50%{transform:translateX(3px)}}
+        .fout-arr{animation:fout-a 2s ease-in-out infinite;transform-box:fill-box;transform-origin:center}
+      `}</style>
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/>
+      <line x1="8" y1="13" x2="13" y2="13"/>
+      <line x1="8" y1="17" x2="11" y2="17"/>
+      <g className="fout-arr">
+        <line x1="13" y1="13" x2="19" y2="13"/>
+        <polyline points="16 10 19 13 16 16"/>
+      </g>
+    </svg>
+  )
+}
+
+// ── Data ───────────────────────────────────────────────────────────────────────
+
+const supportedFiles = ["Receipts", "Invoices", "Income records", "Contracts", "Statements"]
 
 const capabilities = [
-  { 
-    icon: <FileSearch className="h-5 w-5" />, 
-    title: "Document classification",
-    description: "Automatically identify and categorize document types"
-  },
-  { 
-    icon: <FileText className="h-5 w-5" />, 
-    title: "Field extraction",
-    description: "Pull key data points from unstructured documents"
-  },
-  { 
-    icon: <Database className="h-5 w-5" />, 
-    title: "Structured datasets",
-    description: "Convert documents into organized, queryable data"
-  },
-  { 
-    icon: <FileBarChart className="h-5 w-5" />, 
-    title: "Report generation",
-    description: "Create summaries and reports from extracted data"
-  },
-  { 
-    icon: <Shield className="h-5 w-5" />, 
-    title: "Secure storage",
-    description: "Keep your documents protected and encrypted"
-  },
-  { 
-    icon: <FolderOpen className="h-5 w-5" />, 
-    title: "Organized retrieval",
-    description: "Find and access documents quickly when needed"
-  },
+  { icon: <IconFileSearch />,   title: "Document classification", description: "Automatically identify and categorize document types" },
+  { icon: <IconFileText />,     title: "Field extraction",         description: "Pull key data points from unstructured documents" },
+  { icon: <IconDatabase />,     title: "Structured datasets",      description: "Convert documents into organized, queryable data" },
+  { icon: <IconFileBarChart />, title: "Report generation",        description: "Create summaries and reports from extracted data" },
+  { icon: <IconShield />,       title: "Secure storage",           description: "Keep your documents protected and encrypted" },
+  { icon: <IconFolderOpen />,   title: "Organized retrieval",      description: "Find and access documents quickly when needed" },
 ]
 
 const workflowSteps = [
-  { 
-    icon: <Upload className="h-6 w-6" />, 
-    title: "Upload documents",
-    step: "01"
-  },
-  { 
-    icon: <Layers className="h-6 w-6" />, 
-    title: "Data becomes structured",
-    step: "02"
-  },
-  { 
-    icon: <FileOutput className="h-6 w-6" />, 
-    title: "Reports available when needed",
-    step: "03"
-  },
+  { icon: <IconUpload />,     title: "Upload documents",             step: "01" },
+  { icon: <IconLayers />,     title: "Data becomes structured",      step: "02" },
+  { icon: <IconFileOutput />, title: "Reports available when needed", step: "03" },
 ]
+
+// ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function SmartStorageProductPage() {
   return (

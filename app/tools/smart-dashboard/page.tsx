@@ -371,7 +371,7 @@ function WidgetContent({
                 <Pie data={data} cx="50%" cy="50%" innerRadius="30%" outerRadius="60%" paddingAngle={3} dataKey="value">
                   {data.map((_, i) => <Cell key={i} fill={MULTI_COLORS[i % MULTI_COLORS.length]} strokeWidth={0} />)}
                 </Pie>
-                <Tooltip formatter={(v: any, n: any) => [v, n]} />
+                <Tooltip content={<CustomTooltip />} />
                 <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, color: "hsl(var(--foreground))" }} />
               </PieChart>
             ) : (
@@ -403,7 +403,7 @@ function WidgetContent({
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
               <XAxis dataKey="name" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
-              <Tooltip />
+              <Tooltip content={<CustomTooltip />} />
               <Bar dataKey="value" name="Count" radius={[6, 6, 0, 0]}>
                 {docTypeData.map((_, i) => <Cell key={i} fill={MULTI_COLORS[i % MULTI_COLORS.length]} />)}
               </Bar>
@@ -415,7 +415,7 @@ function WidgetContent({
                 <Cell key={i} fill={MULTI_COLORS[i % MULTI_COLORS.length]} strokeWidth={0} />
               ))}
             </Pie>
-            <Tooltip formatter={(v: any, n: any) => [v, n]} />
+            <Tooltip content={<CustomTooltip />} />
             <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, color: "hsl(var(--foreground))" }} />
           </PieChart>
           )}

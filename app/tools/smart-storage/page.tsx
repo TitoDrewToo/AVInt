@@ -115,9 +115,9 @@ const REPORTS: ReportDef[] = [
   { id: "income_summary",      label: "Income Summary",           requires: "income_amount",       coreEnabled: true  },
   { id: "tax_bundle",          label: "Tax Bundle Summary",       requires: "expense_or_income",   coreEnabled: true  },
   { id: "profit_loss",         label: "Profit & Loss Summary",    requires: "expense_or_income",   coreEnabled: true  },
-  { id: "contract_summary",    label: "Contract Summary",         requires: "contract_fields",     coreEnabled: false },
-  { id: "key_terms",           label: "Key Terms Summary",        requires: "contract_fields",     coreEnabled: false },
-  { id: "business_expense",    label: "Business Expense Summary", requires: "expense_or_income",   coreEnabled: false },
+  { id: "contract_summary",    label: "Contract Summary",         requires: "contract_fields",     coreEnabled: true  },
+  { id: "key_terms",           label: "Key Terms Summary",        requires: "contract_fields",     coreEnabled: true  },
+  { id: "business_expense",    label: "Business Expense Summary", requires: "expense_or_income",   coreEnabled: true  },
 ]
 
 // ── Folder / File types ───────────────────────────────────────────────────────
@@ -326,10 +326,13 @@ export default function SmartStoragePage() {
   const router = useRouter()
 
   const REPORT_ROUTES: Record<string, string> = {
-    expense_summary: "/tools/smart-storage/reports/expense-summary",
-    income_summary:  "/tools/smart-storage/reports/income-summary",
-    tax_bundle:      "/tools/smart-storage/reports/tax-bundle",
-    profit_loss:     "/tools/smart-storage/reports/profit-loss",
+    expense_summary:   "/tools/smart-storage/reports/expense-summary",
+    income_summary:    "/tools/smart-storage/reports/income-summary",
+    tax_bundle:        "/tools/smart-storage/reports/tax-bundle",
+    profit_loss:       "/tools/smart-storage/reports/profit-loss",
+    contract_summary:  "/tools/smart-storage/reports/contract-summary",
+    key_terms:         "/tools/smart-storage/reports/key-terms",
+    business_expense:  "/tools/smart-storage/reports/business-expense",
   }
 
   // ── Session ────────────────────────────────────────────────────────────────
@@ -377,7 +380,7 @@ export default function SmartStoragePage() {
     const fileIds = userFiles.map((f) => f.id)
     const { data: fields } = await supabase
       .from("document_fields")
-      .select("file_id, total_amount, gross_income, net_income, document_date, vendor_name, employer_name")
+      .select("file_id, total_amount, gross_income, net_income, document_date, vendor_name, employer_name, counterparty_name")
       .in("file_id", fileIds)
     const f = fields ?? []
     for (const report of REPORTS) {
@@ -387,7 +390,7 @@ export default function SmartStoragePage() {
         case "date_and_amount_2":  availability[report.id] = f.filter((x) => x.document_date && x.total_amount != null).length >= 2; break
         case "income_amount":      availability[report.id] = f.filter((x) => x.gross_income != null || x.net_income != null).length >= 1; break
         case "expense_or_income":  availability[report.id] = f.filter((x) => x.total_amount != null || x.gross_income != null).length >= 1; break
-        case "contract_fields":    availability[report.id] = f.filter((x) => x.vendor_name || x.employer_name).length >= 1; break
+        case "contract_fields":    availability[report.id] = f.filter((x) => x.vendor_name || x.employer_name || x.counterparty_name).length >= 1; break
       }
     }
     setReportAvailability(availability)

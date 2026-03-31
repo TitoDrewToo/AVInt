@@ -163,7 +163,7 @@ export function Navbar() {
 
             <ThemeToggle />
 
-            <SystemStatusIndicator status="operational" />
+            <SystemStatusIndicator />
 
             <AccountMenuButton onClick={() => setAccountPanelOpen(true)} />
           </div>
@@ -171,7 +171,7 @@ export function Navbar() {
           {/* Mobile Right Side */}
           <div className="flex items-center gap-3 md:hidden">
             <ThemeToggle />
-            <SystemStatusIndicator status="operational" />
+            <SystemStatusIndicator />
             <AccountMenuButton onClick={() => setAccountPanelOpen(true)} />
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}

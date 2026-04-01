@@ -6,7 +6,15 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { GoogleSignInButton } from "@/components/google-sign-in-button"
 import { supabase } from "@/lib/supabase"
+import Link from "next/link"
 import type { Session } from "@supabase/supabase-js"
+
+interface SubscriptionData {
+  status: string
+  plan: string | null
+  current_period_end: string | null
+  lemonsqueezy_subscription_id: string | null
+}
 
 interface AccountPanelProps {
   isOpen: boolean
@@ -216,13 +224,43 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
   const [giftCodeApplied, setGiftCodeApplied] = useState(false)
   const subscriptionRef = useRef<HTMLDivElement>(null)
 
+  // Subscription state
+  const [subscription, setSubscription] = useState<SubscriptionData | null>(null)
+  const [cancelLoading, setCancelLoading] = useState(false)
+  const [cancelDone, setCancelDone] = useState(false)
+
+  // Email change state
+  const [newEmail, setNewEmail] = useState("")
+  const [emailConfirmPassword, setEmailConfirmPassword] = useState("")
+  const [emailChangeLoading, setEmailChangeLoading] = useState(false)
+  const [emailChangeMsg, setEmailChangeMsg] = useState<{type: "error"|"success"; text: string} | null>(null)
+
+  // Password change state
+  const [currentPassword, setCurrentPassword] = useState("")
+  const [newPassword, setNewPassword] = useState("")
+  const [confirmNewPassword, setConfirmNewPassword] = useState("")
+  const [passwordChangeLoading, setPasswordChangeLoading] = useState(false)
+  const [passwordChangeMsg, setPasswordChangeMsg] = useState<{type: "error"|"success"; text: string} | null>(null)
+
+  const fetchSubscription = async (email: string) => {
+    const { data } = await supabase
+      .from("subscriptions")
+      .select("status, plan, current_period_end, lemonsqueezy_subscription_id")
+      .eq("email", email)
+      .single()
+    setSubscription(data ?? null)
+  }
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session)
+      if (data.session?.user?.email) fetchSubscription(data.session.user.email)
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
       setSession(newSession)
+      if (newSession?.user?.email) fetchSubscription(newSession.user.email)
+      else setSubscription(null)
     })
 
     return () => subscription.unsubscribe()
@@ -421,13 +459,62 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                           {/* Current plan */}
                           <div className="rounded-lg bg-muted/50 p-3">
                             <p className="text-xs text-muted-foreground">Current plan</p>
-                            <p className="mt-1 text-sm font-medium text-foreground">Free</p>
-                            <p className="mt-0.5 text-xs text-muted-foreground">No renewal scheduled</p>
+                            <p className="mt-1 text-sm font-medium text-foreground capitalize">
+                              {!subscription || subscription.status === "free" || subscription.status === "cancelled"
+                                ? "Free"
+                                : subscription.status === "day_pass" ? "Day Pass"
+                                : subscription.status === "gift_code" ? "Gift Code Access"
+                                : subscription.status === "scheduled_cancel" ? "Pro (cancels at period end)"
+                                : "Pro"}
+                            </p>
+                            {subscription?.current_period_end && ["pro", "day_pass", "gift_code", "scheduled_cancel"].includes(subscription.status) && (
+                              <p className="mt-0.5 text-xs text-muted-foreground">
+                                {subscription.status === "day_pass" ? "Expires" : subscription.status === "scheduled_cancel" ? "Access until" : "Renews"}{" "}
+                                {new Date(subscription.current_period_end).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                              </p>
+                            )}
                           </div>
 
-                          <Button variant="outline" size="sm" className="w-full rounded-lg" disabled>
-                            Manage subscription
-                          </Button>
+                          {/* Upgrade button for free users */}
+                          {(!subscription || ["free", "cancelled", "day_pass", "gift_code"].includes(subscription.status)) && (
+                            <Link href="/pricing">
+                              <Button size="sm" className="w-full rounded-lg">
+                                {(!subscription || subscription.status === "free" || subscription.status === "cancelled") ? "Upgrade to Pro" : "View plans"}
+                              </Button>
+                            </Link>
+                          )}
+
+                          {/* Cancel subscription for pro users */}
+                          {subscription?.status === "pro" && subscription.lemonsqueezy_subscription_id && !cancelDone && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="w-full rounded-lg text-destructive hover:bg-destructive/10 hover:text-destructive"
+                              disabled={cancelLoading}
+                              onClick={async () => {
+                                if (!session?.user?.id) return
+                                setCancelLoading(true)
+                                const res = await fetch("/api/creem/cancel", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({
+                                    subscription_id: subscription.lemonsqueezy_subscription_id,
+                                    user_id: session.user.id,
+                                  }),
+                                })
+                                setCancelLoading(false)
+                                if (res.ok) {
+                                  setCancelDone(true)
+                                  setSubscription(prev => prev ? { ...prev, status: "scheduled_cancel" } : prev)
+                                }
+                              }}
+                            >
+                              {cancelLoading ? "Cancelling…" : "Cancel subscription"}
+                            </Button>
+                          )}
+                          {cancelDone && (
+                            <p className="text-xs text-muted-foreground text-center">Cancellation scheduled — access remains until period end.</p>
+                          )}
 
                           {/* Divider */}
                           <div className="h-px bg-border" />
@@ -492,13 +579,13 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                         </div>
                       </AccordionItem>
 
-                      <button
+                      <Link
+                        href="/redeem"
                         className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-muted"
-                        disabled
                       >
-                        Billing
-                        <span className="text-xs text-muted-foreground">Coming soon</span>
-                      </button>
+                        Redeem gift code
+                        <ChevronDown className="h-4 w-4 -rotate-90 text-muted-foreground" />
+                      </Link>
                     </div>
 
                     {/* Email & Password */}
@@ -510,12 +597,26 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                         onToggle={() => toggleSection("email")}
                       >
                         <div className="space-y-3">
-                          <Input type="email" placeholder="New email" className="rounded-lg" />
-                          <Input type="password" placeholder="Password confirmation" className="rounded-lg" />
-                          <Button size="sm" className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90">
-                            Save email
+                          <Input type="email" placeholder="New email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} className="rounded-lg" />
+                          <Input type="password" placeholder="Current password" value={emailConfirmPassword} onChange={(e) => setEmailConfirmPassword(e.target.value)} className="rounded-lg" />
+                          {emailChangeMsg && (
+                            <p className={`text-xs ${emailChangeMsg.type === "error" ? "text-destructive" : "text-primary"}`}>{emailChangeMsg.text}</p>
+                          )}
+                          <Button
+                            size="sm"
+                            className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
+                            disabled={emailChangeLoading || !newEmail}
+                            onClick={async () => {
+                              setEmailChangeLoading(true); setEmailChangeMsg(null)
+                              const { error } = await supabase.auth.updateUser({ email: newEmail })
+                              setEmailChangeLoading(false)
+                              if (error) setEmailChangeMsg({ type: "error", text: error.message })
+                              else setEmailChangeMsg({ type: "success", text: "Confirmation sent to your new email." })
+                            }}
+                          >
+                            {emailChangeLoading ? "Saving…" : "Save email"}
                           </Button>
-                          <p className="text-xs text-muted-foreground">Email change requires password confirmation for security.</p>
+                          <p className="text-xs text-muted-foreground">A confirmation will be sent to the new address.</p>
                         </div>
                       </AccordionItem>
 
@@ -525,13 +626,28 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                         onToggle={() => toggleSection("password")}
                       >
                         <div className="space-y-3">
-                          <Input type="password" placeholder="Current password" className="rounded-lg" />
-                          <Input type="password" placeholder="New password" className="rounded-lg" />
-                          <Input type="password" placeholder="Confirm new password" className="rounded-lg" />
-                          <Button size="sm" className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90">
-                            Update password
+                          <Input type="password" placeholder="Current password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="rounded-lg" />
+                          <Input type="password" placeholder="New password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="rounded-lg" />
+                          <Input type="password" placeholder="Confirm new password" value={confirmNewPassword} onChange={(e) => setConfirmNewPassword(e.target.value)} className="rounded-lg" />
+                          {passwordChangeMsg && (
+                            <p className={`text-xs ${passwordChangeMsg.type === "error" ? "text-destructive" : "text-primary"}`}>{passwordChangeMsg.text}</p>
+                          )}
+                          <Button
+                            size="sm"
+                            className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
+                            disabled={passwordChangeLoading || !newPassword}
+                            onClick={async () => {
+                              if (newPassword !== confirmNewPassword) { setPasswordChangeMsg({ type: "error", text: "Passwords do not match." }); return }
+                              if (newPassword.length < 8) { setPasswordChangeMsg({ type: "error", text: "Password must be at least 8 characters." }); return }
+                              setPasswordChangeLoading(true); setPasswordChangeMsg(null)
+                              const { error } = await supabase.auth.updateUser({ password: newPassword })
+                              setPasswordChangeLoading(false)
+                              if (error) setPasswordChangeMsg({ type: "error", text: error.message })
+                              else { setPasswordChangeMsg({ type: "success", text: "Password updated successfully." }); setCurrentPassword(""); setNewPassword(""); setConfirmNewPassword("") }
+                            }}
+                          >
+                            {passwordChangeLoading ? "Updating…" : "Update password"}
                           </Button>
-                          <p className="text-xs text-muted-foreground">Use a strong password.</p>
                         </div>
                       </AccordionItem>
                     </div>

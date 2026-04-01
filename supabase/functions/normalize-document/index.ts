@@ -151,9 +151,11 @@ serve(async (req) => {
 
     let normalized: any
     try {
-      normalized = JSON.parse(rawText.replace(/```json|```/g, "").trim())
+      const jsonMatch = rawText.match(/\{[\s\S]*\}/)
+      if (!jsonMatch) throw new Error("No JSON object found in response")
+      normalized = JSON.parse(jsonMatch[0])
     } catch {
-      throw new Error(`Failed to parse OpenAI output: ${rawText}`)
+      throw new Error(`Failed to parse AI output: ${rawText}`)
     }
 
     // 4. Update document_fields with all normalized + enriched values

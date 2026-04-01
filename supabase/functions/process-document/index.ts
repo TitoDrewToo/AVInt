@@ -129,10 +129,12 @@ Rules:
     if (!rawText) throw new Error("No response from Gemini")
 
     // 7. Parse Gemini JSON output
+    // Gemini sometimes wraps output in ```json ... ``` — extract the first { ... } block
     let extracted: any
     try {
-      const cleaned = rawText.replace(/```json|```/g, "").trim()
-      extracted = JSON.parse(cleaned)
+      const jsonMatch = rawText.match(/\{[\s\S]*\}/)
+      if (!jsonMatch) throw new Error("No JSON object found in response")
+      extracted = JSON.parse(jsonMatch[0])
     } catch {
       throw new Error(`Failed to parse Gemini output: ${rawText}`)
     }
@@ -172,7 +174,7 @@ Rules:
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+          "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
         },
         body: JSON.stringify({ file_id, job_id }),
       }

@@ -3,6 +3,7 @@ import { Footer } from "@/components/footer"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { StartFreeButton } from "@/components/start-free-button"
+import { FadeUp, StaggerContainer, StaggerItem } from "@/components/fade-up"
 
 // ── Animated capability icons ──────────────────────────────────────────────────
 
@@ -192,13 +193,17 @@ export default function SmartStorageProductPage() {
         {/* Hero */}
         <section className="px-6 py-24 md:py-32">
           <div className="mx-auto max-w-3xl text-center">
-            <h1 className="text-balance text-4xl font-semibold tracking-tight text-foreground md:text-5xl">
-              Structure your real-world documents automatically.
-            </h1>
-            <p className="mt-6 text-lg text-muted-foreground">
-              Smart Storage transforms receipts, invoices, and records into organized data ready for reporting and analysis.
-            </p>
-            <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
+            <FadeUp>
+              <h1 className="text-balance text-4xl font-semibold tracking-tight text-foreground md:text-5xl">
+                Structure your real-world documents automatically.
+              </h1>
+            </FadeUp>
+            <FadeUp delay={0.1}>
+              <p className="mt-6 text-lg text-muted-foreground">
+                Smart Storage transforms receipts, invoices, and records into organized data ready for reporting and analysis.
+              </p>
+            </FadeUp>
+            <FadeUp delay={0.18} className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
               <Link href="/pricing">
                 <Button size="lg" className="rounded-xl bg-primary text-primary-foreground hover:bg-primary/90">
                   View Pricing
@@ -209,74 +214,72 @@ export default function SmartStorageProductPage() {
                   Explore Dashboard
                 </Button>
               </Link>
-            </div>
+            </FadeUp>
           </div>
         </section>
 
         {/* What Smart Storage does */}
         <section className="border-t border-border bg-muted/30 px-6 py-24">
           <div className="mx-auto max-w-4xl">
-            <div className="text-center">
+            <FadeUp className="text-center">
               <h2 className="text-sm font-medium uppercase tracking-wider text-primary">
                 What Smart Storage does
               </h2>
               <p className="mt-6 text-xl text-foreground md:text-2xl">
                 Smart Storage converts everyday documents into structured datasets that can be used for reporting, tracking, and reference.
               </p>
-            </div>
+            </FadeUp>
 
             {/* Supported files */}
-            <div className="mt-12 flex flex-wrap items-center justify-center gap-3">
+            <StaggerContainer className="mt-12 flex flex-wrap items-center justify-center gap-3">
               {supportedFiles.map((file) => (
-                <span
-                  key={file}
-                  className="rounded-full border border-border bg-card px-4 py-2 text-sm text-foreground"
-                >
-                  {file}
-                </span>
+                <StaggerItem key={file}>
+                  <span className="rounded-full border border-border bg-card px-4 py-2 text-sm text-foreground">
+                    {file}
+                  </span>
+                </StaggerItem>
               ))}
-            </div>
+            </StaggerContainer>
           </div>
         </section>
 
         {/* Core capabilities */}
         <section className="border-t border-border px-6 py-24">
           <div className="mx-auto max-w-5xl">
-            <div className="text-center">
+            <FadeUp className="text-center">
               <h2 className="text-sm font-medium uppercase tracking-wider text-primary">
                 Core capabilities
               </h2>
-            </div>
+            </FadeUp>
 
-            <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            <StaggerContainer className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {capabilities.map((capability) => (
-                <div
-                  key={capability.title}
-                  className="rounded-xl border border-border bg-card p-6"
-                >
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                    {capability.icon}
+                <StaggerItem key={capability.title}>
+                  <div className="rounded-xl border border-border bg-card p-6">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      {capability.icon}
+                    </div>
+                    <h3 className="mt-4 font-medium text-foreground">{capability.title}</h3>
+                    <p className="mt-2 text-sm text-muted-foreground">{capability.description}</p>
                   </div>
-                  <h3 className="mt-4 font-medium text-foreground">{capability.title}</h3>
-                  <p className="mt-2 text-sm text-muted-foreground">{capability.description}</p>
-                </div>
+                </StaggerItem>
               ))}
-            </div>
+            </StaggerContainer>
           </div>
         </section>
 
         {/* Workflow simplicity */}
         <section className="border-t border-border bg-muted/30 px-6 py-24">
           <div className="mx-auto max-w-4xl">
-            <div className="text-center">
+            <FadeUp className="text-center">
               <h2 className="text-sm font-medium uppercase tracking-wider text-primary">
                 Workflow simplicity
               </h2>
-            </div>
+            </FadeUp>
 
-            <div className="mt-12 flex flex-col items-center gap-8 md:flex-row md:justify-center md:gap-4">
+            <StaggerContainer className="mt-12 flex flex-col items-center gap-8 md:flex-row md:justify-center md:gap-4">
               {workflowSteps.map((step, index) => (
-                <div key={step.title} className="flex items-center gap-4">
+                <StaggerItem key={step.title} className="flex items-center gap-4">
                   <div className="flex flex-col items-center text-center">
                     <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-border bg-card text-primary">
                       {step.icon}
@@ -287,15 +290,15 @@ export default function SmartStorageProductPage() {
                   {index < workflowSteps.length - 1 && (
                     <div className="hidden h-px w-16 bg-border md:block" />
                   )}
-                </div>
+                </StaggerItem>
               ))}
-            </div>
+            </StaggerContainer>
           </div>
         </section>
 
         {/* CTA */}
         <section className="border-t border-border px-6 py-24">
-          <div className="mx-auto max-w-3xl text-center">
+          <FadeUp className="mx-auto max-w-3xl text-center">
             <h2 className="text-2xl font-semibold text-foreground md:text-3xl">
               Upload once. Use repeatedly.
             </h2>
@@ -307,7 +310,7 @@ export default function SmartStorageProductPage() {
                 </Button>
               </Link>
             </div>
-          </div>
+          </FadeUp>
         </section>
       </main>
       <Footer />

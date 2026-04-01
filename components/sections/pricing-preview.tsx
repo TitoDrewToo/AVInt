@@ -4,6 +4,7 @@ import { useState } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Check } from "lucide-react"
+import { FadeUp, StaggerContainer, StaggerItem } from "@/components/fade-up"
 
 interface PricingCardProps {
   name: string
@@ -92,52 +93,58 @@ export function PricingPreviewSection() {
   return (
     <section className="border-t border-border bg-muted/30 px-6 py-24">
       <div className="mx-auto max-w-6xl">
-        <h2 className="text-center text-sm font-medium uppercase tracking-wider text-primary">
-          Pricing
-        </h2>
+        <FadeUp>
+          <h2 className="text-center text-sm font-medium uppercase tracking-wider text-primary">
+            Pricing
+          </h2>
+        </FadeUp>
 
         {/* Toggle */}
-        <div className="mt-8 flex items-center justify-center gap-3">
-          <span
-            className={`text-sm ${
-              !isAnnual ? "font-medium text-foreground" : "text-muted-foreground"
-            }`}
-          >
-            Monthly
-          </span>
-          <button
-            onClick={() => setIsAnnual(!isAnnual)}
-            className="relative h-6 w-11 rounded-full bg-primary transition-colors"
-          >
+        <FadeUp delay={0.08}>
+          <div className="mt-8 flex items-center justify-center gap-3">
             <span
-              className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
-                isAnnual ? "translate-x-5" : "translate-x-0"
+              className={`text-sm ${
+                !isAnnual ? "font-medium text-foreground" : "text-muted-foreground"
               }`}
-            />
-          </button>
-          <span
-            className={`text-sm ${
-              isAnnual ? "font-medium text-foreground" : "text-muted-foreground"
-            }`}
-          >
-            Annually
-            <span className="ml-1 text-xs text-primary">(30% savings)</span>
-          </span>
-        </div>
+            >
+              Monthly
+            </span>
+            <button
+              onClick={() => setIsAnnual(!isAnnual)}
+              className="relative h-6 w-11 rounded-full bg-primary transition-colors"
+            >
+              <span
+                className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
+                  isAnnual ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
+            </button>
+            <span
+              className={`text-sm ${
+                isAnnual ? "font-medium text-foreground" : "text-muted-foreground"
+              }`}
+            >
+              Annually
+              <span className="ml-1 text-xs text-primary">(30% savings)</span>
+            </span>
+          </div>
+        </FadeUp>
 
-        <div className="mt-12 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StaggerContainer className="mt-12 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {plans.map((plan) => (
-            <PricingCard key={plan.name} {...plan} isAnnual={isAnnual} />
+            <StaggerItem key={plan.name}>
+              <PricingCard {...plan} isAnnual={isAnnual} />
+            </StaggerItem>
           ))}
-        </div>
+        </StaggerContainer>
 
-        <div className="mt-12 text-center">
+        <FadeUp delay={0.1} className="mt-12 text-center">
           <Link href="/pricing">
             <Button variant="outline" className="rounded-xl">
               View Pricing
             </Button>
           </Link>
-        </div>
+        </FadeUp>
       </div>
     </section>
   )

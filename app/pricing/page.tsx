@@ -8,6 +8,7 @@ import { Check, CheckCircle, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
+import { FadeUp, StaggerContainer, StaggerItem } from "@/components/fade-up"
 
 // Creem product IDs from env vars — swap test↔prod by changing Vercel config only
 const PRODUCT_IDS: Record<string, string | undefined> = {
@@ -316,13 +317,13 @@ export default function PricingPage() {
       <AuthGuardModal isVisible={!!pendingProductId} onSuccess={handleAuthSuccess} />
       <main className="flex-1 px-6 py-24">
         <div className="mx-auto max-w-6xl">
-          <div className="text-center">
+          <FadeUp className="text-center">
             <h1 className="text-4xl font-semibold tracking-tight text-foreground md:text-5xl">
               Simple, transparent pricing
             </h1>
             <p className="mt-4 text-lg text-muted-foreground">Choose the plan that works best for you</p>
-          </div>
-          <div className="mt-12 flex items-center justify-center gap-3">
+          </FadeUp>
+          <FadeUp delay={0.08} className="mt-12 flex items-center justify-center gap-3">
             <span className={`text-sm ${!isAnnual ? "text-foreground" : "text-muted-foreground"}`}>Monthly</span>
             <button
               onClick={() => setIsAnnual(!isAnnual)}
@@ -333,21 +334,22 @@ export default function PricingPage() {
             <span className={`text-sm ${isAnnual ? "text-foreground" : "text-muted-foreground"}`}>
               Annually<span className="ml-1 text-xs text-primary">(30% savings)</span>
             </span>
-          </div>
-          <div className="mt-12 grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
+          </FadeUp>
+          <StaggerContainer className="mt-12 grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
             {plans.map((plan) => (
-              <PricingCard
-                key={plan.name}
-                {...plan}
-                productId={getProductId(plan.name)}
-                isAnnual={isAnnual}
-                isSignedIn={isSignedIn}
-                userEmail={userEmail}
-                activeStatus={activeStatus}
-                onRequireAuth={handleRequireAuth}
-              />
+              <StaggerItem key={plan.name}>
+                <PricingCard
+                  {...plan}
+                  productId={getProductId(plan.name)}
+                  isAnnual={isAnnual}
+                  isSignedIn={isSignedIn}
+                  userEmail={userEmail}
+                  activeStatus={activeStatus}
+                  onRequireAuth={handleRequireAuth}
+                />
+              </StaggerItem>
             ))}
-          </div>
+          </StaggerContainer>
         </div>
       </main>
       <Footer />

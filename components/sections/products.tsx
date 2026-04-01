@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { ArrowUpRight } from "lucide-react"
+import { FadeUp, StaggerContainer, StaggerItem } from "@/components/fade-up"
 
 type StatusType = "live" | "development" | "coming-soon"
 
@@ -228,14 +229,18 @@ export function ProductsSection() {
   return (
     <section id="products" className="px-6 py-24">
       <div className="mx-auto max-w-6xl">
-        <h2 className="text-center text-sm font-medium uppercase tracking-wider text-primary">
-          Products
-        </h2>
-        <div className="mt-12 grid gap-6 sm:grid-cols-2">
+        <FadeUp>
+          <h2 className="text-center text-sm font-medium uppercase tracking-wider text-primary">
+            Products
+          </h2>
+        </FadeUp>
+        <StaggerContainer className="mt-12 grid gap-6 sm:grid-cols-2">
           {products.map((product) => (
-            <ProductCard key={product.name} {...product} />
+            <StaggerItem key={product.name}>
+              <ProductCard {...product} />
+            </StaggerItem>
           ))}
-        </div>
+        </StaggerContainer>
       </div>
     </section>
   )

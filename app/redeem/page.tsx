@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { CheckCircle, Gift, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
+import { PopIn, FadeUp } from "@/components/fade-up"
 
 export default function RedeemPage() {
   const router = useRouter()
@@ -72,15 +73,20 @@ export default function RedeemPage() {
 
           {success ? (
             <div className="flex flex-col items-center gap-4 text-center">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-                <CheckCircle className="h-8 w-8 text-primary" />
-              </div>
-              <h1 className="text-2xl font-semibold text-foreground">Access activated!</h1>
-              <p className="text-sm text-muted-foreground">
-                Your 24-hour access is now live. Redirecting you to Smart Storage…
-              </p>
+              <PopIn>
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
+                  <CheckCircle className="h-8 w-8 text-primary" />
+                </div>
+              </PopIn>
+              <FadeUp delay={0.15}>
+                <h1 className="text-2xl font-semibold text-foreground">Access activated!</h1>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Your 24-hour access is now live. Redirecting you to Smart Storage…
+                </p>
+              </FadeUp>
             </div>
           ) : (
+            <FadeUp>
             <div className="rounded-2xl border border-border bg-card p-8">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
@@ -136,6 +142,7 @@ export default function RedeemPage() {
                 </p>
               </div>
             </div>
+            </FadeUp>
           )}
 
         </div>

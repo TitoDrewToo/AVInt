@@ -1,3 +1,5 @@
+import { FadeUp, StaggerContainer, StaggerItem } from "@/components/fade-up"
+
 // Refined dimensional icons for how-it-works section
 function UploadIcon({ className }: { className?: string }) {
   return (
@@ -151,19 +153,21 @@ export function HowItWorksSection() {
   return (
     <section className="px-6 py-24">
       <div className="mx-auto max-w-4xl">
-        <h2 className="text-center text-sm font-medium uppercase tracking-wider text-primary">
-          How it works
-        </h2>
-        <div className="mt-16 flex flex-col items-center justify-between gap-12 md:flex-row md:gap-8">
+        <FadeUp>
+          <h2 className="text-center text-sm font-medium uppercase tracking-wider text-primary">
+            How it works
+          </h2>
+        </FadeUp>
+        <StaggerContainer className="mt-16 flex flex-col items-center justify-between gap-12 md:flex-row md:gap-8">
           {steps.map((step, index) => (
-            <div key={step.number} className="flex items-center">
+            <StaggerItem key={step.number} className="flex items-center">
               <Step {...step} />
               {index < steps.length - 1 && (
                 <div className="ml-8 hidden h-px w-24 bg-border md:block" />
               )}
-            </div>
+            </StaggerItem>
           ))}
-        </div>
+        </StaggerContainer>
       </div>
     </section>
   )

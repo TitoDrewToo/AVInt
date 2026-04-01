@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { ArrowUpRight } from "lucide-react"
+import { FadeUp, StaggerContainer, StaggerItem } from "@/components/fade-up"
 
 // Refined dimensional icons
 function StorageIcon({ className }: { className?: string }) {
@@ -105,14 +106,18 @@ export function ToolsSection() {
   return (
     <section id="tools" className="border-t border-border bg-muted/30 px-6 py-24">
       <div className="mx-auto max-w-6xl">
-        <h2 className="text-center text-sm font-medium uppercase tracking-wider text-primary">
-          Tools
-        </h2>
-        <div className="mt-12 grid gap-6 md:grid-cols-2">
+        <FadeUp>
+          <h2 className="text-center text-sm font-medium uppercase tracking-wider text-primary">
+            Tools
+          </h2>
+        </FadeUp>
+        <StaggerContainer className="mt-12 grid gap-6 md:grid-cols-2">
           {tools.map((tool) => (
-            <ToolCard key={tool.name} {...tool} />
+            <StaggerItem key={tool.name}>
+              <ToolCard {...tool} />
+            </StaggerItem>
           ))}
-        </div>
+        </StaggerContainer>
       </div>
     </section>
   )

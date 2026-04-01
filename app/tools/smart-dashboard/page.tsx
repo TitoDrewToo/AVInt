@@ -20,7 +20,7 @@ import {
 import {
   TrendingUp, Receipt, Wallet, FileText,
   Save, Calendar, ChevronDown, ChevronRight, Lock, Sparkles,
-  LayoutGrid, X, Check, Plus, Zap, PanelRight, Star
+  LayoutGrid, X, Check, Plus, Zap, PanelRight, Star, Pencil
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
@@ -741,6 +741,7 @@ export default function SmartDashboardPage() {
   const [selectedWidgetId, setSelectedWidgetId] = useState<string | null>(null)
   const [isDirty, setIsDirty] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [isEditMode, setIsEditMode] = useState(false)
   const [savedConfirm, setSavedConfirm] = useState(false)
   const [showDateFilter, setShowDateFilter] = useState(false)
   const [showColorPicker, setShowColorPicker] = useState(false)
@@ -805,7 +806,7 @@ export default function SmartDashboardPage() {
       .single()
     if (data?.layout) {
       const saved = data.layout
-      if (saved.widgets?.length) setWidgets(saved.widgets)
+      if (saved.widgets !== undefined) setWidgets(saved.widgets ?? [])
       if (saved.gridLayout?.length) {
         // Always apply current minH/minW — never restore stale saved constraints
         const constraints: Record<string, { minW: number; minH: number }> = {}
@@ -1027,6 +1028,7 @@ export default function SmartDashboardPage() {
     }, { onConflict: "user_id" })
     setIsSaving(false)
     setIsDirty(false)
+    setIsEditMode(false)
     savedLayoutRef.current = layout
     setSavedConfirm(true)
     setTimeout(() => setSavedConfirm(false), 2000)
@@ -1278,21 +1280,29 @@ export default function SmartDashboardPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Desktop only — save layout controls */}
-            {!isMobile && <>
-              {isDirty && <span className="text-xs text-muted-foreground">Unsaved changes</span>}
-              <button
-                onClick={saveLayout}
-                disabled={!isDirty || isSaving}
-                className={`flex h-7 items-center gap-1.5 rounded-lg px-3 text-xs transition-all ${
-                  isDirty ? "bg-primary text-primary-foreground hover:bg-primary/90" : "border border-border text-muted-foreground opacity-50 cursor-not-allowed"
-                }`}
-              >
-                {savedConfirm ? <><Check className="h-3.5 w-3.5" /> Saved</>
-                  : isSaving ? <><div className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" /> Saving…</>
-                  : <><Save className="h-3.5 w-3.5" /> Save Layout</>}
-              </button>
-            </>}
+            {!isMobile && (
+              isEditMode ? (
+                <>
+                  <span className="text-xs text-muted-foreground">Editing layout</span>
+                  <button
+                    onClick={saveLayout}
+                    disabled={isSaving}
+                    className="flex h-7 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs text-primary-foreground transition-all hover:bg-primary/90"
+                  >
+                    {savedConfirm ? <><Check className="h-3.5 w-3.5" /> Saved</>
+                      : isSaving ? <><div className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" /> Saving…</>
+                      : <><Save className="h-3.5 w-3.5" /> Save Layout</>}
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => setIsEditMode(true)}
+                  className="flex h-7 items-center gap-1.5 rounded-lg border border-border px-3 text-xs text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
+                >
+                  <Pencil className="h-3.5 w-3.5" /> Edit Layout
+                </button>
+              )
+            )}
           </div>
         </div>
 
@@ -1326,8 +1336,8 @@ export default function SmartDashboardPage() {
                 width={containerWidth}
                 onLayoutChange={handleLayoutChange}
                 draggableHandle={isMobile ? ".no-drag" : ".drag-handle"}
-                isDraggable={!isMobile}
-                isResizable={!isMobile}
+                isDraggable={!isMobile && isEditMode}
+                isResizable={!isMobile && isEditMode}
                 margin={[10, 10]}
                 containerPadding={[0, 0]}
                 resizeHandles={isMobile ? [] : ["se", "sw", "ne", "nw", "e", "w", "s"]}

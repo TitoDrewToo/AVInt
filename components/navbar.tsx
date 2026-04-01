@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import Image from "next/image"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useTheme } from "next-themes"
 import { ChevronDown, Menu, X, Sun, Moon, User } from "lucide-react"
 import { AccountPanel } from "@/components/account-panel"
@@ -52,6 +52,18 @@ export function Navbar() {
   const [productsOpen, setProductsOpen] = useState(false)
   const [toolsOpen, setToolsOpen] = useState(false)
   const [accountPanelOpen, setAccountPanelOpen] = useState(false)
+  const [accountPanelInitialView, setAccountPanelInitialView] = useState<"menu" | "privacy" | "terms">("menu")
+
+  // Listen for footer privacy/terms link events
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const view = (e as CustomEvent<{ view: "privacy" | "terms" }>).detail?.view ?? "menu"
+      setAccountPanelInitialView(view)
+      setAccountPanelOpen(true)
+    }
+    window.addEventListener("open-account-panel", handler)
+    return () => window.removeEventListener("open-account-panel", handler)
+  }, [])
 
   return (
     <>
@@ -248,7 +260,8 @@ export function Navbar() {
 
       <AccountPanel
         isOpen={accountPanelOpen}
-        onClose={() => setAccountPanelOpen(false)}
+        onClose={() => { setAccountPanelOpen(false); setAccountPanelInitialView("menu") }}
+        initialView={accountPanelInitialView}
       />
     </>
   )

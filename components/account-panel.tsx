@@ -20,6 +20,7 @@ interface AccountPanelProps {
   isOpen: boolean
   onClose: () => void
   focusGiftCode?: boolean
+  initialView?: "menu" | "privacy" | "terms"
 }
 
 type ExpandedSection = "subscription" | "email" | "password" | null
@@ -70,60 +71,58 @@ function PrivacyPolicyContent() {
   return (
     <div className="space-y-6 text-sm">
       <p className="text-muted-foreground">
-        AVIntelligence respects your privacy. We design our systems to process documents automatically and securely.
+        AVINTPH INFORMATION TECHNOLOGY SOLUTIONS ("AVIntelligence", "we", "us") is a Philippine-registered technology company. We build intelligent tools — including Smart Storage and Smart Dashboard — that help individuals and businesses structure and analyze real-world documents. This policy explains how we collect, use, and protect your information.
       </p>
       <section className="space-y-2">
         <h3 className="font-medium text-foreground">Information We Collect</h3>
-        <p className="text-muted-foreground">We collect only the information necessary to provide our services:</p>
         <ul className="ml-4 list-disc space-y-1 text-muted-foreground">
-          <li>Uploaded files and documents</li>
-          <li>Extracted structured data</li>
-          <li>Account email address</li>
-          <li>Usage activity related to reports and dashboards</li>
+          <li>Account email address and authentication credentials</li>
+          <li>Uploaded files and documents (receipts, invoices, payslips, contracts, etc.)</li>
+          <li>Structured data extracted from those documents</li>
+          <li>Usage activity — reports generated, dashboards accessed, tools used</li>
+          <li>Payment and billing information (processed by Creem or Lemon Squeezy — we do not store card details)</li>
         </ul>
-        <p className="text-muted-foreground">We do not manually review documents. Processing is automated.</p>
+        <p className="text-muted-foreground">We collect only what is necessary to deliver the service. We do not manually review your documents.</p>
       </section>
       <section className="space-y-2">
-        <h3 className="font-medium text-foreground">How Data Is Used</h3>
-        <p className="text-muted-foreground">Your data is used to:</p>
+        <h3 className="font-medium text-foreground">How We Use Your Data</h3>
         <ul className="ml-4 list-disc space-y-1 text-muted-foreground">
-          <li>Structure document information</li>
-          <li>Generate reports</li>
-          <li>Power dashboards</li>
-          <li>Improve system performance</li>
+          <li>To classify, structure, and store your uploaded documents</li>
+          <li>To generate financial reports and power dashboard visualizations</li>
+          <li>To manage your account, subscription, and access level</li>
+          <li>To improve system accuracy and performance</li>
         </ul>
-        <p className="text-muted-foreground">We do not sell personal data. We do not use documents for advertising purposes.</p>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">Data Storage</h3>
-        <p className="text-muted-foreground">Files and structured data are securely stored using modern cloud infrastructure. We implement access controls to prevent unauthorized access. Only you can access your uploaded documents and generated outputs.</p>
+        <p className="text-muted-foreground">We do not sell your personal data. We do not use your documents for advertising.</p>
       </section>
       <section className="space-y-2">
         <h3 className="font-medium text-foreground">AI Processing</h3>
-        <p className="text-muted-foreground">Documents may be processed by automated systems to extract structured information such as dates, amounts, document types, and vendors. Processing is performed programmatically. No human review is required.</p>
+        <p className="text-muted-foreground">Document classification and data extraction are performed by automated AI systems powered by OpenAI, Anthropic (Claude), and Google Gemini. Processing is programmatic — no human reviews your documents. AVIntelligence is an independent product and is not affiliated with or endorsed by these providers.</p>
+      </section>
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">Data Storage & Security</h3>
+        <p className="text-muted-foreground">Your files and structured data are stored on Supabase cloud infrastructure with access controls enforced at the row level — only your account can access your data. We use encrypted connections (HTTPS/TLS) for all data in transit. No system can guarantee absolute security, but we prioritize protection at every layer.</p>
+      </section>
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">Payments</h3>
+        <p className="text-muted-foreground">Billing is handled by Creem and/or Lemon Squeezy. We receive confirmation of payment but do not store credit card or banking information. Their respective privacy policies govern how payment data is handled.</p>
       </section>
       <section className="space-y-2">
         <h3 className="font-medium text-foreground">Data Retention</h3>
-        <p className="text-muted-foreground">Documents remain stored until you delete files or delete your account. You may request deletion at any time.</p>
+        <p className="text-muted-foreground">Documents and structured records remain stored until you delete them or request account deletion. You may delete individual files at any time from Smart Storage. Account deletion permanently removes all stored data associated with your account.</p>
       </section>
       <section className="space-y-2">
-        <h3 className="font-medium text-foreground">Security</h3>
-        <p className="text-muted-foreground">We apply industry standard practices for data storage, access control, and encrypted connections. No system can guarantee absolute security, but we prioritize protection of user data.</p>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">User Control</h3>
-        <p className="text-muted-foreground">You may:</p>
+        <h3 className="font-medium text-foreground">Your Rights</h3>
         <ul className="ml-4 list-disc space-y-1 text-muted-foreground">
-          <li>Delete documents</li>
-          <li>Update account email</li>
-          <li>Change password</li>
-          <li>Delete your account</li>
+          <li>Access and download your data</li>
+          <li>Delete individual documents or your entire account</li>
+          <li>Update your account email or password</li>
+          <li>Request clarification on how your data is used</li>
         </ul>
-        <p className="text-muted-foreground">Account deletion permanently removes stored data.</p>
       </section>
       <section className="space-y-2">
         <h3 className="font-medium text-foreground">Contact</h3>
         <p className="text-muted-foreground">support@avintph.com</p>
+        <p className="text-muted-foreground">AVINTPH INFORMATION TECHNOLOGY SOLUTIONS · Philippines</p>
       </section>
     </div>
   )
@@ -132,44 +131,61 @@ function PrivacyPolicyContent() {
 function TermsOfServiceContent() {
   return (
     <div className="space-y-6 text-sm">
-      <p className="text-muted-foreground">By using AVIntelligence, you agree to the following terms.</p>
+      <p className="text-muted-foreground">By creating an account or using AVIntelligence products, you agree to these Terms of Service. These terms apply to all users of avintph.com and associated tools.</p>
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">About AVIntelligence</h3>
+        <p className="text-muted-foreground">AVIntelligence is a product of AVINTPH INFORMATION TECHNOLOGY SOLUTIONS, a Philippines-registered technology company. We develop intelligent tools — Smart Storage and Smart Dashboard — that help individuals and businesses structure, store, and visualize information from real-world documents.</p>
+      </section>
       <section className="space-y-2">
         <h3 className="font-medium text-foreground">Use of Service</h3>
-        <p className="text-muted-foreground">AVIntelligence provides tools that help structure and analyze documents. You are responsible for how you use generated outputs. We do not provide financial, legal, or tax advice. Reports are provided as reference tools.</p>
+        <p className="text-muted-foreground">AVIntelligence provides document processing and data visualization tools for personal and business use. Generated reports and structured data are reference outputs — they do not constitute financial, legal, tax, or professional advice. You are responsible for verifying outputs before acting on them.</p>
       </section>
       <section className="space-y-2">
         <h3 className="font-medium text-foreground">Account Responsibility</h3>
-        <p className="text-muted-foreground">You are responsible for maintaining the confidentiality of your account credentials. You agree not to share unauthorized access to your account.</p>
+        <p className="text-muted-foreground">You are responsible for maintaining the security of your account credentials. Do not share access with unauthorized parties. You are responsible for all activity that occurs under your account.</p>
       </section>
       <section className="space-y-2">
         <h3 className="font-medium text-foreground">Acceptable Use</h3>
-        <p className="text-muted-foreground">You agree not to upload:</p>
+        <p className="text-muted-foreground">You agree not to upload or submit:</p>
         <ul className="ml-4 list-disc space-y-1 text-muted-foreground">
-          <li>Malicious files</li>
-          <li>Illegal content</li>
-          <li>Content that violates applicable laws</li>
+          <li>Malicious, fraudulent, or deceptive files</li>
+          <li>Content that violates applicable Philippine or international law</li>
+          <li>Files belonging to others without authorization</li>
         </ul>
-        <p className="text-muted-foreground">We reserve the right to suspend accounts that misuse the platform.</p>
+        <p className="text-muted-foreground">We reserve the right to suspend or terminate accounts that misuse the platform, at our discretion and without prior notice where necessary.</p>
+      </section>
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">Subscriptions & Payments</h3>
+        <p className="text-muted-foreground">Access to advanced features requires a paid plan (Day Pass, Pro Monthly, or Pro Annual) or a valid gift code. Billing is processed by Creem or Lemon Squeezy. Subscription access is tied to your account and is non-transferable. Gift codes are single-use and grant 24-hour access. Day Pass access expires after 24 hours from activation. Pro subscriptions renew automatically unless cancelled before the billing period ends.</p>
+      </section>
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">Refunds</h3>
+        <p className="text-muted-foreground">Refund requests are handled on a case-by-case basis. Contact support@avintph.com within 48 hours of purchase if you experience a technical issue preventing access. We do not offer refunds for used access periods or expired gift codes.</p>
+      </section>
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">Intellectual Property</h3>
+        <p className="text-muted-foreground">All platform code, design, and branding are owned by AVINTPH INFORMATION TECHNOLOGY SOLUTIONS. You retain ownership of documents you upload. By uploading, you grant us the right to process your files solely to provide the service.</p>
       </section>
       <section className="space-y-2">
         <h3 className="font-medium text-foreground">Service Availability</h3>
-        <p className="text-muted-foreground">We aim to provide reliable service but do not guarantee uninterrupted availability. Features may change or improve over time.</p>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">Payments</h3>
-        <p className="text-muted-foreground">Paid features provide access to advanced reports and analytics. Billing is handled securely through third-party providers. Access duration depends on selected plan.</p>
+        <p className="text-muted-foreground">We aim for reliable uptime but do not guarantee uninterrupted service. Maintenance, infrastructure issues, or third-party provider downtime may affect availability. Features may be updated or changed over time as the product evolves.</p>
       </section>
       <section className="space-y-2">
         <h3 className="font-medium text-foreground">Limitation of Liability</h3>
-        <p className="text-muted-foreground">AVIntelligence is provided as-is. We are not liable for decisions made using generated reports or insights. Users are responsible for verifying outputs before external use.</p>
+        <p className="text-muted-foreground">AVIntelligence is provided on an as-is basis. To the maximum extent permitted by applicable law, AVINTPH INFORMATION TECHNOLOGY SOLUTIONS is not liable for any indirect, incidental, or consequential damages arising from use of the platform or reliance on generated outputs.</p>
+      </section>
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">Governing Law</h3>
+        <p className="text-muted-foreground">These terms are governed by the laws of the Republic of the Philippines.</p>
       </section>
       <section className="space-y-2">
         <h3 className="font-medium text-foreground">Updates to Terms</h3>
-        <p className="text-muted-foreground">We may update these terms as the service evolves. Continued use of the platform indicates acceptance of updated terms.</p>
+        <p className="text-muted-foreground">We may update these terms as the service evolves. Continued use of the platform after updates constitutes acceptance of the revised terms. Material changes will be communicated via email where possible.</p>
       </section>
       <section className="space-y-2">
         <h3 className="font-medium text-foreground">Contact</h3>
         <p className="text-muted-foreground">support@avintph.com</p>
+        <p className="text-muted-foreground">AVINTPH INFORMATION TECHNOLOGY SOLUTIONS · Philippines</p>
       </section>
     </div>
   )
@@ -205,7 +221,7 @@ function DeleteAccountModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
   )
 }
 
-export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelProps) {
+export function AccountPanel({ isOpen, onClose, focusGiftCode, initialView }: AccountPanelProps) {
   const [session, setSession] = useState<Session | null>(null)
   const isSignedIn = session !== null
   const [showDeleteModal, setShowDeleteModal] = useState(false)
@@ -278,6 +294,9 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
   }, [isOpen, focusGiftCode])
 
   useEffect(() => {
+    if (isOpen && initialView && initialView !== "menu") {
+      setPanelView(initialView)
+    }
     if (!isOpen) {
       setExpandedSection(null)
       setPanelView("menu")
@@ -288,7 +307,7 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
       setAuthError("")
       setAuthSuccess("")
     }
-  }, [isOpen])
+  }, [isOpen, initialView])
 
   const toggleSection = (section: ExpandedSection) => {
     setExpandedSection(expandedSection === section ? null : section)

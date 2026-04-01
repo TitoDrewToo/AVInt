@@ -1,5 +1,11 @@
-import Link from "next/link"
+"use client"
+
 import Image from "next/image"
+import Link from "next/link"
+
+function openAccountPanel(view: "privacy" | "terms") {
+  window.dispatchEvent(new CustomEvent("open-account-panel", { detail: { view } }))
+}
 
 export function Footer() {
   return (
@@ -19,18 +25,18 @@ export function Footer() {
           </span>
           {/* Footer links */}
           <div className="flex items-center gap-4 md:ml-4">
-            <Link
-              href="/privacy"
+            <button
+              onClick={() => openAccountPanel("privacy")}
               className="text-xs text-muted-foreground transition-colors hover:text-foreground"
             >
               Privacy
-            </Link>
-            <Link
-              href="/terms"
+            </button>
+            <button
+              onClick={() => openAccountPanel("terms")}
               className="text-xs text-muted-foreground transition-colors hover:text-foreground"
             >
               Terms
-            </Link>
+            </button>
             <Link
               href="https://forms.gle/E24gjqAnv6xmF31H8"
               target="_blank"

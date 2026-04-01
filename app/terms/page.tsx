@@ -66,7 +66,7 @@ export default function TermsPage() {
               <h2 className="text-base font-semibold text-foreground">Subscriptions &amp; Payments</h2>
               <p className="text-muted-foreground">
                 Access to advanced features requires a paid plan (Day Pass, Pro Monthly, or Pro Annual) or a valid
-                gift code. Billing is processed by Creem or Lemon Squeezy. Subscription access is tied to your
+                gift code. Billing is processed by our certified payment processors. Subscription access is tied to your
                 account and is non-transferable. Gift codes are single-use and grant 24-hour access. Day Pass access
                 expires after 24 hours from activation. Pro subscriptions renew automatically unless cancelled before
                 the billing period ends.
@@ -98,10 +98,10 @@ export default function TermsPage() {
               <h2 className="text-base font-semibold text-foreground">Infrastructure &amp; Security</h2>
               <p className="text-muted-foreground">AVIntelligence is built on enterprise-grade infrastructure:</p>
               <ul className="ml-4 list-disc space-y-1 text-muted-foreground">
-                <li><strong className="text-foreground">Supabase</strong> (SOC 2 Type II) — row-level security enforced at the database layer</li>
-                <li><strong className="text-foreground">Vercel</strong> (SOC 2 Type II · ISO 27001) — TLS encryption and DDoS-protected edge network</li>
+                <li><strong className="text-foreground">Database &amp; Storage</strong> (SOC 2 Type II) — row-level security enforced at the database layer</li>
+                <li><strong className="text-foreground">Hosting</strong> (SOC 2 Type II · ISO 27001) — TLS encryption and DDoS-protected edge network</li>
                 <li><strong className="text-foreground">OpenAI, Anthropic, Google</strong> — enterprise AI processing, no human document review</li>
-                <li><strong className="text-foreground">Creem · Lemon Squeezy</strong> — PCI-DSS compliant, no card data stored on our systems</li>
+                <li><strong className="text-foreground">Payments</strong> (PCI-DSS compliant) — no card data stored on our systems</li>
               </ul>
             </section>
 

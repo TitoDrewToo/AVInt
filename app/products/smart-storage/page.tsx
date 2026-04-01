@@ -310,27 +310,27 @@ export default function SmartStorageProductPage() {
 
             <StaggerContainer className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
 
-              {/* Supabase */}
+              {/* Database */}
               <StaggerItem>
                 <div className="rounded-xl border border-border bg-card p-5">
                   <div className="flex items-center gap-2">
                     <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
                     <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Database & Storage</span>
                   </div>
-                  <p className="mt-3 text-sm font-medium text-foreground">Supabase</p>
-                  <p className="mt-1 text-xs text-muted-foreground">SOC 2 Type II certified. Row-level security enforced — only your account can access your data.</p>
+                  <p className="mt-3 text-sm font-medium text-foreground">SOC 2 Type II Certified</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Row-level security enforced — only your account can access your data, by architecture.</p>
                 </div>
               </StaggerItem>
 
-              {/* Vercel */}
+              {/* Hosting */}
               <StaggerItem>
                 <div className="rounded-xl border border-border bg-card p-5">
                   <div className="flex items-center gap-2">
                     <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
-                    <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Deployment</span>
+                    <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Hosting</span>
                   </div>
-                  <p className="mt-3 text-sm font-medium text-foreground">Vercel</p>
-                  <p className="mt-1 text-xs text-muted-foreground">SOC 2 Type II · ISO 27001. Global edge network with DDoS protection and TLS encryption in transit.</p>
+                  <p className="mt-3 text-sm font-medium text-foreground">SOC 2 Type II · ISO 27001</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Global edge network with DDoS protection and TLS encryption enforced end-to-end.</p>
                 </div>
               </StaggerItem>
 
@@ -353,8 +353,8 @@ export default function SmartStorageProductPage() {
                     <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
                     <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Payments</span>
                   </div>
-                  <p className="mt-3 text-sm font-medium text-foreground">Creem · Lemon Squeezy</p>
-                  <p className="mt-1 text-xs text-muted-foreground">PCI-DSS compliant payment processors. No card data is ever stored on our systems.</p>
+                  <p className="mt-3 text-sm font-medium text-foreground">PCI-DSS Compliant</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Payments handled by certified processors. No card data is ever stored on our systems.</p>
                 </div>
               </StaggerItem>
 

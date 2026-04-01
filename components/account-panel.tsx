@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { X, User, ChevronDown, ChevronLeft, AlertTriangle, LogOut } from "lucide-react"
+import { X, User, ChevronDown, AlertTriangle, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { GoogleSignInButton } from "@/components/google-sign-in-button"
@@ -20,11 +20,9 @@ interface AccountPanelProps {
   isOpen: boolean
   onClose: () => void
   focusGiftCode?: boolean
-  initialView?: "menu" | "privacy" | "terms"
 }
 
 type ExpandedSection = "subscription" | "email" | "password" | null
-type PanelView = "menu" | "privacy" | "terms"
 
 function AccordionItem({
   label,
@@ -67,136 +65,6 @@ function AccordionItem({
   )
 }
 
-function PrivacyPolicyContent() {
-  return (
-    <div className="space-y-6 text-sm">
-      <p className="text-muted-foreground">
-        AVINTPH INFORMATION TECHNOLOGY SOLUTIONS ("AVIntelligence", "we", "us") is a Philippine-registered technology company. We build intelligent tools — including Smart Storage and Smart Dashboard — that help individuals and businesses structure and analyze real-world documents. This policy explains how we collect, use, and protect your information.
-      </p>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">Information We Collect</h3>
-        <ul className="ml-4 list-disc space-y-1 text-muted-foreground">
-          <li>Account email address and authentication credentials</li>
-          <li>Uploaded files and documents (receipts, invoices, payslips, contracts, etc.)</li>
-          <li>Structured data extracted from those documents</li>
-          <li>Usage activity — reports generated, dashboards accessed, tools used</li>
-          <li>Payment and billing information (processed by Creem or Lemon Squeezy — we do not store card details)</li>
-        </ul>
-        <p className="text-muted-foreground">We collect only what is necessary to deliver the service. We do not manually review your documents.</p>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">How We Use Your Data</h3>
-        <ul className="ml-4 list-disc space-y-1 text-muted-foreground">
-          <li>To classify, structure, and store your uploaded documents</li>
-          <li>To generate financial reports and power dashboard visualizations</li>
-          <li>To manage your account, subscription, and access level</li>
-          <li>To improve system accuracy and performance</li>
-        </ul>
-        <p className="text-muted-foreground">We do not sell your personal data. We do not use your documents for advertising.</p>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">AI Processing</h3>
-        <p className="text-muted-foreground">Document classification and data extraction are performed by automated AI systems powered by OpenAI, Anthropic (Claude), and Google Gemini. Processing is programmatic — no human reviews your documents. AVIntelligence is an independent product and is not affiliated with or endorsed by these providers.</p>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">Infrastructure & Security</h3>
-        <p className="text-muted-foreground">AVIntelligence is built on enterprise-grade infrastructure at every layer:</p>
-        <ul className="ml-4 list-disc space-y-1 text-muted-foreground">
-          <li><span className="text-foreground font-medium">Supabase</span> (SOC 2 Type II) — database and file storage with row-level security enforced. Only your account can access your data — enforced by architecture, not policy alone.</li>
-          <li><span className="text-foreground font-medium">Vercel</span> (SOC 2 Type II · ISO 27001) — deployment and edge network with DDoS protection and TLS encryption in transit.</li>
-          <li><span className="text-foreground font-medium">OpenAI, Anthropic, Google</span> — enterprise SOC 2 certified AI providers. Document processing is fully automated — no human review occurs.</li>
-          <li><span className="text-foreground font-medium">Creem · Lemon Squeezy</span> — PCI-DSS compliant payment processors. No card or banking data is stored on our systems.</li>
-          <li>Sensitive API keys are never exposed to the client. All document processing runs server-side in isolated edge environments.</li>
-        </ul>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">Payments</h3>
-        <p className="text-muted-foreground">Billing is handled by Creem and/or Lemon Squeezy. We receive confirmation of payment but do not store credit card or banking information. Their respective privacy policies govern how payment data is handled.</p>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">Data Retention</h3>
-        <p className="text-muted-foreground">Documents and structured records remain stored until you delete them or request account deletion. You may delete individual files at any time from Smart Storage. Account deletion permanently removes all stored data associated with your account.</p>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">Your Rights</h3>
-        <ul className="ml-4 list-disc space-y-1 text-muted-foreground">
-          <li>Access and download your data</li>
-          <li>Delete individual documents or your entire account</li>
-          <li>Update your account email or password</li>
-          <li>Request clarification on how your data is used</li>
-        </ul>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">Contact</h3>
-        <p className="text-muted-foreground">support@avintph.com</p>
-        <p className="text-muted-foreground">AVINTPH INFORMATION TECHNOLOGY SOLUTIONS · Philippines</p>
-      </section>
-    </div>
-  )
-}
-
-function TermsOfServiceContent() {
-  return (
-    <div className="space-y-6 text-sm">
-      <p className="text-muted-foreground">By creating an account or using AVIntelligence products, you agree to these Terms of Service. These terms apply to all users of avintph.com and associated tools.</p>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">About AVIntelligence</h3>
-        <p className="text-muted-foreground">AVIntelligence is a product of AVINTPH INFORMATION TECHNOLOGY SOLUTIONS, a Philippines-registered technology company. We develop intelligent tools — Smart Storage and Smart Dashboard — that help individuals and businesses structure, store, and visualize information from real-world documents.</p>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">Use of Service</h3>
-        <p className="text-muted-foreground">AVIntelligence provides document processing and data visualization tools for personal and business use. Generated reports and structured data are reference outputs — they do not constitute financial, legal, tax, or professional advice. You are responsible for verifying outputs before acting on them.</p>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">Account Responsibility</h3>
-        <p className="text-muted-foreground">You are responsible for maintaining the security of your account credentials. Do not share access with unauthorized parties. You are responsible for all activity that occurs under your account.</p>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">Acceptable Use</h3>
-        <p className="text-muted-foreground">You agree not to upload or submit:</p>
-        <ul className="ml-4 list-disc space-y-1 text-muted-foreground">
-          <li>Malicious, fraudulent, or deceptive files</li>
-          <li>Content that violates applicable Philippine or international law</li>
-          <li>Files belonging to others without authorization</li>
-        </ul>
-        <p className="text-muted-foreground">We reserve the right to suspend or terminate accounts that misuse the platform, at our discretion and without prior notice where necessary.</p>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">Subscriptions & Payments</h3>
-        <p className="text-muted-foreground">Access to advanced features requires a paid plan (Day Pass, Pro Monthly, or Pro Annual) or a valid gift code. Billing is processed by Creem or Lemon Squeezy. Subscription access is tied to your account and is non-transferable. Gift codes are single-use and grant 24-hour access. Day Pass access expires after 24 hours from activation. Pro subscriptions renew automatically unless cancelled before the billing period ends.</p>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">Refunds</h3>
-        <p className="text-muted-foreground">Refund requests are handled on a case-by-case basis. Contact support@avintph.com within 48 hours of purchase if you experience a technical issue preventing access. We do not offer refunds for used access periods or expired gift codes.</p>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">Intellectual Property</h3>
-        <p className="text-muted-foreground">All platform code, design, and branding are owned by AVINTPH INFORMATION TECHNOLOGY SOLUTIONS. You retain ownership of documents you upload. By uploading, you grant us the right to process your files solely to provide the service.</p>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">Service Availability</h3>
-        <p className="text-muted-foreground">We aim for reliable uptime but do not guarantee uninterrupted service. Maintenance, infrastructure issues, or third-party provider downtime may affect availability. Features may be updated or changed over time as the product evolves.</p>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">Limitation of Liability</h3>
-        <p className="text-muted-foreground">AVIntelligence is provided on an as-is basis. To the maximum extent permitted by applicable law, AVINTPH INFORMATION TECHNOLOGY SOLUTIONS is not liable for any indirect, incidental, or consequential damages arising from use of the platform or reliance on generated outputs.</p>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">Governing Law</h3>
-        <p className="text-muted-foreground">These terms are governed by the laws of the Republic of the Philippines.</p>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">Updates to Terms</h3>
-        <p className="text-muted-foreground">We may update these terms as the service evolves. Continued use of the platform after updates constitutes acceptance of the revised terms. Material changes will be communicated via email where possible.</p>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">Contact</h3>
-        <p className="text-muted-foreground">support@avintph.com</p>
-        <p className="text-muted-foreground">AVINTPH INFORMATION TECHNOLOGY SOLUTIONS · Philippines</p>
-      </section>
-    </div>
-  )
-}
 
 function DeleteAccountModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const [password, setPassword] = useState("")
@@ -228,12 +96,11 @@ function DeleteAccountModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
   )
 }
 
-export function AccountPanel({ isOpen, onClose, focusGiftCode, initialView }: AccountPanelProps) {
+export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelProps) {
   const [session, setSession] = useState<Session | null>(null)
   const isSignedIn = session !== null
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [expandedSection, setExpandedSection] = useState<ExpandedSection>(null)
-  const [panelView, setPanelView] = useState<PanelView>("menu")
   const [giftCode, setGiftCode] = useState("")
   const [giftCodeLoading, setGiftCodeLoading] = useState(false)
   const [giftCodeError, setGiftCodeError] = useState("")
@@ -301,12 +168,8 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode, initialView }: Ac
   }, [isOpen, focusGiftCode])
 
   useEffect(() => {
-    if (isOpen && initialView && initialView !== "menu") {
-      setPanelView(initialView)
-    }
     if (!isOpen) {
       setExpandedSection(null)
-      setPanelView("menu")
       setAuthMode("signin")
       setAuthEmail("")
       setAuthPassword("")
@@ -314,19 +177,12 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode, initialView }: Ac
       setAuthError("")
       setAuthSuccess("")
     }
-  }, [isOpen, initialView])
+  }, [isOpen])
 
   const toggleSection = (section: ExpandedSection) => {
     setExpandedSection(expandedSection === section ? null : section)
   }
 
-  const getPanelTitle = () => {
-    switch (panelView) {
-      case "privacy": return "Privacy Policy"
-      case "terms": return "Terms of Service"
-      default: return "Account"
-    }
-  }
 
   return (
     <>
@@ -348,17 +204,9 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode, initialView }: Ac
           {/* Header */}
           <div className="flex items-center justify-between border-b border-border px-6 py-4">
             <div className="flex items-center gap-3">
-              {panelView !== "menu" && (
-                <button
-                  onClick={() => setPanelView("menu")}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  <ChevronLeft className="h-5 w-5" />
-                </button>
-              )}
               <div>
-                <h2 className="text-lg font-semibold text-foreground">{getPanelTitle()}</h2>
-                {panelView === "menu" && isSignedIn && (
+                <h2 className="text-lg font-semibold text-foreground">Account</h2>
+                {isSignedIn && (
                   <p className="mt-0.5 text-sm text-muted-foreground">
                     Signed in as<br />
                     <span className="text-foreground">{session?.user?.email ?? "email@example.com"}</span>
@@ -376,11 +224,7 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode, initialView }: Ac
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto p-6">
-            {panelView === "privacy" && <PrivacyPolicyContent />}
-            {panelView === "terms" && <TermsOfServiceContent />}
-
-            {panelView === "menu" && (
-              <div className="space-y-6">
+            <div className="space-y-6">
                 {/* Authentication Section */}
                 {!isSignedIn && (
                   <div className="space-y-5">
@@ -683,20 +527,22 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode, initialView }: Ac
                     {/* Legal */}
                     <div className="h-px bg-border" />
                     <div className="space-y-1">
-                      <button
-                        onClick={() => setPanelView("privacy")}
+                      <Link
+                        href="/privacy"
+                        onClick={onClose}
                         className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-muted"
                       >
                         Privacy
                         <ChevronDown className="h-4 w-4 -rotate-90 text-muted-foreground" />
-                      </button>
-                      <button
-                        onClick={() => setPanelView("terms")}
+                      </Link>
+                      <Link
+                        href="/terms"
+                        onClick={onClose}
                         className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-muted"
                       >
                         Terms
                         <ChevronDown className="h-4 w-4 -rotate-90 text-muted-foreground" />
-                      </button>
+                      </Link>
                     </div>
 
                     {/* Delete Account */}
@@ -725,7 +571,6 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode, initialView }: Ac
                   </>
                 )}
               </div>
-            )}
           </div>
         </div>
       </div>

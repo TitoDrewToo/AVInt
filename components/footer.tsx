@@ -39,7 +39,7 @@ export function Footer() {
             </Link>
             <a
               href="mailto:support@avintph.com"
-              className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+              className="text-xs text-pink-500 transition-colors hover:text-pink-400"
             >
               support@avintph.com
             </a>

@@ -1011,7 +1011,7 @@ export default function SmartStoragePage() {
                     </svg>
                   </button>
                 </div>
-                <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => e.target.files && handleUpload(e.target.files)} />
+                <input ref={fileInputRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,image/*,application/pdf" className="hidden" onChange={(e) => e.target.files && handleUpload(e.target.files)} />
               </div>
             </div>
 
@@ -1129,6 +1129,29 @@ export default function SmartStoragePage() {
                       </div>
                     )
                   })}
+
+                  {/* Canvas empty state */}
+                  {currentSubfolders.length === 0 && displayedFiles.length === 0 && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-none select-none">
+                      <div className="flex items-end justify-center gap-2 opacity-10">
+                        <div className="flex h-16 w-14 items-center justify-center rounded-lg bg-muted">
+                          <FileText className="h-8 w-8 text-muted-foreground" />
+                        </div>
+                        <div className="flex h-20 w-16 items-center justify-center rounded-lg bg-muted">
+                          <File className="h-10 w-10 text-muted-foreground" />
+                        </div>
+                        <div className="flex h-16 w-14 items-center justify-center rounded-lg bg-muted">
+                          <ImageIcon className="h-8 w-8 text-muted-foreground" />
+                        </div>
+                      </div>
+                      <p className="text-sm text-muted-foreground/40">Drop files here or click Upload</p>
+                      <div className="flex flex-wrap items-center justify-center gap-2">
+                        {["PDF", "JPG", "PNG", "WEBP", "HEIC"].map((ext) => (
+                          <span key={ext} className="text-xs text-muted-foreground/25">{ext}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {displayedFiles.map((file) => {
                     const pos = itemPositions[file.id]

@@ -25,18 +25,24 @@ export function Footer() {
           </span>
           {/* Footer links */}
           <div className="flex items-center gap-4 md:ml-4">
-            <button
-              onClick={() => openAccountPanel("privacy")}
+            <Link
+              href="/privacy"
               className="text-xs text-muted-foreground transition-colors hover:text-foreground"
             >
               Privacy
-            </button>
-            <button
-              onClick={() => openAccountPanel("terms")}
+            </Link>
+            <Link
+              href="/terms"
               className="text-xs text-muted-foreground transition-colors hover:text-foreground"
             >
               Terms
-            </button>
+            </Link>
+            <a
+              href="mailto:support@avintph.com"
+              className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+            >
+              support@avintph.com
+            </a>
             <Link
               href="https://forms.gle/E24gjqAnv6xmF31H8"
               target="_blank"

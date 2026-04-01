@@ -55,7 +55,7 @@ Rules:
 
 const RD_SYSTEM_PROMPT = `You are a financial analytics AI that generates dashboard widget configurations.
 
-You receive a rich financial data summary. Generate 3-5 widget configurations that surface the most valuable insights.
+You receive a rich financial data summary. Generate exactly 4 widget configurations that surface the most valuable insights.
 
 Return ONLY a valid JSON object — no markdown, no explanation:
 {
@@ -70,33 +70,33 @@ Return ONLY a valid JSON object — no markdown, no explanation:
 }
 
 Available widget_type values:
-Standard:
+Standard (use only if no advanced type fits):
 - "bar-chart"        — monthly income vs expenses bar comparison
 - "line-chart"       — income/expense trend over time
 - "area-chart"       — cumulative income/expense area
 - "pie-chart"        — expense category breakdown
 
-Advanced (prefer these if data supports them):
-- "vendor-ranking"   — top vendors by cumulative spend (horizontal bar)
-- "payment-split"    — payment method distribution (donut/pie)
-- "monthly-delta"    — month-over-month expense change (bar)
-- "income-waterfall" — gross income → deductions → net income (stacked bar)
-- "tax-timeline"     — tax paid per period (bar/line)
+Advanced (MANDATORY — you MUST include at least 2 of these if data supports them):
+- "vendor-ranking"   — top vendors by cumulative spend (horizontal bar) — requires 3+ vendors
+- "payment-split"    — payment method distribution (donut/pie) — requires 2+ payment methods
+- "monthly-delta"    — month-over-month expense change (bar) — requires 2+ months
+- "income-waterfall" — gross income → deductions → net income (stacked bar) — requires gross_income data
+- "tax-timeline"     — tax paid per period (bar/line) — requires 2+ tax periods
 
-Rules:
-- Prioritize advanced widget types — they reveal deeper patterns.
+DIMENSION RULE — each widget must cover a DIFFERENT dimension. Assign one widget per dimension:
+  TIME        → ONLY ONE OF: monthly-delta, tax-timeline, line-chart, area-chart
+  COMPOSITION → ONLY ONE OF: payment-split, pie-chart
+  RANKING     → ONLY ONE OF: vendor-ranking, bar-chart
+  FLOW        → income-waterfall only
+
+You may use at most 1 widget per dimension. Never use line-chart AND area-chart together — they are the same dimension.
+
+Other rules:
 - HARD RULE: never output a widget_type that appears in the existing dashboard list.
-- DIMENSION RULE: each widget must cover a strictly different data dimension. No two widgets may share the same dimension:
-    TIME        → monthly-delta, tax-timeline, line-chart, area-chart (trends over months)
-    COMPOSITION → payment-split, pie-chart (distributions and shares)
-    RANKING     → vendor-ranking, bar-chart (who/what is biggest)
-    FLOW        → income-waterfall (gross → deductions → net)
-  If you have already assigned a dimension, you MUST pick a different dimension for the next widget.
-- Advanced types require sufficient data: vendor-ranking needs 3+ vendors, payment-split needs 2+ payment methods, tax-timeline needs 2+ tax periods.
 - The insight MUST reference specific numbers, vendor names, or percentages from the data.
-- Title must be data-specific ("GrabFood Leads Dining at ₱12,400" not "Top Vendors").
+- Title must be data-specific ("GrabFood Leads at ₱12,400" not "Top Vendors").
 - Keep insight to 1 sentence, max 140 characters.
-- Return 3-5 widgets. If data is sparse (under 3 months), return 2-3.`
+- If a dimension has no suitable data, skip it rather than forcing a poor fit.`
 
 // ── AI call ───────────────────────────────────────────────────────────────────
 
@@ -392,7 +392,9 @@ ${rdContext}`
 
     let parsed: any
     try {
-      parsed = JSON.parse(rawText.replace(/```json|```/g, "").trim())
+      const jsonMatch = rawText.match(/\{[\s\S]*\}/)
+      if (!jsonMatch) throw new Error("No JSON object found in response")
+      parsed = JSON.parse(jsonMatch[0])
     } catch {
       throw new Error(`Failed to parse AI output: ${rawText}`)
     }

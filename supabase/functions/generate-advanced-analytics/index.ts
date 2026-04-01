@@ -158,7 +158,7 @@ serve(async (req) => {
     })
   }
 
-  const { user_id, existing_widget_types } = body
+  const { user_id, existing_widget_types, plotted_advanced_types } = body
   if (!user_id) {
     return new Response(JSON.stringify({ error: "user_id required" }), {
       status: 400,
@@ -168,6 +168,38 @@ serve(async (req) => {
 
   // R&D gate — advanced features only for admin user
   const isRDUser = RD_USER_ID && user_id === RD_USER_ID
+
+  // ── Dimension pre-selection ───────────────────────────────────────────────
+  // Code picks the widget types — AI only writes content for them.
+  // This prevents Haiku from defaulting to familiar standard chart types.
+  const DIMENSION_MAP: Record<string, string[]> = {
+    TIME:        ["monthly-delta", "tax-timeline", "line-chart", "area-chart"],
+    COMPOSITION: ["payment-split", "pie-chart"],
+    RANKING:     ["vendor-ranking", "bar-chart"],
+    FLOW:        ["income-waterfall"],
+  }
+  const PREFERRED: Record<string, string> = {
+    TIME:        "monthly-delta",
+    COMPOSITION: "payment-split",
+    RANKING:     "vendor-ranking",
+    FLOW:        "income-waterfall",
+  }
+  const FALLBACK: Record<string, string | null> = {
+    TIME:        "area-chart",
+    COMPOSITION: "pie-chart",
+    RANKING:     "bar-chart",
+    FLOW:        null,
+  }
+
+  const allCovered = [
+    ...(existing_widget_types ?? []),
+    ...(plotted_advanced_types ?? []),
+  ]
+
+  const coveredDimensions = new Set<string>()
+  for (const [dim, types] of Object.entries(DIMENSION_MAP)) {
+    if (allCovered.some((t: string) => types.includes(t))) coveredDimensions.add(dim)
+  }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
@@ -220,8 +252,22 @@ serve(async (req) => {
     const dateRange   = f.filter((x: any) => x.document_date).map((x: any) => x.document_date).sort()
     const months      = [...new Set(dateRange.map((d: string) => d.slice(0, 7)))].length
 
+    // Monthly breakdowns — computed for all users (needed for correlations + standard chart context)
+    const monthlyExpenses: Record<string, number> = {}
+    const monthlyIncomeMap: Record<string, number> = {}
+    for (const x of f) {
+      if (!x.document_date) continue
+      const mo = x.document_date.slice(0, 7)
+      if (x.total_amount != null && x.gross_income == null) {
+        monthlyExpenses[mo] = (monthlyExpenses[mo] ?? 0) + Number(x.total_amount)
+      }
+      if (x.gross_income != null) {
+        monthlyIncomeMap[mo] = (monthlyIncomeMap[mo] ?? 0) + Number(x.gross_income)
+      }
+    }
+    const sortedMonths = Object.keys({ ...monthlyExpenses, ...monthlyIncomeMap }).sort()
+
     // ── 4. R&D enrichment aggregations ──────────────────────────────────────
-    let rdContext = ""
     let profilePayload: any = null
 
     if (isRDUser) {
@@ -247,21 +293,8 @@ serve(async (req) => {
         }
       }
 
-      // Monthly deltas (month-over-month expense change)
-      const monthlyExpenses: Record<string, number> = {}
-      const monthlyIncomeMap: Record<string, number> = {}
-      for (const x of f) {
-        if (!x.document_date) continue
-        const mo = x.document_date.slice(0, 7)
-        if (x.total_amount != null && x.gross_income == null) {
-          monthlyExpenses[mo] = (monthlyExpenses[mo] ?? 0) + Number(x.total_amount)
-        }
-        if (x.gross_income != null) {
-          monthlyIncomeMap[mo] = (monthlyIncomeMap[mo] ?? 0) + Number(x.gross_income)
-        }
-      }
-      const sortedMonths = Object.keys({ ...monthlyExpenses, ...monthlyIncomeMap }).sort()
-      const monthlyDeltas = sortedMonths.map((mo, i) => {
+      // Monthly deltas — uses hoisted monthlyExpenses/monthlyIncomeMap/sortedMonths
+      const monthlyDeltas = sortedMonths.map((mo: string, i: number) => {
         const prevMo = sortedMonths[i - 1]
         const expDelta = prevMo != null
           ? (monthlyExpenses[mo] ?? 0) - (monthlyExpenses[prevMo] ?? 0)
@@ -327,27 +360,6 @@ serve(async (req) => {
         last_run_at:          new Date().toISOString(),
       }
 
-      // Build R&D context string for prompt
-      rdContext = `
-Vendor data:
-- Top vendors by spend: ${topVendors.slice(0, 5).map(v => `${v.name} (${symbol}${v.total.toLocaleString()}, ${v.count} txns)`).join(", ") || "none"}
-- Total unique vendors: ${topVendors.length}
-
-Payment methods: ${Object.entries(paymentMethods).map(([m, c]) => `${m}: ${c}`).join(", ") || "none"}
-
-Month-over-month (last 3 months):
-${monthlyDeltas.slice(-3).map(d => `  ${d.month}: expenses ${d.expense_delta >= 0 ? "+" : ""}${symbol}${d.expense_delta.toLocaleString()}, income ${d.income_delta >= 0 ? "+" : ""}${symbol}${d.income_delta.toLocaleString()}`).join("\n") || "  insufficient data"}
-
-Income waterfall:
-- Gross income: ${symbol}${totalIncome.toLocaleString()}
-- Estimated deductions (tax + SSS/PhilHealth): ${symbol}${totalDeductions.toLocaleString()}
-- Net after deductions: ${symbol}${netAfterDeductions.toLocaleString()}
-
-Discounts captured: ${symbol}${discountTotal.toLocaleString()} across ${discountEvents.length} events${discountEvents.length > 0 ? ` (top: ${discountEvents[0].vendor} ${symbol}${discountEvents[0].amount.toLocaleString()})` : ""}
-
-Tax timeline: ${taxTimeline.map(t => `${t.period}: ${symbol}${t.tax_amount.toLocaleString()}`).join(", ") || "none"}
-
-Income sources: ${incomeSources.map(s => `${s.employer} (${symbol}${(s.total as number).toLocaleString()})`).join(", ") || "none"}`
     }
 
     // ── 5. Clear all previous suggestions (non-starred) ─────────────────────
@@ -358,31 +370,112 @@ Income sources: ${incomeSources.map(s => `${s.employer} (${symbol}${(s.total as 
       .eq("user_id", user_id)
       .eq("is_starred", false)
 
-    // ── 6. Build prompt ──────────────────────────────────────────────────────
-    const existingList = (existing_widget_types ?? []).join(", ") || "none"
-    const prompt = `Existing dashboard widget types (DO NOT generate these): ${existingList}
+    // ── 6. Pre-select target widget types + build targeted context ───────────
+    // Determine data sufficiency per advanced type
+    const vendorCount   = isRDUser ? Object.keys(
+      f.filter((x: any) => x.vendor_name && x.total_amount != null && x.gross_income == null)
+       .reduce((a: any, x: any) => { a[x.vendor_name] = 1; return a }, {})
+    ).length : 0
+    const paymentMethodCount = isRDUser ? Object.keys(
+      f.filter((x: any) => x.payment_method)
+       .reduce((a: any, x: any) => { a[x.payment_method] = 1; return a }, {})
+    ).length : 0
+    const taxPeriodCount = isRDUser && profilePayload
+      ? profilePayload.tax_timeline.length : 0
 
-Financial data for analysis:
+    const canUse = (type: string): boolean => {
+      if (type === "vendor-ranking")   return isRDUser && vendorCount >= 3
+      if (type === "payment-split")    return isRDUser && paymentMethodCount >= 2
+      if (type === "monthly-delta")    return months >= 2
+      if (type === "income-waterfall") return isRDUser && totalIncome > 0
+      if (type === "tax-timeline")     return isRDUser && taxPeriodCount >= 2
+      return true // standard types always available
+    }
 
-Currency: ${currency}
-Documents: ${userFiles.length} files (${[...new Set(userFiles.map((f: any) => f.document_type))].join(", ")})
-Date range: ${dateRange[0] ?? "unknown"} to ${dateRange[dateRange.length - 1] ?? "unknown"} (${months} months)
+    // Pick one type per uncovered dimension
+    const targetTypes: string[] = []
+    for (const dim of ["TIME", "COMPOSITION", "RANKING", "FLOW"]) {
+      if (coveredDimensions.has(dim)) continue
+      const preferred = PREFERRED[dim]
+      const fallback  = FALLBACK[dim]
+      if (canUse(preferred))      targetTypes.push(preferred)
+      else if (fallback && canUse(fallback)) targetTypes.push(fallback)
+    }
 
-Income:
-- Total gross income: ${symbol}${totalIncome.toLocaleString()}
-- Net position: ${symbol}${netPosition.toLocaleString()}
-- Savings rate: ${savingsRate}%
-- Employers: ${employers.join(", ") || "none"}
+    if (!targetTypes.length) {
+      return new Response(JSON.stringify({ success: true, count: 0, widgets: [],
+        message: "All dimensions already covered by existing widgets" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } })
+    }
 
-Expenses:
-- Total expenses: ${symbol}${totalExpenses.toLocaleString()}
-- Top category: ${topCategory ? `${topCategory[0]} (${symbol}${topCategory[1].toLocaleString()})` : "none"}
-- All categories: ${Object.entries(categories).map(([k, v]) => `${k}: ${symbol}${v.toLocaleString()}`).join(", ") || "none"}
+    // Build per-type data snippets so AI has exactly what it needs per widget
+    const typeContexts: string[] = []
+    for (const type of targetTypes) {
+      if (type === "monthly-delta" && isRDUser && profilePayload) {
+        const deltas = profilePayload.monthly_deltas.slice(-4)
+        typeContexts.push(`monthly-delta data: ${deltas.map((d: any) =>
+          `${d.month}: expense_delta ${d.expense_delta >= 0 ? "+" : ""}${symbol}${Math.round(d.expense_delta).toLocaleString()}, income_delta ${d.income_delta >= 0 ? "+" : ""}${symbol}${Math.round(d.income_delta).toLocaleString()}`
+        ).join(" | ")}`)
+      } else if (type === "area-chart" || type === "line-chart") {
+        const byMonth = sortedMonths.map((mo: string) => `${mo}: income ${symbol}${(monthlyIncomeMap[mo]||0).toLocaleString()} / expenses ${symbol}${(monthlyExpenses[mo]||0).toLocaleString()}`)
+        typeContexts.push(`${type} data (monthly): ${byMonth.join(" | ")}`)
+      } else if (type === "vendor-ranking" && isRDUser && profilePayload) {
+        typeContexts.push(`vendor-ranking data: ${profilePayload.top_vendors.slice(0,6).map((v: any) => `${v.name}: ${symbol}${Math.round(v.total).toLocaleString()} (${v.count} txns)`).join(", ")}`)
+      } else if (type === "payment-split" && isRDUser && profilePayload) {
+        typeContexts.push(`payment-split data: ${Object.entries(profilePayload.payment_methods).map(([m,c]) => `${m}: ${c} transactions`).join(", ")}`)
+      } else if (type === "income-waterfall" && isRDUser) {
+        const deductions = totalTax + totalIncome * 0.02
+        typeContexts.push(`income-waterfall data: gross ${symbol}${totalIncome.toLocaleString()} → tax ${symbol}${totalTax.toLocaleString()} → SSS/PhilHealth est ${symbol}${Math.round(totalIncome*0.02).toLocaleString()} → net ${symbol}${Math.round(totalIncome-deductions).toLocaleString()}`)
+      } else if (type === "tax-timeline" && isRDUser && profilePayload) {
+        typeContexts.push(`tax-timeline data: ${profilePayload.tax_timeline.map((t: any) => `${t.period}: ${symbol}${Math.round(t.tax_amount).toLocaleString()}`).join(", ")}`)
+      } else if (type === "pie-chart" || type === "bar-chart") {
+        typeContexts.push(`${type} data: ${Object.entries(categories).sort((a,b) => (b[1] as number)-(a[1] as number)).map(([k,v]) => `${k}: ${symbol}${(v as number).toLocaleString()}`).join(", ")}`)
+      }
+    }
 
-Tax:
-- Total tax paid: ${symbol}${totalTax.toLocaleString()}
-- Tax rate: ${taxRate}%
-${rdContext}`
+    // Compute cross-document correlations for insight enrichment
+    const monthlySavingsRates = sortedMonths.map((mo: string) => {
+      const inc = monthlyIncomeMap[mo] ?? 0
+      const exp = monthlyExpenses[mo] ?? 0
+      const rate = inc > 0 ? ((inc - exp) / inc * 100) : null
+      return { month: mo, income: inc, expenses: exp, rate }
+    }).filter((m: any) => m.income > 0)
+    const bestMonth = monthlySavingsRates.length
+      ? monthlySavingsRates.reduce((best: any, m: any) => (m.rate ?? -Infinity) > (best.rate ?? -Infinity) ? m : best)
+      : null
+    const latestMonth = monthlySavingsRates[monthlySavingsRates.length - 1]
+
+    const correlationContext = [
+      bestMonth ? `Best savings month: ${bestMonth.month} at ${bestMonth.rate?.toFixed(1)}% (income ${symbol}${bestMonth.income.toLocaleString()}, expenses ${symbol}${bestMonth.expenses.toLocaleString()})` : null,
+      latestMonth && bestMonth && latestMonth.month !== bestMonth.month
+        ? `Latest month (${latestMonth.month}): ${symbol}${latestMonth.income.toLocaleString()} income, ${symbol}${latestMonth.expenses.toLocaleString()} expenses, ${latestMonth.rate?.toFixed(1)}% savings`
+        : null,
+      employers.length > 1 ? `Multiple income sources: ${employers.join(", ")}` : null,
+    ].filter(Boolean).join("\n")
+
+    const prompt = `You are filling in widget metadata. The widget types are ALREADY DECIDED — do not change them.
+
+Generate title, description, and insight for EXACTLY these widget types:
+${targetTypes.map((t, i) => `${i+1}. ${t}`).join("\n")}
+
+Return ONLY valid JSON — no markdown:
+{
+  "widgets": [
+    { "widget_type": "<exact type from list>", "title": "<data-specific title>", "description": "<one-line subtitle>", "insight": "<1 sentence with specific numbers>" }
+  ]
+}
+
+Per-widget data:
+${typeContexts.join("\n")}
+
+Cross-document correlations:
+${correlationContext || "insufficient data for correlations"}
+
+Rules:
+- widget_type MUST exactly match the types listed above — no substitutions
+- Title must reference actual values ("GrabFood Leads at ${symbol}12,400" not "Top Vendors")
+- Insight must cite specific numbers or percentages from the data above
+- Max 140 characters per insight`
 
     // ── 7. Call AI ───────────────────────────────────────────────────────────
     const systemPrompt = isRDUser ? RD_SYSTEM_PROMPT : STANDARD_SYSTEM_PROMPT

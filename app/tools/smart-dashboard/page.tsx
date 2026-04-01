@@ -977,7 +977,11 @@ export default function SmartDashboardPage() {
           "Authorization": `Bearer ${cur?.access_token}`,
           "apikey": process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
         },
-        body: JSON.stringify({ user_id: session.user.id, existing_widget_types: widgets.map(w => w.type) }),
+        body: JSON.stringify({
+          user_id: session.user.id,
+          existing_widget_types: widgets.map(w => w.type),
+          plotted_advanced_types: advancedWidgetsList.filter(w => w.is_plotted).map(w => w.widget_type),
+        }),
       })
       if (res.ok) {
         const data = await res.json()

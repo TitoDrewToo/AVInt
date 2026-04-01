@@ -100,9 +100,19 @@ function PricingCard({
     }
 
     if (name === "Gift Codes") {
-      return (
+      if (!productId) return (
         <Button className="mt-8 w-full rounded-xl bg-secondary text-secondary-foreground" size="lg" disabled>
           Coming Soon
+        </Button>
+      )
+      return (
+        <Button
+          className="mt-8 w-full rounded-xl bg-secondary text-secondary-foreground hover:bg-secondary/80"
+          size="lg"
+          disabled={checkoutLoading}
+          onClick={handlePaidClick}
+        >
+          {checkoutLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Purchase Code"}
         </Button>
       )
     }

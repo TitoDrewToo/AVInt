@@ -3,13 +3,25 @@ import crypto from "crypto"
 import { createClient } from "@supabase/supabase-js"
 
 // Product IDs come from env vars so test→prod is a config change, not a deploy
-function getProductMap(): Record<string, { status: string; plan: string }> {
-  const map: Record<string, { status: string; plan: string }> = {}
-  const dayPassId     = process.env.CREEM_PRODUCT_DAY_PASS_ID
-  const proMonthlyId  = process.env.CREEM_PRODUCT_PRO_MONTHLY_ID
-  if (dayPassId)    map[dayPassId]    = { status: "day_pass", plan: "day_pass" }
-  if (proMonthlyId) map[proMonthlyId] = { status: "pro",      plan: "monthly"  }
+function getProductMap(): Record<string, { status: string; plan: string; isGiftCode?: boolean }> {
+  const map: Record<string, { status: string; plan: string; isGiftCode?: boolean }> = {}
+  const dayPassId    = process.env.CREEM_PRODUCT_DAY_PASS_ID
+  const proMonthlyId = process.env.CREEM_PRODUCT_PRO_MONTHLY_ID
+  const proAnnualId  = process.env.CREEM_PRODUCT_PRO_ANNUAL_ID
+  const giftCodeId   = process.env.CREEM_PRODUCT_GIFT_CODE_ID
+  if (dayPassId)    map[dayPassId]    = { status: "day_pass",  plan: "day_pass" }
+  if (proMonthlyId) map[proMonthlyId] = { status: "pro",       plan: "monthly"  }
+  if (proAnnualId)  map[proAnnualId]  = { status: "pro",       plan: "annual"   }
+  if (giftCodeId)   map[giftCodeId]   = { status: "gift_code", plan: "monthly", isGiftCode: true }
   return map
+}
+
+// Generates a human-readable gift code: AVINT-XXXX-XXXX-XXXX
+function generateGiftCode(): string {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+  const seg = (n: number) =>
+    Array.from({ length: n }, () => chars[Math.floor(Math.random() * chars.length)]).join("")
+  return `AVINT-${seg(4)}-${seg(4)}-${seg(4)}`
 }
 
 function getSupabaseAdmin() {
@@ -127,17 +139,36 @@ export async function POST(req: NextRequest) {
 
       const userId = await resolveUserId(email)
 
-      await upsertSubscription({
-        email,
-        product_name:                    productName,
-        variant_id:                      productId,
-        lemonsqueezy_customer_id:        customerId,
-        lemonsqueezy_subscription_id:    subscriptionId,
-        lemonsqueezy_order_id:           orderId,
-        status,
-        plan,
-        current_period_end:              resolvedPeriodEnd,
-      }, userId)
+      if (mapping.isGiftCode) {
+        // Gift code purchase — store generated license key in gift_codes table
+        // Creem puts the license key at obj.license_key?.key or obj.license_key
+        const licenseKey: string =
+          obj.license_key?.key ??
+          obj.license_key ??
+          generateGiftCode() // fallback: generate our own if Creem doesn't include it
+
+        const { error: giftError } = await supabaseAdmin.from("gift_codes").insert({
+          code:               licenseKey.trim().toUpperCase(),
+          status:             "pending",
+          plan:               "monthly",
+          purchased_by_email: email,
+          lemonsqueezy_order_id: orderId, // reusing column for Creem order ID
+        })
+        if (giftError) console.error("Gift code insert error:", giftError.message)
+        else console.log("Gift code stored:", licenseKey, "for", email)
+      } else {
+        await upsertSubscription({
+          email,
+          product_name:                    productName,
+          variant_id:                      productId,
+          lemonsqueezy_customer_id:        customerId,
+          lemonsqueezy_subscription_id:    subscriptionId,
+          lemonsqueezy_order_id:           orderId,
+          status,
+          plan,
+          current_period_end:              resolvedPeriodEnd,
+        }, userId)
+      }
 
       try { await supabaseAdmin.rpc("increment_user_counter") } catch (e) { console.warn("rpc error:", e) }
       console.log("checkout.completed processed for:", email)

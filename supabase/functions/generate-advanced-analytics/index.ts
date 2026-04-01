@@ -41,7 +41,11 @@ Available widget_type values (use ONLY these):
 Rules:
 - You MUST use ONLY chart types above. KPI widgets are forbidden — they are already covered by the standard dashboard.
 - HARD RULE: never output a widget_type that appears in the existing dashboard list. If all 4 chart types are already used, return {"widgets": []}.
-- Each widget must show a genuinely different angle of the data (e.g. trend vs breakdown vs comparison).
+- DIMENSION RULE: each widget must cover a different data dimension. No two widgets may share the same dimension:
+    TIME        → trends, changes over months
+    COMPOSITION → breakdowns, distributions, shares
+    COMPARISON  → rankings, category vs category
+    FLOW        → income to net, waterfall
 - The insight MUST reference specific numbers, percentages, or category names from the data.
 - Title should be specific to this user's data ("Office Dominates Spending" not "Spending Breakdown").
 - Keep insight to 1 sentence, max 120 characters.
@@ -82,7 +86,13 @@ Advanced (prefer these if data supports them):
 Rules:
 - Prioritize advanced widget types — they reveal deeper patterns.
 - HARD RULE: never output a widget_type that appears in the existing dashboard list.
-- Advanced types require data: vendor-ranking needs at least 3 vendors, payment-split needs at least 2 payment methods, tax-timeline needs at least 2 tax events.
+- DIMENSION RULE: each widget must cover a strictly different data dimension. No two widgets may share the same dimension:
+    TIME        → monthly-delta, tax-timeline, line-chart, area-chart (trends over months)
+    COMPOSITION → payment-split, pie-chart (distributions and shares)
+    RANKING     → vendor-ranking, bar-chart (who/what is biggest)
+    FLOW        → income-waterfall (gross → deductions → net)
+  If you have already assigned a dimension, you MUST pick a different dimension for the next widget.
+- Advanced types require sufficient data: vendor-ranking needs 3+ vendors, payment-split needs 2+ payment methods, tax-timeline needs 2+ tax periods.
 - The insight MUST reference specific numbers, vendor names, or percentages from the data.
 - Title must be data-specific ("GrabFood Leads Dining at ₱12,400" not "Top Vendors").
 - Keep insight to 1 sentence, max 140 characters.

@@ -57,11 +57,15 @@ serve(async (req) => {
 
     if (downloadError || !fileData) throw new Error("Failed to download file")
 
-    // 4. Convert to base64
+    // 4. Convert to base64 (chunked to avoid call stack overflow on large files)
     const arrayBuffer = await fileData.arrayBuffer()
-    const base64 = btoa(
-      String.fromCharCode(...new Uint8Array(arrayBuffer))
-    )
+    const uint8Array = new Uint8Array(arrayBuffer)
+    let binary = ""
+    const chunkSize = 8192
+    for (let i = 0; i < uint8Array.length; i += chunkSize) {
+      binary += String.fromCharCode(...uint8Array.subarray(i, i + chunkSize))
+    }
+    const base64 = btoa(binary)
 
     // 5. Determine MIME type
     const mimeType = file.file_type || "application/pdf"

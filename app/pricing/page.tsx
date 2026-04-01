@@ -4,16 +4,37 @@ import { useState, useEffect } from "react"
 import { Navbar } from "@/components/navbar"
 import { Footer } from "@/components/footer"
 import { Button } from "@/components/ui/button"
-import { Check, CheckCircle } from "lucide-react"
+import { Check, CheckCircle, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 
-const CHECKOUT_URLS: Record<string, string> = {
-  "Day Pass": "https://avintelligence.lemonsqueezy.com/checkout/buy/9a1416cf-c8af-4df4-b4c6-8d20967214bc",
-  "Gift Codes": "https://avintelligence.lemonsqueezy.com/checkout/buy/1831b705-535d-4dd0-bd9d-65f29eba88b0",
-  "Pro Monthly": "https://avintelligence.lemonsqueezy.com/checkout/buy/0546a0f8-42f6-410e-a3f9-b6e326066159",
-  "Pro Annual": "https://avintelligence.lemonsqueezy.com/checkout/buy/deb076b5-4f7d-4d93-ad22-1a97693cc16e",
+// Creem product IDs — update when adding annual / gift code products
+const PRODUCT_IDS: Record<string, string> = {
+  "Day Pass":    "prod_4KtNZA5eQ3LZ83nom02qsh",
+  "Pro Monthly": "prod_6OwfR90bY2FIET4R8qbaop",
+  // "Pro Annual":  "prod_xxx",  // not yet created in Creem
+  // "Gift Codes":  "prod_xxx",  // not yet created in Creem
+}
+
+async function createCreemCheckout(
+  productId: string,
+  email: string | null,
+  successUrl: string
+): Promise<string | null> {
+  try {
+    const res = await fetch("/api/creem/checkout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ product_id: productId, email, success_url: successUrl }),
+    })
+    const { checkout_url, error } = await res.json()
+    if (!checkout_url) { console.error("Creem checkout error:", error); return null }
+    return checkout_url
+  } catch (err) {
+    console.error("createCreemCheckout failed:", err)
+    return null
+  }
 }
 
 interface PricingCardProps {
@@ -22,56 +43,52 @@ interface PricingCardProps {
   annualPrice?: string
   description: string
   features: string[]
+  productId: string | null
   isAnnual?: boolean
   highlighted?: boolean
   isSignedIn: boolean
+  userEmail: string | null
   activeStatus: string | null
-  onRequireAuth: (checkoutUrl: string) => void
+  onRequireAuth: (productId: string) => void
 }
 
 function isCardActive(name: string, activeStatus: string | null): boolean {
   if (!activeStatus) return false
   if (name === "Day Pass" && activeStatus === "day_pass") return true
-  if (name === "Pro" && activeStatus === "pro") return true
-  if (name === "Gift Codes" && activeStatus === "gift_code") return true
+  if (name === "Pro"      && activeStatus === "pro")      return true
   return false
 }
 
 function PricingCard({
   name, price, annualPrice, description, features,
-  isAnnual, highlighted, isSignedIn, activeStatus, onRequireAuth,
+  productId, isAnnual, highlighted, isSignedIn, userEmail, activeStatus, onRequireAuth,
 }: PricingCardProps) {
-  const displayPrice = isAnnual && annualPrice ? annualPrice : price
-  const checkoutUrl = name === "Pro"
-    ? (isAnnual ? CHECKOUT_URLS["Pro Annual"] : CHECKOUT_URLS["Pro Monthly"])
-    : CHECKOUT_URLS[name] ?? "#"
+  const [checkoutLoading, setCheckoutLoading] = useState(false)
 
-  // Is this card the user's current active plan?
-  const active = isCardActive(name, activeStatus) && name !== "Gift Codes"
-
-  // Does the user have a higher/equal plan that makes this card irrelevant?
-  const isPro = activeStatus === "pro"
-  const isDayPass = activeStatus === "day_pass"
-  const isGiftCode = activeStatus === "gift_code"
-
-  // Day pass or gift code users can upgrade to Pro
+  const displayPrice    = isAnnual && annualPrice ? annualPrice : price
+  const active          = isCardActive(name, activeStatus)
+  const isPro           = activeStatus === "pro"
+  const isDayPass       = activeStatus === "day_pass"
+  const isGiftCode      = activeStatus === "gift_code"
   const canUpgradeToPro = (isDayPass || isGiftCode) && name === "Pro"
-  // Pro users shouldn't see a Day Pass button — they already have more
   const supersededByPro = isPro && name === "Day Pass"
 
-  const handlePaidClick = () => {
-    // Append LemonSqueezy redirect_url so it returns to /purchase/process after payment
+  const handlePaidClick = async () => {
+    if (!productId) return
     const returnUrl = `${window.location.origin}/purchase/process`
-    const urlWithRedirect = `${checkoutUrl}?checkout[redirect_url]=${encodeURIComponent(returnUrl)}`
+
     if (!isSignedIn) {
-      onRequireAuth(urlWithRedirect)
-    } else {
-      window.location.href = urlWithRedirect
+      onRequireAuth(productId)
+      return
     }
+
+    setCheckoutLoading(true)
+    const checkoutUrl = await createCreemCheckout(productId, userEmail, returnUrl)
+    setCheckoutLoading(false)
+    if (checkoutUrl) window.location.href = checkoutUrl
   }
 
   const renderButton = () => {
-    // Free card
     if (name === "Free") {
       return isSignedIn ? null : (
         <Link href="/tools/smart-storage">
@@ -82,20 +99,14 @@ function PricingCard({
       )
     }
 
-    // Gift Codes — always purchasable (buying for someone else)
     if (name === "Gift Codes") {
       return (
-        <Button
-          className="mt-8 w-full rounded-xl bg-secondary text-secondary-foreground hover:bg-secondary/80"
-          size="lg"
-          onClick={handlePaidClick}
-        >
-          Purchase Code
+        <Button className="mt-8 w-full rounded-xl bg-secondary text-secondary-foreground" size="lg" disabled>
+          Coming Soon
         </Button>
       )
     }
 
-    // This card is the user's active plan
     if (active) {
       return (
         <Link href="/tools/smart-storage">
@@ -106,20 +117,19 @@ function PricingCard({
       )
     }
 
-    // Pro card — day pass or gift code user can upgrade immediately
     if (canUpgradeToPro) {
       return (
         <Button
           className="mt-8 w-full rounded-xl"
           size="lg"
+          disabled={checkoutLoading || !productId}
           onClick={handlePaidClick}
         >
-          Upgrade to Pro
+          {checkoutLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Upgrade to Pro"}
         </Button>
       )
     }
 
-    // Day Pass card — pro user already has full access, no action needed
     if (supersededByPro) {
       return (
         <p className="mt-8 text-center text-sm text-muted-foreground">
@@ -128,14 +138,22 @@ function PricingCard({
       )
     }
 
-    // Default — not signed in or no active sub
+    if (!productId) {
+      return (
+        <Button className="mt-8 w-full rounded-xl bg-secondary text-secondary-foreground" size="lg" disabled>
+          Coming Soon
+        </Button>
+      )
+    }
+
     return (
       <Button
         className={`mt-8 w-full rounded-xl ${highlighted ? "" : "bg-secondary text-secondary-foreground hover:bg-secondary/80"}`}
         size="lg"
+        disabled={checkoutLoading}
         onClick={handlePaidClick}
       >
-        Get Started
+        {checkoutLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Get Started"}
       </Button>
     )
   }
@@ -148,7 +166,6 @@ function PricingCard({
         ? "border-primary bg-card shadow-lg"
         : "border-border bg-card"
     }`}>
-      {/* Active badge */}
       {active && (
         <div className="absolute -top-3 left-1/2 -translate-x-1/2">
           <span className="flex items-center gap-1 rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground">
@@ -164,7 +181,7 @@ function PricingCard({
         <div className="mt-6 flex items-center">
           <span className="text-4xl font-semibold text-foreground">{displayPrice}</span>
           {name === "Gift Codes" && <span className="ml-1 text-muted-foreground">/ code</span>}
-          {name === "Day Pass" && <span className="ml-1 text-muted-foreground">/ day</span>}
+          {name === "Day Pass"   && <span className="ml-1 text-muted-foreground">/ day</span>}
           {name === "Pro" && (
             <>
               <span className="ml-1 text-muted-foreground">/{isAnnual ? "year" : "month"}</span>
@@ -222,25 +239,25 @@ const plans = [
 ]
 
 export default function PricingPage() {
-  const [isAnnual, setIsAnnual] = useState(false)
-  const [isSignedIn, setIsSignedIn] = useState(false)
-  const [activeStatus, setActiveStatus] = useState<string | null>(null)
-  const [pendingCheckoutUrl, setPendingCheckoutUrl] = useState<string | null>(null)
+  const [isAnnual,         setIsAnnual]         = useState(false)
+  const [isSignedIn,       setIsSignedIn]       = useState(false)
+  const [userEmail,        setUserEmail]        = useState<string | null>(null)
+  const [activeStatus,     setActiveStatus]     = useState<string | null>(null)
+  const [pendingProductId, setPendingProductId] = useState<string | null>(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data }) => {
       setIsSignedIn(!!data.session)
-      if (data.session?.user?.email) {
-        await fetchSubscription(data.session.user.email)
-      }
+      const email = data.session?.user?.email ?? null
+      setUserEmail(email)
+      if (email) await fetchSubscription(email)
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_e, s) => {
       setIsSignedIn(!!s)
-      if (s?.user?.email) {
-        await fetchSubscription(s.user.email)
-      } else {
-        setActiveStatus(null)
-      }
+      const email = s?.user?.email ?? null
+      setUserEmail(email)
+      if (email) await fetchSubscription(email)
+      else setActiveStatus(null)
     })
     return () => subscription.unsubscribe()
   }, [])
@@ -252,7 +269,6 @@ export default function PricingPage() {
       .eq("email", email)
       .single()
     if (!data) return
-    // Check day pass expiry client-side
     if (data.status === "day_pass" && data.current_period_end) {
       const expired = new Date(data.current_period_end) < new Date()
       setActiveStatus(expired ? null : "day_pass")
@@ -261,17 +277,33 @@ export default function PricingPage() {
     }
   }
 
-  const handleRequireAuth = (checkoutUrl: string) => setPendingCheckoutUrl(checkoutUrl)
+  const handleRequireAuth = (productId: string) => setPendingProductId(productId)
 
-  const handleAuthSuccess = () => {
-    setPendingCheckoutUrl(null)
-    if (pendingCheckoutUrl) window.location.href = pendingCheckoutUrl
+  const handleAuthSuccess = async () => {
+    const productId = pendingProductId
+    setPendingProductId(null)
+    if (!productId) return
+
+    const { data } = await supabase.auth.getSession()
+    const email = data.session?.user?.email ?? null
+    const returnUrl = `${window.location.origin}/purchase/process`
+    const checkoutUrl = await createCreemCheckout(productId, email, returnUrl)
+    if (checkoutUrl) window.location.href = checkoutUrl
+  }
+
+  const getProductId = (planName: string): string | null => {
+    if (planName === "Pro") {
+      return isAnnual
+        ? (PRODUCT_IDS["Pro Annual"] ?? PRODUCT_IDS["Pro Monthly"] ?? null)
+        : (PRODUCT_IDS["Pro Monthly"] ?? null)
+    }
+    return PRODUCT_IDS[planName] ?? null
   }
 
   return (
     <div className="flex min-h-screen flex-col">
       <Navbar />
-      <AuthGuardModal isVisible={!!pendingCheckoutUrl} onSuccess={handleAuthSuccess} />
+      <AuthGuardModal isVisible={!!pendingProductId} onSuccess={handleAuthSuccess} />
       <main className="flex-1 px-6 py-24">
         <div className="mx-auto max-w-6xl">
           <div className="text-center">
@@ -297,8 +329,10 @@ export default function PricingPage() {
               <PricingCard
                 key={plan.name}
                 {...plan}
+                productId={getProductId(plan.name)}
                 isAnnual={isAnnual}
                 isSignedIn={isSignedIn}
+                userEmail={userEmail}
                 activeStatus={activeStatus}
                 onRequireAuth={handleRequireAuth}
               />

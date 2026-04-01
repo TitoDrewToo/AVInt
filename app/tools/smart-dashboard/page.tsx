@@ -1082,7 +1082,7 @@ export default function SmartDashboardPage() {
 
         {/* TOP TOOLBAR */}
         <div className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-card px-4 gap-2">
-          <div className="flex flex-1 items-center gap-2 overflow-x-auto scrollbar-none min-w-0">
+          <div className="flex flex-1 items-center gap-2 min-w-0">
 
             {/* Date filter */}
             <div className="relative">
@@ -1417,9 +1417,8 @@ export default function SmartDashboardPage() {
             <PanelRight className="h-3 w-3" />
           </button>
 
-          {/* VISUALIZATIONS PANEL — desktop absolute overlay */}
-          {showWidgetPanel && (
-          <aside className="hidden md:flex absolute right-0 top-0 bottom-0 z-10 w-72 flex-col overflow-hidden border-l border-border bg-card/95 backdrop-blur-sm shadow-xl">
+          {/* VISUALIZATIONS PANEL — desktop absolute overlay, CSS slide */}
+          <aside className={`hidden md:flex absolute right-0 top-0 bottom-0 z-10 w-72 flex-col overflow-hidden border-l border-border bg-card/95 backdrop-blur-sm shadow-xl transition-transform duration-300 ease-out ${showWidgetPanel ? "translate-x-0" : "translate-x-full"}`}>
             <div className="border-b border-border px-4 py-3">
               <h2 className="text-sm font-semibold text-foreground">Visualizations</h2>
               <p className="text-xs text-muted-foreground mt-0.5">Add visualizations to your dashboard</p>
@@ -1546,7 +1545,6 @@ export default function SmartDashboardPage() {
               )}
             </div>
           </aside>
-          )}
         </div>
       </div>
 

@@ -759,8 +759,8 @@ export default function SmartDashboardPage() {
   const [advancedWidgetsList, setAdvancedWidgetsList] = useState<AdvancedWidget[]>([])
   const [isRunningAnalytics, setIsRunningAnalytics] = useState(false)
   const [analyticsToast, setAnalyticsToast] = useState<string | null>(null)
-  const [standardOpen, setStandardOpen] = useState(true)
-  const [advancedOpen, setAdvancedOpen] = useState(true)
+  const [standardOpen, setStandardOpen] = useState(false)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; widgetId: string } | null>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
 
@@ -1136,9 +1136,7 @@ export default function SmartDashboardPage() {
 
             {/* Advanced Analytics — desktop only */}
             {!isMobile && (() => {
-              const betaEmail = process.env.NEXT_PUBLIC_AA_BETA_EMAIL
-              const isBetaUser = betaEmail && session?.user?.email === betaEmail
-              const canUseAA = isPro && isBetaUser
+              const canUseAA = isPro
               return (
                 <div className="relative">
                   {canUseAA ? (

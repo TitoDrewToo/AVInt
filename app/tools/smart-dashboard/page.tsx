@@ -1330,7 +1330,7 @@ export default function SmartDashboardPage() {
             ) : (
               <GridLayout
                 className="layout"
-                layout={isMobile ? toMobileLayout(layout) : layout}
+                layout={isMobile ? toMobileLayout(layout) : layout.map(l => ({ ...l, static: !isEditMode }))}
                 cols={12}
                 rowHeight={24}
                 width={containerWidth}

@@ -2,10 +2,14 @@ import { NextRequest, NextResponse } from "next/server"
 import crypto from "crypto"
 import { createClient } from "@supabase/supabase-js"
 
-// Product IDs — must match what is set up in Creem dashboard
-const PRODUCT_MAP: Record<string, { status: string; plan: string }> = {
-  "prod_4KtNZA5eQ3LZ83nom02qsh": { status: "day_pass",  plan: "day_pass" },
-  "prod_6OwfR90bY2FIET4R8qbaop": { status: "pro",       plan: "monthly"  },
+// Product IDs come from env vars so test→prod is a config change, not a deploy
+function getProductMap(): Record<string, { status: string; plan: string }> {
+  const map: Record<string, { status: string; plan: string }> = {}
+  const dayPassId     = process.env.CREEM_PRODUCT_DAY_PASS_ID
+  const proMonthlyId  = process.env.CREEM_PRODUCT_PRO_MONTHLY_ID
+  if (dayPassId)    map[dayPassId]    = { status: "day_pass", plan: "day_pass" }
+  if (proMonthlyId) map[proMonthlyId] = { status: "pro",      plan: "monthly"  }
+  return map
 }
 
 function getSupabaseAdmin() {
@@ -105,7 +109,7 @@ export async function POST(req: NextRequest) {
 
       console.log("checkout.completed — email:", email, "product:", productId)
 
-      const mapping = PRODUCT_MAP[productId]
+      const mapping = getProductMap()[productId]
       if (!mapping) {
         console.warn("Unknown product ID:", productId)
         return NextResponse.json({ received: true })
@@ -151,7 +155,7 @@ export async function POST(req: NextRequest) {
 
       console.log(eventType, "— email:", email, "product:", productId)
 
-      const mapping = PRODUCT_MAP[productId]
+      const mapping = getProductMap()[productId]
       if (!mapping) {
         console.warn("Unknown product ID:", productId)
         return NextResponse.json({ received: true })

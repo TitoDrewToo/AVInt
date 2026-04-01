@@ -9,12 +9,12 @@ import Link from "next/link"
 import { supabase } from "@/lib/supabase"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 
-// Creem product IDs — update when adding annual / gift code products
-const PRODUCT_IDS: Record<string, string> = {
-  "Day Pass":    "prod_4KtNZA5eQ3LZ83nom02qsh",
-  "Pro Monthly": "prod_6OwfR90bY2FIET4R8qbaop",
-  // "Pro Annual":  "prod_xxx",  // not yet created in Creem
-  // "Gift Codes":  "prod_xxx",  // not yet created in Creem
+// Creem product IDs from env vars — swap test↔prod by changing Vercel config only
+const PRODUCT_IDS: Record<string, string | undefined> = {
+  "Day Pass":    process.env.NEXT_PUBLIC_CREEM_PRODUCT_DAY_PASS_ID,
+  "Pro Monthly": process.env.NEXT_PUBLIC_CREEM_PRODUCT_PRO_MONTHLY_ID,
+  "Pro Annual":  process.env.NEXT_PUBLIC_CREEM_PRODUCT_PRO_ANNUAL_ID,
+  "Gift Codes":  process.env.NEXT_PUBLIC_CREEM_PRODUCT_GIFT_CODE_ID,
 }
 
 async function createCreemCheckout(

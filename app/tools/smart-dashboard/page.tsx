@@ -495,25 +495,28 @@ function WidgetContent({
 
   if (widget.type === "pie-chart") {
     const variant = widget.chartVariant ?? "pie"
+    // Advanced widgets (COMPOSITION dimension) show expense categories; standard widget shows doc type distribution
+    const pieData = widget.advancedId ? categoryData : docTypeData
+    const pieLabel = widget.advancedId ? "Spending by expense category" : "Breakdown by document type"
     return (
     <div className="flex h-full flex-col">
-      <p className="mb-2 text-xs text-muted-foreground">Breakdown by document type</p>
+      <p className="mb-2 text-xs text-muted-foreground">{pieLabel}</p>
       <div className="flex-1 min-h-0">
         <ResponsiveContainer width="100%" height="100%">
           {variant === "bar" ? (
-            <BarChart data={docTypeData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }} barSize={28}>
+            <BarChart data={pieData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }} barSize={28}>
               <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
               <XAxis dataKey="name" tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} />
               <Tooltip content={<CustomTooltip />} />
-              <Bar dataKey="value" name="Count" radius={[6, 6, 0, 0]}>
-                {docTypeData.map((_, i) => <Cell key={i} fill={MULTI_COLORS[i % MULTI_COLORS.length]} />)}
+              <Bar dataKey="value" name={widget.advancedId ? "Spend" : "Count"} radius={[6, 6, 0, 0]}>
+                {pieData.map((_, i) => <Cell key={i} fill={MULTI_COLORS[i % MULTI_COLORS.length]} />)}
               </Bar>
             </BarChart>
           ) : (
           <PieChart>
-            <Pie data={docTypeData} cx="50%" cy="50%" innerRadius="35%" outerRadius="60%" paddingAngle={3} dataKey="value">
-              {docTypeData.map((_, i) => (
+            <Pie data={pieData} cx="50%" cy="50%" innerRadius="35%" outerRadius="60%" paddingAngle={3} dataKey="value">
+              {pieData.map((_, i) => (
                 <Cell key={i} fill={MULTI_COLORS[i % MULTI_COLORS.length]} strokeWidth={0} />
               ))}
             </Pie>
@@ -611,16 +614,12 @@ function WidgetContent({
             </BarChart>
           </ResponsiveContainer>
         </div>
-        {widget.insight && (
-          <p className="text-xs text-muted-foreground leading-snug border-t border-border pt-2">{widget.insight}</p>
-        )}
       </div>
     )
   }
 
   if (widget.type === "payment-split") {
-    // Use docTypeData as a stand-in until user_analytics_profile payment_methods are surfaced to frontend
-    const chartData = docTypeData.length > 0 ? docTypeData : categoryData.slice(0, 4)
+    const chartData = categoryData.length > 0 ? categoryData : []
     return (
       <div className="flex h-full flex-col gap-2">
         <div className="flex-1 min-h-0">
@@ -635,9 +634,6 @@ function WidgetContent({
             </PieChart>
           </ResponsiveContainer>
         </div>
-        {widget.insight && (
-          <p className="text-xs text-muted-foreground leading-snug border-t border-border pt-2">{widget.insight}</p>
-        )}
       </div>
     )
   }
@@ -667,9 +663,6 @@ function WidgetContent({
             </BarChart>
           </ResponsiveContainer>
         </div>
-        {widget.insight && (
-          <p className="text-xs text-muted-foreground leading-snug border-t border-border pt-2">{widget.insight}</p>
-        )}
       </div>
     )
   }
@@ -697,9 +690,6 @@ function WidgetContent({
             </BarChart>
           </ResponsiveContainer>
         </div>
-        {widget.insight && (
-          <p className="text-xs text-muted-foreground leading-snug border-t border-border pt-2">{widget.insight}</p>
-        )}
       </div>
     )
   }
@@ -725,9 +715,6 @@ function WidgetContent({
             </BarChart>
           </ResponsiveContainer>
         </div>
-        {widget.insight && (
-          <p className="text-xs text-muted-foreground leading-snug border-t border-border pt-2">{widget.insight}</p>
-        )}
       </div>
     )
   }
@@ -771,9 +758,6 @@ function WidgetContent({
             <p className="text-xs text-muted-foreground">Peak: <span className="font-medium text-foreground">{best.month}</span></p>
             <p className="text-xs font-semibold text-primary">{best.rate}% savings rate</p>
           </div>
-        )}
-        {widget.insight && (
-          <p className="text-xs text-muted-foreground leading-snug">{widget.insight}</p>
         )}
       </div>
     )

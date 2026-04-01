@@ -247,7 +247,9 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
       .from("subscriptions")
       .select("status, plan, current_period_end, lemonsqueezy_subscription_id")
       .eq("email", email)
-      .single()
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
     setSubscription(data ?? null)
   }
 
@@ -485,7 +487,7 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                           )}
 
                           {/* Cancel subscription for pro users */}
-                          {subscription?.status === "pro" && subscription.lemonsqueezy_subscription_id && !cancelDone && (
+                          {subscription?.status === "pro" && subscription.lemonsqueezy_subscription_id?.trim() && !cancelDone && (
                             <Button
                               variant="outline"
                               size="sm"

@@ -278,7 +278,9 @@ export default function PricingPage() {
       .from("subscriptions")
       .select("status, current_period_end")
       .eq("email", email)
-      .single()
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
     if (!data) return
     if (data.status === "day_pass" && data.current_period_end) {
       const expired = new Date(data.current_period_end) < new Date()

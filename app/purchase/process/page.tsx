@@ -8,22 +8,25 @@ import { Footer } from "@/components/footer"
 import { ProcessingIndicator } from "@/components/ui/processing-indicator"
 import { supabase } from "@/lib/supabase"
 
-// LemonSqueezy redirects here after successful payment with ?order_id=XXX
-// We poll the DB until the webhook has updated the subscription, then route to success.
-// If no order_id param → user landed here manually → send to cancel.
+// Creem redirects here after successful payment.
+// Creem may append ?checkout_id=, ?order_id=, or similar params to the success URL.
+// We accept any of these to verify the user came from a real checkout, then poll
+// the DB until the webhook has updated the subscription, then route to success.
+// If no recognized param → user landed here manually → send to cancel.
 
 function ProcessContent() {
   const router = useRouter()
   const params = useSearchParams()
-  const orderId = params.get("order_id")
+  // Creem appends checkout_id; fall back to order_id for legacy compatibility
+  const checkoutParam = params.get("checkout_id") ?? params.get("order_id") ?? params.get("subscription_id")
   const ranRef = useRef(false)
 
   useEffect(() => {
     if (ranRef.current) return
     ranRef.current = true
 
-    if (!orderId) {
-      // No order ID — not a real return from LemonSqueezy
+    if (!checkoutParam) {
+      // No recognized param — user navigated here manually
       router.replace("/purchase/cancel")
       return
     }
@@ -46,7 +49,9 @@ function ProcessContent() {
         .from("subscriptions")
         .select("status, plan, current_period_end")
         .eq("email", email)
-        .single()
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
 
       // Webhook has fired — subscription is active
       if (data && ["pro", "day_pass", "gift_code"].includes(data.status)) {
@@ -80,7 +85,7 @@ function ProcessContent() {
 
     // Small initial delay to give the webhook a head start
     setTimeout(poll, 1500)
-  }, [orderId, router])
+  }, [checkoutParam, router])
 
   return (
     <div className="flex min-h-screen flex-col">

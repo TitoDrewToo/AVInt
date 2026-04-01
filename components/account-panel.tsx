@@ -99,8 +99,15 @@ function PrivacyPolicyContent() {
         <p className="text-muted-foreground">Document classification and data extraction are performed by automated AI systems powered by OpenAI, Anthropic (Claude), and Google Gemini. Processing is programmatic — no human reviews your documents. AVIntelligence is an independent product and is not affiliated with or endorsed by these providers.</p>
       </section>
       <section className="space-y-2">
-        <h3 className="font-medium text-foreground">Data Storage & Security</h3>
-        <p className="text-muted-foreground">Your files and structured data are stored on Supabase cloud infrastructure with access controls enforced at the row level — only your account can access your data. We use encrypted connections (HTTPS/TLS) for all data in transit. No system can guarantee absolute security, but we prioritize protection at every layer.</p>
+        <h3 className="font-medium text-foreground">Infrastructure & Security</h3>
+        <p className="text-muted-foreground">AVIntelligence is built on enterprise-grade infrastructure at every layer:</p>
+        <ul className="ml-4 list-disc space-y-1 text-muted-foreground">
+          <li><span className="text-foreground font-medium">Supabase</span> (SOC 2 Type II) — database and file storage with row-level security enforced. Only your account can access your data — enforced by architecture, not policy alone.</li>
+          <li><span className="text-foreground font-medium">Vercel</span> (SOC 2 Type II · ISO 27001) — deployment and edge network with DDoS protection and TLS encryption in transit.</li>
+          <li><span className="text-foreground font-medium">OpenAI, Anthropic, Google</span> — enterprise SOC 2 certified AI providers. Document processing is fully automated — no human review occurs.</li>
+          <li><span className="text-foreground font-medium">Creem · Lemon Squeezy</span> — PCI-DSS compliant payment processors. No card or banking data is stored on our systems.</li>
+          <li>Sensitive API keys are never exposed to the client. All document processing runs server-side in isolated edge environments.</li>
+        </ul>
       </section>
       <section className="space-y-2">
         <h3 className="font-medium text-foreground">Payments</h3>

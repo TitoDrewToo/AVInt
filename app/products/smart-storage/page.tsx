@@ -296,6 +296,96 @@ export default function SmartStorageProductPage() {
           </div>
         </section>
 
+        {/* Infrastructure & Security */}
+        <section className="border-t border-border bg-muted/30 px-6 py-24">
+          <div className="mx-auto max-w-4xl">
+            <FadeUp className="text-center">
+              <h2 className="text-sm font-medium uppercase tracking-wider text-primary">
+                Built on enterprise infrastructure
+              </h2>
+              <p className="mt-4 text-muted-foreground">
+                Your documents are protected at every layer — from upload to storage to processing.
+              </p>
+            </FadeUp>
+
+            <StaggerContainer className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+
+              {/* Supabase */}
+              <StaggerItem>
+                <div className="rounded-xl border border-border bg-card p-5">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
+                    <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Database & Storage</span>
+                  </div>
+                  <p className="mt-3 text-sm font-medium text-foreground">Supabase</p>
+                  <p className="mt-1 text-xs text-muted-foreground">SOC 2 Type II certified. Row-level security enforced — only your account can access your data.</p>
+                </div>
+              </StaggerItem>
+
+              {/* Vercel */}
+              <StaggerItem>
+                <div className="rounded-xl border border-border bg-card p-5">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
+                    <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Deployment</span>
+                  </div>
+                  <p className="mt-3 text-sm font-medium text-foreground">Vercel</p>
+                  <p className="mt-1 text-xs text-muted-foreground">SOC 2 Type II · ISO 27001. Global edge network with DDoS protection and TLS encryption in transit.</p>
+                </div>
+              </StaggerItem>
+
+              {/* AI Providers */}
+              <StaggerItem>
+                <div className="rounded-xl border border-border bg-card p-5">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
+                    <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">AI Processing</span>
+                  </div>
+                  <p className="mt-3 text-sm font-medium text-foreground">OpenAI · Anthropic · Google</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Enterprise-grade AI infrastructure. Documents are processed programmatically — no human review.</p>
+                </div>
+              </StaggerItem>
+
+              {/* Payments */}
+              <StaggerItem>
+                <div className="rounded-xl border border-border bg-card p-5">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
+                    <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Payments</span>
+                  </div>
+                  <p className="mt-3 text-sm font-medium text-foreground">Creem · Lemon Squeezy</p>
+                  <p className="mt-1 text-xs text-muted-foreground">PCI-DSS compliant payment processors. No card data is ever stored on our systems.</p>
+                </div>
+              </StaggerItem>
+
+              {/* Encryption */}
+              <StaggerItem>
+                <div className="rounded-xl border border-border bg-card p-5">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
+                    <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Data Isolation</span>
+                  </div>
+                  <p className="mt-3 text-sm font-medium text-foreground">Row-Level Security</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Database policies enforced at the row level. No shared data between accounts — by architecture, not policy.</p>
+                </div>
+              </StaggerItem>
+
+              {/* Access */}
+              <StaggerItem>
+                <div className="rounded-xl border border-border bg-card p-5">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
+                    <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Access Control</span>
+                  </div>
+                  <p className="mt-3 text-sm font-medium text-foreground">Auth-gated, server-side only</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Sensitive keys never reach the client. All document processing runs server-side in isolated edge environments.</p>
+                </div>
+              </StaggerItem>
+
+            </StaggerContainer>
+          </div>
+        </section>
+
         {/* CTA */}
         <section className="border-t border-border px-6 py-24">
           <FadeUp className="mx-auto max-w-3xl text-center">

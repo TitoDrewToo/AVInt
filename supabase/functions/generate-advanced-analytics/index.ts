@@ -6,7 +6,7 @@ const OPENAI_API_KEY            = Deno.env.get("OPENAI_API_KEY")!
 const SUPABASE_URL              = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 const AI_PROVIDER               = Deno.env.get("ANALYTICS_PROVIDER") ?? Deno.env.get("AI_PROVIDER") ?? "anthropic"
-// R&D gate — set this env var to your Supabase user UUID to unlock advanced widget types
+// R&D gate — set this env var to your Supabase user UUID to unlock advanced features
 const RD_USER_ID                = Deno.env.get("RD_USER_ID") ?? ""
 
 const corsHeaders = {
@@ -14,89 +14,46 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 }
 
-// ── Standard prompt (all users) ───────────────────────────────────────────────
+// ── Upgrade chart prompt (all users) ──────────────────────────────────────────
+// Haiku selects which standard chart types to upgrade with AI insight.
+// Dedup is enforced against plotted_advanced_types — not existing_widget_types —
+// so Haiku CAN generate an advanced version of a chart that's already on the
+// standard dashboard (that's the upgrade). It just can't duplicate an already-
+// plotted advanced widget of the same type.
 
-const STANDARD_SYSTEM_PROMPT = `You are a financial analytics AI that generates dashboard widget configurations.
+const UPGRADE_SYSTEM_PROMPT = `You are a financial analytics AI that generates enhanced dashboard widget configurations.
 
-You receive a user's financial data summary and a list of widget types already on their dashboard. Generate exactly 2-3 widget configurations — prioritize quality and insight over quantity.
-
-Return ONLY a valid JSON object in this exact format — no markdown, no explanation:
-{
-  "widgets": [
-    {
-      "widget_type": "<type>",
-      "title": "<short title>",
-      "description": "<one-line subtitle>",
-      "insight": "<one sentence AI insight specific to their data>"
-    }
-  ]
-}
-
-Available widget_type values (use ONLY these):
-- "bar-chart"   — monthly income vs expenses bar comparison
-- "line-chart"  — income/expense trend over time
-- "area-chart"  — cumulative income/expense area
-- "pie-chart"   — expense category breakdown
-
-Rules:
-- You MUST use ONLY chart types above. KPI widgets are forbidden — they are already covered by the standard dashboard.
-- HARD RULE: never output a widget_type that appears in the existing dashboard list. If all 4 chart types are already used, return {"widgets": []}.
-- DIMENSION RULE: each widget must cover a different data dimension. No two widgets may share the same dimension:
-    TIME        → trends, changes over months
-    COMPOSITION → breakdowns, distributions, shares
-    COMPARISON  → rankings, category vs category
-    FLOW        → income to net, waterfall
-- The insight MUST reference specific numbers, percentages, or category names from the data.
-- Title should be specific to this user's data ("Office Dominates Spending" not "Spending Breakdown").
-- Keep insight to 1 sentence, max 120 characters.
-- Maximum 3 widgets. If data is sparse (under 3 months or under 5 transactions), return only 1-2.`
-
-// ── R&D prompt (admin user only) ─────────────────────────────────────────────
-
-const RD_SYSTEM_PROMPT = `You are a financial analytics AI that generates dashboard widget configurations.
-
-You receive a rich financial data summary. Generate exactly 4 widget configurations that surface the most valuable insights.
+You receive a user's financial data. Generate 2-3 widget configurations that surface the most valuable insights.
 
 Return ONLY a valid JSON object — no markdown, no explanation:
 {
   "widgets": [
     {
       "widget_type": "<type>",
-      "title": "<specific, data-driven title>",
+      "title": "<specific data-driven title>",
       "description": "<one-line subtitle>",
-      "insight": "<one sentence AI insight referencing actual numbers or names>"
+      "insight": "<1 sentence insight with specific numbers or percentages from the data>"
     }
   ]
 }
 
-Available widget_type values:
-Standard (use only if no advanced type fits):
-- "bar-chart"        — monthly income vs expenses bar comparison
-- "line-chart"       — income/expense trend over time
-- "area-chart"       — cumulative income/expense area
-- "pie-chart"        — expense category breakdown
+Available widget_type values (use ONLY these):
+- "bar-chart"   — expense categories ranked by total spend
+- "line-chart"  — income/expense trend over time
+- "area-chart"  — cumulative income vs expenses comparison
+- "pie-chart"   — expense category composition breakdown
 
-Advanced (MANDATORY — you MUST include at least 2 of these if data supports them):
-- "vendor-ranking"   — top vendors by cumulative spend (horizontal bar) — requires 3+ vendors
-- "payment-split"    — payment method distribution (donut/pie) — requires 2+ payment methods
-- "monthly-delta"    — month-over-month expense change (bar) — requires 2+ months
-- "income-waterfall" — gross income → deductions → net income (stacked bar) — requires gross_income data
-- "tax-timeline"     — tax paid per period (bar/line) — requires 2+ tax periods
-
-DIMENSION RULE — each widget must cover a DIFFERENT dimension. Assign one widget per dimension:
-  TIME        → ONLY ONE OF: monthly-delta, tax-timeline, line-chart, area-chart
-  COMPOSITION → ONLY ONE OF: payment-split, pie-chart
-  RANKING     → ONLY ONE OF: vendor-ranking, bar-chart
-  FLOW        → income-waterfall only
-
-You may use at most 1 widget per dimension. Never use line-chart AND area-chart together — they are the same dimension.
-
-Other rules:
-- HARD RULE: never output a widget_type that appears in the existing dashboard list.
-- The insight MUST reference specific numbers, vendor names, or percentages from the data.
-- Title must be data-specific ("GrabFood Leads at ₱12,400" not "Top Vendors").
-- Keep insight to 1 sentence, max 140 characters.
-- If a dimension has no suitable data, skip it rather than forcing a poor fit.`
+Rules:
+- DEDUP RULE: never output a widget_type that appears in already_plotted. If all 4 types are already plotted, return {"widgets": []}.
+- Standard dashboard types (area-chart, bar-chart, pie-chart) are OK to use — your AI-enriched versions add insight the standard ones lack.
+- DIMENSION RULE: each widget must cover a different dimension. No two widgets may share:
+    TIME        → line-chart or area-chart (pick ONE, never both)
+    COMPOSITION → pie-chart
+    RANKING     → bar-chart
+- Maximum 3 widgets. If data is sparse (under 3 months or under 5 transactions), return 1-2.
+- Title must be data-specific ("Office Dominates at ₱106k" not "Expense Breakdown").
+- Insight must reference specific numbers, percentages, or category names.
+- Max 120 characters per insight.`
 
 // ── AI call ───────────────────────────────────────────────────────────────────
 
@@ -111,7 +68,7 @@ async function callAI(prompt: string, systemPrompt: string): Promise<string> {
       },
       body: JSON.stringify({
         model: "claude-haiku-4-5-20251001",
-        max_tokens: 1536,
+        max_tokens: 1024,
         system: systemPrompt,
         messages: [{ role: "user", content: prompt }],
       }),
@@ -131,7 +88,7 @@ async function callAI(prompt: string, systemPrompt: string): Promise<string> {
           { role: "system", content: systemPrompt },
           { role: "user",   content: prompt },
         ],
-        max_tokens: 1536,
+        max_tokens: 1024,
       }),
     })
     if (!res.ok) throw new Error(`OpenAI API error: ${await res.text()}`)
@@ -166,43 +123,7 @@ serve(async (req) => {
     })
   }
 
-  // R&D gate — advanced features only for admin user
   const isRDUser = RD_USER_ID && user_id === RD_USER_ID
-
-  // ── Dimension pre-selection ───────────────────────────────────────────────
-  // Code picks the widget types — AI only writes content for them.
-  // This prevents Haiku from defaulting to familiar standard chart types.
-  const DIMENSION_MAP: Record<string, string[]> = {
-    TIME:        ["monthly-delta", "tax-timeline", "line-chart", "area-chart"],
-    COMPOSITION: ["payment-split", "pie-chart"],
-    RANKING:     ["vendor-ranking", "bar-chart"],
-    FLOW:        ["income-waterfall"],
-    RATIO:       ["savings-rate"],
-  }
-  const PREFERRED: Record<string, string> = {
-    TIME:        "monthly-delta",
-    COMPOSITION: "payment-split",
-    RANKING:     "vendor-ranking",
-    FLOW:        "income-waterfall",
-    RATIO:       "savings-rate",
-  }
-  const FALLBACK: Record<string, string | null> = {
-    TIME:        "area-chart",
-    COMPOSITION: "pie-chart",
-    RANKING:     "bar-chart",
-    FLOW:        null,
-    RATIO:       null,
-  }
-
-  const allCovered = [
-    ...(existing_widget_types ?? []),
-    ...(plotted_advanced_types ?? []),
-  ]
-
-  const coveredDimensions = new Set<string>()
-  for (const [dim, types] of Object.entries(DIMENSION_MAP)) {
-    if (allCovered.some((t: string) => types.includes(t))) coveredDimensions.add(dim)
-  }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
@@ -222,7 +143,7 @@ serve(async (req) => {
 
     const fileIds = userFiles.map((f: any) => f.id)
 
-    // ── 2. Fetch document fields — richer query for R&D users ───────────────
+    // ── 2. Fetch document fields ────────────────────────────────────────────
     const selectFields = isRDUser
       ? "file_id, vendor_name, employer_name, document_date, currency, total_amount, gross_income, net_income, expense_category, tax_amount, discount_amount, payment_method, period_start, period_end, counterparty_name"
       : "file_id, vendor_name, employer_name, document_date, currency, total_amount, gross_income, net_income, expense_category, tax_amount"
@@ -236,13 +157,12 @@ serve(async (req) => {
     const currency = f.find((x: any) => x.currency)?.currency ?? "PHP"
     const symbol   = currency === "PHP" ? "₱" : currency === "EUR" ? "€" : currency === "GBP" ? "£" : "$"
 
-    // ── 3. Core aggregations (all users) ────────────────────────────────────
+    // ── 3. Core aggregations ────────────────────────────────────────────────
     const totalIncome   = f.filter((x: any) => x.gross_income != null).reduce((s: number, x: any) => s + Number(x.gross_income), 0)
     const totalExpenses = f.filter((x: any) => x.total_amount != null && x.gross_income == null).reduce((s: number, x: any) => s + Number(x.total_amount), 0)
     const netPosition   = totalIncome - totalExpenses
     const savingsRate   = totalIncome > 0 ? ((netPosition / totalIncome) * 100).toFixed(1) : "0"
     const totalTax      = f.filter((x: any) => x.tax_amount != null).reduce((s: number, x: any) => s + Number(x.tax_amount), 0)
-    const taxRate       = totalIncome > 0 ? ((totalTax / totalIncome) * 100).toFixed(1) : "0"
 
     const categories: Record<string, number> = {}
     for (const x of f) {
@@ -255,7 +175,6 @@ serve(async (req) => {
     const dateRange   = f.filter((x: any) => x.document_date).map((x: any) => x.document_date).sort()
     const months      = [...new Set(dateRange.map((d: string) => d.slice(0, 7)))].length
 
-    // Monthly breakdowns — computed for all users (needed for correlations + standard chart context)
     const monthlyExpenses: Record<string, number> = {}
     const monthlyIncomeMap: Record<string, number> = {}
     for (const x of f) {
@@ -270,11 +189,12 @@ serve(async (req) => {
     }
     const sortedMonths = Object.keys({ ...monthlyExpenses, ...monthlyIncomeMap }).sort()
 
-    // ── 4. R&D enrichment aggregations ──────────────────────────────────────
+    // ── 4. R&D enrichment aggregations (admin only) ─────────────────────────
+    // Computed here as the data foundation for future Sonnet R&D visuals.
+    // Not used for widget generation yet — reserved for the R&D analytics layer.
     let profilePayload: any = null
 
     if (isRDUser) {
-      // Vendor ranking
       const vendorSpend: Record<string, { total: number; count: number }> = {}
       for (const x of f) {
         if (x.vendor_name && x.total_amount != null && x.gross_income == null) {
@@ -288,7 +208,6 @@ serve(async (req) => {
         .sort((a, b) => b.total - a.total)
         .slice(0, 8)
 
-      // Payment method distribution
       const paymentMethods: Record<string, number> = {}
       for (const x of f) {
         if (x.payment_method) {
@@ -296,19 +215,15 @@ serve(async (req) => {
         }
       }
 
-      // Monthly deltas — uses hoisted monthlyExpenses/monthlyIncomeMap/sortedMonths
       const monthlyDeltas = sortedMonths.map((mo: string, i: number) => {
         const prevMo = sortedMonths[i - 1]
-        const expDelta = prevMo != null
-          ? (monthlyExpenses[mo] ?? 0) - (monthlyExpenses[prevMo] ?? 0)
-          : 0
-        const incDelta = prevMo != null
-          ? (monthlyIncomeMap[mo] ?? 0) - (monthlyIncomeMap[prevMo] ?? 0)
-          : 0
-        return { month: mo, income_delta: incDelta, expense_delta: expDelta }
+        return {
+          month:         mo,
+          income_delta:  prevMo != null ? (monthlyIncomeMap[mo] ?? 0) - (monthlyIncomeMap[prevMo] ?? 0) : 0,
+          expense_delta: prevMo != null ? (monthlyExpenses[mo] ?? 0) - (monthlyExpenses[prevMo] ?? 0) : 0,
+        }
       })
 
-      // Discount total
       const discountTotal = f.filter((x: any) => x.discount_amount != null).reduce((s: number, x: any) => s + Number(x.discount_amount), 0)
       const discountEvents = f
         .filter((x: any) => x.discount_amount != null && Number(x.discount_amount) > 0)
@@ -316,7 +231,6 @@ serve(async (req) => {
         .sort((a: any, b: any) => b.amount - a.amount)
         .slice(0, 10)
 
-      // Income sources
       const incomeSources = Object.entries(
         f.filter((x: any) => x.employer_name && x.gross_income != null)
           .reduce((acc: Record<string, number>, x: any) => {
@@ -325,7 +239,6 @@ serve(async (req) => {
           }, {})
       ).map(([employer, total]) => ({ employer, total })).sort((a: any, b: any) => b.total - a.total)
 
-      // Tax timeline (by period)
       const taxByPeriod: Record<string, number> = {}
       for (const x of f) {
         if (x.tax_amount != null && Number(x.tax_amount) > 0) {
@@ -337,15 +250,9 @@ serve(async (req) => {
         .map(([period, tax_amount]) => ({ period, tax_amount }))
         .sort((a, b) => a.period.localeCompare(b.period))
 
-      // Income waterfall components
-      const totalDeductions = totalTax + (totalIncome > 0 ? totalIncome * 0.02 : 0) // SSS/PhilHealth est
-      const netAfterDeductions = totalIncome - totalDeductions
-
-      // Avg monthly
       const avgMonthlyIncome   = months > 0 ? totalIncome / months   : 0
       const avgMonthlyExpenses = months > 0 ? totalExpenses / months : 0
 
-      // Build profile payload for write-back
       profilePayload = {
         user_id,
         top_vendors:          topVendors,
@@ -362,137 +269,51 @@ serve(async (req) => {
         months_tracked:       months,
         last_run_at:          new Date().toISOString(),
       }
-
     }
 
     // ── 5. Clear all previous suggestions (non-starred) ─────────────────────
-    // On regeneration, replace everything — starred widgets are preserved
     await supabase
       .from("advanced_widgets")
       .delete()
       .eq("user_id", user_id)
       .eq("is_starred", false)
 
-    // ── 6. Pre-select target widget types + build targeted context ───────────
-    // Determine data sufficiency per advanced type
-    const vendorCount   = isRDUser ? Object.keys(
-      f.filter((x: any) => x.vendor_name && x.total_amount != null && x.gross_income == null)
-       .reduce((a: any, x: any) => { a[x.vendor_name] = 1; return a }, {})
-    ).length : 0
-    const paymentMethodCount = isRDUser ? Object.keys(
-      f.filter((x: any) => x.payment_method)
-       .reduce((a: any, x: any) => { a[x.payment_method] = 1; return a }, {})
-    ).length : 0
-    const taxPeriodCount = isRDUser && profilePayload
-      ? profilePayload.tax_timeline.length : 0
+    // ── 6. Build Haiku prompt ────────────────────────────────────────────────
+    // Dedup against plotted_advanced_types only — not existing_widget_types.
+    // Standard dashboard chart types can still be upgraded with AI insight.
+    const alreadyPlotted: string[] = plotted_advanced_types ?? []
 
-    const canUse = (type: string): boolean => {
-      if (type === "vendor-ranking")   return isRDUser && vendorCount >= 3
-      if (type === "payment-split")    return isRDUser && paymentMethodCount >= 2
-      if (type === "monthly-delta")    return months >= 2
-      if (type === "income-waterfall") return isRDUser && totalIncome > 0
-      if (type === "tax-timeline")     return isRDUser && taxPeriodCount >= 2
-      if (type === "savings-rate")     return months >= 2 && totalIncome > 0
-      return true // standard types always available
-    }
+    const categoryBreakdown = Object.entries(categories)
+      .sort((a, b) => (b[1] as number) - (a[1] as number))
+      .map(([k, v]) => `${k}: ${symbol}${(v as number).toLocaleString()}`)
+      .join(", ")
 
-    // Pick one type per uncovered dimension
-    const targetTypes: string[] = []
-    for (const dim of ["TIME", "COMPOSITION", "RANKING", "FLOW", "RATIO"]) {
-      if (coveredDimensions.has(dim)) continue
-      const preferred = PREFERRED[dim]
-      const fallback  = FALLBACK[dim]
-      if (canUse(preferred))      targetTypes.push(preferred)
-      else if (fallback && canUse(fallback)) targetTypes.push(fallback)
-    }
+    const monthlyBreakdown = sortedMonths
+      .map((mo: string) => `${mo}: income ${symbol}${(monthlyIncomeMap[mo] ?? 0).toLocaleString()} / expenses ${symbol}${(monthlyExpenses[mo] ?? 0).toLocaleString()}`)
+      .join(" | ")
 
-    if (!targetTypes.length) {
-      return new Response(JSON.stringify({ success: true, count: 0, widgets: [],
-        message: "All dimensions already covered by existing widgets" }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } })
-    }
+    const prompt = `Generate enhanced widget configurations for this user's financial data.
 
-    // Build per-type data snippets so AI has exactly what it needs per widget
-    const typeContexts: string[] = []
-    for (const type of targetTypes) {
-      if (type === "monthly-delta" && isRDUser && profilePayload) {
-        const deltas = profilePayload.monthly_deltas.slice(-4)
-        typeContexts.push(`monthly-delta data: ${deltas.map((d: any) =>
-          `${d.month}: expense_delta ${d.expense_delta >= 0 ? "+" : ""}${symbol}${Math.round(d.expense_delta).toLocaleString()}, income_delta ${d.income_delta >= 0 ? "+" : ""}${symbol}${Math.round(d.income_delta).toLocaleString()}`
-        ).join(" | ")}`)
-      } else if (type === "area-chart" || type === "line-chart") {
-        const byMonth = sortedMonths.map((mo: string) => `${mo}: income ${symbol}${(monthlyIncomeMap[mo]||0).toLocaleString()} / expenses ${symbol}${(monthlyExpenses[mo]||0).toLocaleString()}`)
-        typeContexts.push(`${type} data (monthly): ${byMonth.join(" | ")}`)
-      } else if (type === "vendor-ranking" && isRDUser && profilePayload) {
-        typeContexts.push(`vendor-ranking data: ${profilePayload.top_vendors.slice(0,6).map((v: any) => `${v.name}: ${symbol}${Math.round(v.total).toLocaleString()} (${v.count} txns)`).join(", ")}`)
-      } else if (type === "payment-split" && isRDUser && profilePayload) {
-        typeContexts.push(`payment-split data: ${Object.entries(profilePayload.payment_methods).map(([m,c]) => `${m}: ${c} transactions`).join(", ")}`)
-      } else if (type === "income-waterfall" && isRDUser) {
-        const deductions = totalTax + totalIncome * 0.02
-        typeContexts.push(`income-waterfall data: gross ${symbol}${totalIncome.toLocaleString()} → tax ${symbol}${totalTax.toLocaleString()} → SSS/PhilHealth est ${symbol}${Math.round(totalIncome*0.02).toLocaleString()} → net ${symbol}${Math.round(totalIncome-deductions).toLocaleString()}`)
-      } else if (type === "tax-timeline" && isRDUser && profilePayload) {
-        typeContexts.push(`tax-timeline data: ${profilePayload.tax_timeline.map((t: any) => `${t.period}: ${symbol}${Math.round(t.tax_amount).toLocaleString()}`).join(", ")}`)
-      } else if (type === "savings-rate") {
-        const rates = sortedMonths
-          .filter((mo: string) => (monthlyIncomeMap[mo] ?? 0) > 0)
-          .map((mo: string) => {
-            const inc = monthlyIncomeMap[mo]
-            const exp = monthlyExpenses[mo] ?? 0
-            return `${mo}: ${((inc - exp) / inc * 100).toFixed(1)}% (income ${symbol}${inc.toLocaleString()}, expenses ${symbol}${exp.toLocaleString()})`
-          })
-        typeContexts.push(`savings-rate data: ${rates.join(" | ")}`)
-      } else if (type === "pie-chart" || type === "bar-chart") {
-        typeContexts.push(`${type} data: ${Object.entries(categories).sort((a,b) => (b[1] as number)-(a[1] as number)).map(([k,v]) => `${k}: ${symbol}${(v as number).toLocaleString()}`).join(", ")}`)
-      }
-    }
+already_plotted (DO NOT use these types): [${alreadyPlotted.join(", ")}]
 
-    // Compute cross-document correlations for insight enrichment
-    const monthlySavingsRates = sortedMonths.map((mo: string) => {
-      const inc = monthlyIncomeMap[mo] ?? 0
-      const exp = monthlyExpenses[mo] ?? 0
-      const rate = inc > 0 ? ((inc - exp) / inc * 100) : null
-      return { month: mo, income: inc, expenses: exp, rate }
-    }).filter((m: any) => m.income > 0)
-    const bestMonth = monthlySavingsRates.length
-      ? monthlySavingsRates.reduce((best: any, m: any) => (m.rate ?? -Infinity) > (best.rate ?? -Infinity) ? m : best)
-      : null
-    const latestMonth = monthlySavingsRates[monthlySavingsRates.length - 1]
+Financial summary:
+- Total income: ${symbol}${totalIncome.toLocaleString()} across ${months} month${months !== 1 ? "s" : ""}
+- Total expenses: ${symbol}${totalExpenses.toLocaleString()}
+- Net position: ${symbol}${netPosition.toLocaleString()}
+- Savings rate: ${savingsRate}%
+- Tax paid: ${symbol}${totalTax.toLocaleString()}
+- Top expense category: ${topCategory ? `${topCategory[0]} at ${symbol}${Math.round(topCategory[1]).toLocaleString()}` : "N/A"}
+- Employers / income sources: ${employers.length ? employers.join(", ") : "none detected"}
+- Total documents: ${userFiles.length}
 
-    const correlationContext = [
-      bestMonth ? `Best savings month: ${bestMonth.month} at ${bestMonth.rate?.toFixed(1)}% (income ${symbol}${bestMonth.income.toLocaleString()}, expenses ${symbol}${bestMonth.expenses.toLocaleString()})` : null,
-      latestMonth && bestMonth && latestMonth.month !== bestMonth.month
-        ? `Latest month (${latestMonth.month}): ${symbol}${latestMonth.income.toLocaleString()} income, ${symbol}${latestMonth.expenses.toLocaleString()} expenses, ${latestMonth.rate?.toFixed(1)}% savings`
-        : null,
-      employers.length > 1 ? `Multiple income sources: ${employers.join(", ")}` : null,
-    ].filter(Boolean).join("\n")
+Category breakdown: ${categoryBreakdown || "no category data"}
 
-    const prompt = `You are filling in widget metadata. The widget types are ALREADY DECIDED — do not change them.
+Monthly income vs expenses: ${monthlyBreakdown || "no monthly data"}
 
-Generate title, description, and insight for EXACTLY these widget types:
-${targetTypes.map((t, i) => `${i+1}. ${t}`).join("\n")}
+Standard dashboard already shows: ${(existing_widget_types ?? []).join(", ")}`
 
-Return ONLY valid JSON — no markdown:
-{
-  "widgets": [
-    { "widget_type": "<exact type from list>", "title": "<data-specific title>", "description": "<one-line subtitle>", "insight": "<1 sentence with specific numbers>" }
-  ]
-}
-
-Per-widget data:
-${typeContexts.join("\n")}
-
-Cross-document correlations:
-${correlationContext || "insufficient data for correlations"}
-
-Rules:
-- widget_type MUST exactly match the types listed above — no substitutions
-- Title must reference actual values ("GrabFood Leads at ${symbol}12,400" not "Top Vendors")
-- Insight must cite specific numbers or percentages from the data above
-- Max 140 characters per insight`
-
-    // ── 7. Call AI ───────────────────────────────────────────────────────────
-    const systemPrompt = isRDUser ? RD_SYSTEM_PROMPT : STANDARD_SYSTEM_PROMPT
-    const rawText = await callAI(prompt, systemPrompt)
+    // ── 7. Call Haiku ────────────────────────────────────────────────────────
+    const rawText = await callAI(prompt, UPGRADE_SYSTEM_PROMPT)
     if (!rawText) throw new Error("Empty response from AI")
 
     let parsed: any
@@ -505,7 +326,12 @@ Rules:
     }
 
     const generatedWidgets = parsed.widgets ?? []
-    if (!generatedWidgets.length) throw new Error("AI returned no widgets")
+    if (!generatedWidgets.length) {
+      return new Response(
+        JSON.stringify({ success: true, count: 0, widgets: [], message: "All upgrade chart types already plotted" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      )
+    }
 
     // ── 8. Insert advanced_widgets (7-day TTL) ───────────────────────────────
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
@@ -534,112 +360,8 @@ Rules:
         .upsert(profilePayload, { onConflict: "user_id" })
     }
 
-    // ── 10. Custom Vega-Lite widgets via Sonnet (R&D only) ──────────────────
-    // Second AI call with a higher-capability model. Sonnet generates
-    // Vega-Lite specs for 1-2 truly unique visualizations per user.
-    // These go beyond stock chart types — sankey, heatmap, scatter, slope, etc.
-    let customCount = 0
-    if (isRDUser && profilePayload) {
-      try {
-        const monthlySeries = sortedMonths.map((mo: string) => ({
-          month: mo,
-          income: monthlyIncomeMap[mo] ?? 0,
-          expenses: monthlyExpenses[mo] ?? 0,
-          savings_rate: monthlyIncomeMap[mo] > 0
-            ? parseFloat(((monthlyIncomeMap[mo] - (monthlyExpenses[mo] ?? 0)) / monthlyIncomeMap[mo] * 100).toFixed(1))
-            : 0,
-        }))
-
-        const categoryBreakdown = Object.entries(
-          f.filter((x: any) => x.expense_category && x.total_amount != null && x.gross_income == null)
-           .reduce((acc: any, x: any) => { acc[x.expense_category] = (acc[x.expense_category] ?? 0) + Number(x.total_amount); return acc }, {})
-        ).map(([category, amount]) => ({ category, amount })).sort((a: any, b: any) => (b.amount as number) - (a.amount as number))
-
-        const topVendorsData = profilePayload.top_vendors.slice(0, 8)
-        const incomeSourcesData = profilePayload.income_sources
-
-        const sonnetPrompt = `You are a data visualization expert. Generate 1 Vega-Lite specification that reveals a unique insight about this user's financial data that standard bar/line/pie charts cannot show.
-
-User's financial data:
-- Currency: ${currency}, symbol: ${symbol}
-- Monthly series (${sortedMonths.length} months): ${JSON.stringify(monthlySeries)}
-- Expense categories: ${JSON.stringify(categoryBreakdown)}
-- Top vendors: ${JSON.stringify(topVendorsData)}
-- Income sources: ${JSON.stringify(incomeSourcesData)}
-- Savings rate trend: ${monthlySeries.map((m: any) => `${m.month}: ${m.savings_rate}%`).join(", ")}
-
-Choose ONE of these chart types that best fits the data:
-- Heatmap: spending intensity by category and month
-- Scatter: transactions by day-of-month vs amount, colored by category
-- Slope chart: category spending shift between first 3 months vs last 3 months
-- Layered: income bars with savings rate line overlay
-
-Return ONLY valid JSON in this exact format — no markdown:
-{
-  "widget_type": "custom-vega",
-  "title": "<data-specific title, max 50 chars>",
-  "description": "<one-line subtitle>",
-  "insight": "<1 sentence insight with specific numbers, max 140 chars>",
-  "spec": <complete Vega-Lite v5 JSON spec — use inline values array, NOT url data source>
-}
-
-Vega-Lite spec rules:
-- Use $schema: "https://vega.github.io/schema/vega-lite/v5.json"
-- width and height: "container" for responsive sizing
-- Embed data inline as "values" array — never use url or named data sources
-- Keep it clean — max 2 layers, no complex transforms
-- Use a color scheme appropriate for financial data`
-
-        const sonnetRes = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": ANTHROPIC_API_KEY,
-            "anthropic-version": "2023-06-01",
-          },
-          body: JSON.stringify({
-            model: "claude-sonnet-4-6",
-            max_tokens: 4096,
-            messages: [{ role: "user", content: sonnetPrompt }],
-          }),
-        })
-
-        if (sonnetRes.ok) {
-          const sonnetData = await sonnetRes.json()
-          const sonnetText = sonnetData.content?.[0]?.text ?? ""
-          const jsonMatch = sonnetText.match(/\{[\s\S]*\}/)
-          if (jsonMatch) {
-            const parsed = JSON.parse(jsonMatch[0])
-            if (parsed.spec && parsed.widget_type === "custom-vega") {
-              const { data: customInserted } = await supabase
-                .from("advanced_widgets")
-                .insert({
-                  user_id,
-                  widget_type: "custom-vega",
-                  title:       parsed.title ?? "Custom Visualization",
-                  description: parsed.description ?? null,
-                  insight:     parsed.insight ?? null,
-                  config:      { spec: parsed.spec },
-                  is_starred:  false,
-                  is_plotted:  false,
-                  expires_at:  new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-                })
-                .select()
-              if (customInserted) customCount = customInserted.length
-              console.log("Custom Vega widget generated successfully")
-            }
-          }
-        } else {
-          console.warn("Sonnet call failed (non-fatal):", await sonnetRes.text())
-        }
-      } catch (err: any) {
-        console.warn("Custom viz generation failed (non-fatal):", err.message)
-      }
-    }
-
-    const totalCount = (inserted?.length ?? 0) + customCount
     return new Response(
-      JSON.stringify({ success: true, count: totalCount, widgets: inserted }),
+      JSON.stringify({ success: true, count: inserted?.length ?? 0, widgets: inserted }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     )
 

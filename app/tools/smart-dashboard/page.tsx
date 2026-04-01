@@ -745,7 +745,7 @@ export default function SmartDashboardPage() {
   const [showDateFilter, setShowDateFilter] = useState(false)
   const [showColorPicker, setShowColorPicker] = useState(false)
   const [showAdvancedMenu, setShowAdvancedMenu] = useState(false)
-  const [showWidgetPanel, setShowWidgetPanel] = useState(true)
+  const [showWidgetPanel, setShowWidgetPanel] = useState(false)
   const [mobileWidgetPanelOpen, setMobileWidgetPanelOpen] = useState(false)
   const isMobile = useIsMobile()
   const [dateFrom, setDateFrom] = useState("")
@@ -816,8 +816,12 @@ export default function SmartDashboardPage() {
         })))
       }
     }
-    // Mark layout as initialized — handleLayoutChange will only set dirty after this point
-    setTimeout(() => { layoutInitialized.current = true }, 100)
+    // Mark layout as initialized after RGL's initial onLayoutChange has fired.
+    // setTimeout was unreliable (fired before async DB fetch completed).
+    // Double-RAF guarantees we're past React's paint AND RGL's mount event.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      layoutInitialized.current = true
+    }))
   }, [session])
 
   // ── Load data ──────────────────────────────────────────────────────────────

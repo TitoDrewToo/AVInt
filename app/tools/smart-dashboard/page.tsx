@@ -764,6 +764,7 @@ export default function SmartDashboardPage() {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; widgetId: string } | null>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
   const layoutInitialized = useRef(false)
+  const savedLayoutRef = useRef<LayoutItem[]>([])
 
   const selectedWidget = widgets.find(w => w.id === selectedWidgetId)
 
@@ -809,19 +810,17 @@ export default function SmartDashboardPage() {
         // Always apply current minH/minW — never restore stale saved constraints
         const constraints: Record<string, { minW: number; minH: number }> = {}
         DEFAULT_LAYOUT.forEach(l => { constraints[l.i] = { minW: l.minW ?? 2, minH: l.minH ?? 1 } })
-        setLayout(saved.gridLayout.map((l: any) => ({
+        const restoredLayout = saved.gridLayout.map((l: any) => ({
           i: l.i, x: l.x, y: l.y, w: l.w, h: l.h,
           minW: constraints[l.i]?.minW ?? 2,
           minH: constraints[l.i]?.minH ?? 1,
-        })))
+        }))
+        setLayout(restoredLayout)
+        // Store what we loaded so handleLayoutChange can compare and skip the initial RGL fire
+        savedLayoutRef.current = restoredLayout
       }
     }
-    // Mark layout as initialized after RGL's initial onLayoutChange has fired.
-    // setTimeout was unreliable (fired before async DB fetch completed).
-    // Double-RAF guarantees we're past React's paint AND RGL's mount event.
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      layoutInitialized.current = true
-    }))
+    layoutInitialized.current = true
   }, [session])
 
   // ── Load data ──────────────────────────────────────────────────────────────
@@ -1028,6 +1027,7 @@ export default function SmartDashboardPage() {
     }, { onConflict: "user_id" })
     setIsSaving(false)
     setIsDirty(false)
+    savedLayoutRef.current = layout
     setSavedConfirm(true)
     setTimeout(() => setSavedConfirm(false), 2000)
   }
@@ -1070,10 +1070,17 @@ export default function SmartDashboardPage() {
   }
 
   const handleLayoutChange = (newLayout: RGLLayout) => {
-    // RGLLayout items are readonly — spread into our mutable LayoutItem shape
-    setLayout((newLayout as any[]).map((l: any) => ({ i: l.i, x: l.x, y: l.y, w: l.w, h: l.h, minW: l.minW, minH: l.minH })))
-    // RGL fires onLayoutChange on initial mount — only mark dirty after load completes
-    if (layoutInitialized.current) setIsDirty(true)
+    const mapped = (newLayout as any[]).map((l: any) => ({ i: l.i, x: l.x, y: l.y, w: l.w, h: l.h, minW: l.minW, minH: l.minH }))
+    setLayout(mapped)
+    // Only mark dirty if the layout actually differs from what was last saved/loaded.
+    // This skips RGL's spurious onLayoutChange on initial mount regardless of timing.
+    if (!layoutInitialized.current) return
+    const saved = savedLayoutRef.current
+    const changed = mapped.some(item => {
+      const s = saved.find(s => s.i === item.i)
+      return !s || s.x !== item.x || s.y !== item.y || s.w !== item.w || s.h !== item.h
+    })
+    if (changed) setIsDirty(true)
   }
 
   // ── Auth guard ─────────────────────────────────────────────────────────────

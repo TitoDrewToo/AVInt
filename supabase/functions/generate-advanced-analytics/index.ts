@@ -350,14 +350,14 @@ Tax timeline: ${taxTimeline.map(t => `${t.period}: ${symbol}${t.tax_amount.toLoc
 Income sources: ${incomeSources.map(s => `${s.employer} (${symbol}${(s.total as number).toLocaleString()})`).join(", ") || "none"}`
     }
 
-    // ── 5. Expire stale ephemeral widgets ────────────────────────────────────
+    // ── 5. Clear previous suggestions (non-starred, non-plotted) ────────────
+    // Replace all pending suggestions on each run — don't accumulate duplicates
     await supabase
       .from("advanced_widgets")
       .delete()
       .eq("user_id", user_id)
       .eq("is_starred", false)
       .eq("is_plotted", false)
-      .lt("expires_at", new Date().toISOString())
 
     // ── 6. Build prompt ──────────────────────────────────────────────────────
     const existingList = (existing_widget_types ?? []).join(", ") || "none"

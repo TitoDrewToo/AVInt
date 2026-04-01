@@ -46,6 +46,7 @@ interface Widget {
   chartVariant?: string
   advancedId?: string   // references advanced_widgets.id
   insight?: string      // AI-generated insight text
+  config?: Record<string, any>  // custom widget config (e.g. Vega-Lite spec)
 }
 
 interface AdvancedWidget {
@@ -57,6 +58,7 @@ interface AdvancedWidget {
   insight: string | null
   is_starred: boolean
   is_plotted: boolean
+  config: Record<string, any> | null
   created_at: string
   expires_at: string | null
 }
@@ -190,6 +192,8 @@ const WIDGET_MIN_SIZE: Record<string, { minW: number; minH: number }> = {
   "monthly-delta":    { minW: 4, minH: 4 },
   "income-waterfall": { minW: 4, minH: 4 },
   "tax-timeline":     { minW: 4, minH: 4 },
+  "savings-rate":     { minW: 4, minH: 4 },
+  "custom-vega":      { minW: 5, minH: 5 },
 }
 
 const WIDGET_LIBRARY = [
@@ -237,6 +241,29 @@ function AnimatedNumber({ value, prefix = "" }: { value: number; prefix?: string
 }
 
 // ── Custom tooltip ────────────────────────────────────────────────────────────
+
+function VegaWidget({ spec, insight }: { spec: any; insight?: string | null }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!spec || !containerRef.current) return
+    let view: any
+    import("vega-embed").then(({ default: vegaEmbed }) => {
+      vegaEmbed(containerRef.current!, spec, {
+        actions: false,
+        renderer: "svg",
+        theme: "ggplot2",
+      }).then(result => { view = result.view })
+    })
+    return () => { if (view) view.finalize() }
+  }, [spec])
+  if (!spec) return <div className="flex h-full items-center justify-center text-xs text-muted-foreground">No spec</div>
+  return (
+    <div className="flex h-full flex-col gap-2">
+      <div ref={containerRef} className="flex-1 min-h-0 w-full overflow-hidden" />
+      {insight && <p className="text-xs text-muted-foreground leading-snug border-t border-border pt-2">{insight}</p>}
+    </div>
+  )
+}
 
 function CustomTooltip({ active, payload, label, symbol }: any) {
   if (!active || !payload?.length) return null
@@ -705,6 +732,57 @@ function WidgetContent({
     )
   }
 
+  if (widget.type === "savings-rate") {
+    const savingsData = monthlyData
+      .filter(d => d.income > 0)
+      .map(d => ({
+        month: d.month,
+        rate: parseFloat(((d.income - d.expenses) / d.income * 100).toFixed(1)),
+        income: d.income,
+        expenses: d.expenses,
+      }))
+    const bestIdx = savingsData.reduce((bi, d, i) => d.rate > (savingsData[bi]?.rate ?? -Infinity) ? i : bi, 0)
+    const best = savingsData[bestIdx]
+    return (
+      <div className="flex h-full flex-col gap-2">
+        <div className="flex-1 min-h-0">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={savingsData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
+              <XAxis dataKey="month" tick={{ fontSize: 10, fill: axisTickColor }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 10, fill: axisTickColor }} axisLine={false} tickLine={false}
+                tickFormatter={(v: number) => `${v}%`} domain={[0, 100]} />
+              <Tooltip formatter={(v: number) => [`${v}%`, "Savings rate"]}
+                labelFormatter={(l: string) => l} contentStyle={{ fontSize: 12 }} />
+              <Line type="monotone" dataKey="rate" stroke={colors.primary} strokeWidth={2}
+                dot={(props: any) => {
+                  if (props.index === bestIdx) {
+                    return <circle key={props.index} cx={props.cx} cy={props.cy} r={6}
+                      fill={colors.primary} stroke="white" strokeWidth={2} />
+                  }
+                  return <circle key={props.index} cx={props.cx} cy={props.cy} r={3} fill={colors.primary} />
+                }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+        {best && (
+          <div className="flex items-center justify-between border-t border-border pt-2">
+            <p className="text-xs text-muted-foreground">Peak: <span className="font-medium text-foreground">{best.month}</span></p>
+            <p className="text-xs font-semibold text-primary">{best.rate}% savings rate</p>
+          </div>
+        )}
+        {widget.insight && (
+          <p className="text-xs text-muted-foreground leading-snug">{widget.insight}</p>
+        )}
+      </div>
+    )
+  }
+
+  if (widget.type === "custom-vega") {
+    return <VegaWidget spec={widget.config?.spec} insight={widget.insight} />
+  }
+
   return null
 }
 
@@ -957,6 +1035,7 @@ export default function SmartDashboardPage() {
       colors:     DEFAULT_WIDGET_COLORS,
       advancedId: aw.id,
       insight:    aw.insight ?? undefined,
+      config:     aw.config ?? undefined,
     }
     const lastY = layout.length ? Math.max(...layout.map(l => l.y + l.h)) : 0
     const minSize = WIDGET_MIN_SIZE[aw.widget_type] ?? { minW: 2, minH: 2 }

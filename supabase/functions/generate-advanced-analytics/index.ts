@@ -177,18 +177,21 @@ serve(async (req) => {
     COMPOSITION: ["payment-split", "pie-chart"],
     RANKING:     ["vendor-ranking", "bar-chart"],
     FLOW:        ["income-waterfall"],
+    RATIO:       ["savings-rate"],
   }
   const PREFERRED: Record<string, string> = {
     TIME:        "monthly-delta",
     COMPOSITION: "payment-split",
     RANKING:     "vendor-ranking",
     FLOW:        "income-waterfall",
+    RATIO:       "savings-rate",
   }
   const FALLBACK: Record<string, string | null> = {
     TIME:        "area-chart",
     COMPOSITION: "pie-chart",
     RANKING:     "bar-chart",
     FLOW:        null,
+    RATIO:       null,
   }
 
   const allCovered = [
@@ -389,12 +392,13 @@ serve(async (req) => {
       if (type === "monthly-delta")    return months >= 2
       if (type === "income-waterfall") return isRDUser && totalIncome > 0
       if (type === "tax-timeline")     return isRDUser && taxPeriodCount >= 2
+      if (type === "savings-rate")     return months >= 2 && totalIncome > 0
       return true // standard types always available
     }
 
     // Pick one type per uncovered dimension
     const targetTypes: string[] = []
-    for (const dim of ["TIME", "COMPOSITION", "RANKING", "FLOW"]) {
+    for (const dim of ["TIME", "COMPOSITION", "RANKING", "FLOW", "RATIO"]) {
       if (coveredDimensions.has(dim)) continue
       const preferred = PREFERRED[dim]
       const fallback  = FALLBACK[dim]
@@ -428,6 +432,15 @@ serve(async (req) => {
         typeContexts.push(`income-waterfall data: gross ${symbol}${totalIncome.toLocaleString()} → tax ${symbol}${totalTax.toLocaleString()} → SSS/PhilHealth est ${symbol}${Math.round(totalIncome*0.02).toLocaleString()} → net ${symbol}${Math.round(totalIncome-deductions).toLocaleString()}`)
       } else if (type === "tax-timeline" && isRDUser && profilePayload) {
         typeContexts.push(`tax-timeline data: ${profilePayload.tax_timeline.map((t: any) => `${t.period}: ${symbol}${Math.round(t.tax_amount).toLocaleString()}`).join(", ")}`)
+      } else if (type === "savings-rate") {
+        const rates = sortedMonths
+          .filter((mo: string) => (monthlyIncomeMap[mo] ?? 0) > 0)
+          .map((mo: string) => {
+            const inc = monthlyIncomeMap[mo]
+            const exp = monthlyExpenses[mo] ?? 0
+            return `${mo}: ${((inc - exp) / inc * 100).toFixed(1)}% (income ${symbol}${inc.toLocaleString()}, expenses ${symbol}${exp.toLocaleString()})`
+          })
+        typeContexts.push(`savings-rate data: ${rates.join(" | ")}`)
       } else if (type === "pie-chart" || type === "bar-chart") {
         typeContexts.push(`${type} data: ${Object.entries(categories).sort((a,b) => (b[1] as number)-(a[1] as number)).map(([k,v]) => `${k}: ${symbol}${(v as number).toLocaleString()}`).join(", ")}`)
       }
@@ -519,11 +532,114 @@ Rules:
       await supabase
         .from("user_analytics_profile")
         .upsert(profilePayload, { onConflict: "user_id" })
-      // Non-fatal — log but don't fail the response
     }
 
+    // ── 10. Custom Vega-Lite widgets via Sonnet (R&D only) ──────────────────
+    // Second AI call with a higher-capability model. Sonnet generates
+    // Vega-Lite specs for 1-2 truly unique visualizations per user.
+    // These go beyond stock chart types — sankey, heatmap, scatter, slope, etc.
+    let customCount = 0
+    if (isRDUser && profilePayload) {
+      try {
+        const monthlySeries = sortedMonths.map((mo: string) => ({
+          month: mo,
+          income: monthlyIncomeMap[mo] ?? 0,
+          expenses: monthlyExpenses[mo] ?? 0,
+          savings_rate: monthlyIncomeMap[mo] > 0
+            ? parseFloat(((monthlyIncomeMap[mo] - (monthlyExpenses[mo] ?? 0)) / monthlyIncomeMap[mo] * 100).toFixed(1))
+            : 0,
+        }))
+
+        const categoryBreakdown = Object.entries(
+          f.filter((x: any) => x.expense_category && x.total_amount != null && x.gross_income == null)
+           .reduce((acc: any, x: any) => { acc[x.expense_category] = (acc[x.expense_category] ?? 0) + Number(x.total_amount); return acc }, {})
+        ).map(([category, amount]) => ({ category, amount })).sort((a: any, b: any) => (b.amount as number) - (a.amount as number))
+
+        const topVendorsData = profilePayload.top_vendors.slice(0, 8)
+        const incomeSourcesData = profilePayload.income_sources
+
+        const sonnetPrompt = `You are a data visualization expert. Generate 1 Vega-Lite specification that reveals a unique insight about this user's financial data that standard bar/line/pie charts cannot show.
+
+User's financial data:
+- Currency: ${currency}, symbol: ${symbol}
+- Monthly series (${sortedMonths.length} months): ${JSON.stringify(monthlySeries)}
+- Expense categories: ${JSON.stringify(categoryBreakdown)}
+- Top vendors: ${JSON.stringify(topVendorsData)}
+- Income sources: ${JSON.stringify(incomeSourcesData)}
+- Savings rate trend: ${monthlySeries.map((m: any) => `${m.month}: ${m.savings_rate}%`).join(", ")}
+
+Choose ONE of these chart types that best fits the data:
+- Heatmap: spending intensity by category and month
+- Scatter: transactions by day-of-month vs amount, colored by category
+- Slope chart: category spending shift between first 3 months vs last 3 months
+- Layered: income bars with savings rate line overlay
+
+Return ONLY valid JSON in this exact format — no markdown:
+{
+  "widget_type": "custom-vega",
+  "title": "<data-specific title, max 50 chars>",
+  "description": "<one-line subtitle>",
+  "insight": "<1 sentence insight with specific numbers, max 140 chars>",
+  "spec": <complete Vega-Lite v5 JSON spec — use inline values array, NOT url data source>
+}
+
+Vega-Lite spec rules:
+- Use $schema: "https://vega.github.io/schema/vega-lite/v5.json"
+- width and height: "container" for responsive sizing
+- Embed data inline as "values" array — never use url or named data sources
+- Keep it clean — max 2 layers, no complex transforms
+- Use a color scheme appropriate for financial data`
+
+        const sonnetRes = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-6",
+            max_tokens: 4096,
+            messages: [{ role: "user", content: sonnetPrompt }],
+          }),
+        })
+
+        if (sonnetRes.ok) {
+          const sonnetData = await sonnetRes.json()
+          const sonnetText = sonnetData.content?.[0]?.text ?? ""
+          const jsonMatch = sonnetText.match(/\{[\s\S]*\}/)
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0])
+            if (parsed.spec && parsed.widget_type === "custom-vega") {
+              const { data: customInserted } = await supabase
+                .from("advanced_widgets")
+                .insert({
+                  user_id,
+                  widget_type: "custom-vega",
+                  title:       parsed.title ?? "Custom Visualization",
+                  description: parsed.description ?? null,
+                  insight:     parsed.insight ?? null,
+                  config:      { spec: parsed.spec },
+                  is_starred:  false,
+                  is_plotted:  false,
+                  expires_at:  new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+                })
+                .select()
+              if (customInserted) customCount = customInserted.length
+              console.log("Custom Vega widget generated successfully")
+            }
+          }
+        } else {
+          console.warn("Sonnet call failed (non-fatal):", await sonnetRes.text())
+        }
+      } catch (err: any) {
+        console.warn("Custom viz generation failed (non-fatal):", err.message)
+      }
+    }
+
+    const totalCount = (inserted?.length ?? 0) + customCount
     return new Response(
-      JSON.stringify({ success: true, count: inserted?.length ?? 0, widgets: inserted }),
+      JSON.stringify({ success: true, count: totalCount, widgets: inserted }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     )
 

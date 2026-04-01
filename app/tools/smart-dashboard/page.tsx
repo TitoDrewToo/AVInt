@@ -763,6 +763,7 @@ export default function SmartDashboardPage() {
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; widgetId: string } | null>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
+  const layoutInitialized = useRef(false)
 
   const selectedWidget = widgets.find(w => w.id === selectedWidgetId)
 
@@ -815,6 +816,8 @@ export default function SmartDashboardPage() {
         })))
       }
     }
+    // Mark layout as initialized — handleLayoutChange will only set dirty after this point
+    setTimeout(() => { layoutInitialized.current = true }, 100)
   }, [session])
 
   // ── Load data ──────────────────────────────────────────────────────────────
@@ -1065,7 +1068,8 @@ export default function SmartDashboardPage() {
   const handleLayoutChange = (newLayout: RGLLayout) => {
     // RGLLayout items are readonly — spread into our mutable LayoutItem shape
     setLayout((newLayout as any[]).map((l: any) => ({ i: l.i, x: l.x, y: l.y, w: l.w, h: l.h, minW: l.minW, minH: l.minH })))
-    setIsDirty(true)
+    // RGL fires onLayoutChange on initial mount — only mark dirty after load completes
+    if (layoutInitialized.current) setIsDirty(true)
   }
 
   // ── Auth guard ─────────────────────────────────────────────────────────────

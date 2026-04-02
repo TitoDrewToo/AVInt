@@ -1,6 +1,6 @@
 import { MetadataRoute } from "next"
 
-const BASE_URL = "https://avint.ai"
+const BASE_URL = "https://www.avintph.com"
 
 export default function sitemap(): MetadataRoute.Sitemap {
   return [

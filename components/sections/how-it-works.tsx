@@ -158,14 +158,16 @@ export function HowItWorksSection() {
             How it works
           </h2>
         </FadeUp>
-        <StaggerContainer className="mt-16 flex flex-col items-center justify-between gap-12 md:flex-row md:gap-8">
+        <StaggerContainer className="mt-16 flex flex-col items-center justify-between gap-12 md:flex-row md:items-start">
           {steps.map((step, index) => (
-            <StaggerItem key={step.number} className="flex items-center">
-              <Step {...step} />
+            <>
+              <StaggerItem key={step.number} className="flex flex-col items-center">
+                <Step {...step} />
+              </StaggerItem>
               {index < steps.length - 1 && (
-                <div className="ml-8 hidden h-px w-24 bg-border md:block" />
+                <div className="hidden h-px w-24 shrink-0 self-start mt-8 bg-border md:block" />
               )}
-            </StaggerItem>
+            </>
           ))}
         </StaggerContainer>
       </div>

@@ -21,7 +21,32 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Delete the user via admin API — cascades to all user data via RLS/FK
+    // Delete user data in dependency order (children before parents)
+    // 1. Get all file IDs for this user first
+    const { data: userFiles } = await supabaseAdmin
+      .from("files").select("id").eq("user_id", user_id)
+    const fileIds = (userFiles ?? []).map((f: any) => f.id)
+
+    // 2. Delete document_fields rows (reference files)
+    if (fileIds.length) {
+      await supabaseAdmin.from("document_fields").delete().in("file_id", fileIds)
+    }
+
+    // 3. Delete processing_jobs rows (reference files)
+    if (fileIds.length) {
+      await supabaseAdmin.from("processing_jobs").delete().in("file_id", fileIds)
+    }
+
+    // 4. Delete files
+    await supabaseAdmin.from("files").delete().eq("user_id", user_id)
+
+    // 5. Delete other user-owned tables
+    await supabaseAdmin.from("advanced_widgets").delete().eq("user_id", user_id)
+    await supabaseAdmin.from("dashboard_layouts").delete().eq("user_id", user_id)
+    await supabaseAdmin.from("context_summaries").delete().eq("user_id", user_id)
+    await supabaseAdmin.from("subscriptions").delete().eq("user_id", user_id)
+
+    // 6. Finally delete the auth user
     const { error } = await supabaseAdmin.auth.admin.deleteUser(user_id)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 

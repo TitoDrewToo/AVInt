@@ -484,7 +484,15 @@ function WidgetContent({
             </BarChart>
           ) : (
           <PieChart>
-            <Pie data={pieData} cx="50%" cy="50%" innerRadius="35%" outerRadius="60%" paddingAngle={3} dataKey="value">
+            <Pie
+              data={pieData}
+              cx="50%" cy="50%"
+              innerRadius="35%" outerRadius="60%"
+              paddingAngle={3}
+              dataKey="value"
+              label={({ percent }) => `${(percent * 100).toFixed(0)}%`}
+              labelLine={false}
+            >
               {pieData.map((_, i) => (
                 <Cell key={i} fill={MULTI_COLORS[i % MULTI_COLORS.length]} strokeWidth={0} />
               ))}
@@ -855,6 +863,7 @@ export default function SmartDashboardPage() {
       const lastY = prev.length ? Math.max(...prev.map(l => l.y + l.h)) : 0
       return [...prev, { i: newWidget.id, x: 0, y: lastY, w: minSize.minW, h: minSize.minH, minW: minSize.minW, minH: minSize.minH }]
     })
+    setIsEditMode(true)
     setIsDirty(true)
   }
 
@@ -961,6 +970,7 @@ export default function SmartDashboardPage() {
       const lastY = prev.length ? Math.max(...prev.map(l => l.y + l.h)) : 0
       return [...prev, { i: id, x: 0, y: lastY, w: minSize.minW, h: minSize.minH, minW: minSize.minW, minH: minSize.minH, ...(defaultEntry?.maxH != null ? { maxH: defaultEntry.maxH } : {}) }]
     })
+    setIsEditMode(true)
     setIsDirty(true)
   }
 

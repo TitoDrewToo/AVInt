@@ -1057,7 +1057,11 @@ export default function SmartDashboardPage() {
         body: JSON.stringify({
           user_id: session.user.id,
           existing_widget_types: widgets.map(w => w.type),
-          plotted_advanced_types: advancedWidgetsList.filter(w => w.is_plotted).map(w => w.widget_type),
+          // Only send STARRED types — the edge function deletes all non-starred before
+          // generating, so only starred widgets can actually cause duplication.
+          // Sending is_plotted types caused Haiku to return empty when those types
+          // had been plotted in a previous run and then deleted by cleanup.
+          plotted_advanced_types: advancedWidgetsList.filter(w => w.is_starred).map(w => w.widget_type),
         }),
       })
       if (res.ok) {

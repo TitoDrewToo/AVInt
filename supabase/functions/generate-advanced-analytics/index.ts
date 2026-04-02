@@ -137,6 +137,13 @@ serve(async (req) => {
 
     const fileIds = userFiles.map((f: any) => f.id)
 
+    // Build a map of fileId → document_type for consistent income/expense classification.
+    // This matches the dashboard's approach (document_type-based, not field-presence-based).
+    const INCOME_TYPES = ["payslip", "income_statement"]
+    const EXPENSE_TYPES = ["receipt", "invoice"]
+    const fileTypeMap: Record<string, string> = {}
+    for (const file of userFiles) fileTypeMap[file.id] = file.document_type
+
     // ── 2. Fetch document fields ────────────────────────────────────────────
     const selectFields = isRDUser
       ? "file_id, vendor_name, employer_name, document_date, currency, total_amount, gross_income, net_income, expense_category, tax_amount, discount_amount, payment_method, period_start, period_end, counterparty_name"
@@ -151,21 +158,24 @@ serve(async (req) => {
     const currency = f.find((x: any) => x.currency)?.currency ?? "PHP"
     const symbol   = currency === "PHP" ? "₱" : currency === "EUR" ? "€" : currency === "GBP" ? "£" : "$"
 
-    // ── 3. Core aggregations ────────────────────────────────────────────────
-    const totalIncome   = f.filter((x: any) => x.gross_income != null).reduce((s: number, x: any) => s + Number(x.gross_income), 0)
-    const totalExpenses = f.filter((x: any) => x.total_amount != null && x.gross_income == null).reduce((s: number, x: any) => s + Number(x.total_amount), 0)
+    // ── 3. Core aggregations (document_type-based, matches dashboard exactly) ─
+    const incomeRows  = f.filter((x: any) => INCOME_TYPES.includes(fileTypeMap[x.file_id]))
+    const expenseRows = f.filter((x: any) => EXPENSE_TYPES.includes(fileTypeMap[x.file_id]))
+
+    const totalIncome   = incomeRows.reduce((s: number, x: any) => s + Number(x.gross_income ?? x.total_amount ?? 0), 0)
+    const totalExpenses = expenseRows.reduce((s: number, x: any) => s + Number(x.total_amount ?? 0), 0)
     const netPosition   = totalIncome - totalExpenses
     const savingsRate   = totalIncome > 0 ? ((netPosition / totalIncome) * 100).toFixed(1) : "0"
     const totalTax      = f.filter((x: any) => x.tax_amount != null).reduce((s: number, x: any) => s + Number(x.tax_amount), 0)
 
     const categories: Record<string, number> = {}
-    for (const x of f) {
-      if (x.expense_category && x.total_amount != null && x.gross_income == null) {
+    for (const x of expenseRows) {
+      if (x.expense_category && x.total_amount != null) {
         categories[x.expense_category] = (categories[x.expense_category] ?? 0) + Number(x.total_amount)
       }
     }
     const topCategory = Object.entries(categories).sort((a, b) => b[1] - a[1])[0]
-    const employers   = [...new Set(f.filter((x: any) => x.employer_name).map((x: any) => x.employer_name))]
+    const employers   = [...new Set(incomeRows.filter((x: any) => x.employer_name).map((x: any) => x.employer_name))]
     const dateRange   = f.filter((x: any) => x.document_date).map((x: any) => x.document_date).sort()
     const months      = [...new Set(dateRange.map((d: string) => d.slice(0, 7)))].length
 
@@ -174,12 +184,11 @@ serve(async (req) => {
     for (const x of f) {
       if (!x.document_date) continue
       const mo = x.document_date.slice(0, 7)
-      if (x.total_amount != null && x.gross_income == null) {
-        monthlyExpenses[mo] = (monthlyExpenses[mo] ?? 0) + Number(x.total_amount)
-      }
-      if (x.gross_income != null) {
-        monthlyIncomeMap[mo] = (monthlyIncomeMap[mo] ?? 0) + Number(x.gross_income)
-      }
+      const docType = fileTypeMap[x.file_id]
+      if (INCOME_TYPES.includes(docType))
+        monthlyIncomeMap[mo] = (monthlyIncomeMap[mo] ?? 0) + Number(x.gross_income ?? x.total_amount ?? 0)
+      else if (EXPENSE_TYPES.includes(docType))
+        monthlyExpenses[mo] = (monthlyExpenses[mo] ?? 0) + Number(x.total_amount ?? 0)
     }
     const sortedMonths = Object.keys({ ...monthlyExpenses, ...monthlyIncomeMap }).sort()
 
@@ -190,8 +199,8 @@ serve(async (req) => {
 
     if (isRDUser) {
       const vendorSpend: Record<string, { total: number; count: number }> = {}
-      for (const x of f) {
-        if (x.vendor_name && x.total_amount != null && x.gross_income == null) {
+      for (const x of expenseRows) {
+        if (x.vendor_name && x.total_amount != null) {
           if (!vendorSpend[x.vendor_name]) vendorSpend[x.vendor_name] = { total: 0, count: 0 }
           vendorSpend[x.vendor_name].total += Number(x.total_amount)
           vendorSpend[x.vendor_name].count += 1

@@ -114,8 +114,7 @@ const DEFAULT_WIDGETS: Widget[] = [
   { id: "kpi-income",      type: "kpi-income",      title: "Total Income" },
   { id: "kpi-expenses",    type: "kpi-expenses",     title: "Total Expenses" },
   { id: "kpi-net",         type: "kpi-net",          title: "Net Position" },
-  { id: "kpi-tax-exposure",type: "kpi-tax-exposure", title: "Est. Tax Exposure" },
-  { id: "kpi-tax-ratio",   type: "kpi-tax-ratio",    title: "Tax Burden Rate" },
+  { id: "kpi-tax-exposure",type: "kpi-tax-exposure", title: "Net Surplus" },
   { id: "area-chart",      type: "area-chart",       title: "Income vs Expenses" },
   { id: "bar-chart",       type: "bar-chart",        title: "Expenses by Category" },
   { id: "bar-deductible",  type: "bar-deductible",   title: "Deductible Expenses" },
@@ -123,15 +122,14 @@ const DEFAULT_WIDGETS: Widget[] = [
 ]
 
 const DEFAULT_LAYOUT: LayoutItem[] = [
-  { i: "kpi-income",       x: 0,  y: 0,  w: 3, h: 3, minW: 2, minH: 2, maxH: 5 },
-  { i: "kpi-expenses",     x: 3,  y: 0,  w: 3, h: 3, minW: 2, minH: 2, maxH: 5 },
-  { i: "kpi-net",          x: 6,  y: 0,  w: 3, h: 3, minW: 2, minH: 2, maxH: 5 },
-  { i: "kpi-tax-exposure", x: 9,  y: 0,  w: 3, h: 3, minW: 2, minH: 2, maxH: 5 },
-  { i: "kpi-tax-ratio",    x: 0,  y: 3,  w: 3, h: 3, minW: 2, minH: 2, maxH: 5 },
-  { i: "area-chart",       x: 3,  y: 3,  w: 9, h: 9, minW: 4, minH: 3 },
-  { i: "bar-chart",        x: 0,  y: 6,  w: 3, h: 8, minW: 3, minH: 3 },
-  { i: "bar-deductible",   x: 0,  y: 12, w: 4, h: 8, minW: 3, minH: 3 },
-  { i: "pie-chart",        x: 4,  y: 12, w: 4, h: 8, minW: 3, minH: 3 },
+  { i: "kpi-income",       x: 0,  y: 0,  w: 3,  h: 3, minW: 2, minH: 2, maxH: 5 },
+  { i: "kpi-expenses",     x: 3,  y: 0,  w: 3,  h: 3, minW: 2, minH: 2, maxH: 5 },
+  { i: "kpi-net",          x: 6,  y: 0,  w: 3,  h: 3, minW: 2, minH: 2, maxH: 5 },
+  { i: "kpi-tax-exposure", x: 9,  y: 0,  w: 3,  h: 3, minW: 2, minH: 2, maxH: 5 },
+  { i: "area-chart",       x: 0,  y: 3,  w: 12, h: 9, minW: 4, minH: 3 },
+  { i: "bar-chart",        x: 0,  y: 12, w: 4,  h: 8, minW: 3, minH: 3 },
+  { i: "bar-deductible",   x: 4,  y: 12, w: 4,  h: 8, minW: 3, minH: 3 },
+  { i: "pie-chart",        x: 8,  y: 12, w: 4,  h: 8, minW: 3, minH: 3 },
 ]
 
 // ── Mobile layout derivation ──────────────────────────────────────────────────
@@ -176,7 +174,6 @@ const WIDGET_MIN_SIZE: Record<string, { minW: number; minH: number }> = {
   "kpi-expenses":     { minW: 2, minH: 2 },
   "kpi-net":          { minW: 2, minH: 2 },
   "kpi-tax-exposure": { minW: 2, minH: 2 },
-  "kpi-tax-ratio":    { minW: 2, minH: 2 },
   "kpi-savings":      { minW: 2, minH: 2 },
   "kpi-tax":          { minW: 2, minH: 2 },
   "bar-chart":        { minW: 3, minH: 3 },
@@ -193,7 +190,6 @@ const WIDGET_LIBRARY = [
   { type: "kpi-expenses",     title: "Expenses KPI",        desc: "Sum of all classified expense transactions",           isPremium: false },
   { type: "kpi-net",          title: "Net Position KPI",    desc: "Income minus expenses with savings rate",              isPremium: false },
   { type: "kpi-tax-exposure", title: "Tax Exposure KPI",    desc: "Estimated tax liability based on net income",         isPremium: false },
-  { type: "kpi-tax-ratio",    title: "Tax Burden Rate KPI", desc: "Tax as a percentage of gross income",                 isPremium: false },
   { type: "area-chart",       title: "Income vs Expenses",  desc: "Monthly trend of income and expenses over time",      isPremium: false },
   { type: "bar-chart",        title: "Category Breakdown",  desc: "Total spending split by expense category",            isPremium: false },
   { type: "bar-deductible",   title: "Deductible Expenses", desc: "Categories that reduce your taxable income",          isPremium: false },
@@ -333,7 +329,7 @@ function WidgetContent({
   if (widget.type === "kpi-tax-exposure") return (
     <div className="flex h-full flex-col justify-between">
       <div className="flex items-start justify-between">
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Est. Tax Exposure</p>
+        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Net Surplus</p>
         <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: colors.tertiary + "20" }}>
           <TrendingUp className="h-4 w-4" style={{ color: colors.tertiary }} />
         </div>
@@ -341,7 +337,7 @@ function WidgetContent({
       <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
         <AnimatedNumber value={kpi.taxExposure} prefix={symbol} />
       </p>
-      <p className="text-xs text-muted-foreground">Gross income minus expenses</p>
+      <p className="text-xs text-muted-foreground">Income after expenses</p>
     </div>
   )
 
@@ -748,7 +744,8 @@ export default function SmartDashboardPage() {
       if (!monthMap[month]) monthMap[month] = { expenses: 0, income: 0 }
       if (["payslip", "income_statement"].includes(f.files.document_type))
         monthMap[month].income += parseFloat(f.gross_income ?? f.total_amount ?? 0)
-      else monthMap[month].expenses += parseFloat(f.total_amount ?? 0)
+      else if (["receipt", "invoice"].includes(f.files.document_type))
+        monthMap[month].expenses += parseFloat(f.total_amount ?? 0)
     })
     setMonthlyData(Object.entries(monthMap).sort(([a],[b]) => a.localeCompare(b)).map(([m, d]) => ({
       month: new Date(m + "-01").toLocaleDateString("en-US", { month: "short", year: "2-digit" }), ...d

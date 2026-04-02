@@ -5,6 +5,23 @@ import Link from "next/link"
 import { StartFreeButton } from "@/components/start-free-button"
 import { FadeUp, StaggerContainer, StaggerItem } from "@/components/fade-up"
 
+export const metadata = {
+  title: "Smart Storage — AI Document Storage & Analysis | AVIntelligence",
+  description: "Automatically extract and organize data from receipts, invoices, payslips, and contracts. Generate expense, income, tax, and profit & loss reports instantly.",
+  openGraph: {
+    title: "Smart Storage — AI Document Storage & Analysis | AVIntelligence",
+    description: "Automatically extract and organize data from receipts, invoices, payslips, and contracts. Generate expense, income, tax, and profit & loss reports instantly.",
+    url: "https://www.avintph.com/products/smart-storage",
+    siteName: "AVIntelligence",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Smart Storage — AI Document Storage & Analysis | AVIntelligence",
+    description: "Automatically extract and organize data from receipts, invoices, payslips, and contracts.",
+  },
+}
+
 // ── Animated capability icons ──────────────────────────────────────────────────
 
 function IconFileSearch() {
@@ -188,6 +205,24 @@ const workflowSteps = [
 export default function SmartStorageProductPage() {
   return (
     <div className="flex min-h-screen flex-col">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "SoftwareApplication",
+          "name": "AVIntelligence Smart Storage",
+          "applicationCategory": "FinanceApplication",
+          "operatingSystem": "Web",
+          "description": "AI-powered financial document storage and analysis. Automatically extracts data from receipts, invoices, payslips, and contracts.",
+          "url": "https://www.avintph.com/products/smart-storage",
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD",
+            "description": "Free tier available"
+          }
+        })}}
+      />
       <Navbar />
       <main className="flex-1">
         {/* Hero */}

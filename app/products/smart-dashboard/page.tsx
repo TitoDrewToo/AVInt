@@ -5,6 +5,23 @@ import Link from "next/link"
 import { StartFreeButton } from "@/components/start-free-button"
 import { FadeUp, StaggerContainer, StaggerItem } from "@/components/fade-up"
 
+export const metadata = {
+  title: "Smart Dashboard — AI Financial Dashboard | AVIntelligence",
+  description: "Visualize your income, expenses, and financial trends with an AI-powered dashboard. Customizable widgets, advanced analytics, and AI-generated insights from your documents.",
+  openGraph: {
+    title: "Smart Dashboard — AI Financial Dashboard | AVIntelligence",
+    description: "Visualize your income, expenses, and financial trends with an AI-powered dashboard. Customizable widgets, advanced analytics, and AI-generated insights from your documents.",
+    url: "https://www.avintph.com/products/smart-dashboard",
+    siteName: "AVIntelligence",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Smart Dashboard — AI Financial Dashboard | AVIntelligence",
+    description: "Visualize your income, expenses, and financial trends with an AI-powered dashboard.",
+  },
+}
+
 const dashboardModules = [
   {
     title: "Spending by Category",
@@ -127,6 +144,24 @@ const dashboardModules = [
 export default function SmartDashboardProductPage() {
   return (
     <div className="flex min-h-screen flex-col">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "SoftwareApplication",
+          "name": "AVIntelligence Smart Dashboard",
+          "applicationCategory": "FinanceApplication",
+          "operatingSystem": "Web",
+          "description": "AI-powered financial dashboard with customizable widgets, advanced analytics, and AI-generated insights from your financial documents.",
+          "url": "https://www.avintph.com/products/smart-dashboard",
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD",
+            "description": "Free tier available"
+          }
+        })}}
+      />
       <Navbar />
 
       {/* Global keyframes for dashboard visualizations */}

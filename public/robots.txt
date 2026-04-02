@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+
+# Block authenticated tool pages from indexing
+Disallow: /tools/
+Disallow: /purchase/
+
+Sitemap: https://www.avintph.com/sitemap.xml

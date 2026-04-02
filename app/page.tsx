@@ -7,6 +7,24 @@ import { ToolsSection } from "@/components/sections/tools"
 import { HowItWorksSection } from "@/components/sections/how-it-works"
 import { PricingPreviewSection } from "@/components/sections/pricing-preview"
 
+export const metadata = {
+  title: "AVIntelligence — AI-Powered Financial Document Analysis",
+  description: "Upload receipts, invoices, and payslips. AVIntelligence extracts, categorizes, and analyzes your financial documents automatically. Smart Storage, Smart Dashboard, and AI-generated reports.",
+  metadataBase: new URL("https://www.avintph.com"),
+  openGraph: {
+    title: "AVIntelligence — AI-Powered Financial Document Analysis",
+    description: "Upload receipts, invoices, and payslips. AVIntelligence extracts, categorizes, and analyzes your financial documents automatically.",
+    url: "https://www.avintph.com",
+    siteName: "AVIntelligence",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "AVIntelligence — AI-Powered Financial Document Analysis",
+    description: "Upload receipts, invoices, and payslips. AVIntelligence extracts, categorizes, and analyzes your financial documents automatically.",
+  },
+}
+
 export default function HomePage() {
   return (
     <div className="flex min-h-screen flex-col">

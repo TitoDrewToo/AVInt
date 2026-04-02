@@ -113,18 +113,19 @@ const PRESET_LABELS: Record<string, string> = {
 interface ReportDef {
   id: string
   label: string
+  description: string
   requires: "any_file" | "date_and_amount_2" | "income_amount" | "expense_or_income" | "contract_fields"
   coreEnabled: boolean
 }
 
 const REPORTS: ReportDef[] = [
-  { id: "expense_summary",     label: "Expense Summary",          requires: "date_and_amount_2",  coreEnabled: true  },
-  { id: "income_summary",      label: "Income Summary",           requires: "income_amount",       coreEnabled: true  },
-  { id: "tax_bundle",          label: "Tax Bundle Summary",       requires: "expense_or_income",   coreEnabled: true  },
-  { id: "profit_loss",         label: "Profit & Loss Summary",    requires: "expense_or_income",   coreEnabled: true  },
-  { id: "contract_summary",    label: "Contract Summary",         requires: "contract_fields",     coreEnabled: true  },
-  { id: "key_terms",           label: "Key Terms Summary",        requires: "contract_fields",     coreEnabled: true  },
-  { id: "business_expense",    label: "Business Expense Summary", requires: "expense_or_income",   coreEnabled: true  },
+  { id: "expense_summary",     label: "Expense Summary",          description: "Categorized breakdown of all expenses with totals and trends. Ideal for budgeting reviews and cost management.",                             requires: "date_and_amount_2",  coreEnabled: true  },
+  { id: "income_summary",      label: "Income Summary",           description: "Consolidated view of all income sources, employer details, and gross/net figures. Perfect for tax filing and financial planning.",            requires: "income_amount",       coreEnabled: true  },
+  { id: "tax_bundle",          label: "Tax Bundle Summary",       description: "Complete tax document compilation with tax paid, deductible expenses, and estimated liability. Built for accountants and tax season.",         requires: "expense_or_income",   coreEnabled: true  },
+  { id: "profit_loss",         label: "Profit & Loss Summary",    description: "Income vs. expenses comparison showing net position and savings rate. Essential for freelancers, consultants, and business owners.",           requires: "expense_or_income",   coreEnabled: true  },
+  { id: "contract_summary",    label: "Contract Summary",         description: "Key parties, dates, obligations, and terms extracted from all contracts. Useful for legal reviews, renewals, and compliance tracking.",        requires: "contract_fields",     coreEnabled: true  },
+  { id: "key_terms",           label: "Key Terms Summary",        description: "Critical clauses and definitions consolidated across all contract documents. Great for quick reference before negotiations or renewals.",       requires: "contract_fields",     coreEnabled: true  },
+  { id: "business_expense",    label: "Business Expense Summary", description: "Business-specific expense breakdown highlighting deductible items and vendor spending. Designed for business tax filing and reimbursements.",  requires: "expense_or_income",   coreEnabled: true  },
 ]
 
 // ── Folder / File types ───────────────────────────────────────────────────────
@@ -1408,7 +1409,7 @@ export default function SmartStoragePage() {
                       key={report.id}
                       disabled={!enabled}
                       onClick={() => enabled && setSelectedReport(report.id)}
-                      className={`w-full rounded px-2 py-1.5 text-left text-sm transition-colors ${
+                      className={`w-full rounded px-2 py-2 text-left transition-colors ${
                         isSelected
                           ? "bg-primary/10 text-primary"
                           : enabled
@@ -1416,7 +1417,8 @@ export default function SmartStoragePage() {
                           : "cursor-not-allowed text-muted-foreground/35"
                       }`}
                     >
-                      {report.label}
+                      <span className="block text-sm font-medium">{report.label}</span>
+                      <span className={`block text-xs leading-snug mt-0.5 ${isSelected ? "text-primary/70" : enabled ? "text-muted-foreground" : "text-muted-foreground/35"}`}>{report.description}</span>
                     </button>
                   )
                 })}
@@ -1561,11 +1563,12 @@ export default function SmartStoragePage() {
                     key={report.id}
                     disabled={!enabled}
                     onClick={() => { enabled && setSelectedReport(report.id) }}
-                    className={`w-full rounded px-2 py-1.5 text-left text-sm transition-colors ${
+                    className={`w-full rounded px-2 py-2 text-left transition-colors ${
                       isSelected ? "bg-primary/10 text-primary" : enabled ? "text-foreground hover:bg-muted" : "cursor-not-allowed text-muted-foreground/35"
                     }`}
                   >
-                    {report.label}
+                    <span className="block text-sm font-medium">{report.label}</span>
+                    <span className={`block text-xs leading-snug mt-0.5 ${isSelected ? "text-primary/70" : enabled ? "text-muted-foreground" : "text-muted-foreground/35"}`}>{report.description}</span>
                   </button>
                 )
               })}

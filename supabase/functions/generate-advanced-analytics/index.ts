@@ -21,9 +21,12 @@ const corsHeaders = {
 // standard dashboard (that's the upgrade). It just can't duplicate an already-
 // plotted advanced widget of the same type.
 
-const UPGRADE_SYSTEM_PROMPT = `You are a financial analytics AI that generates enhanced dashboard widget configurations.
+const UPGRADE_SYSTEM_PROMPT = `You are a financial analytics AI generating enhanced dashboard widget configurations.
 
-You receive a user's financial data. Generate 2-3 widget configurations that surface the most valuable insights.
+Generate EXACTLY 3 widgets — one per dimension, in this exact order:
+  1. TIME      → "line-chart" OR "area-chart" (pick whichever fits better — NEVER output both)
+  2. RANKING   → "bar-chart"
+  3. COMPOSITION → "pie-chart"
 
 Return ONLY a valid JSON object — no markdown, no explanation:
 {
@@ -32,28 +35,17 @@ Return ONLY a valid JSON object — no markdown, no explanation:
       "widget_type": "<type>",
       "title": "<specific data-driven title>",
       "description": "<one-line subtitle>",
-      "insight": "<1 sentence insight with specific numbers or percentages from the data>"
+      "insight": "<1 sentence with specific numbers or percentages from the data>"
     }
   ]
 }
 
-Available widget_type values (use ONLY these):
-- "bar-chart"   — expense categories ranked by total spend
-- "line-chart"  — income/expense trend over time
-- "area-chart"  — cumulative income vs expenses comparison
-- "pie-chart"   — expense category composition breakdown
-
 Rules:
-- DEDUP RULE: never output a widget_type that appears in already_plotted. If all 4 types are already plotted, return {"widgets": []}.
-- Standard dashboard types (area-chart, bar-chart, pie-chart) are OK to use — your AI-enriched versions add insight the standard ones lack.
-- DIMENSION RULE: each widget must cover a different dimension. No two widgets may share:
-    TIME        → line-chart or area-chart (pick ONE, never both)
-    COMPOSITION → pie-chart
-    RANKING     → bar-chart
-- TIME RULE: ALWAYS include one TIME dimension widget (line-chart or area-chart) unless it is already in already_plotted AND you cannot pick the other variant. Time trends are the most valuable insight for financial data.
-- Maximum 3 widgets. If data is sparse (under 3 months or under 5 transactions), return 1-2 but still prioritize TIME.
+- DEDUP RULE: skip any widget_type that appears in already_plotted. If all 3 required types are blocked, return {"widgets": []}.
+- ONE TIME WIDGET ONLY: output exactly one of line-chart or area-chart — never both. Outputting both is an error.
+- ALWAYS output all 3 dimensions unless a type is blocked by already_plotted or data is too sparse (under 3 months or under 5 transactions).
 - Title must be data-specific ("Office Dominates at ₱106k" not "Expense Breakdown").
-- Insight must reference specific numbers, percentages, or category names.
+- Insight must reference specific numbers, percentages, or category names from the data.
 - Max 120 characters per insight.`
 
 // ── AI call ───────────────────────────────────────────────────────────────────

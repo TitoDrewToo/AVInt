@@ -186,14 +186,7 @@ const WIDGET_MIN_SIZE: Record<string, { minW: number; minH: number }> = {
   "area-chart":       { minW: 3, minH: 3 },
   "pie-chart":        { minW: 2, minH: 3 },
   "context-summary":  { minW: 3, minH: 3 },
-  // Advanced R&D widget types
-  "vendor-ranking":   { minW: 4, minH: 4 },
-  "payment-split":    { minW: 3, minH: 4 },
-  "monthly-delta":    { minW: 4, minH: 4 },
-  "income-waterfall": { minW: 4, minH: 4 },
-  "tax-timeline":     { minW: 4, minH: 4 },
-  "savings-rate":     { minW: 4, minH: 4 },
-  "custom-vega":      { minW: 5, minH: 5 },
+
 }
 
 const WIDGET_LIBRARY = [
@@ -242,28 +235,6 @@ function AnimatedNumber({ value, prefix = "" }: { value: number; prefix?: string
 
 // ── Custom tooltip ────────────────────────────────────────────────────────────
 
-function VegaWidget({ spec, insight }: { spec: any; insight?: string | null }) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!spec || !containerRef.current) return
-    let view: any
-    import("vega-embed").then(({ default: vegaEmbed }) => {
-      vegaEmbed(containerRef.current!, spec, {
-        actions: false,
-        renderer: "svg",
-        theme: "ggplot2",
-      }).then(result => { view = result.view })
-    })
-    return () => { if (view) view.finalize() }
-  }, [spec])
-  if (!spec) return <div className="flex h-full items-center justify-center text-xs text-muted-foreground">No spec</div>
-  return (
-    <div className="flex h-full flex-col gap-2">
-      <div ref={containerRef} className="flex-1 min-h-0 w-full overflow-hidden" />
-      {insight && <p className="text-xs text-muted-foreground leading-snug border-t border-border pt-2">{insight}</p>}
-    </div>
-  )
-}
 
 function CustomTooltip({ active, payload, label, symbol }: any) {
   if (!active || !payload?.length) return null
@@ -594,178 +565,6 @@ function WidgetContent({
 
   // ── Advanced R&D widget types ───────────────────────────────────────────────
 
-  if (widget.type === "vendor-ranking") {
-    // Build vendor data from categoryData as proxy (actual vendor data comes from profile)
-    // The chart uses categoryData (categories by spend) as a vendor-level approximation
-    const chartData = categoryData.slice(0, 6).map(d => ({ name: d.name, value: d.value }))
-    return (
-      <div className="flex h-full flex-col gap-2">
-        <div className="flex-1 min-h-0">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData} layout="vertical" margin={{ top: 4, right: 12, left: 4, bottom: 4 }} barSize={14}>
-              <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} horizontal={false} />
-              <XAxis type="number" tick={{ fontSize: 10, fill: axisTickColor }} axisLine={false} tickLine={false}
-                tickFormatter={(v: number) => `${symbol}${(v / 1000).toFixed(0)}k`} />
-              <YAxis type="category" dataKey="name" tick={{ fontSize: 10, fill: axisTickColor }} axisLine={false} tickLine={false} width={72} />
-              <Tooltip content={<CustomTooltip symbol={symbol} />} />
-              <Bar dataKey="value" name="Spend" radius={[0, 4, 4, 0]}>
-                {chartData.map((_, i) => <Cell key={i} fill={MULTI_COLORS[i % MULTI_COLORS.length]} />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-    )
-  }
-
-  if (widget.type === "payment-split") {
-    const chartData = categoryData.length > 0 ? categoryData : []
-    return (
-      <div className="flex h-full flex-col gap-2">
-        <div className="flex-1 min-h-0">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie data={chartData} cx="50%" cy="50%" innerRadius="32%" outerRadius="60%"
-                paddingAngle={3} dataKey="value">
-                {chartData.map((_, i) => <Cell key={i} fill={MULTI_COLORS[i % MULTI_COLORS.length]} strokeWidth={0} />)}
-              </Pie>
-              <Tooltip content={<CustomTooltip />} />
-              <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, color: legendColor }} />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-    )
-  }
-
-  if (widget.type === "monthly-delta") {
-    // Month-over-month delta: show absolute expense change per month as bar chart
-    const deltaData = monthlyData.map((d, i) => {
-      const prev = monthlyData[i - 1]
-      return {
-        month: d.month,
-        delta: prev ? d.expenses - prev.expenses : 0,
-      }
-    }).slice(1) // drop first (no previous)
-    return (
-      <div className="flex h-full flex-col gap-2">
-        <div className="flex-1 min-h-0">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={deltaData} margin={{ top: 4, right: 10, left: 0, bottom: 0 }} barSize={20}>
-              <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
-              <XAxis dataKey="month" tick={{ fontSize: 10, fill: axisTickColor }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 10, fill: axisTickColor }} axisLine={false} tickLine={false}
-                tickFormatter={(v: number) => `${v >= 0 ? "+" : ""}${symbol}${(v / 1000).toFixed(0)}k`} />
-              <Tooltip content={<CustomTooltip symbol={symbol} />} />
-              <Bar dataKey="delta" name="MoM Change" radius={[4, 4, 0, 0]}>
-                {deltaData.map((d, i) => <Cell key={i} fill={d.delta >= 0 ? colors.secondary : colors.quaternary} />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-    )
-  }
-
-  if (widget.type === "income-waterfall") {
-    // Gross → Tax deduction → Net — rendered as stacked horizontal waterfall
-    const waterfallData = [
-      { name: "Gross Income",  value: kpi.totalIncome,   fill: colors.primary   },
-      { name: "Tax Paid",      value: -kpi.taxExposure,  fill: colors.secondary },
-      { name: "Net Position",  value: kpi.netPosition,   fill: colors.quaternary },
-    ]
-    return (
-      <div className="flex h-full flex-col gap-2">
-        <div className="flex-1 min-h-0">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={waterfallData} margin={{ top: 4, right: 10, left: 0, bottom: 0 }} barSize={36}>
-              <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
-              <XAxis dataKey="name" tick={{ fontSize: 10, fill: axisTickColor }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 10, fill: axisTickColor }} axisLine={false} tickLine={false}
-                tickFormatter={(v: number) => `${symbol}${(v / 1000).toFixed(0)}k`} />
-              <Tooltip content={<CustomTooltip symbol={symbol} />} />
-              <Bar dataKey="value" name="Amount" radius={[4, 4, 0, 0]}>
-                {waterfallData.map((d, i) => <Cell key={i} fill={d.fill} />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-    )
-  }
-
-  if (widget.type === "tax-timeline") {
-    // Tax paid per month derived from monthlyData tax proxy
-    // Real data comes from tax_timeline in user_analytics_profile — for now derive from document_fields via monthlyData
-    const taxData = monthlyData.map(d => ({
-      month: d.month,
-      tax: d.income > 0 ? d.income * (kpi.taxRatio / 100) : 0,
-    }))
-    return (
-      <div className="flex h-full flex-col gap-2">
-        <div className="flex-1 min-h-0">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={taxData} margin={{ top: 4, right: 10, left: 0, bottom: 0 }} barSize={20}>
-              <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
-              <XAxis dataKey="month" tick={{ fontSize: 10, fill: axisTickColor }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 10, fill: axisTickColor }} axisLine={false} tickLine={false}
-                tickFormatter={(v: number) => `${symbol}${(v / 1000).toFixed(1)}k`} />
-              <Tooltip content={<CustomTooltip symbol={symbol} />} />
-              <Bar dataKey="tax" name="Est. Tax" fill={colors.tertiary} radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-    )
-  }
-
-  if (widget.type === "savings-rate") {
-    const savingsData = monthlyData
-      .filter(d => d.income > 0)
-      .map(d => ({
-        month: d.month,
-        rate: parseFloat(((d.income - d.expenses) / d.income * 100).toFixed(1)),
-        income: d.income,
-        expenses: d.expenses,
-      }))
-    const bestIdx = savingsData.reduce((bi, d, i) => d.rate > (savingsData[bi]?.rate ?? -Infinity) ? i : bi, 0)
-    const best = savingsData[bestIdx]
-    return (
-      <div className="flex h-full flex-col gap-2">
-        <div className="flex-1 min-h-0">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={savingsData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
-              <XAxis dataKey="month" tick={{ fontSize: 10, fill: axisTickColor }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 10, fill: axisTickColor }} axisLine={false} tickLine={false}
-                tickFormatter={(v: number) => `${v}%`} domain={[0, 100]} />
-              <Tooltip formatter={(v: number) => [`${v}%`, "Savings rate"]}
-                labelFormatter={(l: string) => l} contentStyle={{ fontSize: 12 }} />
-              <Line type="monotone" dataKey="rate" stroke={colors.primary} strokeWidth={2}
-                dot={(props: any) => {
-                  if (props.index === bestIdx) {
-                    return <circle key={props.index} cx={props.cx} cy={props.cy} r={6}
-                      fill={colors.primary} stroke="white" strokeWidth={2} />
-                  }
-                  return <circle key={props.index} cx={props.cx} cy={props.cy} r={3} fill={colors.primary} />
-                }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-        {best && (
-          <div className="flex items-center justify-between border-t border-border pt-2">
-            <p className="text-xs text-muted-foreground">Peak: <span className="font-medium text-foreground">{best.month}</span></p>
-            <p className="text-xs font-semibold text-primary">{best.rate}% savings rate</p>
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  if (widget.type === "custom-vega") {
-    return <VegaWidget spec={widget.config?.spec} insight={widget.insight} />
-  }
 
   return null
 }
@@ -981,12 +780,26 @@ export default function SmartDashboardPage() {
   useEffect(() => { loadContextSummary() }, [loadContextSummary])
 
   // ── Advanced widgets ────────────────────────────────────────────────────────
+  // Supported advanced widget types — upgrade versions of standard charts with AI insight.
+  // R&D types (savings-rate, monthly-delta, etc.) are no longer generated or displayed.
+  const SUPPORTED_ADVANCED_TYPES = ["bar-chart", "line-chart", "area-chart", "pie-chart"]
+
   const loadAdvancedWidgets = useCallback(async () => {
     if (!session?.user?.id) return
+
+    // Hard-delete any legacy R&D widget types that may have been starred or plotted
+    // in previous sessions. This is a one-time self-healing cleanup.
+    await supabase
+      .from("advanced_widgets")
+      .delete()
+      .eq("user_id", session.user.id)
+      .not("widget_type", "in", `(${SUPPORTED_ADVANCED_TYPES.join(",")})`)
+
     const { data } = await supabase
       .from("advanced_widgets")
       .select("*")
       .eq("user_id", session.user.id)
+      .in("widget_type", SUPPORTED_ADVANCED_TYPES)
       .or("expires_at.is.null,expires_at.gt." + new Date().toISOString())
       .order("is_starred", { ascending: false })
       .order("created_at", { ascending: false })

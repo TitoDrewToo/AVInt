@@ -608,8 +608,8 @@ export default function SmartDashboardPage() {
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([])
   const [categoryData, setCategoryData] = useState<CategoryData[]>([])
   const [docTypeData, setDocTypeData] = useState<CategoryData[]>([])
-  const [widgets, setWidgets] = useState<Widget[]>(DEFAULT_WIDGETS)
-  const [layout, setLayout] = useState<LayoutItem[]>(DEFAULT_LAYOUT)
+  const [widgets, setWidgets] = useState<Widget[]>([])
+  const [layout, setLayout] = useState<LayoutItem[]>([])
   const [selectedWidgetId, setSelectedWidgetId] = useState<string | null>(null)
   const [isDirty, setIsDirty] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -678,9 +678,8 @@ export default function SmartDashboardPage() {
       .single()
     if (data?.layout) {
       const saved = data.layout
-      // Fall back to DEFAULT_WIDGETS if saved array is empty — prevents blank canvas
-      // from a previous session where all widgets were removed and layout was saved.
-      if (saved.widgets !== undefined) setWidgets(saved.widgets?.length ? saved.widgets : DEFAULT_WIDGETS)
+      // Restore exactly what was saved — empty canvas is valid and intentional
+      if (saved.widgets !== undefined) setWidgets(saved.widgets ?? [])
       if (saved.gridLayout?.length) {
         // Always apply current min/max constraints — never restore stale saved values
         const constraints: Record<string, { minW: number; minH: number; maxH?: number }> = {}

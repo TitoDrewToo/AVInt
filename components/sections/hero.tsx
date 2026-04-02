@@ -6,7 +6,6 @@ import { ArrowRight } from "lucide-react"
 
 import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
-
 function TrustedCounter() {
   const [current, setCurrent] = useState<number | null>(null)
   const [next, setNext] = useState<number | null>(null)
@@ -227,16 +226,8 @@ export function HeroSection() {
                 </Button>
               </Link>
             </div>
-            {/* Trust indicators */}
-            <div className="flex items-center gap-6 pt-8">
-              <div className="flex -space-x-2">
-                {[...Array(4)].map((_, i) => (
-                  <div
-                    key={i}
-                    className="h-8 w-8 rounded-full border-2 border-background bg-muted"
-                  />
-                ))}
-              </div>
+            {/* Trust indicator */}
+            <div className="pt-6">
               <span className="text-sm text-muted-foreground">
                 Trusted by <TrustedCounter /> users worldwide
               </span>

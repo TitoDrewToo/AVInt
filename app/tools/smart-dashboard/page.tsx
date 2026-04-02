@@ -990,7 +990,21 @@ export default function SmartDashboardPage() {
       .or("expires_at.is.null,expires_at.gt." + new Date().toISOString())
       .order("is_starred", { ascending: false })
       .order("created_at", { ascending: false })
-    if (data) setAdvancedWidgetsList(data)
+    if (data) {
+      setAdvancedWidgetsList(data)
+      // Reconcile canvas: remove plotted widgets whose DB row no longer exists.
+      // This handles the case where advanced analytics regenerated and old widget
+      // types were cleared — canvas self-heals without manual removal.
+      const liveIds = new Set(data.map((w: AdvancedWidget) => w.id))
+      setWidgets(prev => {
+        const stale = prev.filter(w => w.advancedId && !liveIds.has(w.advancedId))
+        if (!stale.length) return prev
+        const staleIds = new Set(stale.map(w => w.id))
+        setLayout(prevLayout => prevLayout.filter(l => !staleIds.has(l.i)))
+        setIsDirty(true)
+        return prev.filter(w => !staleIds.has(w.id))
+      })
+    }
   }, [session])
 
   useEffect(() => { loadAdvancedWidgets() }, [loadAdvancedWidgets])
@@ -1141,9 +1155,10 @@ export default function SmartDashboardPage() {
   const handleLayoutChange = (newLayout: RGLLayout) => {
     const mapped = (newLayout as any[]).map((l: any) => ({ i: l.i, x: l.x, y: l.y, w: l.w, h: l.h, minW: l.minW, minH: l.minH }))
     setLayout(mapped)
-    // Only mark dirty if the layout actually differs from what was last saved/loaded.
-    // This skips RGL's spurious onLayoutChange on initial mount regardless of timing.
-    if (!layoutInitialized.current) return
+    // Only mark dirty when in edit mode and layout actually changed from last save.
+    // Guards against: spurious RGL fires on mount, and RGL internal fires when
+    // static/isDraggable props toggle during lock/unlock.
+    if (!layoutInitialized.current || !isEditMode) return
     const saved = savedLayoutRef.current
     const changed = mapped.some(item => {
       const s = saved.find(s => s.i === item.i)
@@ -1402,7 +1417,7 @@ export default function SmartDashboardPage() {
                 rowHeight={24}
                 width={containerWidth}
                 onLayoutChange={handleLayoutChange}
-                draggableHandle={isMobile ? ".no-drag" : ".drag-handle"}
+                draggableHandle={(!isMobile && isEditMode) ? ".drag-handle" : ".no-drag"}
                 isDraggable={!isMobile && isEditMode}
                 isResizable={!isMobile && isEditMode}
                 margin={[10, 10]}
@@ -1430,8 +1445,8 @@ export default function SmartDashboardPage() {
                       <span className="pointer-events-none absolute -bottom-1 -right-1 h-2 w-2 rounded-full bg-primary" />
                     </>)}
 
-                    {/* Drag handle — desktop only */}
-                    {!isMobile && <div className="drag-handle absolute left-0 right-0 top-0 h-8 cursor-grab rounded-t-2xl opacity-0 group-hover:opacity-100 transition-opacity" />}
+                    {/* Drag handle — desktop, edit mode only */}
+                    {!isMobile && isEditMode && <div className="drag-handle absolute left-0 right-0 top-0 h-8 cursor-grab rounded-t-2xl opacity-0 group-hover:opacity-100 transition-opacity" />}
 
                     {/* Widget header */}
                     <div className="flex items-center px-4 pt-3 pb-1 shrink-0">

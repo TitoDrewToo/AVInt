@@ -667,7 +667,9 @@ export default function SmartDashboardPage() {
       .single()
     if (data?.layout) {
       const saved = data.layout
-      if (saved.widgets !== undefined) setWidgets(saved.widgets ?? [])
+      // Fall back to DEFAULT_WIDGETS if saved array is empty — prevents blank canvas
+      // from a previous session where all widgets were removed and layout was saved.
+      if (saved.widgets !== undefined) setWidgets(saved.widgets?.length ? saved.widgets : DEFAULT_WIDGETS)
       if (saved.gridLayout?.length) {
         // Always apply current minH/minW — never restore stale saved constraints
         const constraints: Record<string, { minW: number; minH: number }> = {}

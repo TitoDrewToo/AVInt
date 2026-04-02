@@ -879,14 +879,28 @@ export default function SmartDashboardPage() {
           plotted_advanced_types: widgets.filter(w => w.advancedId).map(w => w.type),
         }),
       })
+      const responseText = await res.text()
       if (res.ok) {
-        const data = await res.json()
+        let data: any = {}
+        try { data = JSON.parse(responseText) } catch { /* use empty data */ }
         await loadAdvancedWidgets()
         localStorage.setItem("aa_last_field_count", String(999999))
         setHasNewData(false)
-        setShowAdvancedMenu(false)
-        setAnalyticsToast(`${data.count} new visualization${data.count !== 1 ? "s" : ""} available. Check the Advanced section of your Visualizations panel.`)
+        setAnalyticsToast(
+          data.count > 0
+            ? `${data.count} new visualization${data.count !== 1 ? "s" : ""} ready — see the Advanced section below.`
+            : "Analytics ran but no new charts were generated."
+        )
         setTimeout(() => setAnalyticsToast(null), 7000)
+      } else {
+        let errMsg = "Analytics generation failed."
+        try {
+          const errData = JSON.parse(responseText)
+          if (errData?.error) errMsg = `Analytics error: ${errData.error}`
+        } catch { /* use default */ }
+        setAnalyticsToast(errMsg)
+        setTimeout(() => setAnalyticsToast(null), 9000)
+        console.error("generate-advanced-analytics error:", res.status, responseText)
       }
     } finally {
       setIsRunningAnalytics(false)

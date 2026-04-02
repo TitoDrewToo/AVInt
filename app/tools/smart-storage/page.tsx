@@ -282,6 +282,7 @@ function DateRangeSelector({ dateRange, onChange }: { dateRange: DateRange; onCh
 export default function SmartStoragePage() {
   const [session, setSession] = useState<Session | null>(null)
   const [sessionLoaded, setSessionLoaded] = useState(false)
+  const [isPro, setIsPro] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
 
   // Folder/navigation state
@@ -355,6 +356,13 @@ export default function SmartStoragePage() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => { setSession(s); setSessionLoaded(true) })
     return () => subscription.unsubscribe()
   }, [])
+
+  // ── Subscription check ─────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!session?.user?.id) return
+    supabase.from("subscriptions").select("status").eq("user_id", session.user.id).single()
+      .then(({ data }) => setIsPro(data?.status === "pro" || data?.status === "day_pass"))
+  }, [session])
 
   // ── Processing indicator + polling ────────────────────────────────────────
   const checkProcessingState = useCallback(async () => {
@@ -1386,15 +1394,16 @@ export default function SmartStoragePage() {
 
               <Button
                 className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
-                disabled={!selectedReport || !reportAvailability[selectedReport]}
+                disabled={!isPro || !selectedReport || !reportAvailability[selectedReport]}
                 size="sm"
                 onClick={() => {
                   if (selectedReport && REPORT_ROUTES[selectedReport]) {
                     router.push(REPORT_ROUTES[selectedReport])
                   }
                 }}
+                title={!isPro ? "Upgrade to Pro to generate reports" : undefined}
               >
-                Generate Report
+                {isPro ? "Generate Report" : "Pro Required"}
               </Button>
             </div>
 
@@ -1541,7 +1550,7 @@ export default function SmartStoragePage() {
             )}
             <Button
               className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
-              disabled={!selectedReport || !reportAvailability[selectedReport]}
+              disabled={!isPro || !selectedReport || !reportAvailability[selectedReport]}
               size="sm"
               onClick={() => {
                 if (selectedReport && REPORT_ROUTES[selectedReport]) {
@@ -1549,8 +1558,9 @@ export default function SmartStoragePage() {
                 }
                 setMobileReportsOpen(false)
               }}
+              title={!isPro ? "Upgrade to Pro to generate reports" : undefined}
             >
-              Generate Report
+              {isPro ? "Generate Report" : "Pro Required"}
             </Button>
           </div>
           <div className="flex-1 overflow-y-auto px-3 pb-3">

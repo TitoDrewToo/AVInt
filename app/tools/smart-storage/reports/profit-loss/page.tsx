@@ -75,6 +75,7 @@ function dominantCurrency(entries: { currency: string | null }[]): string {
 export default function ProfitLossPage() {
   const [session, setSession] = useState<Session | null>(null)
   const [sessionLoaded, setSessionLoaded] = useState(false)
+  const [isPro, setIsPro] = useState(false)
   const [incomeRows, setIncomeRows] = useState<IncomeEntry[]>([])
   const [expenseRows, setExpenseRows] = useState<ExpenseEntry[]>([])
   const [loading, setLoading] = useState(true)
@@ -92,6 +93,12 @@ export default function ProfitLossPage() {
     })
     return () => subscription.unsubscribe()
   }, [])
+
+  useEffect(() => {
+    if (!session?.user?.id) return
+    supabase.from("subscriptions").select("status").eq("user_id", session.user.id).single()
+      .then(({ data }) => setIsPro(data?.status === "pro" || data?.status === "day_pass"))
+  }, [session])
 
   const loadData = useCallback(async () => {
     if (!session?.user?.id) return
@@ -205,6 +212,18 @@ export default function ProfitLossPage() {
 
   if (!sessionLoaded) return null
   if (!session) return <AuthGuardModal isVisible={true} />
+  if (!isPro) return (
+    <div className="flex min-h-screen flex-col">
+      <Navbar />
+      <main className="flex flex-1 items-center justify-center">
+        <div className="text-center space-y-3">
+          <p className="text-lg font-semibold text-foreground">Pro Required</p>
+          <p className="text-sm text-muted-foreground">Upgrade to access financial reports.</p>
+          <a href="/pricing" className="inline-block rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90">View Pricing</a>
+        </div>
+      </main>
+    </div>
+  )
 
   return (
     <div className="flex min-h-screen flex-col">

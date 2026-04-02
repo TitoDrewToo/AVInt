@@ -476,13 +476,6 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                         </div>
                       </AccordionItem>
 
-                      <Link
-                        href="/redeem"
-                        className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-muted"
-                      >
-                        Redeem gift code
-                        <ChevronDown className="h-4 w-4 -rotate-90 text-muted-foreground" />
-                      </Link>
                     </div>
 
                     {/* Email & Password */}

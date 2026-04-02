@@ -129,6 +129,7 @@ export default function BusinessExpensePage() {
           payment_method: row.payment_method,
           tax_amount: row.tax_amount != null ? parseFloat(row.tax_amount) || 0 : null,
           confidence_score: row.confidence_score,
+          // Intentional: null expense_category fails BUSINESS_CATEGORIES.includes check, so uncategorized expenses default to personal
           isBusiness: BUSINESS_CATEGORIES.includes(expense_category ?? ""),
         }
       }))

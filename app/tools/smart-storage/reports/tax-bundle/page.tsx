@@ -122,7 +122,7 @@ export default function TaxBundlePage() {
   const expenseRows = rows.filter(r => r.document_type === "receipt" || r.document_type === "invoice")
 
   const totalGross = incomeRows.reduce((sum, r) => sum + (r.gross_income ?? r.total_amount ?? 0), 0)
-  const totalNet = incomeRows.reduce((sum, r) => sum + (r.net_income ?? 0), 0)
+  const totalNet = incomeRows.reduce((sum, r) => sum + (r.net_income ?? r.total_amount ?? 0), 0)
   const totalExpenses = expenseRows.reduce((sum, r) => sum + (r.total_amount ?? 0), 0)
   const estimatedTaxable = totalGross - totalExpenses
 
@@ -201,7 +201,7 @@ export default function TaxBundlePage() {
                 <div className="rounded-xl border border-border bg-card p-5">
                   <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Est. Taxable</p>
                   <p className="mt-2 text-xl font-semibold text-foreground">{formatCurrency(Math.max(0, estimatedTaxable), currency)}</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">Gross minus expenses</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">(gross income minus expenses)</p>
                 </div>
               </div>
 

@@ -117,10 +117,10 @@ export default function IncomeSummaryPage() {
   }, {} as Record<string, number>)
   const currency = Object.entries(_currencyCount).sort(([,a],[,b]) => (b as number) - (a as number))[0]?.[0] ?? "USD"
   const totalGross = income.reduce((sum, r) => sum + (r.gross_income ?? r.total_amount ?? 0), 0)
-  const totalNet = income.reduce((sum, r) => sum + (r.net_income ?? 0), 0)
+  const totalNet = income.reduce((sum, r) => sum + (r.net_income ?? r.total_amount ?? 0), 0)
   // Average by unique months not document count
   const uniqueMonths = new Set(income.map(r => r.document_date?.slice(0, 7)).filter(Boolean)).size
-  const avgMonthly = uniqueMonths > 0 ? totalGross / uniqueMonths : totalGross
+  const avgMonthly = uniqueMonths > 0 ? totalGross / uniqueMonths : 0
 
   if (!sessionLoaded) return null
   if (!session) return <AuthGuardModal isVisible={true} />

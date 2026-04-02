@@ -243,10 +243,10 @@ export default function ExpenseSummaryPage() {
                       <div className="h-1.5 w-full rounded-full bg-muted">
                         <div
                           className="h-1.5 rounded-full bg-primary"
-                          style={{ width: `${(cat.total / totalExpenses) * 100}%` }}
+                          style={{ width: `${Math.min(100, totalExpenses > 0 ? (cat.total / totalExpenses) * 100 : 0)}%` }}
                         />
                       </div>
-                      <p className="mt-0.5 text-xs text-muted-foreground">{cat.count} document{cat.count > 1 ? "s" : ""} · {((cat.total / totalExpenses) * 100).toFixed(1)}%</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">{cat.count} document{cat.count > 1 ? "s" : ""} · {(totalExpenses > 0 ? (cat.total / totalExpenses) * 100 : 0).toFixed(1)}%</p>
                     </div>
                   ))}
                 </div>

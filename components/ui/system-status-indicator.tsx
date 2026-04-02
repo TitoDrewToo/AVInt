@@ -9,7 +9,7 @@ interface HealthResponse {
   overall: Overall
   providers: {
     supabase: string
-    lemon: string
+    creem: string
     openai: string
     anthropic: string
     gemini: string
@@ -126,18 +126,17 @@ export function SystemStatusIndicator() {
               /* Owner view — all providers */
               <div className="space-y-1.5 border-t border-border pt-2">
                 <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1.5">Infrastructure</p>
-                <StatusRow label="Supabase"    indicator={p?.supabase  ?? "unknown"} />
-                <StatusRow label="LemonSqueezy" indicator={p?.lemon    ?? "unknown"} />
+                <StatusRow label="Supabase" indicator={p?.supabase ?? "unknown"} />
+                <StatusRow label="Creem"    indicator={p?.creem    ?? "unknown"} />
                 <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mt-2.5 mb-1.5">AI Providers</p>
                 <StatusRow label="OpenAI"    indicator={p?.openai    ?? "unknown"} />
                 <StatusRow label="Anthropic" indicator={p?.anthropic ?? "unknown"} />
                 <StatusRow label="Gemini"    indicator={p?.gemini    ?? "unknown"} />
               </div>
             ) : (
-              /* User view — grouped */
+              /* User view — DB and AI only */
               <div className="space-y-1.5 border-t border-border pt-2">
                 <StatusRow label="Database" indicator={p?.supabase ?? "unknown"} />
-                <StatusRow label="Payments" indicator={p?.lemon    ?? "unknown"} />
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-muted-foreground">AI</span>
                   <span className={`text-xs font-medium ${

@@ -33,20 +33,16 @@ async function checkSupabase(): Promise<string> {
   }
 }
 
-// LemonSqueezy — custom status page, scrape the HTML for impact keywords
-async function checkLemonSqueezy(): Promise<string> {
+// Creem — try Atlassian statuspage format, fall back to unknown
+async function checkCreem(): Promise<string> {
   try {
-    const res = await fetch("https://status.lemonsqueezy.com", {
+    const res = await fetch("https://status.creem.io/api/v2/status.json", {
       signal: AbortSignal.timeout(5000),
       next: { revalidate: 60 },
     })
     if (!res.ok) return "unknown"
-    const html = await res.text()
-    const lower = html.toLowerCase()
-    if (lower.includes("major outage") || lower.includes("service outage")) return "major"
-    if (lower.includes("service may be impacted") || lower.includes("degraded") || lower.includes("partial")) return "minor"
-    if (lower.includes("all systems") && lower.includes("operational")) return "none"
-    return "none"
+    const data = await res.json()
+    return data?.status?.indicator ?? "none"
   } catch {
     return "unknown"
   }
@@ -89,21 +85,21 @@ function worstOf(...indicators: string[]): "operational" | "degraded" | "outage"
 }
 
 export async function GET() {
-  const [supabase, lemon, openai, anthropic, gemini] = await Promise.all([
+  const [supabase, creem, openai, anthropic, gemini] = await Promise.all([
     checkSupabase(),
-    checkLemonSqueezy(),
+    checkCreem(),
     fetchStatusPage("https://status.openai.com/api/v2/status.json"),
     fetchStatusPage("https://status.anthropic.com/api/v2/status.json"),
     checkGemini(),
   ])
 
-  // LemonSqueezy only drags overall to outage — minor/degraded payments issues don't affect core indicator
+  // Creem only drags overall to outage — minor/degraded payments issues don't affect core indicator
   const core = worstOf(supabase, openai, anthropic, gemini)
   const overall: "operational" | "degraded" | "outage" =
-    lemon === "major" || lemon === "critical" ? "outage" : core
+    creem === "major" || creem === "critical" ? "outage" : core
 
   return NextResponse.json({
     overall,
-    providers: { supabase, lemon, openai, anthropic, gemini },
+    providers: { supabase, creem, openai, anthropic, gemini },
   })
 }

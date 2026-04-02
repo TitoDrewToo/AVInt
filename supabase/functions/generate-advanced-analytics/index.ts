@@ -24,9 +24,9 @@ const corsHeaders = {
 const UPGRADE_SYSTEM_PROMPT = `You are a financial analytics AI generating enhanced dashboard widget configurations.
 
 Generate EXACTLY 3 widgets — one per dimension, in this exact order:
-  1. TIME      → "line-chart" OR "area-chart" (pick whichever fits better — NEVER output both)
-  2. RANKING   → "bar-chart"
-  3. COMPOSITION → "pie-chart"
+  1. TIME        → "line-chart" OR "area-chart" (pick whichever fits better — NEVER output both)
+  2. NET MONTHLY → "bar-chart" — monthly net position (income minus expenses per month), green surplus / red deficit
+  3. COMPOSITION → "pie-chart" — expense category breakdown
 
 Return ONLY a valid JSON object — no markdown, no explanation:
 {
@@ -43,6 +43,7 @@ Return ONLY a valid JSON object — no markdown, no explanation:
 Rules:
 - DEDUP RULE: skip any widget_type that appears in already_plotted. If all 3 required types are blocked, return {"widgets": []}.
 - ONE TIME WIDGET ONLY: output exactly one of line-chart or area-chart — never both. Outputting both is an error.
+- bar-chart insight must reference specific monthly surplus/deficit figures, not expense categories (pie-chart covers categories).
 - ALWAYS output all 3 dimensions unless a type is blocked by already_plotted or data is too sparse (under 3 months or under 5 transactions).
 - Title must be data-specific ("Office Dominates at ₱106k" not "Expense Breakdown").
 - Insight must reference specific numbers, percentages, or category names from the data.

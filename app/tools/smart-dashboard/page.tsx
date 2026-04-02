@@ -430,8 +430,15 @@ function WidgetContent({
 
   if (widget.type === "bar-chart" || widget.type === "bar-deductible") {
     const variant = widget.chartVariant ?? "bar"
-    const data = categoryData
-    const label = widget.type === "bar-deductible" ? "Expense categories reducing tax exposure" : "Total spend per category"
+    // Advanced bar-chart shows monthly net position (surplus/deficit per month)
+    // Standard bar-chart shows expense categories
+    const isAdvancedBar = widget.type === "bar-chart" && !!widget.advancedId
+    const data = isAdvancedBar
+      ? monthlyData.map(m => ({ name: m.month, value: m.income - m.expenses }))
+      : categoryData
+    const label = isAdvancedBar
+      ? "Monthly net position (income − expenses)"
+      : widget.type === "bar-deductible" ? "Expense categories reducing tax exposure" : "Total spend per category"
     return (
       <div className="flex h-full flex-col">
         <p className="mb-3 text-xs text-muted-foreground">{label}</p>
@@ -451,8 +458,10 @@ function WidgetContent({
                 <XAxis dataKey="name" tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${symbol}${(v/1000).toFixed(0)}k`} />
                 <Tooltip content={<CustomTooltip symbol={symbol} />} />
-                <Bar dataKey="value" name={widget.type === "bar-deductible" ? "Deductible" : "Amount"} radius={[6, 6, 0, 0]}>
-                  {data.map((_, i) => <Cell key={i} fill={MULTI_COLORS[i % MULTI_COLORS.length]} />)}
+                <Bar dataKey="value" name={widget.type === "bar-deductible" ? "Deductible" : isAdvancedBar ? "Net" : "Amount"} radius={[6, 6, 0, 0]}>
+                  {data.map((entry, i) => (
+                    <Cell key={i} fill={isAdvancedBar ? (entry.value >= 0 ? "#10b981" : "#ef4444") : MULTI_COLORS[i % MULTI_COLORS.length]} />
+                  ))}
                 </Bar>
               </BarChart>
             )}

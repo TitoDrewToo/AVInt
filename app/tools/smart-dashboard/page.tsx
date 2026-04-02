@@ -71,6 +71,8 @@ interface LayoutItem {
   h: number
   minW?: number
   minH?: number
+  maxW?: number
+  maxH?: number
   static?: boolean
 }
 
@@ -121,15 +123,15 @@ const DEFAULT_WIDGETS: Widget[] = [
 ]
 
 const DEFAULT_LAYOUT: LayoutItem[] = [
-  { i: "kpi-income",       x: 0,  y: 0,  w: 3, h: 5,  minW: 2, minH: 1 },
-  { i: "kpi-expenses",     x: 3,  y: 0,  w: 3, h: 5,  minW: 2, minH: 1 },
-  { i: "kpi-net",          x: 6,  y: 0,  w: 3, h: 5,  minW: 2, minH: 1 },
-  { i: "kpi-tax-exposure", x: 9,  y: 0,  w: 3, h: 5,  minW: 2, minH: 1 },
-  { i: "kpi-tax-ratio",    x: 0,  y: 5,  w: 3, h: 5,  minW: 2, minH: 1 },
-  { i: "area-chart",       x: 3,  y: 5,  w: 9, h: 12, minW: 4, minH: 3 },
-  { i: "bar-chart",        x: 0,  y: 10, w: 3, h: 11, minW: 3, minH: 3 },
-  { i: "bar-deductible",   x: 0,  y: 17, w: 4, h: 11, minW: 3, minH: 3 },
-  { i: "pie-chart",        x: 4,  y: 17, w: 4, h: 11, minW: 3, minH: 3 },
+  { i: "kpi-income",       x: 0,  y: 0,  w: 3, h: 3, minW: 2, minH: 2, maxH: 5 },
+  { i: "kpi-expenses",     x: 3,  y: 0,  w: 3, h: 3, minW: 2, minH: 2, maxH: 5 },
+  { i: "kpi-net",          x: 6,  y: 0,  w: 3, h: 3, minW: 2, minH: 2, maxH: 5 },
+  { i: "kpi-tax-exposure", x: 9,  y: 0,  w: 3, h: 3, minW: 2, minH: 2, maxH: 5 },
+  { i: "kpi-tax-ratio",    x: 0,  y: 3,  w: 3, h: 3, minW: 2, minH: 2, maxH: 5 },
+  { i: "area-chart",       x: 3,  y: 3,  w: 9, h: 9, minW: 4, minH: 3 },
+  { i: "bar-chart",        x: 0,  y: 6,  w: 3, h: 8, minW: 3, minH: 3 },
+  { i: "bar-deductible",   x: 0,  y: 12, w: 4, h: 8, minW: 3, minH: 3 },
+  { i: "pie-chart",        x: 4,  y: 12, w: 4, h: 8, minW: 3, minH: 3 },
 ]
 
 // ── Mobile layout derivation ──────────────────────────────────────────────────
@@ -667,13 +669,14 @@ export default function SmartDashboardPage() {
       // from a previous session where all widgets were removed and layout was saved.
       if (saved.widgets !== undefined) setWidgets(saved.widgets?.length ? saved.widgets : DEFAULT_WIDGETS)
       if (saved.gridLayout?.length) {
-        // Always apply current minH/minW — never restore stale saved constraints
-        const constraints: Record<string, { minW: number; minH: number }> = {}
-        DEFAULT_LAYOUT.forEach(l => { constraints[l.i] = { minW: l.minW ?? 2, minH: l.minH ?? 1 } })
+        // Always apply current min/max constraints — never restore stale saved values
+        const constraints: Record<string, { minW: number; minH: number; maxH?: number }> = {}
+        DEFAULT_LAYOUT.forEach(l => { constraints[l.i] = { minW: l.minW ?? 2, minH: l.minH ?? 1, maxH: l.maxH } })
         const restoredLayout = saved.gridLayout.map((l: any) => ({
           i: l.i, x: l.x, y: l.y, w: l.w, h: l.h,
           minW: constraints[l.i]?.minW ?? 2,
           minH: constraints[l.i]?.minH ?? 1,
+          ...(constraints[l.i]?.maxH != null ? { maxH: constraints[l.i].maxH } : {}),
         }))
         setLayout(restoredLayout)
         // Store what we loaded so handleLayoutChange can compare and skip the initial RGL fire
@@ -870,11 +873,10 @@ export default function SmartDashboardPage() {
         body: JSON.stringify({
           user_id: session.user.id,
           existing_widget_types: widgets.map(w => w.type),
-          // Only send STARRED types — the edge function deletes all non-starred before
-          // generating, so only starred widgets can actually cause duplication.
-          // Sending is_plotted types caused Haiku to return empty when those types
-          // had been plotted in a previous run and then deleted by cleanup.
-          plotted_advanced_types: advancedWidgetsList.filter(w => w.is_starred).map(w => w.widget_type),
+          // Only dedup against types currently PLOTTED ON CANVAS as advanced widgets.
+          // Do NOT use starred DB rows — stale starred rows accumulate across sessions
+          // and block Haiku from generating those types, resulting in 0 new charts.
+          plotted_advanced_types: widgets.filter(w => w.advancedId).map(w => w.type),
         }),
       })
       if (res.ok) {
@@ -939,10 +941,11 @@ export default function SmartDashboardPage() {
     const id = `${type}-${Date.now()}`
     const isKpi = type.startsWith("kpi")
     const minSize = WIDGET_MIN_SIZE[type] ?? { minW: isKpi ? 2 : 3, minH: isKpi ? 2 : 3 }
+    const defaultEntry = DEFAULT_LAYOUT.find(l => l.i === type)
     setWidgets(prev => [...prev, { id, type, title }])
     setLayout(prev => {
       const lastY = prev.length ? Math.max(...prev.map(l => l.y + l.h)) : 0
-      return [...prev, { i: id, x: 0, y: lastY, w: minSize.minW, h: minSize.minH, minW: minSize.minW, minH: minSize.minH }]
+      return [...prev, { i: id, x: 0, y: lastY, w: minSize.minW, h: minSize.minH, minW: minSize.minW, minH: minSize.minH, ...(defaultEntry?.maxH != null ? { maxH: defaultEntry.maxH } : {}) }]
     })
     setIsDirty(true)
   }
@@ -972,7 +975,7 @@ export default function SmartDashboardPage() {
   }
 
   const handleLayoutChange = (newLayout: RGLLayout) => {
-    const mapped = (newLayout as any[]).map((l: any) => ({ i: l.i, x: l.x, y: l.y, w: l.w, h: l.h, minW: l.minW, minH: l.minH }))
+    const mapped = (newLayout as any[]).map((l: any) => ({ i: l.i, x: l.x, y: l.y, w: l.w, h: l.h, minW: l.minW, minH: l.minH, ...(l.maxH != null ? { maxH: l.maxH } : {}) }))
     setLayout(mapped)
     // Only mark dirty when in edit mode and layout actually changed from last save.
     // Guards against: spurious RGL fires on mount, and RGL internal fires when

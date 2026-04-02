@@ -67,9 +67,34 @@ function AccordionItem({
 
 
 function DeleteAccountModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-  const [password, setPassword] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
 
   if (!isOpen) return null
+
+  const handleDelete = async () => {
+    setError("")
+    setLoading(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { setError("Not signed in."); setLoading(false); return }
+      const res = await fetch("/api/delete-account", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ user_id: session.user.id }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error ?? "Failed to delete account."); setLoading(false); return }
+      await supabase.auth.signOut()
+      window.location.href = "/"
+    } catch {
+      setError("Something went wrong. Please try again.")
+      setLoading(false)
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center">
@@ -81,15 +106,15 @@ function DeleteAccountModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
           </div>
           <div className="flex-1">
             <h3 className="text-lg font-semibold text-foreground">Delete your account?</h3>
-            <p className="mt-2 text-sm text-muted-foreground">This action cannot be undone. Enter your password to confirm.</p>
+            <p className="mt-2 text-sm text-muted-foreground">This action cannot be undone. All your documents, data, and subscription will be permanently deleted.</p>
           </div>
         </div>
-        <div className="mt-4">
-          <Input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="rounded-lg" />
-        </div>
+        {error && <p className="mt-3 text-xs text-destructive">{error}</p>}
         <div className="mt-6 flex gap-3">
-          <Button variant="outline" className="flex-1 rounded-lg" onClick={onClose}>Cancel</Button>
-          <Button className="flex-1 rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={onClose}>Delete Account</Button>
+          <Button variant="outline" className="flex-1 rounded-lg" onClick={onClose} disabled={loading}>Cancel</Button>
+          <Button className="flex-1 rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={handleDelete} disabled={loading}>
+            {loading ? "Deleting…" : "Delete Account"}
+          </Button>
         </div>
       </div>
     </div>

@@ -112,7 +112,7 @@ function DeleteAccountModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
         {error && <p className="mt-3 text-xs text-destructive">{error}</p>}
         <div className="mt-6 flex gap-3">
           <Button variant="outline" className="flex-1 rounded-lg" onClick={onClose} disabled={loading}>Cancel</Button>
-          <Button className="flex-1 rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={handleDelete} disabled={loading}>
+          <Button className="flex-1 rounded-lg bg-destructive text-white hover:bg-destructive/90" onClick={handleDelete} disabled={loading}>
             {loading ? "Deleting…" : "Delete Account"}
           </Button>
         </div>

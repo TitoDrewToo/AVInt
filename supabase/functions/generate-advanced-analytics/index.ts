@@ -50,7 +50,8 @@ Rules:
     TIME        → line-chart or area-chart (pick ONE, never both)
     COMPOSITION → pie-chart
     RANKING     → bar-chart
-- Maximum 3 widgets. If data is sparse (under 3 months or under 5 transactions), return 1-2.
+- TIME RULE: ALWAYS include one TIME dimension widget (line-chart or area-chart) unless it is already in already_plotted AND you cannot pick the other variant. Time trends are the most valuable insight for financial data.
+- Maximum 3 widgets. If data is sparse (under 3 months or under 5 transactions), return 1-2 but still prioritize TIME.
 - Title must be data-specific ("Office Dominates at ₱106k" not "Expense Breakdown").
 - Insight must reference specific numbers, percentages, or category names.
 - Max 120 characters per insight.`

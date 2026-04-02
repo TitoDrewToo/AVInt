@@ -112,7 +112,6 @@ const DEFAULT_WIDGETS: Widget[] = [
   { id: "kpi-income",      type: "kpi-income",      title: "Total Income" },
   { id: "kpi-expenses",    type: "kpi-expenses",     title: "Total Expenses" },
   { id: "kpi-net",         type: "kpi-net",          title: "Net Position" },
-  { id: "kpi-docs",        type: "kpi-docs",         title: "Documents" },
   { id: "kpi-tax-exposure",type: "kpi-tax-exposure", title: "Est. Tax Exposure" },
   { id: "kpi-tax-ratio",   type: "kpi-tax-ratio",    title: "Tax Burden Rate" },
   { id: "area-chart",      type: "area-chart",       title: "Income vs Expenses" },
@@ -122,16 +121,15 @@ const DEFAULT_WIDGETS: Widget[] = [
 ]
 
 const DEFAULT_LAYOUT: LayoutItem[] = [
-  { i: "kpi-income",       x: 0,  y: 0,  w: 2, h: 5,  minW: 2, minH: 1 },
-  { i: "kpi-expenses",     x: 2,  y: 0,  w: 2, h: 5,  minW: 2, minH: 1 },
-  { i: "kpi-net",          x: 4,  y: 0,  w: 2, h: 5,  minW: 2, minH: 1 },
-  { i: "kpi-docs",         x: 6,  y: 0,  w: 2, h: 5,  minW: 2, minH: 1 },
-  { i: "kpi-tax-exposure", x: 8,  y: 0,  w: 2, h: 5,  minW: 2, minH: 1 },
-  { i: "kpi-tax-ratio",    x: 10, y: 0,  w: 2, h: 5,  minW: 2, minH: 1 },
-  { i: "area-chart",       x: 0,  y: 5,  w: 12, h: 12, minW: 4, minH: 3 },
-  { i: "bar-chart",        x: 0,  y: 17, w: 4, h: 11, minW: 3, minH: 3 },
-  { i: "bar-deductible",   x: 4,  y: 17, w: 4, h: 11, minW: 3, minH: 3 },
-  { i: "pie-chart",        x: 8,  y: 17, w: 4, h: 11, minW: 3, minH: 3 },
+  { i: "kpi-income",       x: 0,  y: 0,  w: 3, h: 5,  minW: 2, minH: 1 },
+  { i: "kpi-expenses",     x: 3,  y: 0,  w: 3, h: 5,  minW: 2, minH: 1 },
+  { i: "kpi-net",          x: 6,  y: 0,  w: 3, h: 5,  minW: 2, minH: 1 },
+  { i: "kpi-tax-exposure", x: 9,  y: 0,  w: 3, h: 5,  minW: 2, minH: 1 },
+  { i: "kpi-tax-ratio",    x: 0,  y: 5,  w: 3, h: 5,  minW: 2, minH: 1 },
+  { i: "area-chart",       x: 3,  y: 5,  w: 9, h: 12, minW: 4, minH: 3 },
+  { i: "bar-chart",        x: 0,  y: 10, w: 3, h: 11, minW: 3, minH: 3 },
+  { i: "bar-deductible",   x: 0,  y: 17, w: 4, h: 11, minW: 3, minH: 3 },
+  { i: "pie-chart",        x: 4,  y: 17, w: 4, h: 11, minW: 3, minH: 3 },
 ]
 
 // ── Mobile layout derivation ──────────────────────────────────────────────────
@@ -175,7 +173,6 @@ const WIDGET_MIN_SIZE: Record<string, { minW: number; minH: number }> = {
   "kpi-income":       { minW: 2, minH: 2 },
   "kpi-expenses":     { minW: 2, minH: 2 },
   "kpi-net":          { minW: 2, minH: 2 },
-  "kpi-docs":         { minW: 2, minH: 2 },
   "kpi-tax-exposure": { minW: 2, minH: 2 },
   "kpi-tax-ratio":    { minW: 2, minH: 2 },
   "kpi-savings":      { minW: 2, minH: 2 },
@@ -193,7 +190,6 @@ const WIDGET_LIBRARY = [
   { type: "kpi-income",       title: "Income KPI",          desc: "Total income detected across all documents",           isPremium: false },
   { type: "kpi-expenses",     title: "Expenses KPI",        desc: "Sum of all classified expense transactions",           isPremium: false },
   { type: "kpi-net",          title: "Net Position KPI",    desc: "Income minus expenses with savings rate",              isPremium: false },
-  { type: "kpi-docs",         title: "Document Count KPI",  desc: "Number of financial documents processed",             isPremium: false },
   { type: "kpi-tax-exposure", title: "Tax Exposure KPI",    desc: "Estimated tax liability based on net income",         isPremium: false },
   { type: "kpi-tax-ratio",    title: "Tax Burden Rate KPI", desc: "Tax as a percentage of gross income",                 isPremium: false },
   { type: "area-chart",       title: "Income vs Expenses",  desc: "Monthly trend of income and expenses over time",      isPremium: false },
@@ -850,10 +846,12 @@ export default function SmartDashboardPage() {
       insight:    aw.insight ?? undefined,
       config:     aw.config ?? undefined,
     }
-    const lastY = layout.length ? Math.max(...layout.map(l => l.y + l.h)) : 0
-    const minSize = WIDGET_MIN_SIZE[aw.widget_type] ?? { minW: 2, minH: 2 }
+    const minSize = WIDGET_MIN_SIZE[aw.widget_type] ?? { minW: 3, minH: 3 }
     setWidgets(prev => [...prev, newWidget])
-    setLayout(prev => [...prev, { i: newWidget.id, x: 0, y: lastY, w: minSize.minW + 2, h: minSize.minH + 2, minW: minSize.minW, minH: minSize.minH }])
+    setLayout(prev => {
+      const lastY = prev.length ? Math.max(...prev.map(l => l.y + l.h)) : 0
+      return [...prev, { i: newWidget.id, x: 0, y: lastY, w: minSize.minW, h: minSize.minH, minW: minSize.minW, minH: minSize.minH }]
+    })
     setIsDirty(true)
   }
 
@@ -940,10 +938,12 @@ export default function SmartDashboardPage() {
     if (widgets.some(w => w.type === type)) return
     const id = `${type}-${Date.now()}`
     const isKpi = type.startsWith("kpi")
-    const defaultW = isKpi ? 2 : 4
-    const defaultH = isKpi ? 3 : 7
+    const minSize = WIDGET_MIN_SIZE[type] ?? { minW: isKpi ? 2 : 3, minH: isKpi ? 2 : 3 }
     setWidgets(prev => [...prev, { id, type, title }])
-    setLayout(prev => [...prev, { i: id, x: 0, y: Infinity, w: isKpi ? 3 : 6, h: isKpi ? 4 : 8, minW: isKpi ? 2 : 3, minH: isKpi ? 1 : 3 }])
+    setLayout(prev => {
+      const lastY = prev.length ? Math.max(...prev.map(l => l.y + l.h)) : 0
+      return [...prev, { i: id, x: 0, y: lastY, w: minSize.minW, h: minSize.minH, minW: minSize.minW, minH: minSize.minH }]
+    })
     setIsDirty(true)
   }
 

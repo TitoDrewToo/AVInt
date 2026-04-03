@@ -1,8 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { Button } from "@/components/ui/button"
-import { ArrowRight } from "lucide-react"
+import { ArrowUpRight } from "lucide-react"
 
 import { useEffect, useState, useCallback } from "react"
 import { supabase } from "@/lib/supabase"
@@ -242,29 +241,37 @@ export function HeroSection() {
         {/* Desktop: 40/60 split | Mobile: single column */}
         <div className="grid items-center gap-12 lg:grid-cols-[2fr_3fr]">
 
-          {/* Left — Brand + content (unchanged) */}
-          <div className="flex flex-col gap-6">
-            <h1 className="text-balance text-4xl font-semibold tracking-tight text-foreground md:text-5xl lg:text-6xl">
-              We develop products that simplify organization, decisions, and workflows.
-            </h1>
-            <p className="text-lg text-muted-foreground md:text-xl">
-              Applied intelligence for real-world systems.
-            </p>
-            <div className="flex flex-wrap gap-4 pt-2">
-              <Link href="#tools">
-                <Button size="lg" className="rounded-xl">
-                  Explore Tools
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
-              </Link>
-              <Link href="#products">
-                <Button variant="outline" size="lg" className="rounded-xl">
-                  View Products
-                </Button>
-              </Link>
-            </div>
-            {/* Trust indicator */}
-            <div className="pt-6">
+          {/* Left — Tool cards (no heading) */}
+          <div className="flex flex-col gap-4">
+            <Link href="/products/smart-storage">
+              <div className="group flex flex-col rounded-2xl border border-border bg-card p-6 transition-all hover:border-primary/20 hover:shadow-md">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-card shadow-sm">
+                  <DocumentIcon className="h-5 w-5" />
+                </div>
+                <h3 className="mt-4 text-lg font-semibold text-foreground">Smart Storage</h3>
+                <p className="mt-2 text-sm text-muted-foreground">Upload documents once. Automatically structure receipts, invoices, and records.</p>
+                <p className="mt-1 text-xs text-muted-foreground/70">Generate organized datasets ready for reporting.</p>
+                <div className="mt-4 flex items-center gap-1 text-sm font-medium text-primary">
+                  Learn more <ArrowUpRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                </div>
+              </div>
+            </Link>
+
+            <Link href="/products/smart-dashboard">
+              <div className="group flex flex-col rounded-2xl border border-border bg-card p-6 transition-all hover:border-primary/20 hover:shadow-md">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-card shadow-sm">
+                  <ChartBarIcon className="h-5 w-5" />
+                </div>
+                <h3 className="mt-4 text-lg font-semibold text-foreground">Smart Dashboard</h3>
+                <p className="mt-2 text-sm text-muted-foreground">Transform structured information into clear visual insights.</p>
+                <p className="mt-1 text-xs text-muted-foreground/70">Interactive dashboards built from real activity data.</p>
+                <div className="mt-4 flex items-center gap-1 text-sm font-medium text-primary">
+                  Learn more <ArrowUpRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                </div>
+              </div>
+            </Link>
+
+            <div className="pt-1">
               <span className="text-sm text-muted-foreground">
                 Trusted by <TrustedCounter /> users worldwide
               </span>

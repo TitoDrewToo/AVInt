@@ -140,7 +140,8 @@ function printPost(post, score, reply, index, total) {
   console.log(`🔗 https://reddit.com${post.permalink}`)
   console.log(`\n📝 ${post.title}`)
   if (post.selftext) console.log(`\n${post.selftext.slice(0, 400)}${post.selftext.length > 400 ? "..." : ""}`)
-  console.log(`\n💬 Drafted reply:\n\n${reply}`)
+  const replyWithLink = reply.trimEnd() + "\n\nhttps://avintph.com"
+  console.log(`\n💬 Drafted reply:\n\n${replyWithLink}`)
 }
 
 // ── Main ────────────────────────────────────────────────────────────────────
@@ -197,7 +198,7 @@ async function main() {
   }
 
   console.log(`\n✅ ${scored.length} posts scored >= ${MIN_RELEVANCE_SCORE}/10. Starting review...\n`)
-  console.log("Controls: [a] approve & copy  [s] skip  [q] quit\n")
+  console.log("Controls: [a] approve & open  [s] skip  [q] quit\n")
 
   const rl = readline.createInterface({ input, output })
   const approved = []
@@ -213,10 +214,15 @@ async function main() {
 
     if (answer === "q") break
     if (answer === "a") {
-      approved.push({ post, reply })
-      console.log("✅ Approved — reply copied below for posting:")
-      console.log(`\n--- COPY THIS ---\n${reply}\n--- END ---`)
-      console.log(`\n🔗 Post here: https://reddit.com${post.permalink}`)
+      const replyWithLink = reply.trimEnd() + "\n\nhttps://avintph.com"
+      approved.push({ post, reply: replyWithLink })
+      console.log("✅ Approved — opening thread in browser...")
+      console.log(`\n--- COPY THIS ---\n${replyWithLink}\n--- END ---`)
+      // Open Reddit thread in default browser
+      const url = `https://reddit.com${post.permalink}`
+      const openCmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open"
+      const { exec } = await import("child_process")
+      exec(`${openCmd} "${url}"`)
     }
   }
 

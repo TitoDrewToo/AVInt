@@ -501,7 +501,7 @@ export default function SmartStoragePage() {
         e.preventDefault()
         setSelectedFiles(new Set(displayedFiles.map(f => f.id)))
       }
-      if (e.key === "Escape") setSelectedFiles(new Set())
+      if (e.key === "Escape") { setSelectedFiles(new Set()); setContextMenu(null) }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
@@ -606,7 +606,9 @@ export default function SmartStoragePage() {
     setBoxSelect(prev => prev ? { ...prev, currentX: x, currentY: y } : null)
   }
 
-  const handleCanvasBoxUp = () => {
+  const handleCanvasBoxUp = (e: React.PointerEvent) => {
+    // Release pointer capture so browser doesn't hold it indefinitely
+    try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId) } catch {}
     if (!boxSelect) return
     const selLeft   = Math.min(boxSelect.startX, boxSelect.currentX)
     const selTop    = Math.min(boxSelect.startY, boxSelect.currentY)

@@ -21,7 +21,7 @@ const DOCUMENT_TYPES = [
 ]
 
 const EXPENSE_CATEGORIES = [
-  "Food", "Transport", "Utilities", "Healthcare", "Entertainment",
+  "Food", "Transport", "Housing", "Utilities", "Healthcare", "Entertainment",
   "Shopping", "Travel", "Office", "Salary", "Tax", "Legal", "Other",
 ]
 

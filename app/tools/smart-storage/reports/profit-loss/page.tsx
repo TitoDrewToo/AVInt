@@ -103,71 +103,75 @@ export default function ProfitLossPage() {
   const loadData = useCallback(async () => {
     if (!session?.user?.id) return
     setLoading(true)
+    try {
+      const userId = session.user.id
 
-    const userId = session.user.id
+      // ── Income side: payslips + income statements ────────────────────────────
+      const { data: incomeFiles } = await supabase
+        .from("files")
+        .select("id")
+        .eq("user_id", userId)
+        .in("document_type", ["payslip", "income_statement"])
 
-    // ── Income side: payslips + income statements ────────────────────────────
-    const { data: incomeFiles } = await supabase
-      .from("files")
-      .select("id")
-      .eq("user_id", userId)
-      .in("document_type", ["payslip", "income_statement"])
-
-    let incomeData: IncomeEntry[] = []
-    if (incomeFiles?.length) {
-      let q = supabase
-        .from("document_fields")
-        .select("document_date, gross_income, net_income, total_amount, currency, employer_name, files!inner(document_type)")
-        .in("file_id", incomeFiles.map(f => f.id))
-        .order("document_date", { ascending: true })
-      if (dateFrom) q = q.gte("document_date", dateFrom)
-      if (dateTo)   q = q.lte("document_date", dateTo)
-      const { data } = await q
-      if (data) {
-        incomeData = data.map((r: any) => ({
-          document_date:  r.document_date,
-          gross_income:   r.gross_income   != null ? parseFloat(r.gross_income)  : null,
-          net_income:     r.net_income     != null ? parseFloat(r.net_income)    : null,
-          total_amount:   r.total_amount   != null ? parseFloat(r.total_amount)  : null,
-          currency:       r.currency,
-          document_type:  r.files.document_type,
-          employer_name:  r.employer_name,
-        }))
+      let incomeData: IncomeEntry[] = []
+      if (incomeFiles?.length) {
+        let q = supabase
+          .from("document_fields")
+          .select("document_date, gross_income, net_income, total_amount, currency, employer_name, files!inner(document_type)")
+          .in("file_id", incomeFiles.map(f => f.id))
+          .order("document_date", { ascending: true })
+        if (dateFrom) q = q.gte("document_date", dateFrom)
+        if (dateTo)   q = q.lte("document_date", dateTo)
+        const { data } = await q
+        if (data) {
+          incomeData = data.map((r: any) => ({
+            document_date:  r.document_date,
+            gross_income:   r.gross_income   != null ? parseFloat(r.gross_income)  : null,
+            net_income:     r.net_income     != null ? parseFloat(r.net_income)    : null,
+            total_amount:   r.total_amount   != null ? parseFloat(r.total_amount)  : null,
+            currency:       r.currency,
+            document_type:  r.files.document_type,
+            employer_name:  r.employer_name,
+          }))
+        }
       }
-    }
 
-    // ── Expense side: receipts + invoices ────────────────────────────────────
-    const { data: expenseFiles } = await supabase
-      .from("files")
-      .select("id")
-      .eq("user_id", userId)
-      .in("document_type", ["receipt", "invoice"])
+      // ── Expense side: receipts + invoices ────────────────────────────────────
+      const { data: expenseFiles } = await supabase
+        .from("files")
+        .select("id")
+        .eq("user_id", userId)
+        .in("document_type", ["receipt", "invoice"])
 
-    let expenseData: ExpenseEntry[] = []
-    if (expenseFiles?.length) {
-      let q = supabase
-        .from("document_fields")
-        .select("document_date, total_amount, currency, vendor_name, expense_category, files!inner(document_type)")
-        .in("file_id", expenseFiles.map(f => f.id))
-        .order("document_date", { ascending: true })
-      if (dateFrom) q = q.gte("document_date", dateFrom)
-      if (dateTo)   q = q.lte("document_date", dateTo)
-      const { data } = await q
-      if (data) {
-        expenseData = data.map((r: any) => ({
-          document_date:    r.document_date,
-          total_amount:     r.total_amount != null ? parseFloat(r.total_amount) : null,
-          currency:         r.currency,
-          document_type:    r.files.document_type,
-          vendor_name:      r.vendor_name,
-          expense_category: r.expense_category,
-        }))
+      let expenseData: ExpenseEntry[] = []
+      if (expenseFiles?.length) {
+        let q = supabase
+          .from("document_fields")
+          .select("document_date, total_amount, currency, vendor_name, expense_category, files!inner(document_type)")
+          .in("file_id", expenseFiles.map(f => f.id))
+          .order("document_date", { ascending: true })
+        if (dateFrom) q = q.gte("document_date", dateFrom)
+        if (dateTo)   q = q.lte("document_date", dateTo)
+        const { data } = await q
+        if (data) {
+          expenseData = data.map((r: any) => ({
+            document_date:    r.document_date,
+            total_amount:     r.total_amount != null ? parseFloat(r.total_amount) : null,
+            currency:         r.currency,
+            document_type:    r.files.document_type,
+            vendor_name:      r.vendor_name,
+            expense_category: r.expense_category,
+          }))
+        }
       }
-    }
 
-    setIncomeRows(incomeData)
-    setExpenseRows(expenseData)
-    setLoading(false)
+      setIncomeRows(incomeData)
+      setExpenseRows(expenseData)
+    } catch (err) {
+      console.error("loadData error:", err)
+    } finally {
+      setLoading(false)
+    }
   }, [session, dateFrom, dateTo])
 
   useEffect(() => { loadData() }, [loadData])

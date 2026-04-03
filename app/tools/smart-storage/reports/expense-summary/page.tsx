@@ -72,52 +72,56 @@ export default function ExpenseSummaryPage() {
   const loadExpenses = useCallback(async () => {
     if (!session?.user?.id) return
     setLoading(true)
+    try {
+      // Get user's files
+      const { data: userFiles } = await supabase
+        .from("files")
+        .select("id")
+        .eq("user_id", session.user.id)
+        .in("document_type", ["receipt", "invoice"])
 
-    // Get user's files
-    const { data: userFiles } = await supabase
-      .from("files")
-      .select("id")
-      .eq("user_id", session.user.id)
-      .in("document_type", ["receipt", "invoice"])
+      if (!userFiles?.length) return
 
-    if (!userFiles?.length) { setLoading(false); return }
+      const fileIds = userFiles.map((f) => f.id)
 
-    const fileIds = userFiles.map((f) => f.id)
+      // Build query
+      let query = supabase
+        .from("document_fields")
+        .select(`
+          file_id,
+          vendor_name,
+          document_date,
+          total_amount,
+          currency,
+          expense_category,
+          confidence_score,
+          files!inner(filename, document_type)
+        `)
+        .in("file_id", fileIds)
+        .order("document_date", { ascending: false })
 
-    // Build query
-    let query = supabase
-      .from("document_fields")
-      .select(`
-        file_id,
-        vendor_name,
-        document_date,
-        total_amount,
-        currency,
-        expense_category,
-        confidence_score,
-        files!inner(filename, document_type)
-      `)
-      .in("file_id", fileIds)
-      .order("document_date", { ascending: false })
+      if (dateFrom) query = query.gte("document_date", dateFrom)
+      if (dateTo) query = query.lte("document_date", dateTo)
 
-    if (dateFrom) query = query.gte("document_date", dateFrom)
-    if (dateTo) query = query.lte("document_date", dateTo)
+      const { data } = await query
 
-    const { data } = await query
-
-    if (data) {
-      setExpenses(data.map((row: any) => ({
-        filename: row.files.filename,
-        document_type: row.files.document_type,
-        vendor_name: row.vendor_name,
-        document_date: row.document_date,
-        total_amount: row.total_amount != null ? parseFloat(row.total_amount) || 0 : 0,
-        currency: row.currency,
-        expense_category: row.expense_category,
-        confidence_score: row.confidence_score,
-      })))
+      if (data) {
+        setExpenses(data.map((row: any) => ({
+          filename: row.files.filename,
+          document_type: row.files.document_type,
+          vendor_name: row.vendor_name,
+          document_date: row.document_date,
+          total_amount: row.total_amount != null ? parseFloat(row.total_amount) || 0 : 0,
+          currency: row.currency,
+          expense_category: row.expense_category,
+          confidence_score: row.confidence_score,
+        })))
+      }
+    } catch (err) {
+      console.error("loadExpenses error:", err)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }, [session, dateFrom, dateTo])
 
   useEffect(() => {

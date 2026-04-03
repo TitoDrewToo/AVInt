@@ -32,7 +32,7 @@ Fields to return:
   "net_income":         number or null  — take-home pay after deductions
   "tax_amount":         number or null  — VAT, withholding tax, or any tax line extracted
   "discount_amount":    number or null  — any discount or promo deducted
-  "expense_category":   string or null  — one of: Food, Transport, Utilities, Healthcare, Entertainment, Shopping, Travel, Office, Salary, Tax, Legal, Other
+  "expense_category":   string or null  — one of: Food, Transport, Housing, Utilities, Healthcare, Entertainment, Shopping, Travel, Office, Salary, Tax, Legal, Other
   "invoice_number":     string or null  — invoice/receipt/reference number
   "payment_method":     string or null  — Cash, Credit Card, Debit Card, Bank Transfer, GCash, PayMaya, Check, Other
   "period_start":       string or null  — pay period start date YYYY-MM-DD (payslips/statements)

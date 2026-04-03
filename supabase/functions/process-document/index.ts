@@ -104,7 +104,7 @@ Extract these fields:
   "total_amount": number or null,
   "gross_income": number or null,
   "net_income": number or null,
-  "expense_category": "Food|Transport|Utilities|Healthcare|Entertainment|Shopping|Travel|Office|Salary|Other or null",
+  "expense_category": "Food|Transport|Housing|Utilities|Healthcare|Entertainment|Shopping|Travel|Office|Salary|Other or null",
   "line_items": [{"description": "string", "amount": number}],
   "confidence": number between 0 and 1
 }

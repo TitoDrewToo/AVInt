@@ -67,52 +67,56 @@ export default function IncomeSummaryPage() {
   const loadIncome = useCallback(async () => {
     if (!session?.user?.id) return
     setLoading(true)
+    try {
+      const { data: userFiles } = await supabase
+        .from("files")
+        .select("id")
+        .eq("user_id", session.user.id)
+        .in("document_type", ["payslip", "income_statement"])
 
-    const { data: userFiles } = await supabase
-      .from("files")
-      .select("id")
-      .eq("user_id", session.user.id)
-      .in("document_type", ["payslip", "income_statement"])
+      if (!userFiles?.length) return
 
-    if (!userFiles?.length) { setLoading(false); return }
+      const fileIds = userFiles.map((f) => f.id)
 
-    const fileIds = userFiles.map((f) => f.id)
+      let query = supabase
+        .from("document_fields")
+        .select(`
+          file_id,
+          employer_name,
+          document_date,
+          gross_income,
+          net_income,
+          total_amount,
+          currency,
+          confidence_score,
+          files!inner(filename, document_type)
+        `)
+        .in("file_id", fileIds)
+        .order("document_date", { ascending: false })
 
-    let query = supabase
-      .from("document_fields")
-      .select(`
-        file_id,
-        employer_name,
-        document_date,
-        gross_income,
-        net_income,
-        total_amount,
-        currency,
-        confidence_score,
-        files!inner(filename, document_type)
-      `)
-      .in("file_id", fileIds)
-      .order("document_date", { ascending: false })
+      if (dateFrom) query = query.gte("document_date", dateFrom)
+      if (dateTo) query = query.lte("document_date", dateTo)
 
-    if (dateFrom) query = query.gte("document_date", dateFrom)
-    if (dateTo) query = query.lte("document_date", dateTo)
+      const { data } = await query
 
-    const { data } = await query
-
-    if (data) {
-      setIncome(data.map((row: any) => ({
-        filename: row.files.filename,
-        document_type: row.files.document_type,
-        employer_name: row.employer_name,
-        document_date: row.document_date,
-        gross_income: row.gross_income ? parseFloat(row.gross_income) : null,
-        net_income: row.net_income ? parseFloat(row.net_income) : null,
-        total_amount: row.total_amount ? parseFloat(row.total_amount) : null,
-        currency: row.currency,
-        confidence_score: row.confidence_score,
-      })))
+      if (data) {
+        setIncome(data.map((row: any) => ({
+          filename: row.files.filename,
+          document_type: row.files.document_type,
+          employer_name: row.employer_name,
+          document_date: row.document_date,
+          gross_income: row.gross_income ? parseFloat(row.gross_income) : null,
+          net_income: row.net_income ? parseFloat(row.net_income) : null,
+          total_amount: row.total_amount ? parseFloat(row.total_amount) : null,
+          currency: row.currency,
+          confidence_score: row.confidence_score,
+        })))
+      }
+    } catch (err) {
+      console.error("loadIncome error:", err)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }, [session, dateFrom, dateTo])
 
   useEffect(() => {

@@ -68,53 +68,57 @@ export default function TaxBundlePage() {
   const loadData = useCallback(async () => {
     if (!session?.user?.id) return
     setLoading(true)
+    try {
+      const { data: userFiles } = await supabase
+        .from("files")
+        .select("id, document_type")
+        .eq("user_id", session.user.id)
 
-    const { data: userFiles } = await supabase
-      .from("files")
-      .select("id, document_type")
-      .eq("user_id", session.user.id)
+      if (!userFiles?.length) return
 
-    if (!userFiles?.length) { setLoading(false); return }
+      const fileIds = userFiles.map((f) => f.id)
 
-    const fileIds = userFiles.map((f) => f.id)
+      let query = supabase
+        .from("document_fields")
+        .select(`
+          file_id,
+          vendor_name,
+          employer_name,
+          document_date,
+          total_amount,
+          gross_income,
+          net_income,
+          expense_category,
+          currency,
+          files!inner(filename, document_type)
+        `)
+        .in("file_id", fileIds)
+        .order("document_date", { ascending: false })
 
-    let query = supabase
-      .from("document_fields")
-      .select(`
-        file_id,
-        vendor_name,
-        employer_name,
-        document_date,
-        total_amount,
-        gross_income,
-        net_income,
-        expense_category,
-        currency,
-        files!inner(filename, document_type)
-      `)
-      .in("file_id", fileIds)
-      .order("document_date", { ascending: false })
+      if (dateFrom) query = query.gte("document_date", dateFrom)
+      if (dateTo) query = query.lte("document_date", dateTo)
 
-    if (dateFrom) query = query.gte("document_date", dateFrom)
-    if (dateTo) query = query.lte("document_date", dateTo)
+      const { data } = await query
 
-    const { data } = await query
-
-    if (data) {
-      setRows(data.map((row: any) => ({
-        filename: row.files.filename,
-        document_type: row.files.document_type,
-        vendor_name: row.vendor_name,
-        employer_name: row.employer_name,
-        document_date: row.document_date,
-        total_amount: row.total_amount ? parseFloat(row.total_amount) : null,
-        gross_income: row.gross_income ? parseFloat(row.gross_income) : null,
-        net_income: row.net_income ? parseFloat(row.net_income) : null,
-        expense_category: row.expense_category,
-        currency: row.currency,
-      })))
+      if (data) {
+        setRows(data.map((row: any) => ({
+          filename: row.files.filename,
+          document_type: row.files.document_type,
+          vendor_name: row.vendor_name,
+          employer_name: row.employer_name,
+          document_date: row.document_date,
+          total_amount: row.total_amount ? parseFloat(row.total_amount) : null,
+          gross_income: row.gross_income ? parseFloat(row.gross_income) : null,
+          net_income: row.net_income ? parseFloat(row.net_income) : null,
+          expense_category: row.expense_category,
+          currency: row.currency,
+        })))
+      }
+    } catch (err) {
+      console.error("loadData error:", err)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }, [session, dateFrom, dateTo])
 
   useEffect(() => {

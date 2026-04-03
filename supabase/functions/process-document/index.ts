@@ -176,7 +176,7 @@ Rules:
       net_income:           row.net_income       ?? null,
       expense_category:     row.expense_category ?? null,
       confidence_score:     row.confidence       ?? null,
-      raw_json:             row,
+      raw_json:             { gemini_raw: row },
       normalization_status: "raw",
     }))
 

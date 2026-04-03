@@ -185,6 +185,11 @@ serve(async (req) => {
         period_end:        normalized.period_end        ?? null,
         counterparty_name: normalized.counterparty_name ?? null,
         line_items:        normalized.line_items        ?? fields.raw_json?.line_items ?? null,
+        // Preserve full AI outputs in raw_json — gemini_raw from extraction, openai_enriched from normalization
+        raw_json: {
+          ...(fields.raw_json ?? {}),
+          openai_enriched: normalized,
+        },
         // Pipeline state
         normalization_status: "normalized",
         normalized_at:        now,

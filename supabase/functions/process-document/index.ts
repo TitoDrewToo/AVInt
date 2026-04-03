@@ -133,12 +133,20 @@ Rules:
     if (!rawText) throw new Error("No response from Gemini")
 
     // 7. Parse Gemini JSON output
-    // Gemini sometimes wraps output in ```json ... ``` — extract the first { ... } block
+    // Gemini sometimes wraps output in ```json ... ``` — extract object or array
+    // For CSVs Gemini may return an array of rows — take the first element
     let extracted: any
     try {
-      const jsonMatch = rawText.match(/\{[\s\S]*\}/)
-      if (!jsonMatch) throw new Error("No JSON object found in response")
-      extracted = JSON.parse(jsonMatch[0])
+      const arrayMatch = rawText.match(/\[[\s\S]*\]/)
+      const objectMatch = rawText.match(/\{[\s\S]*\}/)
+      if (arrayMatch) {
+        const parsed = JSON.parse(arrayMatch[0])
+        extracted = Array.isArray(parsed) ? parsed[0] : parsed
+      } else if (objectMatch) {
+        extracted = JSON.parse(objectMatch[0])
+      } else {
+        throw new Error("No JSON found in response")
+      }
     } catch {
       throw new Error(`Failed to parse Gemini output: ${rawText}`)
     }

@@ -339,6 +339,9 @@ export default function SmartStoragePage() {
   const canvasRef = useRef<HTMLDivElement>(null)
   const [itemPositions, setItemPositions] = useState<Record<string, { col: number; row: number }>>({})
   const [draggingId, setDraggingId] = useState<string | null>(null)
+  // Drag intent tracking — refs avoid stale closure issues in pointer handlers
+  const hasDraggedRef = useRef(false)
+  const pointerDownPosRef = useRef<{ x: number; y: number } | null>(null)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
   const [dragGhostPos, setDragGhostPos] = useState<{ x: number; y: number } | null>(null)
   const [hoveredLeftFolderId, setHoveredLeftFolderId] = useState<string | null>(null)
@@ -647,7 +650,14 @@ export default function SmartStoragePage() {
   const handleFileRightClick = (e: React.MouseEvent, fileId: string, filename: string) => {
     e.preventDefault()
     setContextMenu({ x: e.clientX, y: e.clientY, fileId, filename })
-    setSelectedFiles(new Set([fileId]))
+    setSelectedFiles(prev => {
+      // First right-click (nothing selected): select only this file
+      if (prev.size === 0) return new Set([fileId])
+      // Already have a selection: toggle this file in/out (additive multiselect)
+      const next = new Set(prev)
+      next.has(fileId) ? next.delete(fileId) : next.add(fileId)
+      return next
+    })
   }
 
   // ── Hover preview ─────────────────────────────────────────────────────────
@@ -727,6 +737,8 @@ export default function SmartStoragePage() {
     e.stopPropagation()
     ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    hasDraggedRef.current = false
+    pointerDownPosRef.current = { x: e.clientX, y: e.clientY }
     setDraggingId(id)
     setDragOffset({ x: e.clientX - rect.left, y: e.clientY - rect.top })
     setDragGhostPos(null)
@@ -734,6 +746,12 @@ export default function SmartStoragePage() {
 
   const handleCanvasPointerMove = (e: React.PointerEvent, id: string) => {
     if (draggingId !== id || !canvasRef.current) return
+    // Only mark as a real drag after moving more than 6px from pointer-down position
+    if (!hasDraggedRef.current && pointerDownPosRef.current) {
+      const dx = e.clientX - pointerDownPosRef.current.x
+      const dy = e.clientY - pointerDownPosRef.current.y
+      if (Math.sqrt(dx * dx + dy * dy) > 6) hasDraggedRef.current = true
+    }
     const cr = canvasRef.current.getBoundingClientRect()
     setDragGhostPos({ x: e.clientX - cr.left - dragOffset.x, y: e.clientY - cr.top - dragOffset.y })
     // Check left pane folder hover (only for files)
@@ -752,8 +770,8 @@ export default function SmartStoragePage() {
   const handleCanvasPointerUp = (e: React.PointerEvent, id: string, hoveredCanvasFolderId: string | null) => {
     if (draggingId !== id) { setDraggingId(null); setDragGhostPos(null); setHoveredLeftFolderId(null); return }
 
-    // No movement → treat as click or double-click
-    if (dragGhostPos === null) {
+    // No drag movement → treat as click or double-click
+    if (!hasDraggedRef.current) {
       const now = Date.now()
       const isDoubleClick = lastClickRef.current?.id === id && now - lastClickRef.current.time < 350
       if (isDoubleClick) {
@@ -764,6 +782,7 @@ export default function SmartStoragePage() {
         handleFileClick(id, e as unknown as React.MouseEvent)
       }
       setDraggingId(null)
+      setDragGhostPos(null)
       return
     }
 
@@ -1421,8 +1440,37 @@ export default function SmartStoragePage() {
                   style={{ left: contextMenu.x, top: contextMenu.y }}
                   onClick={(e) => e.stopPropagation()}
                 >
-                  {/* Check if it's a folder */}
-                  {folders.some(f => f.id === contextMenu.fileId) ? (
+                  {/* Multi-select bulk actions */}
+                  {selectedFiles.size > 1 ? (
+                    <>
+                      <div className="px-4 py-1.5 text-xs font-medium text-muted-foreground">
+                        {selectedFiles.size} files selected
+                      </div>
+                      <div className="my-1 h-px bg-border" />
+                      <button
+                        onClick={async () => {
+                          for (const fid of selectedFiles) await handleDownloadFile(fid)
+                          setContextMenu(null)
+                        }}
+                        className="flex w-full items-center gap-2 px-4 py-2 text-sm text-foreground transition-colors hover:bg-muted"
+                      >
+                        <Download className="h-3.5 w-3.5 text-muted-foreground" />
+                        Download all
+                      </button>
+                      <div className="my-1 h-px bg-border" />
+                      <button
+                        onClick={async () => {
+                          for (const fid of [...selectedFiles]) await handleDeleteFile(fid)
+                          setContextMenu(null)
+                        }}
+                        className="flex w-full items-center gap-2 px-4 py-2 text-sm text-destructive transition-colors hover:bg-destructive/10"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                        Delete all selected
+                      </button>
+                    </>
+                  ) : /* Check if it's a folder */
+                  folders.some(f => f.id === contextMenu.fileId) ? (
                     <>
                       <button
                         onClick={() => { startRename(folders.find(f => f.id === contextMenu.fileId)!); setContextMenu(null) }}
@@ -1497,6 +1545,7 @@ export default function SmartStoragePage() {
                   )}
                 </div>
               )}
+
 
               {/* Empty state */}
               {currentSubfolders.length === 0 && displayedFiles.length === 0 && !isCreatingFolder && viewMode === "list" && (

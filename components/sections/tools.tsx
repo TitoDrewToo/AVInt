@@ -1,3 +1,4 @@
+import type { ReactNode } from "react"
 import Link from "next/link"
 import { ArrowUpRight } from "lucide-react"
 import { FadeUp, StaggerContainer, StaggerItem } from "@/components/fade-up"
@@ -61,7 +62,7 @@ interface ToolCardProps {
   description: string
   subtext: string
   href: string
-  icon: React.ReactNode
+  icon: ReactNode
 }
 
 function ToolCard({ name, description, subtext, href, icon }: ToolCardProps) {

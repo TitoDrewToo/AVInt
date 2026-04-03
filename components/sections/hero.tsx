@@ -4,7 +4,7 @@ import Link from "next/link"
 import { ArrowUpRight } from "lucide-react"
 import { StorageIcon, DashboardIcon } from "@/components/sections/tools"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, type MouseEvent } from "react"
 import { supabase } from "@/lib/supabase"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 import type { Session } from "@supabase/supabase-js"
@@ -213,7 +213,7 @@ export function HeroSection() {
     return () => subscription.unsubscribe()
   }, [])
 
-  const handleToolClick = useCallback((e: React.MouseEvent, href: string) => {
+  const handleToolClick = useCallback((e: MouseEvent<HTMLElement>, href: string) => {
     e.preventDefault()
     if (session) {
       // Logged in — open in new tab, homepage stays put

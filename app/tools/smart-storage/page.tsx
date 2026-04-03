@@ -81,7 +81,7 @@ const CLASSIFICATION_FOLDER_MAP: Record<string, string[]> = {
 
 // ── Date range ────────────────────────────────────────────────────────────────
 
-type DateRangePreset = "30d" | "90d" | "this_year" | "prev_year" | "custom"
+type DateRangePreset = "last_month" | "this_year" | "prev_year" | "custom"
 
 interface DateRange {
   preset: DateRangePreset
@@ -95,8 +95,11 @@ function getPresetRange(preset: DateRangePreset): { from: string; to: string } {
   const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
   const today = fmt(now)
   switch (preset) {
-    case "30d":  { const f = new Date(now); f.setDate(f.getDate() - 30);  return { from: fmt(f), to: today } }
-    case "90d":  { const f = new Date(now); f.setDate(f.getDate() - 90);  return { from: fmt(f), to: today } }
+    case "last_month": {
+      const first = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+      const last  = new Date(now.getFullYear(), now.getMonth(), 0)
+      return { from: fmt(first), to: fmt(last) }
+    }
     case "this_year":  return { from: `${now.getFullYear()}-01-01`, to: today }
     case "prev_year":  return { from: `${now.getFullYear() - 1}-01-01`, to: `${now.getFullYear() - 1}-12-31` }
     default: return { from: "", to: today }
@@ -104,7 +107,7 @@ function getPresetRange(preset: DateRangePreset): { from: string; to: string } {
 }
 
 const PRESET_LABELS: Record<string, string> = {
-  "30d": "Last 30 days", "90d": "Last 90 days",
+  "last_month": "Last month",
   "this_year": "This year", "prev_year": "Prev year",
 }
 
@@ -238,11 +241,10 @@ function LeftFolderItem({
 
 function DateRangeSelector({ dateRange, onChange }: { dateRange: DateRange; onChange: (r: DateRange) => void }) {
   const presets: { label: string; value: DateRangePreset }[] = [
-    { label: "Last 30d", value: "30d" },
-    { label: "Last 90d", value: "90d" },
-    { label: "This year", value: "this_year" },
-    { label: "Prev year", value: "prev_year" },
-    { label: "Custom", value: "custom" },
+    { label: "Last month", value: "last_month" },
+    { label: "This year",  value: "this_year"  },
+    { label: "Prev year",  value: "prev_year"  },
+    { label: "Custom",     value: "custom"     },
   ]
   return (
     <div className="space-y-2">

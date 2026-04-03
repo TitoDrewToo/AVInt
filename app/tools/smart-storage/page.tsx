@@ -342,6 +342,7 @@ export default function SmartStoragePage() {
   // Drag intent tracking — refs avoid stale closure issues in pointer handlers
   const hasDraggedRef = useRef(false)
   const pointerDownPosRef = useRef<{ x: number; y: number } | null>(null)
+  const draggingIdRef = useRef<string | null>(null)  // mirrors draggingId state without stale closure
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
   const [dragGhostPos, setDragGhostPos] = useState<{ x: number; y: number } | null>(null)
   const [hoveredLeftFolderId, setHoveredLeftFolderId] = useState<string | null>(null)
@@ -587,12 +588,14 @@ export default function SmartStoragePage() {
   // ── Box select ────────────────────────────────────────────────────────────
   const handleCanvasBoxDown = (e: React.PointerEvent) => {
     if (e.target !== canvasRef.current) return
+    // Capture pointer so move/up keep firing even when leaving the div
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
     const rect = canvasRef.current!.getBoundingClientRect()
     const x = e.clientX - rect.left
     const y = e.clientY - rect.top
     canvasBoxSelectStart.current = { x, y }
     setBoxSelect({ startX: x, startY: y, currentX: x, currentY: y })
-    if (!e.shiftKey && !e.metaKey && !e.ctrlKey) setSelectedFiles(new Set())
+    if (!e.shiftKey) setSelectedFiles(new Set())
   }
 
   const handleCanvasBoxMove = (e: React.PointerEvent) => {
@@ -626,21 +629,16 @@ export default function SmartStoragePage() {
   // ── File selection ────────────────────────────────────────────────────────
   const handleFileClick = (fileId: string, e: React.MouseEvent) => {
     if (e.shiftKey && lastSelectedRef.current) {
+      // Shift+click: range select (additive — keeps existing selection and adds the range)
       const allIds = displayedFiles.map(f => f.id)
       const fromIdx = allIds.indexOf(lastSelectedRef.current)
       const toIdx = allIds.indexOf(fileId)
       if (fromIdx !== -1 && toIdx !== -1) {
         const [start, end] = fromIdx < toIdx ? [fromIdx, toIdx] : [toIdx, fromIdx]
-        setSelectedFiles(new Set(allIds.slice(start, end + 1)))
+        setSelectedFiles(prev => new Set([...prev, ...allIds.slice(start, end + 1)]))
       }
-    } else if (e.metaKey || e.ctrlKey) {
-      setSelectedFiles(prev => {
-        const next = new Set(prev)
-        next.has(fileId) ? next.delete(fileId) : next.add(fileId)
-        return next
-      })
-      lastSelectedRef.current = fileId
     } else {
+      // Plain click: select only this file
       setSelectedFiles(new Set([fileId]))
       lastSelectedRef.current = fileId
     }
@@ -653,9 +651,9 @@ export default function SmartStoragePage() {
     setSelectedFiles(prev => {
       // First right-click (nothing selected): select only this file
       if (prev.size === 0) return new Set([fileId])
-      // Already have a selection: toggle this file in/out (additive multiselect)
+      // Already have a selection: always ADD this file (never deselect via right-click)
       const next = new Set(prev)
-      next.has(fileId) ? next.delete(fileId) : next.add(fileId)
+      next.add(fileId)
       return next
     })
   }
@@ -739,6 +737,7 @@ export default function SmartStoragePage() {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
     hasDraggedRef.current = false
     pointerDownPosRef.current = { x: e.clientX, y: e.clientY }
+    draggingIdRef.current = id
     setDraggingId(id)
     setDragOffset({ x: e.clientX - rect.left, y: e.clientY - rect.top })
     setDragGhostPos(null)
@@ -768,7 +767,8 @@ export default function SmartStoragePage() {
   }
 
   const handleCanvasPointerUp = (e: React.PointerEvent, id: string, hoveredCanvasFolderId: string | null) => {
-    if (draggingId !== id) { setDraggingId(null); setDragGhostPos(null); setHoveredLeftFolderId(null); return }
+    if (draggingIdRef.current !== id) { draggingIdRef.current = null; setDraggingId(null); setDragGhostPos(null); setHoveredLeftFolderId(null); return }
+    draggingIdRef.current = null
 
     // No drag movement → treat as click or double-click
     if (!hasDraggedRef.current) {
@@ -1013,7 +1013,7 @@ export default function SmartStoragePage() {
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            onClick={() => { setContextMenu(null); setSelectedFiles(new Set()) }}
+            onClick={() => setContextMenu(null)}
           >
             {/* Toolbar */}
             <div className="flex h-10 items-center gap-2 border-b border-border bg-card/50 px-4">
@@ -1391,7 +1391,7 @@ export default function SmartStoragePage() {
               {(viewMode === "list" || classificationView) && displayedFiles.map((file) => (
                 <div
                   key={file.id}
-                  onClick={(e) => handleFileClick(file.id, e)}
+                  onClick={(e) => { e.stopPropagation(); handleFileClick(file.id, e) }}
                   onDoubleClick={() => handleDownloadFile(file.id)}
                   onContextMenu={(e) => handleFileRightClick(e, file.id, file.filename)}
                   onMouseEnter={(e) => handleFileHoverEnter(file.id, e.clientX, e.clientY)}

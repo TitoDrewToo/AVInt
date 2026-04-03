@@ -88,20 +88,24 @@ serve(async (req) => {
               {
                 text: `You are a document extraction AI. Analyze this document and extract structured data.
 
-Return ONLY a valid JSON object with no markdown, no code blocks, no explanation.
+CRITICAL FORMATTING RULES:
+1. Return ONLY a single JSON object — starting with { and ending with }
+2. NEVER return a JSON array at the top level (never start your response with [)
+3. No markdown, no code blocks, no explanation — just the JSON object
+4. If the document has multiple line items, put them inside the "line_items" array field
 
-Extract these fields if present:
+Extract these fields:
 {
   "document_type": "receipt|invoice|payslip|income_statement|bank_statement|transaction_record|contract|agreement|tax_document|general_document",
-  "vendor_name": "string or null",
-  "employer_name": "string or null",
-  "document_date": "YYYY-MM-DD or null",
-  "currency": "USD|PHP|SGD|etc or null",
+  "vendor_name": "string or null — store/company name shown on the document",
+  "employer_name": "string or null — employer name for payslips",
+  "document_date": "YYYY-MM-DD or null — date printed on the document",
+  "currency": "USD|PHP|SGD|EUR|GBP|etc or null — currency of the amounts",
   "total_amount": number or null,
   "gross_income": number or null,
   "net_income": number or null,
-  "expense_category": "Food|Transport|Utilities|Healthcare|Entertainment|Shopping|Travel|Office|Other or null",
-  "line_items": [{"description": "string", "amount": number}] or [],
+  "expense_category": "Food|Transport|Utilities|Healthcare|Entertainment|Shopping|Travel|Office|Salary|Other or null",
+  "line_items": [{"description": "string", "amount": number}],
   "confidence": number between 0 and 1
 }
 
@@ -109,8 +113,11 @@ Rules:
 - document_type must be one of the exact values listed
 - dates must be ISO format YYYY-MM-DD
 - amounts must be numbers not strings
+- For receipts/invoices: vendor_name is the store/restaurant/company issuing the document
+- For screenshots of receipts: read the store name from the header of the receipt
 - confidence reflects how certain you are about the extraction
-- if a field cannot be determined return null`
+- if a field cannot be determined return null
+- line_items should be an empty array [] if no line items found, never null`
               }
             ]
           }],
@@ -133,19 +140,24 @@ Rules:
     if (!rawText) throw new Error("No response from Gemini")
 
     // 7. Parse Gemini JSON output
-    // Gemini sometimes wraps output in ```json ... ``` — extract object or array
-    // For CSVs Gemini returns an array of rows — insert all as separate document_fields
+    // Gemini sometimes wraps output in ```json ... ``` blocks — strip those first.
+    // Top-level array = CSV export (multiple document rows). Top-level object = single document.
+    // IMPORTANT: use startsWith('[') to detect top-level arrays — NOT a regex search,
+    // because a valid document object like {"line_items": [...]} also contains '['.
     let extractedRows: any[]
     try {
-      const arrayMatch = rawText.match(/\[[\s\S]*\]/)
-      const objectMatch = rawText.match(/\{[\s\S]*\}/)
-      if (arrayMatch) {
-        const parsed = JSON.parse(arrayMatch[0])
+      // Strip markdown code fences if present
+      const stripped = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim()
+
+      if (stripped.startsWith("[")) {
+        // Top-level array — treat as multi-row CSV export
+        const parsed = JSON.parse(stripped)
         extractedRows = Array.isArray(parsed) ? parsed : [parsed]
-      } else if (objectMatch) {
-        extractedRows = [JSON.parse(objectMatch[0])]
       } else {
-        throw new Error("No JSON found in response")
+        // Single JSON object — standard document
+        const objectMatch = stripped.match(/\{[\s\S]*\}/)
+        if (!objectMatch) throw new Error("No JSON object found in response")
+        extractedRows = [JSON.parse(objectMatch[0])]
       }
     } catch {
       throw new Error(`Failed to parse Gemini output: ${rawText}`)

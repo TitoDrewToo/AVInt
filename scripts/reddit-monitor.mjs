@@ -110,7 +110,7 @@ AVIntelligence is an AI document intelligence tool for freelancers and self-empl
 
 Your job:
 1. Score the relevance of this thread (0-10). Score high if the person is struggling with document management, expense tracking, receipt organization, tax prep, or looking for affordable alternatives.
-2. Draft a genuine, helpful Reddit reply that naturally mentions AVIntelligence. Do NOT sound like an ad. Sound like a helpful community member who happens to know about this tool. Keep it under 100 words. Don't start with "I" and don't be sycophantic.
+2. Draft a reply in the voice of the solo founder who built AVIntelligence. Honest, direct, not salesy. Use phrases like "maybe have a look at what I made" or "I built this for exactly this problem" when natural. Sound like a person, not a marketer. Keep it under 80 words. Don't start with "I". No sycophancy. No exclamation marks.
 
 Respond in this exact format:
 SCORE: [0-10]

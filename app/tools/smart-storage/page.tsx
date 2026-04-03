@@ -313,6 +313,9 @@ export default function SmartStoragePage() {
   const [isDragOver, setIsDragOver] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set())
   const [viewMode, setViewMode] = useState<"list" | "grid">("grid")
+  const [boxSelect, setBoxSelect] = useState<{ startX: number; startY: number; currentX: number; currentY: number } | null>(null)
+  const lastSelectedRef = useRef<string | null>(null)
+  const canvasBoxSelectStart = useRef<{ x: number; y: number } | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; fileId: string; filename: string } | null>(null)
   const [manualEntryOpen, setManualEntryOpen] = useState(false)
   const [reclassifyTarget, setReclassifyTarget] = useState<{ fileId: string; filename: string } | null>(null)
@@ -462,6 +465,19 @@ export default function SmartStoragePage() {
     loadFolders()
   }, [checkProcessingState, loadFiles, checkReportAvailability, loadFolders])
 
+  // ── Keyboard shortcuts ────────────────────────────────────────────────────
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "a") {
+        e.preventDefault()
+        setSelectedFiles(new Set(displayedFiles.map(f => f.id)))
+      }
+      if (e.key === "Escape") setSelectedFiles(new Set())
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [displayedFiles])
+
   // ── Auto-assign canvas positions ───────────────────────────────────────────
   useEffect(() => {
     const subfolderIds = folders
@@ -540,16 +556,65 @@ export default function SmartStoragePage() {
     if (e.dataTransfer.files.length > 0) await handleUpload(e.dataTransfer.files)
   }
 
+  // ── Box select ────────────────────────────────────────────────────────────
+  const handleCanvasBoxDown = (e: React.PointerEvent) => {
+    if (e.target !== canvasRef.current) return
+    const rect = canvasRef.current!.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+    canvasBoxSelectStart.current = { x, y }
+    setBoxSelect({ startX: x, startY: y, currentX: x, currentY: y })
+    if (!e.shiftKey && !e.metaKey && !e.ctrlKey) setSelectedFiles(new Set())
+  }
+
+  const handleCanvasBoxMove = (e: React.PointerEvent) => {
+    if (!canvasBoxSelectStart.current || !canvasRef.current) return
+    const rect = canvasRef.current.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+    setBoxSelect(prev => prev ? { ...prev, currentX: x, currentY: y } : null)
+  }
+
+  const handleCanvasBoxUp = () => {
+    if (!boxSelect) return
+    const selLeft   = Math.min(boxSelect.startX, boxSelect.currentX)
+    const selTop    = Math.min(boxSelect.startY, boxSelect.currentY)
+    const selRight  = Math.max(boxSelect.startX, boxSelect.currentX)
+    const selBottom = Math.max(boxSelect.startY, boxSelect.currentY)
+    if (selRight - selLeft > 6 || selBottom - selTop > 6) {
+      const hit = displayedFiles.filter(file => {
+        const pos = itemPositions[file.id]
+        if (!pos) return false
+        const fl = GRID_PAD + pos.col * CELL_W
+        const ft = GRID_PAD + pos.row * CELL_H
+        return fl < selRight && fl + CELL_W - 6 > selLeft && ft < selBottom && ft + CELL_H > selTop
+      })
+      if (hit.length > 0) setSelectedFiles(new Set(hit.map(f => f.id)))
+    }
+    canvasBoxSelectStart.current = null
+    setBoxSelect(null)
+  }
+
   // ── File selection ────────────────────────────────────────────────────────
   const handleFileClick = (fileId: string, e: React.MouseEvent) => {
-    if (e.metaKey || e.ctrlKey) {
+    if (e.shiftKey && lastSelectedRef.current) {
+      const allIds = displayedFiles.map(f => f.id)
+      const fromIdx = allIds.indexOf(lastSelectedRef.current)
+      const toIdx = allIds.indexOf(fileId)
+      if (fromIdx !== -1 && toIdx !== -1) {
+        const [start, end] = fromIdx < toIdx ? [fromIdx, toIdx] : [toIdx, fromIdx]
+        setSelectedFiles(new Set(allIds.slice(start, end + 1)))
+      }
+    } else if (e.metaKey || e.ctrlKey) {
       setSelectedFiles(prev => {
         const next = new Set(prev)
         next.has(fileId) ? next.delete(fileId) : next.add(fileId)
         return next
       })
+      lastSelectedRef.current = fileId
     } else {
       setSelectedFiles(new Set([fileId]))
+      lastSelectedRef.current = fileId
     }
     setContextMenu(null)
   }
@@ -1103,6 +1168,9 @@ export default function SmartStoragePage() {
                   ref={canvasRef}
                   className="relative w-full"
                   style={{ minHeight: `${Math.max(480, (maxRow + 3) * CELL_H + GRID_PAD * 2)}px` }}
+                  onPointerDown={handleCanvasBoxDown}
+                  onPointerMove={handleCanvasBoxMove}
+                  onPointerUp={handleCanvasBoxUp}
                 >
                   {currentSubfolders.map((folder) => {
                     const pos = itemPositions[folder.id]
@@ -1167,20 +1235,39 @@ export default function SmartStoragePage() {
                     </div>
                   )}
 
+                  {/* Box select visual */}
+                  {boxSelect && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        left:   Math.min(boxSelect.startX, boxSelect.currentX),
+                        top:    Math.min(boxSelect.startY, boxSelect.currentY),
+                        width:  Math.abs(boxSelect.currentX - boxSelect.startX),
+                        height: Math.abs(boxSelect.currentY - boxSelect.startY),
+                        border: "1px solid rgba(220,38,38,0.5)",
+                        background: "rgba(220,38,38,0.06)",
+                        borderRadius: 4,
+                        pointerEvents: "none",
+                        zIndex: 200,
+                      }}
+                    />
+                  )}
+
                   {displayedFiles.map((file) => {
                     const pos = itemPositions[file.id]
                     if (!pos) return null
                     const isDragging = draggingId === file.id
+                    const isSelected = selectedFiles.has(file.id)
                     const left = isDragging && dragGhostPos ? dragGhostPos.x : GRID_PAD + pos.col * CELL_W
                     const top  = isDragging && dragGhostPos ? dragGhostPos.y : GRID_PAD + pos.row * CELL_H
                     return (
                       <div
                         key={file.id}
                         style={{ position: "absolute", left, top, width: CELL_W - 6, zIndex: isDragging ? 50 : 1 }}
-                        className={`flex flex-col items-center gap-1 rounded-lg px-1 py-2 select-none ${
+                        className={`group relative flex flex-col items-center gap-1 rounded-lg px-1 py-2 select-none ${
                           isDragging
                             ? "opacity-90 shadow-xl ring-1 ring-primary/30 cursor-grabbing"
-                            : selectedFiles.has(file.id)
+                            : isSelected
                             ? "bg-primary/10 ring-1 ring-primary/30 cursor-grab"
                             : "hover:bg-muted cursor-grab"
                         }`}
@@ -1190,6 +1277,20 @@ export default function SmartStoragePage() {
                         onClick={(e) => { if (!draggingId) handleFileClick(file.id, e) }}
                         onContextMenu={(e) => handleFileRightClick(e, file.id, file.filename)}
                       >
+                        {/* Checkbox — visible on hover or when any file is selected */}
+                        <div
+                          className={`absolute left-1 top-1 transition-opacity ${
+                            isSelected || selectedFiles.size > 0 ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                          }`}
+                          onClick={(e) => { e.stopPropagation(); handleFileClick(file.id, e) }}
+                        >
+                          <div className={`flex h-4 w-4 items-center justify-center rounded border ${
+                            isSelected ? "border-primary bg-primary" : "border-border bg-background/80"
+                          }`}>
+                            {isSelected && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
+                          </div>
+                        </div>
+
                         <div className="flex h-10 w-10 items-center justify-center">
                           {file.file_type === "application/pdf"
                             ? <FileText className="h-9 w-9 text-primary/60" />

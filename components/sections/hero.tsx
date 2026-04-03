@@ -4,8 +4,10 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { ArrowRight } from "lucide-react"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { supabase } from "@/lib/supabase"
+import { AuthGuardModal } from "@/components/auth-guard-modal"
+import type { Session } from "@supabase/supabase-js"
 function TrustedCounter() {
   const [current, setCurrent] = useState<number | null>(null)
   const [next, setNext] = useState<number | null>(null)
@@ -201,8 +203,40 @@ const KEYFRAMES = `
 `
 
 export function HeroSection() {
+  const [session, setSession] = useState<Session | null>(null)
+  const [authModalVisible, setAuthModalVisible] = useState(false)
+  const [pendingHref, setPendingHref] = useState<string | null>(null)
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSession(data.session))
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => setSession(s))
+    return () => subscription.unsubscribe()
+  }, [])
+
+  const handleToolClick = useCallback((e: React.MouseEvent, href: string) => {
+    if (session) {
+      // Logged in — open in new tab normally
+      window.open(href, "_blank", "noopener,noreferrer")
+    } else {
+      // Not logged in — show auth modal inline, remember where to go after
+      e.preventDefault()
+      setPendingHref(href)
+      setAuthModalVisible(true)
+    }
+  }, [session])
+
+  const handleAuthSuccess = useCallback(() => {
+    setAuthModalVisible(false)
+    if (pendingHref) {
+      window.open(pendingHref, "_blank", "noopener,noreferrer")
+      setPendingHref(null)
+    }
+  }, [pendingHref])
+
   return (
-    <section className="relative overflow-hidden px-6 py-24 md:py-32">
+    <>
+      <AuthGuardModal isVisible={authModalVisible} onSuccess={handleAuthSuccess} />
+      <section className="relative overflow-hidden px-6 py-24 md:py-32">
       <style>{KEYFRAMES}</style>
       <div className="mx-auto max-w-6xl">
         {/* Desktop: 40/60 split | Mobile: single column */}
@@ -243,9 +277,9 @@ export function HeroSection() {
             {/* Smart Storage — Featured card */}
             <a
               href="/tools/smart-storage"
-              target="_blank"
               rel="noopener noreferrer"
-              className="group relative overflow-hidden rounded-2xl border border-border bg-card p-5 shadow-sm transition-all duration-200 hover:border-primary/30 hover:shadow-md"
+              onClick={(e) => handleToolClick(e, "/tools/smart-storage")}
+              className="group relative cursor-pointer overflow-hidden rounded-2xl border border-border bg-card p-5 shadow-sm transition-all duration-200 hover:border-primary/30 hover:shadow-md"
             >
               {/* Card header */}
               <div className="mb-3 flex items-center justify-between">
@@ -347,9 +381,9 @@ export function HeroSection() {
               {/* Smart Dashboard */}
               <a
                 href="/tools/smart-dashboard"
-                target="_blank"
                 rel="noopener noreferrer"
-                className="group rounded-2xl border border-border bg-card p-4 shadow-sm transition-all duration-200 hover:border-primary/30 hover:shadow-md"
+                onClick={(e) => handleToolClick(e, "/tools/smart-dashboard")}
+                className="group cursor-pointer rounded-2xl border border-border bg-card p-4 shadow-sm transition-all duration-200 hover:border-primary/30 hover:shadow-md"
               >
                 <div className="mb-2 flex items-center gap-2">
                   <ChartBarIcon className="h-5 w-5" />
@@ -389,5 +423,6 @@ export function HeroSection() {
         </div>
       </div>
     </section>
+    </>
   )
 }

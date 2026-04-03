@@ -1,13 +1,63 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { X, User, ChevronDown, AlertTriangle, LogOut } from "lucide-react"
+import { X, User, ChevronDown, AlertTriangle, LogOut, Copy, Check as CheckIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { GoogleSignInButton } from "@/components/google-sign-in-button"
 import { supabase } from "@/lib/supabase"
 import Link from "next/link"
 import type { Session } from "@supabase/supabase-js"
+
+function getInAppBrowserName(): string | null {
+  if (typeof navigator === "undefined") return null
+  const ua = navigator.userAgent
+  if (/FBAN|FBAV/i.test(ua)) return "Facebook"
+  if (/Instagram/i.test(ua)) return "Instagram"
+  if (/Twitter/i.test(ua)) return "Twitter"
+  if (/LinkedInApp/i.test(ua)) return "LinkedIn"
+  if (/Snapchat/i.test(ua)) return "Snapchat"
+  if (/TikTok/i.test(ua)) return "TikTok"
+  if (/Line\//i.test(ua)) return "Line"
+  if (/\bwv\b/i.test(ua) && /Android/i.test(ua)) return "an in-app browser"
+  return null
+}
+
+function InAppBrowserBanner() {
+  const [appName, setAppName] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    setAppName(getInAppBrowserName())
+  }, [])
+
+  if (!appName) return null
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText("https://www.avintph.com").then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  return (
+    <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+      <p className="text-sm font-medium text-amber-400">
+        You&apos;re in {appName}&apos;s browser
+      </p>
+      <p className="mt-1 text-xs text-amber-400/80">
+        Google sign-in is blocked here. Open the link in Safari or Chrome to sign in.
+      </p>
+      <button
+        onClick={handleCopy}
+        className="mt-3 flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-400 transition-colors hover:bg-amber-500/20"
+      >
+        {copied ? <CheckIcon className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+        {copied ? "Copied!" : "Copy avintph.com"}
+      </button>
+    </div>
+  )
+}
 
 interface SubscriptionData {
   status: string
@@ -253,6 +303,7 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                 {/* Authentication Section */}
                 {!isSignedIn && (
                   <div className="space-y-5">
+                    <InAppBrowserBanner />
                     <GoogleSignInButton />
                     <div className="flex items-center gap-3">
                       <div className="h-px flex-1 bg-border" />
@@ -275,7 +326,13 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                             setAuthError(""); setAuthLoading(true)
                             const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword })
                             setAuthLoading(false)
-                            if (error) setAuthError(error.message)
+                            if (error) {
+                              if (error.message.toLowerCase().includes("invalid login credentials")) {
+                                setAuthError("Invalid credentials. If you signed up with Google, use the button above — or click Forgot Password to set a password.")
+                              } else {
+                                setAuthError(error.message)
+                              }
+                            }
                           }}
                         >
                           {authLoading ? "Signing in…" : "Sign In"}

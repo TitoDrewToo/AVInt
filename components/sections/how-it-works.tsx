@@ -58,7 +58,7 @@ function ProcessIcon({ className }: { className?: string }) {
       <circle cx="6" cy="6" r="2" className="fill-muted stroke-border node-1" strokeWidth="0.5" />
       <circle cx="26" cy="6" r="2" className="fill-muted stroke-border node-2" strokeWidth="0.5" />
       <circle cx="6" cy="26" r="2" className="fill-muted stroke-border node-3" strokeWidth="0.5" />
-      <circle cx="26" cy="26" r="2" className="fill-primary/60 node-4" strokeWidth="0.5" />
+      <circle cx="26" cy="26" r="2" className="fill-muted stroke-border node-4" strokeWidth="0.5" />
       <circle cx="16" cy="16" r="1.5" className="fill-primary center-dot" />
     </svg>
   )

@@ -32,9 +32,9 @@ export default function HomePage() {
       <main className="flex-1" style={{ scrollSnapType: "y proximity" }}>
         <div style={{ scrollSnapAlign: "start" }}><HeroSection /></div>
         <div style={{ scrollSnapAlign: "start" }}><WhatWeDoSection /></div>
+        <div style={{ scrollSnapAlign: "start" }}><HowItWorksSection /></div>
         <div style={{ scrollSnapAlign: "start" }}><TaglineSection /></div>
         <div style={{ scrollSnapAlign: "start" }}><ProductsSection /></div>
-        <div style={{ scrollSnapAlign: "start" }}><HowItWorksSection /></div>
         <div style={{ scrollSnapAlign: "start" }}><PricingPreviewSection /></div>
       </main>
 

@@ -288,9 +288,6 @@ export function HeroSection() {
                   <DocumentIcon className="h-5 w-5" />
                   <span className="text-sm font-semibold text-foreground">Smart Storage</span>
                 </div>
-                <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-primary">
-                  Featured
-                </span>
               </div>
               <p className="mb-4 text-xs leading-relaxed text-muted-foreground">
                 Upload any financial document. AI extracts every field automatically and feeds your dashboard.

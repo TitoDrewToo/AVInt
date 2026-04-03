@@ -371,10 +371,13 @@ export default function SmartStoragePage() {
     if (!session?.user?.id) return
     const { data: userFiles } = await supabase.from("files").select("id").eq("user_id", session.user.id)
     if (!userFiles?.length) { setIsProcessing(false); return false }
+    // Only consider jobs created in the last 30 min — stale stuck jobs won't fire the indicator
+    const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString()
     const { data: activeJobs } = await supabase
       .from("processing_jobs").select("status")
       .in("file_id", userFiles.map((f) => f.id))
       .in("status", ["uploaded", "processing"])
+      .gte("created_at", cutoff)
     const stillActive = (activeJobs?.length ?? 0) > 0
     setIsProcessing(stillActive)
     return stillActive

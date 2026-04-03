@@ -158,9 +158,17 @@ serve(async (req) => {
     const currency = f.find((x: any) => x.currency)?.currency ?? "PHP"
     const symbol   = currency === "PHP" ? "₱" : currency === "EUR" ? "€" : currency === "GBP" ? "£" : "$"
 
-    // ── 3. Core aggregations (document_type-based, matches dashboard exactly) ─
-    const incomeRows  = f.filter((x: any) => INCOME_TYPES.includes(fileTypeMap[x.file_id]))
-    const expenseRows = f.filter((x: any) => EXPENSE_TYPES.includes(fileTypeMap[x.file_id]))
+    // ── 3. Core aggregations — csv_export rows classified by gross_income presence ─
+    const isIncomeRow  = (x: any) => {
+      const dt = fileTypeMap[x.file_id]
+      return dt === "csv_export" ? x.gross_income != null : INCOME_TYPES.includes(dt)
+    }
+    const isExpenseRow = (x: any) => {
+      const dt = fileTypeMap[x.file_id]
+      return dt === "csv_export" ? (x.gross_income == null && x.total_amount != null) : EXPENSE_TYPES.includes(dt)
+    }
+    const incomeRows  = f.filter(isIncomeRow)
+    const expenseRows = f.filter(isExpenseRow)
 
     const totalIncome   = incomeRows.reduce((s: number, x: any) => s + Number(x.gross_income ?? x.total_amount ?? 0), 0)
     const totalExpenses = expenseRows.reduce((s: number, x: any) => s + Number(x.total_amount ?? 0), 0)
@@ -184,10 +192,9 @@ serve(async (req) => {
     for (const x of f) {
       if (!x.document_date) continue
       const mo = x.document_date.slice(0, 7)
-      const docType = fileTypeMap[x.file_id]
-      if (INCOME_TYPES.includes(docType))
+      if (isIncomeRow(x))
         monthlyIncomeMap[mo] = (monthlyIncomeMap[mo] ?? 0) + Number(x.gross_income ?? x.total_amount ?? 0)
-      else if (EXPENSE_TYPES.includes(docType))
+      else if (isExpenseRow(x))
         monthlyExpenses[mo] = (monthlyExpenses[mo] ?? 0) + Number(x.total_amount ?? 0)
     }
     const sortedMonths = Object.keys({ ...monthlyExpenses, ...monthlyIncomeMap }).sort()

@@ -725,8 +725,21 @@ export default function SmartDashboardPage() {
     if (!fields?.length) { setLoading(false); return }
 
     const currency = (fields[0] as any)?.currency ?? "USD"
-    const incomeFields = fields.filter((f: any) => ["payslip", "income_statement"].includes(f.files.document_type))
-    const expenseFields = fields.filter((f: any) => ["receipt", "invoice"].includes(f.files.document_type))
+
+    const INCOME_TYPES = ["payslip", "income_statement"]
+    const EXPENSE_TYPES = ["receipt", "invoice"]
+
+    // Classify each row — csv_export rows use gross_income presence instead of document_type
+    const incomeFields = fields.filter((f: any) => {
+      const dt = f.files.document_type
+      if (dt === "csv_export") return f.gross_income != null
+      return INCOME_TYPES.includes(dt)
+    })
+    const expenseFields = fields.filter((f: any) => {
+      const dt = f.files.document_type
+      if (dt === "csv_export") return f.gross_income == null && f.total_amount != null
+      return EXPENSE_TYPES.includes(dt)
+    })
 
     const totalIncome = incomeFields.reduce((s: number, f: any) => s + parseFloat(f.gross_income ?? f.total_amount ?? 0), 0)
     const totalExpenses = expenseFields.reduce((s: number, f: any) => s + parseFloat(f.total_amount ?? 0), 0)
@@ -741,10 +754,11 @@ export default function SmartDashboardPage() {
       if (!f.document_date) return
       const month = f.document_date.slice(0, 7)
       if (!monthMap[month]) monthMap[month] = { expenses: 0, income: 0 }
-      if (["payslip", "income_statement"].includes(f.files.document_type))
-        monthMap[month].income += parseFloat(f.gross_income ?? f.total_amount ?? 0)
-      else if (["receipt", "invoice"].includes(f.files.document_type))
-        monthMap[month].expenses += parseFloat(f.total_amount ?? 0)
+      const dt = f.files.document_type
+      const isIncome = dt === "csv_export" ? f.gross_income != null : INCOME_TYPES.includes(dt)
+      const isExpense = dt === "csv_export" ? (f.gross_income == null && f.total_amount != null) : EXPENSE_TYPES.includes(dt)
+      if (isIncome) monthMap[month].income += parseFloat(f.gross_income ?? f.total_amount ?? 0)
+      else if (isExpense) monthMap[month].expenses += parseFloat(f.total_amount ?? 0)
     })
     setMonthlyData(Object.entries(monthMap).sort(([a],[b]) => a.localeCompare(b)).map(([m, d]) => ({
       month: new Date(m + "-01").toLocaleDateString("en-US", { month: "short", year: "2-digit" }), ...d

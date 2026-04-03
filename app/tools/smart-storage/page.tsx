@@ -317,6 +317,12 @@ export default function SmartStoragePage() {
   const lastSelectedRef = useRef<string | null>(null)
   const canvasBoxSelectStart = useRef<{ x: number; y: number } | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; fileId: string; filename: string } | null>(null)
+
+  // Preview (hover + double-click)
+  const [hoverPreview, setHoverPreview] = useState<{ fileId: string; url: string | null; x: number; y: number } | null>(null)
+  const hoverPreviewCache = useRef<Map<string, string>>(new Map())
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastClickRef = useRef<{ id: string; time: number } | null>(null)
   const [manualEntryOpen, setManualEntryOpen] = useState(false)
   const [reclassifyTarget, setReclassifyTarget] = useState<{ fileId: string; filename: string } | null>(null)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
@@ -644,6 +650,29 @@ export default function SmartStoragePage() {
     setSelectedFiles(new Set([fileId]))
   }
 
+  // ── Hover preview ─────────────────────────────────────────────────────────
+  const handleFileHoverEnter = useCallback(async (fileId: string, clientX: number, clientY: number) => {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
+    hoverTimerRef.current = setTimeout(async () => {
+      const file = files.find(f => f.id === fileId)
+      if (!file) return
+      let url = hoverPreviewCache.current.get(fileId) ?? null
+      if (!url && (file.file_type.startsWith("image/") || file.file_type === "application/pdf")) {
+        const { data } = await supabase.storage.from("documents").createSignedUrl(file.storage_path, 300)
+        if (data?.signedUrl) {
+          url = data.signedUrl
+          hoverPreviewCache.current.set(fileId, url)
+        }
+      }
+      setHoverPreview({ fileId, url, x: clientX, y: clientY })
+    }, 450)
+  }, [files])
+
+  const handleFileHoverLeave = useCallback(() => {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
+    setHoverPreview(null)
+  }, [])
+
   const handleDownloadFile = async (fileId: string) => {
     const file = files.find(f => f.id === fileId)
     if (!file) return
@@ -722,6 +751,22 @@ export default function SmartStoragePage() {
 
   const handleCanvasPointerUp = (e: React.PointerEvent, id: string, hoveredCanvasFolderId: string | null) => {
     if (draggingId !== id) { setDraggingId(null); setDragGhostPos(null); setHoveredLeftFolderId(null); return }
+
+    // No movement → treat as click or double-click
+    if (dragGhostPos === null) {
+      const now = Date.now()
+      const isDoubleClick = lastClickRef.current?.id === id && now - lastClickRef.current.time < 350
+      if (isDoubleClick) {
+        lastClickRef.current = null
+        handleDownloadFile(id)
+      } else {
+        lastClickRef.current = { id, time: now }
+        handleFileClick(id, e as unknown as React.MouseEvent)
+      }
+      setDraggingId(null)
+      return
+    }
+
     const isFile = files.some(f => f.id === id)
     // Drop onto left pane folder
     if (isFile && hoveredLeftFolderId) {
@@ -1275,8 +1320,9 @@ export default function SmartStoragePage() {
                         onPointerDown={(e) => { if (renamingFileId === file.id) return; handleCanvasPointerDown(e, file.id) }}
                         onPointerMove={(e) => handleCanvasPointerMove(e, file.id)}
                         onPointerUp={(e) => handleCanvasPointerUp(e, file.id, hoveredFolderId)}
-                        onClick={(e) => { if (!draggingId) handleFileClick(file.id, e) }}
                         onContextMenu={(e) => handleFileRightClick(e, file.id, file.filename)}
+                        onMouseEnter={(e) => handleFileHoverEnter(file.id, e.clientX, e.clientY)}
+                        onMouseLeave={handleFileHoverLeave}
                       >
                         {/* Checkbox — visible on hover or when any file is selected */}
                         <div
@@ -1327,7 +1373,10 @@ export default function SmartStoragePage() {
                 <div
                   key={file.id}
                   onClick={(e) => handleFileClick(file.id, e)}
+                  onDoubleClick={() => handleDownloadFile(file.id)}
                   onContextMenu={(e) => handleFileRightClick(e, file.id, file.filename)}
+                  onMouseEnter={(e) => handleFileHoverEnter(file.id, e.clientX, e.clientY)}
+                  onMouseLeave={handleFileHoverLeave}
                   className={`grid grid-cols-[1fr_120px_140px_80px] items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition-colors cursor-pointer select-none ${
                     selectedFiles.has(file.id) ? "bg-primary/10 text-foreground" : "hover:bg-muted"
                   }`}
@@ -1716,6 +1765,41 @@ export default function SmartStoragePage() {
           setReclassifyTarget(null)
         }}
       />
+
+      {/* Hover preview card */}
+      {hoverPreview && (() => {
+        const file = files.find(f => f.id === hoverPreview.fileId)
+        if (!file) return null
+        const isImage = file.file_type.startsWith("image/")
+        // Position: prefer right of cursor, flip left near right edge
+        const px = hoverPreview.x + 16
+        const py = Math.max(8, hoverPreview.y - 60)
+        return (
+          <div
+            className="pointer-events-none fixed z-[9999] w-52 rounded-xl border border-border bg-card shadow-xl overflow-hidden"
+            style={{ left: Math.min(px, window.innerWidth - 220), top: Math.min(py, window.innerHeight - 260) }}
+          >
+            {isImage && hoverPreview.url ? (
+              <img
+                src={hoverPreview.url}
+                alt={file.filename}
+                className="w-full object-cover"
+                style={{ maxHeight: 160 }}
+              />
+            ) : (
+              <div className="flex h-20 items-center justify-center bg-muted">
+                <FileText className="h-10 w-10 text-primary/40" />
+              </div>
+            )}
+            <div className="px-3 py-2 space-y-0.5">
+              <p className="truncate text-xs font-medium text-foreground">{file.filename}</p>
+              <p className="text-[11px] text-muted-foreground capitalize">{file.document_type.replace(/_/g, " ")}</p>
+              <p className="text-[11px] text-muted-foreground/60">{formatBytes(file.file_size)}</p>
+              <p className="mt-1 text-[10px] text-primary/60">Double-click to open</p>
+            </div>
+          </div>
+        )
+      })()}
 
     </div>
   )

@@ -87,6 +87,9 @@ export async function POST(req: NextRequest) {
       .insert(subPayload)
   }
 
+  // 4. Increment the public user counter (same as paid webhook path)
+  try { await supabaseAdmin.rpc("increment_user_counter") } catch (e) { console.warn("user_counter rpc error:", e) }
+
   console.log("Gift code redeemed:", normalizedCode, "by", email)
 
   return NextResponse.json({ success: true, plan: giftCode.plan ?? "monthly" })

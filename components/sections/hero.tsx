@@ -282,13 +282,7 @@ export function HeroSection() {
           <div className="hidden lg:flex lg:flex-col lg:gap-3">
 
             {/* Smart Storage — Featured card */}
-            <a
-              href="/tools/smart-storage"
-              rel="noopener noreferrer"
-              onClick={(e) => handleToolClick(e, "/tools/smart-storage")}
-              className="group relative cursor-pointer overflow-hidden rounded-2xl border border-border bg-card p-5 shadow-sm transition-all duration-200 hover:border-primary/30 hover:shadow-md"
-            >
-              {/* Card header */}
+            <div className="relative overflow-hidden rounded-2xl border border-border bg-card p-5 shadow-sm">
               <div className="mb-3 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <DocumentIcon className="h-5 w-5" />
@@ -302,61 +296,32 @@ export function HeroSection() {
                 Upload any financial document. AI extracts every field automatically and feeds your dashboard.
               </p>
 
-              {/* Mini animated preview */}
+              {/* Documents + Processing preview */}
               <div className="relative h-44 w-full overflow-hidden rounded-xl border border-border/40 bg-muted/20">
-                {/* Documents panel */}
-                <div className="absolute left-3 top-3 w-[48%] rounded-xl border border-border bg-card p-3 shadow-sm">
+                {/* Documents panel — full width */}
+                <div className="absolute left-3 right-3 top-3 rounded-xl border border-border bg-card p-3 shadow-sm">
                   <div className="mb-2 flex items-center gap-1.5">
                     <DocumentIcon className="h-3 w-3" />
                     <span className="text-[9px] text-muted-foreground">Documents</span>
                   </div>
                   <div className="space-y-1.5">
                     {[
-                      { delay: "0s",    right: "shimmer-bar",     rw: "w-8" },
-                      { delay: "0.6s",  right: "shimmer-bar",     rw: "w-10" },
-                      { delay: "1.2s",  right: "shimmer-bar-red", rw: "w-6" },
-                      { delay: "1.8s",  right: "shimmer-bar",     rw: "w-9" },
+                      { delay: "0s",   right: "shimmer-bar",     rw: "w-14" },
+                      { delay: "0.6s", right: "shimmer-bar",     rw: "w-20" },
+                      { delay: "1.2s", right: "shimmer-bar-red", rw: "w-12" },
+                      { delay: "1.8s", right: "shimmer-bar",     rw: "w-16" },
                     ].map((row, i) => (
                       <div key={i} className="flex items-center gap-1.5">
                         <div
                           className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-primary"
                           style={{ animation: `docDotAnim 2.4s ease-in-out infinite ${row.delay}` }}
                         />
-                        <div className={`h-1.5 flex-1 rounded shimmer-bar`} />
+                        <div className="h-1.5 flex-1 rounded shimmer-bar" />
                         <div className={`h-1.5 ${row.rw} flex-shrink-0 rounded ${row.right}`} />
                       </div>
                     ))}
                   </div>
                 </div>
-
-                {/* Analytics panel */}
-                <div className="absolute right-3 top-3 w-[46%] rounded-xl border border-border bg-card p-3 shadow-sm">
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-[9px] text-muted-foreground">Analytics</span>
-                    <div className="flex items-center gap-0.5">
-                      <div className="h-1 w-1 rounded-full bg-primary" style={{ animation: "docDotAnim 1.5s ease-in-out infinite" }} />
-                      <span className="text-[8px] text-primary">Live</span>
-                    </div>
-                  </div>
-                  <div className="relative flex h-14 items-end gap-1 px-0.5">
-                    <div className="flex-1 rounded-sm bg-muted bar-1" style={{ minHeight: "35%" }} />
-                    <div className="flex-1 rounded-sm bar-2" style={{ background: "rgba(220,38,38,0.35)", minHeight: "60%" }} />
-                    <div className="flex-1 rounded-sm bg-muted bar-3" style={{ minHeight: "45%" }} />
-                    <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 60" preserveAspectRatio="none">
-                      <polyline
-                        points="15,44 45,30 75,20"
-                        fill="none"
-                        stroke="rgb(220,38,38)"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeDasharray="60"
-                        style={{ animation: "lineTrace 3s ease-in-out infinite" }}
-                      />
-                    </svg>
-                  </div>
-                </div>
-
                 {/* Processing bar */}
                 <div className="absolute bottom-3 left-3 right-3 rounded-lg border border-border bg-card px-3 py-2">
                   <div className="mb-1.5 flex items-center justify-between">
@@ -369,62 +334,79 @@ export function HeroSection() {
                 </div>
               </div>
 
-              {/* Document type tags */}
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {["Receipts", "Invoices", "Payslips", "Contracts", "Bank Statements"].map((tag) => (
-                  <span
-                    key={tag}
-                    className="rounded border border-border/50 px-1.5 py-0.5 text-[10px] text-muted-foreground"
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            </a>
-
-            {/* Secondary row: Smart Dashboard + Pricing */}
-            <div className="grid grid-cols-2 gap-3">
-
-              {/* Smart Dashboard */}
-              <a
-                href="/tools/smart-dashboard"
-                rel="noopener noreferrer"
-                onClick={(e) => handleToolClick(e, "/tools/smart-dashboard")}
-                className="group cursor-pointer rounded-2xl border border-border bg-card p-4 shadow-sm transition-all duration-200 hover:border-primary/30 hover:shadow-md"
-              >
-                <div className="mb-2 flex items-center gap-2">
-                  <ChartBarIcon className="h-5 w-5" />
-                  <span className="text-sm font-semibold text-foreground">Smart Dashboard</span>
+              {/* Tags + Launch */}
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <div className="flex flex-wrap gap-1.5">
+                  {["Receipts", "Invoices", "Payslips", "Contracts"].map((tag) => (
+                    <span key={tag} className="rounded border border-border/50 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                      {tag}
+                    </span>
+                  ))}
                 </div>
-                <p className="text-xs leading-relaxed text-muted-foreground">
-                  Income vs expenses, spending by category, tax exposure, and 7 auto-generated report types.
-                </p>
-                <div className="mt-3 flex flex-wrap gap-1">
+                <button
+                  onClick={(e) => handleToolClick(e, "/tools/smart-storage")}
+                  className="flex-shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                >
+                  Launch Smart Storage →
+                </button>
+              </div>
+            </div>
+
+            {/* Smart Dashboard — full width */}
+            <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+              <div className="mb-3 flex items-center gap-2">
+                <ChartBarIcon className="h-5 w-5" />
+                <span className="text-sm font-semibold text-foreground">Smart Dashboard</span>
+              </div>
+              <p className="mb-4 text-xs leading-relaxed text-muted-foreground">
+                Income vs expenses, spending by category, tax exposure, and 7 auto-generated report types.
+              </p>
+
+              {/* Analytics animation */}
+              <div className="relative h-28 w-full overflow-hidden rounded-xl border border-border/40 bg-muted/20 px-4 pt-3 pb-5">
+                <div className="flex h-full items-end gap-1.5">
+                  <div className="flex-1 rounded-sm bg-muted bar-1" style={{ minHeight: "30%" }} />
+                  <div className="flex-1 rounded-sm bar-2" style={{ background: "rgba(220,38,38,0.35)", minHeight: "58%" }} />
+                  <div className="flex-1 rounded-sm bg-muted bar-3" style={{ minHeight: "42%" }} />
+                  <div className="flex-1 rounded-sm bg-muted bar-1" style={{ minHeight: "28%", animationDelay: "0.5s" }} />
+                  <div className="flex-1 rounded-sm bar-2" style={{ background: "rgba(220,38,38,0.25)", minHeight: "50%", animationDelay: "0.8s" }} />
+                  <div className="flex-1 rounded-sm bg-muted bar-3" style={{ minHeight: "38%", animationDelay: "1.1s" }} />
+                </div>
+                <svg className="absolute inset-0 h-full w-full" viewBox="0 0 120 60" preserveAspectRatio="none">
+                  <polyline
+                    points="10,46 30,32 50,22 70,36 90,24 110,14"
+                    fill="none"
+                    stroke="rgb(220,38,38)"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeDasharray="120"
+                    style={{ animation: "lineTrace 3s ease-in-out infinite" }}
+                  />
+                </svg>
+                <div className="absolute bottom-1 left-4 right-4 flex justify-between text-[8px] text-muted-foreground/50">
+                  <span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>May</span><span>Jun</span>
+                </div>
+              </div>
+
+              {/* Tags + Launch */}
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <div className="flex flex-wrap gap-1.5">
                   {["Analytics", "Reports", "Trends"].map((tag) => (
                     <span key={tag} className="rounded border border-border/50 px-1.5 py-0.5 text-[10px] text-muted-foreground">
                       {tag}
                     </span>
                   ))}
                 </div>
-              </a>
-
-              {/* Pricing */}
-              <Link
-                href="/pricing"
-                className="group rounded-2xl border border-border bg-card p-4 shadow-sm transition-all duration-200 hover:border-primary/30 hover:shadow-md"
-              >
-                <div className="mb-2">
-                  <span className="text-sm font-semibold text-foreground">Pricing</span>
-                </div>
-                <p className="text-xs leading-relaxed text-muted-foreground">
-                  Free tier available. $6 day pass. Full access at $12/month.
-                </p>
-                <div className="mt-3 text-xs font-medium text-primary transition-colors group-hover:text-primary/80">
-                  View plans →
-                </div>
-              </Link>
-
+                <button
+                  onClick={(e) => handleToolClick(e, "/tools/smart-dashboard")}
+                  className="flex-shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                >
+                  Launch Smart Dashboard →
+                </button>
+              </div>
             </div>
+
           </div>
 
         </div>

@@ -214,12 +214,12 @@ export function HeroSection() {
   }, [])
 
   const handleToolClick = useCallback((e: React.MouseEvent, href: string) => {
+    e.preventDefault()
     if (session) {
-      // Logged in — open in new tab normally
+      // Logged in — open in new tab, homepage stays put
       window.open(href, "_blank", "noopener,noreferrer")
     } else {
       // Not logged in — show auth modal inline, remember where to go after
-      e.preventDefault()
       setPendingHref(href)
       setAuthModalVisible(true)
     }

@@ -180,9 +180,14 @@ Rules:
       normalization_status: "raw",
     }))
 
-    await supabase.from("document_fields").insert(rowsToInsert)
+    const { data: insertedRows } = await supabase
+      .from("document_fields")
+      .insert(rowsToInsert)
+      .select("*")
 
-    // 10. Call normalize-document function
+    // 10. Call normalize-document for each row
+    // CSVs have multiple rows — normalize each individually using inline fields
+    const rowsForNormalization = insertedRows ?? []
     const normalizeResponse = await fetch(
       `${SUPABASE_URL}/functions/v1/normalize-document`,
       {
@@ -191,9 +196,29 @@ Rules:
           "Content-Type": "application/json",
           "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
         },
-        body: JSON.stringify({ file_id, job_id }),
+        body: JSON.stringify({
+          file_id,
+          job_id: rowsForNormalization.length === 1 ? job_id : undefined,
+          fields: rowsForNormalization.length === 1 ? rowsForNormalization[0] : undefined,
+        }),
       }
     )
+
+    // For CSV multi-row: normalize remaining rows in parallel (fire and forget)
+    if (rowsForNormalization.length > 1) {
+      Promise.all(
+        rowsForNormalization.map((row: any) =>
+          fetch(`${SUPABASE_URL}/functions/v1/normalize-document`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+            },
+            body: JSON.stringify({ file_id, fields: row }),
+          })
+        )
+      ).catch(() => {/* non-blocking — normalization failures handled per-row */})
+    }
 
     if (!normalizeResponse.ok) {
       // normalize-document handles its own failure state in document_fields

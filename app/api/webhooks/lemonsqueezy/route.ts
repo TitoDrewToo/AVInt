@@ -187,9 +187,11 @@ export async function POST(req: NextRequest) {
           })
         if (giftError) console.error("Gift code insert error:", giftError.message)
         else console.log("Gift code stored:", licenseKey)
+        // Gift code purchase: do NOT count here — counted on redemption instead
+      } else {
+        // Direct subscription purchase: count immediately
+        try { await supabaseAdmin.rpc("increment_user_counter") } catch (e) { console.warn("rpc error:", e) }
       }
-
-      try { await supabaseAdmin.rpc("increment_user_counter") } catch (e) { console.warn("rpc error:", e) }
       console.log("order_created processed for:", email)
     }
 

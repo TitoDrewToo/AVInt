@@ -168,9 +168,9 @@ export async function POST(req: NextRequest) {
           plan,
           current_period_end:              resolvedPeriodEnd,
         }, userId)
+        // Only count direct subscribers here — gift code purchases are counted on redemption
+        try { await supabaseAdmin.rpc("increment_user_counter") } catch (e) { console.warn("rpc error:", e) }
       }
-
-      try { await supabaseAdmin.rpc("increment_user_counter") } catch (e) { console.warn("rpc error:", e) }
       console.log("checkout.completed processed for:", email)
     }
 

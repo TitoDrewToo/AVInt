@@ -3,7 +3,7 @@ import { ArrowUpRight } from "lucide-react"
 import { FadeUp, StaggerContainer, StaggerItem } from "@/components/fade-up"
 
 // Refined dimensional icons
-function StorageIcon({ className }: { className?: string }) {
+export function StorageIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <style>{`
@@ -31,7 +31,7 @@ function StorageIcon({ className }: { className?: string }) {
   )
 }
 
-function DashboardIcon({ className }: { className?: string }) {
+export function DashboardIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <style>{`

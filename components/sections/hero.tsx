@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { ArrowUpRight } from "lucide-react"
+import { StorageIcon, DashboardIcon } from "@/components/sections/tools"
 
 import { useEffect, useState, useCallback } from "react"
 import { supabase } from "@/lib/supabase"
@@ -253,12 +254,15 @@ export function HeroSection() {
             <div className="flex flex-col rounded-2xl border border-border bg-card p-5 shadow-sm">
               <div className="mb-2 flex items-center gap-2">
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-card shadow-sm">
-                  <DocumentIcon className="h-5 w-5" />
+                  <StorageIcon className="h-5 w-5" />
                 </div>
                 <h3 className="text-base font-semibold text-foreground">Smart Storage</h3>
               </div>
-              <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
-                Upload any financial document. AI extracts every field automatically and feeds your dashboard.
+              <p className="mb-1 text-sm leading-relaxed text-muted-foreground">
+                Upload documents once. Automatically structure receipts, invoices, and records.
+              </p>
+              <p className="mb-4 text-xs text-muted-foreground/70">
+                Generate organized datasets ready for reporting.
               </p>
 
               {/* Documents + Processing animation */}
@@ -320,12 +324,15 @@ export function HeroSection() {
             <div className="flex flex-col rounded-2xl border border-border bg-card p-5 shadow-sm">
               <div className="mb-2 flex items-center gap-2">
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-card shadow-sm">
-                  <ChartBarIcon className="h-5 w-5" />
+                  <DashboardIcon className="h-5 w-5" />
                 </div>
                 <h3 className="text-base font-semibold text-foreground">Smart Dashboard</h3>
               </div>
-              <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
-                Income vs expenses, spending by category, tax exposure, and 7 auto-generated report types.
+              <p className="mb-1 text-sm leading-relaxed text-muted-foreground">
+                Transform structured information into clear visual insights.
+              </p>
+              <p className="mb-4 text-xs text-muted-foreground/70">
+                Interactive dashboards built from real activity data.
               </p>
 
               {/* Analytics animation */}

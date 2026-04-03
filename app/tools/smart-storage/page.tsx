@@ -465,6 +465,25 @@ export default function SmartStoragePage() {
     loadFolders()
   }, [checkProcessingState, loadFiles, checkReportAvailability, loadFolders])
 
+  // Files — classification view shows all matching types across all folders, sorted by date
+  // Declared here (before keyboard shortcut useEffect) to avoid TS2448 forward-reference error.
+  const displayedFiles = (() => {
+    if (classificationView) {
+      const matched = classificationView === "Manual Entries"
+        ? files.filter(f => f.file_type === "manual")
+        : (() => {
+            const types = CLASSIFICATION_FOLDER_MAP[classificationView] ?? []
+            return files.filter(f => types.some(t => f.document_type?.includes(t) || t === f.document_type))
+          })()
+      if (classificationSort === "date-desc") return [...matched].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      if (classificationSort === "date-asc")  return [...matched].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+      return [...matched].sort((a, b) => a.filename.localeCompare(b.filename))
+    }
+    return files.filter(f =>
+      (f.folder_id ?? null) === (currentFolderId === "root" ? null : currentFolderId)
+    )
+  })()
+
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -790,24 +809,6 @@ export default function SmartStoragePage() {
   const currentSubfolders = classificationView ? [] : folders.filter((f) =>
     currentFolderId === "root" ? f.parentId === null : f.parentId === currentFolderId
   )
-
-  // Files — classification view shows all matching types across all folders, sorted by date
-  const displayedFiles = (() => {
-    if (classificationView) {
-      const matched = classificationView === "Manual Entries"
-        ? files.filter(f => f.file_type === "manual")
-        : (() => {
-            const types = CLASSIFICATION_FOLDER_MAP[classificationView] ?? []
-            return files.filter(f => types.some(t => f.document_type?.includes(t) || t === f.document_type))
-          })()
-      if (classificationSort === "date-desc") return [...matched].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-      if (classificationSort === "date-asc")  return [...matched].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-      return [...matched].sort((a, b) => a.filename.localeCompare(b.filename))
-    }
-    return files.filter(f =>
-      (f.folder_id ?? null) === (currentFolderId === "root" ? null : currentFolderId)
-    )
-  })()
 
   // Canvas folder being hovered during a file drag (position-based hit test)
   const hoveredFolderId = (() => {

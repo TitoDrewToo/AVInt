@@ -134,16 +134,16 @@ Rules:
 
     // 7. Parse Gemini JSON output
     // Gemini sometimes wraps output in ```json ... ``` — extract object or array
-    // For CSVs Gemini may return an array of rows — take the first element
-    let extracted: any
+    // For CSVs Gemini returns an array of rows — insert all as separate document_fields
+    let extractedRows: any[]
     try {
       const arrayMatch = rawText.match(/\[[\s\S]*\]/)
       const objectMatch = rawText.match(/\{[\s\S]*\}/)
       if (arrayMatch) {
         const parsed = JSON.parse(arrayMatch[0])
-        extracted = Array.isArray(parsed) ? parsed[0] : parsed
+        extractedRows = Array.isArray(parsed) ? parsed : [parsed]
       } else if (objectMatch) {
-        extracted = JSON.parse(objectMatch[0])
+        extractedRows = [JSON.parse(objectMatch[0])]
       } else {
         throw new Error("No JSON found in response")
       }
@@ -151,33 +151,36 @@ Rules:
       throw new Error(`Failed to parse Gemini output: ${rawText}`)
     }
 
+    const extracted = extractedRows[0]
+    const isCsv = extractedRows.length > 1
+
     // 8. Update files.document_type
+    // For CSVs use the first row's type; mark as csv_export for clarity
     await supabase
       .from("files")
       .update({
-        document_type: extracted.document_type ?? "general_document",
+        document_type: isCsv ? "csv_export" : (extracted.document_type ?? "general_document"),
         upload_status: "completed",
       })
       .eq("id", file_id)
 
-    // 9. Insert into document_fields — normalization_status starts as 'raw'
-    //    normalize-document function will update it to 'normalized' or 'failed'
-    await supabase
-      .from("document_fields")
-      .insert({
-        file_id,
-        vendor_name:          extracted.vendor_name      ?? null,
-        employer_name:        extracted.employer_name    ?? null,
-        document_date:        extracted.document_date    ?? null,
-        currency:             extracted.currency         ?? null,
-        total_amount:         extracted.total_amount     ?? null,
-        gross_income:         extracted.gross_income     ?? null,
-        net_income:           extracted.net_income       ?? null,
-        expense_category:     extracted.expense_category ?? null,
-        confidence_score:     extracted.confidence       ?? null,
-        raw_json:             extracted,
-        normalization_status: "raw",
-      })
+    // 9. Insert all rows into document_fields
+    const rowsToInsert = extractedRows.map((row: any) => ({
+      file_id,
+      vendor_name:          row.vendor_name      ?? null,
+      employer_name:        row.employer_name    ?? null,
+      document_date:        row.document_date    ?? null,
+      currency:             row.currency         ?? null,
+      total_amount:         row.total_amount     ?? null,
+      gross_income:         row.gross_income     ?? null,
+      net_income:           row.net_income       ?? null,
+      expense_category:     row.expense_category ?? null,
+      confidence_score:     row.confidence       ?? null,
+      raw_json:             row,
+      normalization_status: "raw",
+    }))
+
+    await supabase.from("document_fields").insert(rowsToInsert)
 
     // 10. Call normalize-document function
     const normalizeResponse = await fetch(

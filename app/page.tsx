@@ -29,13 +29,13 @@ export default function HomePage() {
   return (
     <div className="flex min-h-screen flex-col">
       <Navbar />
-      <main className="flex-1">
-        <HeroSection />
-        <WhatWeDoSection />
-        <ProductsSection />
-        <ToolsSection />
-        <HowItWorksSection />
-        <PricingPreviewSection />
+      <main className="flex-1" style={{ scrollSnapType: "y proximity" }}>
+        <div style={{ scrollSnapAlign: "start" }}><HeroSection /></div>
+        <div style={{ scrollSnapAlign: "start" }}><WhatWeDoSection /></div>
+        <div style={{ scrollSnapAlign: "start" }}><ProductsSection /></div>
+        <div style={{ scrollSnapAlign: "start" }}><ToolsSection /></div>
+        <div style={{ scrollSnapAlign: "start" }}><HowItWorksSection /></div>
+        <div style={{ scrollSnapAlign: "start" }}><PricingPreviewSection /></div>
       </main>
 
       {/* AI provider attribution — transparency requirement */}

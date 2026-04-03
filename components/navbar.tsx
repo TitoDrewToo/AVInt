@@ -141,14 +141,16 @@ export function Navbar() {
               {toolsOpen && (
                 <div className="absolute left-0 top-full mt-2 w-48 rounded-xl border border-border bg-card p-2 shadow-lg">
                   {tools.map((tool) => (
-                    <Link
+                    <a
                       key={tool.name}
                       href={tool.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       className="block rounded-lg px-3 py-2 text-sm text-foreground transition-colors hover:bg-muted"
                       onClick={() => setToolsOpen(false)}
                     >
                       {tool.name}
-                    </Link>
+                    </a>
                   ))}
                 </div>
               )}
@@ -224,14 +226,16 @@ export function Navbar() {
                   Tools
                 </span>
                 {tools.map((tool) => (
-                  <Link
+                  <a
                     key={tool.name}
                     href={tool.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="text-sm text-foreground"
                     onClick={() => setMobileMenuOpen(false)}
                   >
                     {tool.name}
-                  </Link>
+                  </a>
                 ))}
               </div>
               <Link

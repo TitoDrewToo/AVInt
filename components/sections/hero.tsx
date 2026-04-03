@@ -112,17 +112,6 @@ function DocumentIcon({ className }: { className?: string }) {
   )
 }
 
-function GridIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect x="3" y="3" width="7" height="7" rx="1.5" className="fill-muted stroke-border" strokeWidth="0.5" />
-      <rect x="14" y="3" width="7" height="7" rx="1.5" className="fill-primary/15 stroke-primary/30" strokeWidth="0.5" />
-      <rect x="3" y="14" width="7" height="7" rx="1.5" className="fill-muted stroke-border" strokeWidth="0.5" />
-      <rect x="14" y="14" width="7" height="7" rx="1.5" className="fill-muted stroke-border" strokeWidth="0.5" />
-    </svg>
-  )
-}
-
 function LoopCountUp({ target, suffix = "", className, loopDuration = 3500 }: { target: number; suffix?: string; className?: string; loopDuration?: number }) {
   const [val, setVal] = useState(0)
   const [blurred, setBlurred] = useState(true)
@@ -133,7 +122,6 @@ function LoopCountUp({ target, suffix = "", className, loopDuration = 3500 }: { 
       if (cancelled) return
       setVal(0)
       setBlurred(true)
-      // Blur for first ~5% of duration
       const blurEnd = loopDuration * 0.08
       setTimeout(() => { if (!cancelled) setBlurred(false) }, blurEnd)
       const steps = 45
@@ -168,44 +156,59 @@ function LoopCountUp({ target, suffix = "", className, loopDuration = 3500 }: { 
   )
 }
 
-function CountUp({ target, suffix = "", className }: { target: number; suffix?: string; className?: string }) {
-  const [val, setVal] = useState(0)
-  const [blurred, setBlurred] = useState(true)
-
-  useEffect(() => {
-    // Blur phase: 0-5% of duration
-    const blurTimer = setTimeout(() => setBlurred(false), 400)
-    const duration = 1800
-    const steps = 40
-    const increment = target / steps
-    let current = 0
-    const timer = setInterval(() => {
-      current = Math.min(current + increment, target)
-      setVal(Math.floor(current))
-      if (current >= target) clearInterval(timer)
-    }, duration / steps)
-    return () => { clearInterval(timer); clearTimeout(blurTimer) }
-  }, [target])
-
-  return (
-    <span
-      className={className}
-      style={{
-        filter: blurred ? "blur(4px)" : "blur(0)",
-        transition: "filter 0.3s ease",
-      }}
-    >
-      {val}{suffix}
-    </span>
-  )
-}
+// Shared keyframes for all animated elements
+const KEYFRAMES = `
+  @keyframes shimmer {
+    0% { background-position: -200% center; }
+    100% { background-position: 200% center; }
+  }
+  @keyframes docDotAnim {
+    0%,100% { opacity:0.15; } 25% { opacity:1; }
+  }
+  @keyframes bar1 { 0%,100% { height:40%; } 50% { height:58%; } }
+  @keyframes bar2 { 0%,100% { height:65%; } 50% { height:82%; } }
+  @keyframes bar3 { 0%,100% { height:50%; } 50% { height:72%; } }
+  @keyframes lineTrace {
+    0%,100% { stroke-dashoffset: 60; opacity:0.4; }
+    50% { stroke-dashoffset: 0; opacity:1; }
+  }
+  @keyframes dotPulse {
+    0%,100% { opacity:0.3; r:2; }
+    50% { opacity:1; r:3; }
+  }
+  @keyframes progressLoop {
+    0% { width:0%; opacity:1; }
+    75% { width:100%; opacity:1; }
+    88% { width:100%; opacity:1; }
+    96% { width:100%; opacity:0; }
+    97% { width:0%; opacity:0; }
+    100% { width:0%; opacity:1; }
+  }
+  .shimmer-bar {
+    background: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 50%, #e5e7eb 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.8s ease-in-out infinite;
+  }
+  .shimmer-bar-red {
+    background: linear-gradient(90deg, rgba(220,38,38,0.2) 25%, rgba(220,38,38,0.45) 50%, rgba(220,38,38,0.2) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.8s ease-in-out infinite 0.3s;
+  }
+  .bar-1 { animation: bar1 2.2s ease-in-out infinite 0s; }
+  .bar-2 { animation: bar2 2.6s ease-in-out infinite 0.4s; }
+  .bar-3 { animation: bar3 2.4s ease-in-out infinite 0.8s; }
+  .progress-loop { animation: progressLoop 4.2s cubic-bezier(0.4,0,0.2,1) infinite; }
+`
 
 export function HeroSection() {
   return (
     <section className="relative overflow-hidden px-6 py-24 md:py-32">
+      <style>{KEYFRAMES}</style>
       <div className="mx-auto max-w-6xl">
-        <div className="grid items-center gap-12 lg:grid-cols-2">
-          {/* Left side - Text */}
+        {/* Desktop: 40/60 split | Mobile: single column */}
+        <div className="grid items-center gap-12 lg:grid-cols-[2fr_3fr]">
+
+          {/* Left — Brand + content (unchanged) */}
           <div className="flex flex-col gap-6">
             <h1 className="text-balance text-4xl font-semibold tracking-tight text-foreground md:text-5xl lg:text-6xl">
               We develop products that simplify organization, decisions, and workflows.
@@ -234,207 +237,155 @@ export function HeroSection() {
             </div>
           </div>
 
-          {/* Right side - Dimensional UI composition */}
-          <div className="relative hidden lg:block">
-            <div className="relative mx-auto h-[420px] w-full max-w-lg">
-              {/* Background atmospheric layer */}
-              <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-muted/50 via-transparent to-muted/30" />
-              
-              {/* Background structural grid hint */}
-              <div className="absolute bottom-4 right-4 h-32 w-48 rounded-xl border border-border/50 bg-card/30 p-3 opacity-60">
-                <GridIcon className="h-full w-full opacity-40" />
+          {/* Right — Product cards (desktop only) */}
+          <div className="hidden lg:flex lg:flex-col lg:gap-3">
+
+            {/* Smart Storage — Featured card */}
+            <a
+              href="/tools/smart-storage"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group relative overflow-hidden rounded-2xl border border-border bg-card p-5 shadow-sm transition-all duration-200 hover:border-primary/30 hover:shadow-md"
+            >
+              {/* Card header */}
+              <div className="mb-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <DocumentIcon className="h-5 w-5" />
+                  <span className="text-sm font-semibold text-foreground">Smart Storage</span>
+                </div>
+                <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-primary">
+                  Featured
+                </span>
               </div>
+              <p className="mb-4 text-xs leading-relaxed text-muted-foreground">
+                Upload any financial document. AI extracts every field automatically and feeds your dashboard.
+              </p>
 
-              {/* Global keyframes */}
-              <style>{`
-                @keyframes shimmer {
-                  0% { background-position: -200% center; }
-                  100% { background-position: 200% center; }
-                }
-                @keyframes docDotAnim {
-                  0%,100% { opacity:0.15; } 25% { opacity:1; }
-                }
-                @keyframes bar1 { 0%,100% { height:40%; } 50% { height:58%; } }
-                @keyframes bar2 { 0%,100% { height:65%; } 50% { height:82%; } }
-                @keyframes bar3 { 0%,100% { height:50%; } 50% { height:72%; } }
-                @keyframes lineTrace {
-                  0%,100% { stroke-dashoffset: 60; opacity:0.4; }
-                  50% { stroke-dashoffset: 0; opacity:1; }
-                }
-                @keyframes dotPulse {
-                  0%,100% { opacity:0.3; r:2; }
-                  50% { opacity:1; r:3; }
-                }
-                @keyframes progressLoop {
-                  0% { width:0%; opacity:1; }
-                  75% { width:100%; opacity:1; }
-                  88% { width:100%; opacity:1; }
-                  96% { width:100%; opacity:0; }
-                  97% { width:0%; opacity:0; }
-                  100% { width:0%; opacity:1; }
-                }
-                @keyframes tagActive {
-                  0%,30% { opacity:1; font-weight:600; border-color:rgba(220,38,38,0.6); background:rgba(220,38,38,0.1); color:rgb(220,38,38); }
-                  35%,100% { opacity:0.4; font-weight:400; border-color:rgba(0,0,0,0.1); background:transparent; color:inherit; }
-                }
-                @keyframes cubeSwap {
-                  0%,30% { opacity:0.5; transform:scale(1); }
-                  35%,100% { opacity:0; transform:scale(0.8); }
-                }
-                .shimmer-bar {
-                  background: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 50%, #e5e7eb 75%);
-                  background-size: 200% 100%;
-                  animation: shimmer 1.8s ease-in-out infinite;
-                }
-                .shimmer-bar-red {
-                  background: linear-gradient(90deg, rgba(220,38,38,0.2) 25%, rgba(220,38,38,0.45) 50%, rgba(220,38,38,0.2) 75%);
-                  background-size: 200% 100%;
-                  animation: shimmer 1.8s ease-in-out infinite 0.3s;
-                }
-                .bar-1 { animation: bar1 2.2s ease-in-out infinite 0s; }
-                .bar-2 { animation: bar2 2.6s ease-in-out infinite 0.4s; }
-                .bar-3 { animation: bar3 2.4s ease-in-out infinite 0.8s; }
-                .progress-loop { animation: progressLoop 4.2s cubic-bezier(0.4,0,0.2,1) infinite; }
-                .tag-invoice { animation: tagActive 3.6s ease-in-out infinite 0s; }
-                .tag-receipt { animation: tagActive 3.6s ease-in-out infinite 1.2s; }
-                .tag-report  { animation: tagActive 3.6s ease-in-out infinite 2.4s; }
-                @keyframes cubeActive {
-                  0%,22% { background:rgba(220,38,38,0.18); border-color:rgba(220,38,38,0.5); }
-                  27%,100% { background:rgba(220,38,38,0.04); border-color:rgba(220,38,38,0.12); }
-                }
-                .cube-1 { animation: cubeActive 4.8s ease-in-out infinite 0s; }
-                .cube-2 { animation: cubeActive 4.8s ease-in-out infinite 1.2s; }
-                .cube-3 { animation: cubeActive 4.8s ease-in-out infinite 2.4s; }
-                .cube-4 { animation: cubeActive 4.8s ease-in-out infinite 3.6s; }
-                @keyframes shimmerText {
-                  0% { background-position: -200% center; }
-                  100% { background-position: 200% center; }
-                }
-                .shimmer-text {
-                  background: linear-gradient(90deg, #d1d5db 25%, #f9fafb 50%, #d1d5db 75%);
-                  background-size: 200% 100%;
-                  animation: shimmerText 1.5s ease-in-out infinite;
-                  -webkit-background-clip: text;
-                  -webkit-text-fill-color: transparent;
-                  background-clip: text;
-                }
-              `}</style>
-
-              {/* Mid layer - Documents panel */}
-              <div className="absolute left-0 top-20 w-72 rounded-2xl border border-border bg-card p-5 shadow-sm shadow-black/5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <DocumentIcon className="h-5 w-5" />
-                    <span className="text-xs font-medium text-muted-foreground">Documents</span>
+              {/* Mini animated preview */}
+              <div className="relative h-44 w-full overflow-hidden rounded-xl border border-border/40 bg-muted/20">
+                {/* Documents panel */}
+                <div className="absolute left-3 top-3 w-[48%] rounded-xl border border-border bg-card p-3 shadow-sm">
+                  <div className="mb-2 flex items-center gap-1.5">
+                    <DocumentIcon className="h-3 w-3" />
+                    <span className="text-[9px] text-muted-foreground">Documents</span>
                   </div>
-                  {/* Dot cycles through rows */}
-                  <div className="h-2 w-2 rounded-full bg-primary" style={{ animation: "docDot 2.4s ease-in-out infinite" }} />
-                </div>
-                <div className="mt-4 space-y-2.5">
-                  {[
-                    { dotDelay: "0s",   barClass: "shimmer-bar", rightClass: "shimmer-bar",     rightW: "w-12" },
-                    { dotDelay: "0.6s", barClass: "shimmer-bar", rightClass: "shimmer-bar",     rightW: "w-16" },
-                    { dotDelay: "1.2s", barClass: "shimmer-bar", rightClass: "shimmer-bar-red", rightW: "w-10" },
-                    { dotDelay: "1.8s", barClass: "shimmer-bar", rightClass: "shimmer-bar",     rightW: "w-14" },
-                  ].map((row, i) => (
-                    <div key={i} className="flex items-center gap-3">
-                      <div
-                        className="h-2 w-2 rounded-full bg-primary"
-                        style={{ animation: `docDotAnim 2.4s ease-in-out infinite ${row.dotDelay}` }}
-                      />
-                      <div className={`h-2.5 flex-1 rounded ${row.barClass}`} />
-                      <div className={`h-2.5 ${row.rightW} rounded ${row.rightClass}`} />
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Foreground - Analytics panel */}
-              <div className="absolute right-0 top-0 w-64 rounded-2xl border border-border bg-card p-5 shadow-md shadow-black/5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-muted-foreground">Analytics</span>
-                  <div className="flex items-center gap-1">
-                    <div className="h-1.5 w-1.5 rounded-full bg-primary" style={{ animation: "docDot 1.5s ease-in-out infinite" }} />
-                    <span className="text-[10px] text-primary">Live</span>
-                  </div>
-                </div>
-                {/* Animated bars + line */}
-                <div className="mt-4 h-28 w-full relative flex items-end gap-2 px-1">
-                  <div className="flex-1 rounded-sm bg-muted bar-1" style={{ minHeight: "40%" }} />
-                  <div className="flex-1 rounded-sm bar-2" style={{ background: "rgba(220,38,38,0.35)", minHeight: "65%" }} />
-                  <div className="flex-1 rounded-sm bg-muted bar-3" style={{ minHeight: "50%" }} />
-                  {/* SVG trend line overlay */}
-                  <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 60" preserveAspectRatio="none">
-                    <polyline
-                      points="15,42 45,28 75,18"
-                      fill="none"
-                      stroke="rgb(220,38,38)"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeDasharray="60"
-                      style={{ animation: "lineTrace 3s ease-in-out infinite" }}
-                    />
-                    {([[15,42],[45,28],[75,18]] as [number,number][]).map(([x,y],i) => (
-                      <circle key={i} cx={x} cy={y} r="2.5" fill="rgb(220,38,38)"
-                        style={{ animation: `dotPulse 2s ease-in-out infinite ${i*0.4}s` }} />
+                  <div className="space-y-1.5">
+                    {[
+                      { delay: "0s",    right: "shimmer-bar",     rw: "w-8" },
+                      { delay: "0.6s",  right: "shimmer-bar",     rw: "w-10" },
+                      { delay: "1.2s",  right: "shimmer-bar-red", rw: "w-6" },
+                      { delay: "1.8s",  right: "shimmer-bar",     rw: "w-9" },
+                    ].map((row, i) => (
+                      <div key={i} className="flex items-center gap-1.5">
+                        <div
+                          className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-primary"
+                          style={{ animation: `docDotAnim 2.4s ease-in-out infinite ${row.delay}` }}
+                        />
+                        <div className={`h-1.5 flex-1 rounded shimmer-bar`} />
+                        <div className={`h-1.5 ${row.rw} flex-shrink-0 rounded ${row.right}`} />
+                      </div>
                     ))}
-                  </svg>
+                  </div>
                 </div>
-                <div className="mt-3 flex items-center justify-between text-[10px]">
-                  <span className="text-muted-foreground">Jan</span>
-                  <span className="text-muted-foreground">Feb</span>
-                  <span className="text-muted-foreground">Mar</span>
+
+                {/* Analytics panel */}
+                <div className="absolute right-3 top-3 w-[46%] rounded-xl border border-border bg-card p-3 shadow-sm">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-[9px] text-muted-foreground">Analytics</span>
+                    <div className="flex items-center gap-0.5">
+                      <div className="h-1 w-1 rounded-full bg-primary" style={{ animation: "docDotAnim 1.5s ease-in-out infinite" }} />
+                      <span className="text-[8px] text-primary">Live</span>
+                    </div>
+                  </div>
+                  <div className="relative flex h-14 items-end gap-1 px-0.5">
+                    <div className="flex-1 rounded-sm bg-muted bar-1" style={{ minHeight: "35%" }} />
+                    <div className="flex-1 rounded-sm bar-2" style={{ background: "rgba(220,38,38,0.35)", minHeight: "60%" }} />
+                    <div className="flex-1 rounded-sm bg-muted bar-3" style={{ minHeight: "45%" }} />
+                    <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 60" preserveAspectRatio="none">
+                      <polyline
+                        points="15,44 45,30 75,20"
+                        fill="none"
+                        stroke="rgb(220,38,38)"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeDasharray="60"
+                        style={{ animation: "lineTrace 3s ease-in-out infinite" }}
+                      />
+                    </svg>
+                  </div>
+                </div>
+
+                {/* Processing bar */}
+                <div className="absolute bottom-3 left-3 right-3 rounded-lg border border-border bg-card px-3 py-2">
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <span className="text-[9px] font-medium text-foreground">Processing</span>
+                    <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[8px] font-medium text-primary">Active</span>
+                  </div>
+                  <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
+                    <div className="h-full rounded-full bg-primary progress-loop" />
+                  </div>
                 </div>
               </div>
 
-              {/* Processing panel */}
-              <div className="absolute bottom-8 left-8 w-56 rounded-2xl border border-border bg-card p-4 shadow-sm shadow-black/5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-foreground">Processing</span>
-                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">Active</span>
-                </div>
-                <div className="mt-4 flex gap-2">
-                  <div className="flex-1 rounded-lg bg-muted p-2">
-                    <LoopCountUp target={24} className="text-lg font-semibold text-foreground" loopDuration={4200} />
-                    <div className="text-[10px] text-muted-foreground">Files</div>
-                  </div>
-                  <div className="flex-1 rounded-lg bg-primary/10 p-2">
-                    <LoopCountUp target={100} suffix="%" className="text-lg font-semibold text-primary" loopDuration={4200} />
-                    <div className="text-[10px] text-muted-foreground">Complete</div>
-                  </div>
-                </div>
-                <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                  <div className="h-full rounded-full bg-primary progress-loop" />
-                </div>
+              {/* Document type tags */}
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {["Receipts", "Invoices", "Payslips", "Contracts", "Bank Statements"].map((tag) => (
+                  <span
+                    key={tag}
+                    className="rounded border border-border/50 px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                  >
+                    {tag}
+                  </span>
+                ))}
               </div>
+            </a>
 
-              {/* Classification tags + 4-cube grid */}
-              <div className="absolute right-12 bottom-20">
-                {/* Tags row */}
-                <div className="flex flex-wrap gap-1.5">
-                  {[
-                    { label: "invoice", cls: "tag-invoice" },
-                    { label: "receipt", cls: "tag-receipt" },
-                    { label: "report",  cls: "tag-report"  },
-                  ].map(({ label, cls }) => (
-                    <span key={label} className={`rounded-md border px-2 py-1 text-[10px] shadow-sm ${cls}`}>
-                      {label}
+            {/* Secondary row: Smart Dashboard + Pricing */}
+            <div className="grid grid-cols-2 gap-3">
+
+              {/* Smart Dashboard */}
+              <a
+                href="/tools/smart-dashboard"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group rounded-2xl border border-border bg-card p-4 shadow-sm transition-all duration-200 hover:border-primary/30 hover:shadow-md"
+              >
+                <div className="mb-2 flex items-center gap-2">
+                  <ChartBarIcon className="h-5 w-5" />
+                  <span className="text-sm font-semibold text-foreground">Smart Dashboard</span>
+                </div>
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  Income vs expenses, spending by category, tax exposure, and 7 auto-generated report types.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-1">
+                  {["Analytics", "Reports", "Trends"].map((tag) => (
+                    <span key={tag} className="rounded border border-border/50 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                      {tag}
                     </span>
                   ))}
                 </div>
-                {/* 4-cube grid with cycling red highlight */}
-                <div className="mt-2 grid grid-cols-2 gap-1.5">
-                  {["cube-1","cube-2","cube-3","cube-4"].map((cls) => (
-                    <div
-                      key={cls}
-                      className={`h-7 w-14 rounded-md border ${cls}`}
-                    />
-                  ))}
+              </a>
+
+              {/* Pricing */}
+              <Link
+                href="/pricing"
+                className="group rounded-2xl border border-border bg-card p-4 shadow-sm transition-all duration-200 hover:border-primary/30 hover:shadow-md"
+              >
+                <div className="mb-2">
+                  <span className="text-sm font-semibold text-foreground">Pricing</span>
                 </div>
-              </div>
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  Free tier available. $6 day pass. Full access at $12/month.
+                </p>
+                <div className="mt-3 text-xs font-medium text-primary transition-colors group-hover:text-primary/80">
+                  View plans →
+                </div>
+              </Link>
+
             </div>
           </div>
+
         </div>
       </div>
     </section>

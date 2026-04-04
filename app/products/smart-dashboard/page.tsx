@@ -3,13 +3,12 @@ import { Footer } from "@/components/footer"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { StartFreeButton } from "@/components/start-free-button"
-import { FadeUp, StaggerContainer, StaggerItem } from "@/components/fade-up"
 
 export const metadata = {
-  title: "Smart Dashboard — AI Financial Dashboard | AVIntelligence",
+  title: "Smart Dashboard — AI Powered custom dashboard | AVIntelligence",
   description: "Visualize your income, expenses, and financial trends with an AI-powered dashboard. Customizable widgets, advanced analytics, and AI-generated insights from your documents.",
   openGraph: {
-    title: "Smart Dashboard — AI Financial Dashboard | AVIntelligence",
+    title: "Smart Dashboard — AI Powered custom dashboard | AVIntelligence",
     description: "Visualize your income, expenses, and financial trends with an AI-powered dashboard. Customizable widgets, advanced analytics, and AI-generated insights from your documents.",
     url: "https://www.avintph.com/products/smart-dashboard",
     siteName: "AVIntelligence",
@@ -17,7 +16,7 @@ export const metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Smart Dashboard — AI Financial Dashboard | AVIntelligence",
+    title: "Smart Dashboard — AI Powered custom dashboard | AVIntelligence",
     description: "Visualize your income, expenses, and financial trends with an AI-powered dashboard.",
   },
 }
@@ -144,24 +143,6 @@ const dashboardModules = [
 export default function SmartDashboardProductPage() {
   return (
     <div className="flex min-h-screen flex-col">
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify({
-          "@context": "https://schema.org",
-          "@type": "SoftwareApplication",
-          "name": "AVIntelligence Smart Dashboard",
-          "applicationCategory": "FinanceApplication",
-          "operatingSystem": "Web",
-          "description": "AI-powered financial dashboard with customizable widgets, advanced analytics, and AI-generated insights from your financial documents.",
-          "url": "https://www.avintph.com/products/smart-dashboard",
-          "offers": {
-            "@type": "Offer",
-            "price": "0",
-            "priceCurrency": "USD",
-            "description": "Free tier available"
-          }
-        })}}
-      />
       <Navbar />
 
       {/* Global keyframes for dashboard visualizations */}
@@ -178,17 +159,13 @@ export default function SmartDashboardProductPage() {
         {/* Hero */}
         <section className="px-6 py-24 md:py-32">
           <div className="mx-auto max-w-3xl text-center">
-            <FadeUp>
-              <h1 className="text-balance text-4xl font-semibold tracking-tight text-foreground md:text-5xl">
-                Visual clarity from structured data.
-              </h1>
-            </FadeUp>
-            <FadeUp delay={0.1}>
-              <p className="mt-6 text-lg text-muted-foreground">
-                Smart Dashboard transforms structured document data into intuitive visual insights.
-              </p>
-            </FadeUp>
-            <FadeUp delay={0.18} className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
+            <h1 className="text-balance text-4xl font-semibold tracking-tight text-foreground md:text-5xl">
+              Visual clarity from structured data.
+            </h1>
+            <p className="mt-6 text-lg text-muted-foreground">
+              Smart Dashboard transforms structured document data into intuitive visual insights.
+            </p>
+            <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
               <Link href="/pricing">
                 <Button size="lg" className="rounded-xl bg-primary text-primary-foreground hover:bg-primary/90">
                   View Pricing
@@ -199,50 +176,51 @@ export default function SmartDashboardProductPage() {
                   See Smart Storage
                 </Button>
               </Link>
-            </FadeUp>
+            </div>
           </div>
         </section>
 
         {/* What Smart Dashboard shows */}
         <section className="border-t border-border bg-muted/30 px-6 py-24">
           <div className="mx-auto max-w-4xl">
-            <FadeUp className="text-center">
+            <div className="text-center">
               <h2 className="text-sm font-medium uppercase tracking-wider text-primary">
                 What Smart Dashboard shows
               </h2>
               <p className="mt-6 text-xl text-foreground md:text-2xl">
                 Dashboards provide visibility into financial activity, document patterns, and categorized summaries generated from structured datasets.
               </p>
-            </FadeUp>
+            </div>
           </div>
         </section>
 
         {/* Example dashboard modules */}
         <section className="border-t border-border px-6 py-24">
           <div className="mx-auto max-w-5xl">
-            <FadeUp className="text-center">
+            <div className="text-center">
               <h2 className="text-sm font-medium uppercase tracking-wider text-primary">
                 Example dashboard modules
               </h2>
-            </FadeUp>
+            </div>
 
-            <StaggerContainer className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {dashboardModules.map((module) => (
-                <StaggerItem key={module.title}>
-                  <div className="rounded-xl border border-border bg-card p-6">
-                    <div className="mb-4 text-sm font-medium text-foreground">{module.title}</div>
-                    {module.visualization}
-                  </div>
-                </StaggerItem>
+                <div
+                  key={module.title}
+                  className="rounded-xl border border-border bg-card p-6"
+                >
+                  <div className="mb-4 text-sm font-medium text-foreground">{module.title}</div>
+                  {module.visualization}
+                </div>
               ))}
-            </StaggerContainer>
+            </div>
           </div>
         </section>
 
         {/* Relationship to Smart Storage */}
         <section className="border-t border-border bg-muted/30 px-6 py-24">
           <div className="mx-auto max-w-3xl">
-            <FadeUp className="text-center">
+            <div className="text-center">
               <h2 className="text-sm font-medium uppercase tracking-wider text-primary">
                 How they work together
               </h2>
@@ -257,15 +235,15 @@ export default function SmartDashboardProductPage() {
                   Together they form a continuous workflow from document ingestion to insight generation.
                 </p>
               </div>
-            </FadeUp>
+            </div>
           </div>
         </section>
 
         {/* CTA */}
         <section className="border-t border-border px-6 py-24">
-          <FadeUp className="mx-auto max-w-3xl text-center">
+          <div className="mx-auto max-w-3xl text-center">
             <h2 className="text-2xl font-semibold text-foreground md:text-3xl">
-              Customize. Visualize.
+              Structured data becomes usable insight.
             </h2>
             <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
               <StartFreeButton tool="smart-dashboard" />
@@ -275,7 +253,7 @@ export default function SmartDashboardProductPage() {
                 </Button>
               </Link>
             </div>
-          </FadeUp>
+          </div>
         </section>
       </main>
       <Footer />

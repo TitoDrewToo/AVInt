@@ -20,9 +20,8 @@ export default function HomePage() {
       <main className="flex-1">
         <HeroSection />
         <WhatWeDoSection />
-        <ProductsSection />
-        <ToolsSection />
         <HowItWorksSection />
+        <ProductsSection />
         <PricingPreviewSection />
       </main>
       <Footer />

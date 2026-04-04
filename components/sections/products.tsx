@@ -1,6 +1,5 @@
 import Link from "next/link"
 import { ArrowUpRight } from "lucide-react"
-import { FadeUp, StaggerContainer, StaggerItem } from "@/components/fade-up"
 
 type StatusType = "live" | "development" | "coming-soon"
 
@@ -195,19 +194,6 @@ function ProductCard({
 
 const products: ProductCardProps[] = [
   {
-    name: "Smart Storage",
-    description: "Upload documents and files. AI generates reports: Expense Summary, P&L, and Tax Bundle.",
-    href: "/products/smart-storage",
-    icon: <StorageIcon className="h-5 w-5" />,
-  },
-  {
-    name: "Smart Dashboard",
-    description:
-      "AI-powered custom dashboards and visuals.",
-    href: "/products/smart-dashboard",
-    icon: <DashboardIcon className="h-5 w-5" />,
-  },
-  {
     name: "PicklePal",
     description: "Social and venue management platform with analytics.",
     status: "live",
@@ -223,24 +209,39 @@ const products: ProductCardProps[] = [
     disabled: true,
     icon: <HooperIcon className="h-5 w-5" />,
   },
+  {
+    name: "Smart Storage",
+    description: "Upload documents once. Generate structured reports automatically.",
+    href: "/products/smart-storage",
+    icon: <StorageIcon className="h-5 w-5" />,
+  },
+  {
+    name: "Smart Dashboard",
+    description:
+      "Visualize financial activity and trends derived from structured data.",
+    href: "/products/smart-dashboard",
+    icon: <DashboardIcon className="h-5 w-5" />,
+  },
 ]
 
 export function ProductsSection() {
   return (
     <section id="products" className="px-6 py-24">
       <div className="mx-auto max-w-6xl">
-        <FadeUp>
-          <h2 className="text-center text-sm font-medium uppercase tracking-wider text-primary">
-            Products
-          </h2>
-        </FadeUp>
-        <StaggerContainer className="mt-12 grid gap-6 sm:grid-cols-2">
+        <h2 className="text-center text-sm font-medium uppercase tracking-wider text-primary">
+          Products
+        </h2>
+        <p className="mx-auto mt-4 max-w-2xl text-center text-lg text-foreground">
+          We develop products that simplify organization, decisions, and workflows.
+        </p>
+        <p className="mx-auto mt-2 max-w-2xl text-center text-sm text-muted-foreground">
+          Applied intelligence for real-world systems.
+        </p>
+        <div className="mt-12 grid gap-6 sm:grid-cols-2">
           {products.map((product) => (
-            <StaggerItem key={product.name}>
-              <ProductCard {...product} />
-            </StaggerItem>
+            <ProductCard key={product.name} {...product} />
           ))}
-        </StaggerContainer>
+        </div>
       </div>
     </section>
   )

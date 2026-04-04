@@ -1,5 +1,3 @@
-import { FadeUp, StaggerContainer, StaggerItem } from "@/components/fade-up"
-
 // Refined dimensional icons for how-it-works section
 function UploadIcon({ className }: { className?: string }) {
   return (
@@ -44,10 +42,10 @@ function ProcessIcon({ className }: { className?: string }) {
           0% { stroke-dashoffset: 12; }
           100% { stroke-dashoffset: 0; }
         }
-        .node-1 { animation: node-pulse 2s ease-in-out infinite 0s; transform-box: fill-box; transform-origin: center; }
-        .node-2 { animation: node-pulse 2s ease-in-out infinite 0.5s; transform-box: fill-box; transform-origin: center; }
-        .node-3 { animation: node-pulse 2s ease-in-out infinite 1s; transform-box: fill-box; transform-origin: center; }
-        .node-4 { animation: node-pulse 2s ease-in-out infinite 1.5s; transform-box: fill-box; transform-origin: center; }
+        .node-1 { animation: node-pulse 2s ease-in-out infinite 0s; transform-origin: 6px 6px; }
+        .node-2 { animation: node-pulse 2s ease-in-out infinite 0.5s; transform-origin: 26px 6px; }
+        .node-3 { animation: node-pulse 2s ease-in-out infinite 1s; transform-origin: 6px 26px; }
+        .node-4 { animation: node-pulse 2s ease-in-out infinite 1.5s; transform-origin: 26px 26px; }
         .center-dot { animation: center-pulse 1.5s ease-in-out infinite; }
         .flow-line { stroke-dasharray: 6 2; animation: line-flow 1s linear infinite; }
       `}</style>
@@ -58,7 +56,7 @@ function ProcessIcon({ className }: { className?: string }) {
       <circle cx="6" cy="6" r="2" className="fill-muted stroke-border node-1" strokeWidth="0.5" />
       <circle cx="26" cy="6" r="2" className="fill-muted stroke-border node-2" strokeWidth="0.5" />
       <circle cx="6" cy="26" r="2" className="fill-muted stroke-border node-3" strokeWidth="0.5" />
-      <circle cx="26" cy="26" r="2" className="fill-muted stroke-border node-4" strokeWidth="0.5" />
+      <circle cx="26" cy="26" r="2" className="fill-primary/60 node-4" strokeWidth="0.5" />
       <circle cx="16" cy="16" r="1.5" className="fill-primary center-dot" />
     </svg>
   )
@@ -153,23 +151,21 @@ export function HowItWorksSection() {
   return (
     <section className="px-6 py-24">
       <div className="mx-auto max-w-4xl">
-        <FadeUp>
-          <h2 className="text-center text-sm font-medium uppercase tracking-wider text-primary">
-            How it works
-          </h2>
-        </FadeUp>
-        <StaggerContainer className="mt-16 flex flex-col items-center justify-between gap-12 md:flex-row md:items-start">
+        <h2 className="text-center text-sm font-medium uppercase tracking-wider text-primary">
+          How it works
+        </h2>
+        <div className="mt-16 flex flex-col items-center gap-12 md:flex-row md:items-start md:gap-0">
           {steps.map((step, index) => (
-            <>
-              <StaggerItem key={step.number} className="flex flex-col items-center">
+            <div key={step.number} className="contents">
+              <div className="flex flex-1 justify-center">
                 <Step {...step} />
-              </StaggerItem>
+              </div>
               {index < steps.length - 1 && (
-                <div className="hidden h-px w-24 shrink-0 self-start mt-8 bg-border md:block" />
+                <div className="hidden h-px w-24 shrink-0 bg-border md:block md:mt-8" />
               )}
-            </>
+            </div>
           ))}
-        </StaggerContainer>
+        </div>
       </div>
     </section>
   )

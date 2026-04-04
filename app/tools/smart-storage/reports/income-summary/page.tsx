@@ -65,7 +65,7 @@ export default function IncomeSummaryPage() {
   useEffect(() => {
     if (!session?.user?.id) return
     supabase.from("subscriptions").select("status").eq("user_id", session.user.id).single()
-      .then(({ data }) => setIsPro(data?.status === "pro" || data?.status === "day_pass"))
+      .then(({ data }) => setIsPro(data?.status === "pro" || data?.status === "day_pass" || data?.status === "gift_code"))
   }, [session])
 
   const loadIncome = useCallback(async () => {

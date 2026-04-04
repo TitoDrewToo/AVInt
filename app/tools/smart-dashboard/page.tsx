@@ -20,7 +20,7 @@ import {
 import {
   TrendingUp, Receipt, Wallet, FileText,
   Save, Calendar, ChevronDown, ChevronRight, Lock, Sparkles,
-  LayoutGrid, X, Check, Plus, Zap, PanelRight, Star, Pencil
+  LayoutGrid, X, Check, Plus, Zap, PanelRight, Star
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
@@ -46,7 +46,6 @@ interface Widget {
   chartVariant?: string
   advancedId?: string   // references advanced_widgets.id
   insight?: string      // AI-generated insight text
-  config?: Record<string, any>  // custom widget config (e.g. Vega-Lite spec)
 }
 
 interface AdvancedWidget {
@@ -58,7 +57,6 @@ interface AdvancedWidget {
   insight: string | null
   is_starred: boolean
   is_plotted: boolean
-  config: Record<string, any> | null
   created_at: string
   expires_at: string | null
 }
@@ -71,8 +69,6 @@ interface LayoutItem {
   h: number
   minW?: number
   minH?: number
-  maxW?: number
-  maxH?: number
   static?: boolean
 }
 
@@ -114,7 +110,9 @@ const DEFAULT_WIDGETS: Widget[] = [
   { id: "kpi-income",      type: "kpi-income",      title: "Total Income" },
   { id: "kpi-expenses",    type: "kpi-expenses",     title: "Total Expenses" },
   { id: "kpi-net",         type: "kpi-net",          title: "Net Position" },
-  { id: "kpi-tax-exposure",type: "kpi-tax-exposure", title: "Net Surplus" },
+  { id: "kpi-docs",        type: "kpi-docs",         title: "Documents" },
+  { id: "kpi-tax-exposure",type: "kpi-tax-exposure", title: "Est. Tax Exposure" },
+  { id: "kpi-tax-ratio",   type: "kpi-tax-ratio",    title: "Tax Burden Rate" },
   { id: "area-chart",      type: "area-chart",       title: "Income vs Expenses" },
   { id: "bar-chart",       type: "bar-chart",        title: "Expenses by Category" },
   { id: "bar-deductible",  type: "bar-deductible",   title: "Deductible Expenses" },
@@ -122,14 +120,16 @@ const DEFAULT_WIDGETS: Widget[] = [
 ]
 
 const DEFAULT_LAYOUT: LayoutItem[] = [
-  { i: "kpi-income",       x: 0,  y: 0,  w: 3,  h: 3, minW: 2, minH: 2, maxH: 5 },
-  { i: "kpi-expenses",     x: 3,  y: 0,  w: 3,  h: 3, minW: 2, minH: 2, maxH: 5 },
-  { i: "kpi-net",          x: 6,  y: 0,  w: 3,  h: 3, minW: 2, minH: 2, maxH: 5 },
-  { i: "kpi-tax-exposure", x: 9,  y: 0,  w: 3,  h: 3, minW: 2, minH: 2, maxH: 5 },
-  { i: "area-chart",       x: 0,  y: 3,  w: 12, h: 9, minW: 4, minH: 3 },
-  { i: "bar-chart",        x: 0,  y: 12, w: 4,  h: 8, minW: 3, minH: 3 },
-  { i: "bar-deductible",   x: 4,  y: 12, w: 4,  h: 8, minW: 3, minH: 3 },
-  { i: "pie-chart",        x: 8,  y: 12, w: 4,  h: 8, minW: 3, minH: 3 },
+  { i: "kpi-income",       x: 0,  y: 0,  w: 2, h: 5,  minW: 2, minH: 1 },
+  { i: "kpi-expenses",     x: 2,  y: 0,  w: 2, h: 5,  minW: 2, minH: 1 },
+  { i: "kpi-net",          x: 4,  y: 0,  w: 2, h: 5,  minW: 2, minH: 1 },
+  { i: "kpi-docs",         x: 6,  y: 0,  w: 2, h: 5,  minW: 2, minH: 1 },
+  { i: "kpi-tax-exposure", x: 8,  y: 0,  w: 2, h: 5,  minW: 2, minH: 1 },
+  { i: "kpi-tax-ratio",    x: 10, y: 0,  w: 2, h: 5,  minW: 2, minH: 1 },
+  { i: "area-chart",       x: 0,  y: 5,  w: 12, h: 12, minW: 4, minH: 3 },
+  { i: "bar-chart",        x: 0,  y: 17, w: 4, h: 11, minW: 3, minH: 3 },
+  { i: "bar-deductible",   x: 4,  y: 17, w: 4, h: 11, minW: 3, minH: 3 },
+  { i: "pie-chart",        x: 8,  y: 17, w: 4, h: 11, minW: 3, minH: 3 },
 ]
 
 // ── Mobile layout derivation ──────────────────────────────────────────────────
@@ -170,26 +170,29 @@ function toMobileLayout(desktopLayout: LayoutItem[]): LayoutItem[] {
 }
 
 const WIDGET_MIN_SIZE: Record<string, { minW: number; minH: number }> = {
-  "kpi-income":       { minW: 2, minH: 2 },
-  "kpi-expenses":     { minW: 2, minH: 2 },
-  "kpi-net":          { minW: 2, minH: 2 },
-  "kpi-tax-exposure": { minW: 2, minH: 2 },
-  "kpi-savings":      { minW: 2, minH: 2 },
-  "kpi-tax":          { minW: 2, minH: 2 },
-  "bar-chart":        { minW: 3, minH: 3 },
-  "bar-deductible":   { minW: 3, minH: 3 },
-  "line-chart":       { minW: 3, minH: 3 },
-  "area-chart":       { minW: 3, minH: 3 },
-  "pie-chart":        { minW: 2, minH: 3 },
-  "context-summary":  { minW: 3, minH: 3 },
-
+  "kpi-income":      { minW: 2, minH: 2 },
+  "kpi-expenses":    { minW: 2, minH: 2 },
+  "kpi-net":         { minW: 2, minH: 2 },
+  "kpi-docs":        { minW: 2, minH: 2 },
+  "kpi-tax-exposure":{ minW: 2, minH: 2 },
+  "kpi-tax-ratio":   { minW: 2, minH: 2 },
+  "kpi-savings":     { minW: 2, minH: 2 },
+  "kpi-tax":         { minW: 2, minH: 2 },
+  "bar-chart":       { minW: 3, minH: 3 },
+  "bar-deductible":  { minW: 3, minH: 3 },
+  "line-chart":      { minW: 3, minH: 3 },
+  "area-chart":      { minW: 3, minH: 3 },
+  "pie-chart":       { minW: 2, minH: 3 },
+  "context-summary": { minW: 3, minH: 3 },
 }
 
 const WIDGET_LIBRARY = [
   { type: "kpi-income",       title: "Income KPI",          desc: "Total income detected across all documents",           isPremium: false },
   { type: "kpi-expenses",     title: "Expenses KPI",        desc: "Sum of all classified expense transactions",           isPremium: false },
   { type: "kpi-net",          title: "Net Position KPI",    desc: "Income minus expenses with savings rate",              isPremium: false },
+  { type: "kpi-docs",         title: "Document Count KPI",  desc: "Number of financial documents processed",             isPremium: false },
   { type: "kpi-tax-exposure", title: "Tax Exposure KPI",    desc: "Estimated tax liability based on net income",         isPremium: false },
+  { type: "kpi-tax-ratio",    title: "Tax Burden Rate KPI", desc: "Tax as a percentage of gross income",                 isPremium: false },
   { type: "area-chart",       title: "Income vs Expenses",  desc: "Monthly trend of income and expenses over time",      isPremium: false },
   { type: "bar-chart",        title: "Category Breakdown",  desc: "Total spending split by expense category",            isPremium: false },
   { type: "bar-deductible",   title: "Deductible Expenses", desc: "Categories that reduce your taxable income",          isPremium: false },
@@ -228,7 +231,6 @@ function AnimatedNumber({ value, prefix = "" }: { value: number; prefix?: string
 }
 
 // ── Custom tooltip ────────────────────────────────────────────────────────────
-
 
 function CustomTooltip({ active, payload, label, symbol }: any) {
   if (!active || !payload?.length) return null
@@ -329,7 +331,7 @@ function WidgetContent({
   if (widget.type === "kpi-tax-exposure") return (
     <div className="flex h-full flex-col justify-between">
       <div className="flex items-start justify-between">
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Net Surplus</p>
+        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Est. Tax Exposure</p>
         <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: colors.tertiary + "20" }}>
           <TrendingUp className="h-4 w-4" style={{ color: colors.tertiary }} />
         </div>
@@ -337,7 +339,7 @@ function WidgetContent({
       <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
         <AnimatedNumber value={kpi.taxExposure} prefix={symbol} />
       </p>
-      <p className="text-xs text-muted-foreground">Income after expenses</p>
+      <p className="text-xs text-muted-foreground">Gross income minus expenses</p>
     </div>
   )
 
@@ -426,15 +428,8 @@ function WidgetContent({
 
   if (widget.type === "bar-chart" || widget.type === "bar-deductible") {
     const variant = widget.chartVariant ?? "bar"
-    // Advanced bar-chart shows monthly net position (surplus/deficit per month)
-    // Standard bar-chart shows expense categories
-    const isAdvancedBar = widget.type === "bar-chart" && !!widget.advancedId
-    const data = isAdvancedBar
-      ? monthlyData.map(m => ({ name: m.month, value: m.income - m.expenses }))
-      : categoryData
-    const label = isAdvancedBar
-      ? "Monthly net position (income − expenses)"
-      : widget.type === "bar-deductible" ? "Expense categories reducing tax exposure" : "Total spend per category"
+    const data = categoryData
+    const label = widget.type === "bar-deductible" ? "Expense categories reducing tax exposure" : "Total spend per category"
     return (
       <div className="flex h-full flex-col">
         <p className="mb-3 text-xs text-muted-foreground">{label}</p>
@@ -454,10 +449,8 @@ function WidgetContent({
                 <XAxis dataKey="name" tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${symbol}${(v/1000).toFixed(0)}k`} />
                 <Tooltip content={<CustomTooltip symbol={symbol} />} />
-                <Bar dataKey="value" name={widget.type === "bar-deductible" ? "Deductible" : isAdvancedBar ? "Net" : "Amount"} radius={[6, 6, 0, 0]}>
-                  {data.map((entry, i) => (
-                    <Cell key={i} fill={isAdvancedBar ? (entry.value >= 0 ? "#10b981" : "#ef4444") : MULTI_COLORS[i % MULTI_COLORS.length]} />
-                  ))}
+                <Bar dataKey="value" name={widget.type === "bar-deductible" ? "Deductible" : "Amount"} radius={[6, 6, 0, 0]}>
+                  {data.map((_, i) => <Cell key={i} fill={MULTI_COLORS[i % MULTI_COLORS.length]} />)}
                 </Bar>
               </BarChart>
             )}
@@ -469,36 +462,25 @@ function WidgetContent({
 
   if (widget.type === "pie-chart") {
     const variant = widget.chartVariant ?? "pie"
-    // Advanced widgets (COMPOSITION dimension) show expense categories; standard widget shows doc type distribution
-    const pieData = widget.advancedId ? categoryData : docTypeData
-    const pieLabel = widget.advancedId ? "Spending by expense category" : "Breakdown by document type"
     return (
     <div className="flex h-full flex-col">
-      <p className="mb-2 text-xs text-muted-foreground">{pieLabel}</p>
+      <p className="mb-2 text-xs text-muted-foreground">Breakdown by document type</p>
       <div className="flex-1 min-h-0">
         <ResponsiveContainer width="100%" height="100%">
           {variant === "bar" ? (
-            <BarChart data={pieData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }} barSize={28}>
+            <BarChart data={docTypeData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }} barSize={28}>
               <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
               <XAxis dataKey="name" tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} />
               <Tooltip content={<CustomTooltip />} />
-              <Bar dataKey="value" name={widget.advancedId ? "Spend" : "Count"} radius={[6, 6, 0, 0]}>
-                {pieData.map((_, i) => <Cell key={i} fill={MULTI_COLORS[i % MULTI_COLORS.length]} />)}
+              <Bar dataKey="value" name="Count" radius={[6, 6, 0, 0]}>
+                {docTypeData.map((_, i) => <Cell key={i} fill={MULTI_COLORS[i % MULTI_COLORS.length]} />)}
               </Bar>
             </BarChart>
           ) : (
           <PieChart>
-            <Pie
-              data={pieData}
-              cx="50%" cy="50%"
-              innerRadius="35%" outerRadius="60%"
-              paddingAngle={3}
-              dataKey="value"
-              label={({ percent }) => `${(percent * 100).toFixed(0)}%`}
-              labelLine={false}
-            >
-              {pieData.map((_, i) => (
+            <Pie data={docTypeData} cx="50%" cy="50%" innerRadius="35%" outerRadius="60%" paddingAngle={3} dataKey="value">
+              {docTypeData.map((_, i) => (
                 <Cell key={i} fill={MULTI_COLORS[i % MULTI_COLORS.length]} strokeWidth={0} />
               ))}
             </Pie>
@@ -574,9 +556,6 @@ function WidgetContent({
     )
   }
 
-  // ── Advanced R&D widget types ───────────────────────────────────────────────
-
-
   return null
 }
 
@@ -608,17 +587,16 @@ export default function SmartDashboardPage() {
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([])
   const [categoryData, setCategoryData] = useState<CategoryData[]>([])
   const [docTypeData, setDocTypeData] = useState<CategoryData[]>([])
-  const [widgets, setWidgets] = useState<Widget[]>([])
-  const [layout, setLayout] = useState<LayoutItem[]>([])
+  const [widgets, setWidgets] = useState<Widget[]>(DEFAULT_WIDGETS)
+  const [layout, setLayout] = useState<LayoutItem[]>(DEFAULT_LAYOUT)
   const [selectedWidgetId, setSelectedWidgetId] = useState<string | null>(null)
   const [isDirty, setIsDirty] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
-  const [isEditMode, setIsEditMode] = useState(false)
   const [savedConfirm, setSavedConfirm] = useState(false)
   const [showDateFilter, setShowDateFilter] = useState(false)
   const [showColorPicker, setShowColorPicker] = useState(false)
   const [showAdvancedMenu, setShowAdvancedMenu] = useState(false)
-  const [showWidgetPanel, setShowWidgetPanel] = useState(false)
+  const [showWidgetPanel, setShowWidgetPanel] = useState(true)
   const [mobileWidgetPanelOpen, setMobileWidgetPanelOpen] = useState(false)
   const isMobile = useIsMobile()
   const [dateFrom, setDateFrom] = useState("")
@@ -632,12 +610,10 @@ export default function SmartDashboardPage() {
   const [advancedWidgetsList, setAdvancedWidgetsList] = useState<AdvancedWidget[]>([])
   const [isRunningAnalytics, setIsRunningAnalytics] = useState(false)
   const [analyticsToast, setAnalyticsToast] = useState<string | null>(null)
-  const [standardOpen, setStandardOpen] = useState(false)
-  const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [standardOpen, setStandardOpen] = useState(true)
+  const [advancedOpen, setAdvancedOpen] = useState(true)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; widgetId: string } | null>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
-  const layoutInitialized = useRef(false)
-  const savedLayoutRef = useRef<LayoutItem[]>([])
 
   const selectedWidget = widgets.find(w => w.id === selectedWidgetId)
 
@@ -678,24 +654,18 @@ export default function SmartDashboardPage() {
       .single()
     if (data?.layout) {
       const saved = data.layout
-      // Restore exactly what was saved — empty canvas is valid and intentional
-      if (saved.widgets !== undefined) setWidgets(saved.widgets ?? [])
+      if (saved.widgets?.length) setWidgets(saved.widgets)
       if (saved.gridLayout?.length) {
-        // Always apply current min/max constraints — never restore stale saved values
-        const constraints: Record<string, { minW: number; minH: number; maxH?: number }> = {}
-        DEFAULT_LAYOUT.forEach(l => { constraints[l.i] = { minW: l.minW ?? 2, minH: l.minH ?? 1, maxH: l.maxH } })
-        const restoredLayout = saved.gridLayout.map((l: any) => ({
+        // Always apply current minH/minW — never restore stale saved constraints
+        const constraints: Record<string, { minW: number; minH: number }> = {}
+        DEFAULT_LAYOUT.forEach(l => { constraints[l.i] = { minW: l.minW ?? 2, minH: l.minH ?? 1 } })
+        setLayout(saved.gridLayout.map((l: any) => ({
           i: l.i, x: l.x, y: l.y, w: l.w, h: l.h,
           minW: constraints[l.i]?.minW ?? 2,
           minH: constraints[l.i]?.minH ?? 1,
-          ...(constraints[l.i]?.maxH != null ? { maxH: constraints[l.i].maxH } : {}),
-        }))
-        setLayout(restoredLayout)
-        // Store what we loaded so handleLayoutChange can compare and skip the initial RGL fire
-        savedLayoutRef.current = restoredLayout
+        })))
       }
     }
-    layoutInitialized.current = true
   }, [session])
 
   // ── Load data ──────────────────────────────────────────────────────────────
@@ -725,21 +695,8 @@ export default function SmartDashboardPage() {
     if (!fields?.length) { setLoading(false); return }
 
     const currency = (fields[0] as any)?.currency ?? "USD"
-
-    const INCOME_TYPES = ["payslip", "income_statement"]
-    const EXPENSE_TYPES = ["receipt", "invoice"]
-
-    // Classify each row — csv_export rows use gross_income presence instead of document_type
-    const incomeFields = fields.filter((f: any) => {
-      const dt = f.files.document_type
-      if (dt === "csv_export") return f.gross_income != null
-      return INCOME_TYPES.includes(dt)
-    })
-    const expenseFields = fields.filter((f: any) => {
-      const dt = f.files.document_type
-      if (dt === "csv_export") return f.gross_income == null && f.total_amount != null
-      return EXPENSE_TYPES.includes(dt)
-    })
+    const incomeFields = fields.filter((f: any) => ["payslip", "income_statement"].includes(f.files.document_type))
+    const expenseFields = fields.filter((f: any) => ["receipt", "invoice"].includes(f.files.document_type))
 
     const totalIncome = incomeFields.reduce((s: number, f: any) => s + parseFloat(f.gross_income ?? f.total_amount ?? 0), 0)
     const totalExpenses = expenseFields.reduce((s: number, f: any) => s + parseFloat(f.total_amount ?? 0), 0)
@@ -754,11 +711,9 @@ export default function SmartDashboardPage() {
       if (!f.document_date) return
       const month = f.document_date.slice(0, 7)
       if (!monthMap[month]) monthMap[month] = { expenses: 0, income: 0 }
-      const dt = f.files.document_type
-      const isIncome = dt === "csv_export" ? f.gross_income != null : INCOME_TYPES.includes(dt)
-      const isExpense = dt === "csv_export" ? (f.gross_income == null && f.total_amount != null) : EXPENSE_TYPES.includes(dt)
-      if (isIncome) monthMap[month].income += parseFloat(f.gross_income ?? f.total_amount ?? 0)
-      else if (isExpense) monthMap[month].expenses += parseFloat(f.total_amount ?? 0)
+      if (["payslip", "income_statement"].includes(f.files.document_type))
+        monthMap[month].income += parseFloat(f.gross_income ?? f.total_amount ?? 0)
+      else monthMap[month].expenses += parseFloat(f.total_amount ?? 0)
     })
     setMonthlyData(Object.entries(monthMap).sort(([a],[b]) => a.localeCompare(b)).map(([m, d]) => ({
       month: new Date(m + "-01").toLocaleDateString("en-US", { month: "short", year: "2-digit" }), ...d
@@ -788,7 +743,7 @@ export default function SmartDashboardPage() {
       .select("status")
       .eq("user_id", session.user.id)
       .single()
-      .then(({ data }) => setIsPro(data?.status === "pro" || data?.status === "day_pass"))
+      .then(({ data }) => setIsPro(data?.status === "pro" || data?.status === "day_pass" || data?.status === "gift_code"))
   }, [session])
 
   // ── Context summary ────────────────────────────────────────────────────────
@@ -808,44 +763,16 @@ export default function SmartDashboardPage() {
   useEffect(() => { loadContextSummary() }, [loadContextSummary])
 
   // ── Advanced widgets ────────────────────────────────────────────────────────
-  // Supported advanced widget types — upgrade versions of standard charts with AI insight.
-  // R&D types (savings-rate, monthly-delta, etc.) are no longer generated or displayed.
-  const SUPPORTED_ADVANCED_TYPES = ["bar-chart", "line-chart", "area-chart", "pie-chart"]
-
   const loadAdvancedWidgets = useCallback(async () => {
     if (!session?.user?.id) return
-
-    // Hard-delete any legacy R&D widget types that may have been starred or plotted
-    // in previous sessions. This is a one-time self-healing cleanup.
-    await supabase
-      .from("advanced_widgets")
-      .delete()
-      .eq("user_id", session.user.id)
-      .not("widget_type", "in", `(${SUPPORTED_ADVANCED_TYPES.join(",")})`)
-
     const { data } = await supabase
       .from("advanced_widgets")
       .select("*")
       .eq("user_id", session.user.id)
-      .in("widget_type", SUPPORTED_ADVANCED_TYPES)
       .or("expires_at.is.null,expires_at.gt." + new Date().toISOString())
       .order("is_starred", { ascending: false })
       .order("created_at", { ascending: false })
-    if (data) {
-      setAdvancedWidgetsList(data)
-      // Reconcile canvas: remove plotted widgets whose DB row no longer exists.
-      // This handles the case where advanced analytics regenerated and old widget
-      // types were cleared — canvas self-heals without manual removal.
-      const liveIds = new Set(data.map((w: AdvancedWidget) => w.id))
-      setWidgets(prev => {
-        const stale = prev.filter(w => w.advancedId && !liveIds.has(w.advancedId))
-        if (!stale.length) return prev
-        const staleIds = new Set(stale.map(w => w.id))
-        setLayout(prevLayout => prevLayout.filter(l => !staleIds.has(l.i)))
-        setIsDirty(true)
-        return prev.filter(w => !staleIds.has(w.id))
-      })
-    }
+    if (data) setAdvancedWidgetsList(data)
   }, [session])
 
   useEffect(() => { loadAdvancedWidgets() }, [loadAdvancedWidgets])
@@ -874,15 +801,11 @@ export default function SmartDashboardPage() {
       colors:     DEFAULT_WIDGET_COLORS,
       advancedId: aw.id,
       insight:    aw.insight ?? undefined,
-      config:     aw.config ?? undefined,
     }
-    const minSize = WIDGET_MIN_SIZE[aw.widget_type] ?? { minW: 3, minH: 3 }
+    const lastY = layout.length ? Math.max(...layout.map(l => l.y + l.h)) : 0
+    const minSize = WIDGET_MIN_SIZE[aw.widget_type] ?? { minW: 2, minH: 2 }
     setWidgets(prev => [...prev, newWidget])
-    setLayout(prev => {
-      const lastY = prev.length ? Math.max(...prev.map(l => l.y + l.h)) : 0
-      return [...prev, { i: newWidget.id, x: 0, y: lastY, w: minSize.minW, h: minSize.minH, minW: minSize.minW, minH: minSize.minH }]
-    })
-    setIsEditMode(true)
+    setLayout(prev => [...prev, { i: newWidget.id, x: 0, y: lastY, w: minSize.minW + 2, h: minSize.minH + 2, minW: minSize.minW, minH: minSize.minH }])
     setIsDirty(true)
   }
 
@@ -898,37 +821,16 @@ export default function SmartDashboardPage() {
           "Authorization": `Bearer ${cur?.access_token}`,
           "apikey": process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
         },
-        body: JSON.stringify({
-          user_id: session.user.id,
-          existing_widget_types: widgets.map(w => w.type),
-          // Only dedup against types currently PLOTTED ON CANVAS as advanced widgets.
-          // Do NOT use starred DB rows — stale starred rows accumulate across sessions
-          // and block Haiku from generating those types, resulting in 0 new charts.
-          plotted_advanced_types: widgets.filter(w => w.advancedId).map(w => w.type),
-        }),
+        body: JSON.stringify({ user_id: session.user.id, existing_widget_types: widgets.map(w => w.type) }),
       })
-      const responseText = await res.text()
       if (res.ok) {
-        let data: any = {}
-        try { data = JSON.parse(responseText) } catch { /* use empty data */ }
+        const data = await res.json()
         await loadAdvancedWidgets()
         localStorage.setItem("aa_last_field_count", String(999999))
         setHasNewData(false)
-        setAnalyticsToast(
-          data.count > 0
-            ? `${data.count} new visualization${data.count !== 1 ? "s" : ""} ready — see the Advanced section below.`
-            : "Analytics ran but no new charts were generated."
-        )
+        setShowAdvancedMenu(false)
+        setAnalyticsToast(`${data.count} new visualization${data.count !== 1 ? "s" : ""} available. Check the Advanced section of your Visualizations panel.`)
         setTimeout(() => setAnalyticsToast(null), 7000)
-      } else {
-        let errMsg = "Analytics generation failed."
-        try {
-          const errData = JSON.parse(responseText)
-          if (errData?.error) errMsg = `Analytics error: ${errData.error}`
-        } catch { /* use default */ }
-        setAnalyticsToast(errMsg)
-        setTimeout(() => setAnalyticsToast(null), 9000)
-        console.error("generate-advanced-analytics error:", res.status, responseText)
       }
     } finally {
       setIsRunningAnalytics(false)
@@ -970,8 +872,6 @@ export default function SmartDashboardPage() {
     }, { onConflict: "user_id" })
     setIsSaving(false)
     setIsDirty(false)
-    setIsEditMode(false)
-    savedLayoutRef.current = layout
     setSavedConfirm(true)
     setTimeout(() => setSavedConfirm(false), 2000)
   }
@@ -982,14 +882,10 @@ export default function SmartDashboardPage() {
     if (widgets.some(w => w.type === type)) return
     const id = `${type}-${Date.now()}`
     const isKpi = type.startsWith("kpi")
-    const minSize = WIDGET_MIN_SIZE[type] ?? { minW: isKpi ? 2 : 3, minH: isKpi ? 2 : 3 }
-    const defaultEntry = DEFAULT_LAYOUT.find(l => l.i === type)
+    const defaultW = isKpi ? 2 : 4
+    const defaultH = isKpi ? 3 : 7
     setWidgets(prev => [...prev, { id, type, title }])
-    setLayout(prev => {
-      const lastY = prev.length ? Math.max(...prev.map(l => l.y + l.h)) : 0
-      return [...prev, { i: id, x: 0, y: lastY, w: minSize.minW, h: minSize.minH, minW: minSize.minW, minH: minSize.minH, ...(defaultEntry?.maxH != null ? { maxH: defaultEntry.maxH } : {}) }]
-    })
-    setIsEditMode(true)
+    setLayout(prev => [...prev, { i: id, x: 0, y: Infinity, w: isKpi ? 3 : 6, h: isKpi ? 4 : 8, minW: isKpi ? 2 : 3, minH: isKpi ? 1 : 3 }])
     setIsDirty(true)
   }
 
@@ -1018,18 +914,9 @@ export default function SmartDashboardPage() {
   }
 
   const handleLayoutChange = (newLayout: RGLLayout) => {
-    const mapped = (newLayout as any[]).map((l: any) => ({ i: l.i, x: l.x, y: l.y, w: l.w, h: l.h, minW: l.minW, minH: l.minH, ...(l.maxH != null ? { maxH: l.maxH } : {}) }))
-    setLayout(mapped)
-    // Only mark dirty when in edit mode and layout actually changed from last save.
-    // Guards against: spurious RGL fires on mount, and RGL internal fires when
-    // static/isDraggable props toggle during lock/unlock.
-    if (!layoutInitialized.current || !isEditMode) return
-    const saved = savedLayoutRef.current
-    const changed = mapped.some(item => {
-      const s = saved.find(s => s.i === item.i)
-      return !s || s.x !== item.x || s.y !== item.y || s.w !== item.w || s.h !== item.h
-    })
-    if (changed) setIsDirty(true)
+    // RGLLayout items are readonly — spread into our mutable LayoutItem shape
+    setLayout((newLayout as any[]).map((l: any) => ({ i: l.i, x: l.x, y: l.y, w: l.w, h: l.h, minW: l.minW, minH: l.minH })))
+    setIsDirty(true)
   }
 
   // ── Auth guard ─────────────────────────────────────────────────────────────
@@ -1046,7 +933,7 @@ export default function SmartDashboardPage() {
 
         {/* TOP TOOLBAR */}
         <div className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-card px-4 gap-2">
-          <div className="flex flex-1 items-center gap-2 min-w-0">
+          <div className="flex flex-1 items-center gap-2 overflow-x-auto scrollbar-none min-w-0">
 
             {/* Date filter */}
             <div className="relative">
@@ -1100,7 +987,9 @@ export default function SmartDashboardPage() {
 
             {/* Advanced Analytics — desktop only */}
             {!isMobile && (() => {
-              const canUseAA = isPro
+              const betaEmail = process.env.NEXT_PUBLIC_AA_BETA_EMAIL
+              const isBetaUser = betaEmail && session?.user?.email === betaEmail
+              const canUseAA = isPro && isBetaUser
               return (
                 <div className="relative">
                   {canUseAA ? (
@@ -1227,29 +1116,21 @@ export default function SmartDashboardPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            {!isMobile && (
-              isEditMode ? (
-                <>
-                  <span className="text-xs text-muted-foreground">Editing layout</span>
-                  <button
-                    onClick={saveLayout}
-                    disabled={isSaving}
-                    className="flex h-7 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs text-primary-foreground transition-all hover:bg-primary/90"
-                  >
-                    {savedConfirm ? <><Check className="h-3.5 w-3.5" /> Saved</>
-                      : isSaving ? <><div className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" /> Saving…</>
-                      : <><Save className="h-3.5 w-3.5" /> Save Layout</>}
-                  </button>
-                </>
-              ) : (
-                <button
-                  onClick={() => setIsEditMode(true)}
-                  className="flex h-7 items-center gap-1.5 rounded-lg border border-border px-3 text-xs text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
-                >
-                  <Pencil className="h-3.5 w-3.5" /> Edit Layout
-                </button>
-              )
-            )}
+            {/* Desktop only — save layout controls */}
+            {!isMobile && <>
+              {isDirty && <span className="text-xs text-muted-foreground">Unsaved changes</span>}
+              <button
+                onClick={saveLayout}
+                disabled={!isDirty || isSaving}
+                className={`flex h-7 items-center gap-1.5 rounded-lg px-3 text-xs transition-all ${
+                  isDirty ? "bg-primary text-primary-foreground hover:bg-primary/90" : "border border-border text-muted-foreground opacity-50 cursor-not-allowed"
+                }`}
+              >
+                {savedConfirm ? <><Check className="h-3.5 w-3.5" /> Saved</>
+                  : isSaving ? <><div className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" /> Saving…</>
+                  : <><Save className="h-3.5 w-3.5" /> Save Layout</>}
+              </button>
+            </>}
           </div>
         </div>
 
@@ -1277,14 +1158,14 @@ export default function SmartDashboardPage() {
             ) : (
               <GridLayout
                 className="layout"
-                layout={isMobile ? toMobileLayout(layout) : layout.map(l => ({ ...l, static: !isEditMode }))}
+                layout={isMobile ? toMobileLayout(layout) : layout}
                 cols={12}
                 rowHeight={24}
                 width={containerWidth}
                 onLayoutChange={handleLayoutChange}
-                draggableHandle={(!isMobile && isEditMode) ? ".drag-handle" : ".no-drag"}
-                isDraggable={!isMobile && isEditMode}
-                isResizable={!isMobile && isEditMode}
+                draggableHandle={isMobile ? ".no-drag" : ".drag-handle"}
+                isDraggable={!isMobile}
+                isResizable={!isMobile}
                 margin={[10, 10]}
                 containerPadding={[0, 0]}
                 resizeHandles={isMobile ? [] : ["se", "sw", "ne", "nw", "e", "w", "s"]}
@@ -1310,8 +1191,8 @@ export default function SmartDashboardPage() {
                       <span className="pointer-events-none absolute -bottom-1 -right-1 h-2 w-2 rounded-full bg-primary" />
                     </>)}
 
-                    {/* Drag handle — desktop, edit mode only */}
-                    {!isMobile && isEditMode && <div className="drag-handle absolute left-0 right-0 top-0 h-8 cursor-grab rounded-t-2xl opacity-0 group-hover:opacity-100 transition-opacity" />}
+                    {/* Drag handle — desktop only */}
+                    {!isMobile && <div className="drag-handle absolute left-0 right-0 top-0 h-8 cursor-grab rounded-t-2xl opacity-0 group-hover:opacity-100 transition-opacity" />}
 
                     {/* Widget header */}
                     <div className="flex items-center px-4 pt-3 pb-1 shrink-0">
@@ -1389,8 +1270,9 @@ export default function SmartDashboardPage() {
             <PanelRight className="h-3 w-3" />
           </button>
 
-          {/* VISUALIZATIONS PANEL — desktop absolute overlay, CSS slide */}
-          <aside className={`hidden md:flex absolute right-0 top-0 bottom-0 z-10 w-72 flex-col overflow-hidden border-l border-border bg-card/95 backdrop-blur-sm shadow-xl transition-transform duration-300 ease-out ${showWidgetPanel ? "translate-x-0" : "translate-x-full"}`}>
+          {/* VISUALIZATIONS PANEL — desktop absolute overlay */}
+          {showWidgetPanel && (
+          <aside className="hidden md:flex absolute right-0 top-0 bottom-0 z-10 w-72 flex-col overflow-hidden border-l border-border bg-card/95 backdrop-blur-sm shadow-xl">
             <div className="border-b border-border px-4 py-3">
               <h2 className="text-sm font-semibold text-foreground">Visualizations</h2>
               <p className="text-xs text-muted-foreground mt-0.5">Add visualizations to your dashboard</p>
@@ -1517,6 +1399,7 @@ export default function SmartDashboardPage() {
               )}
             </div>
           </aside>
+          )}
         </div>
       </div>
 

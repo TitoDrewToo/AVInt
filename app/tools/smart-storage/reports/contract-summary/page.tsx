@@ -86,16 +86,16 @@ function obligationStatus(o: PaymentObligation, today: string): ObligationDispla
 
 function StatusBadge({ status }: { status: ObligationDisplay }) {
   const styles: Record<ObligationDisplay, string> = {
-    paid:     "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-    overdue:  "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
-    upcoming: "bg-muted text-muted-foreground",
-    disputed: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
+    paid:     "text-emerald-600 dark:text-emerald-400",
+    overdue:  "text-red-600 dark:text-red-400",
+    upcoming: "text-muted-foreground",
+    disputed: "text-amber-600 dark:text-amber-400",
   }
   const labels: Record<ObligationDisplay, string> = {
     paid: "Paid", overdue: "Overdue", upcoming: "Upcoming", disputed: "Disputed",
   }
   return (
-    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${styles[status]}`}>
+    <span className={`text-xs font-medium ${styles[status]}`}>
       {labels[status]}
     </span>
   )
@@ -104,19 +104,19 @@ function StatusBadge({ status }: { status: ObligationDisplay }) {
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ContractSummaryPage() {
-  const [session, setSession]           = useState<Session | null>(null)
+  const [session, setSession]             = useState<Session | null>(null)
   const [sessionLoaded, setSessionLoaded] = useState(false)
-  const [isPro, setIsPro]               = useState(false)
-  const [contracts, setContracts]       = useState<ContractRow[]>([])
-  const [obligations, setObligations]   = useState<Record<string, PaymentObligation[]>>({})
-  const [loading, setLoading]           = useState(true)
-  const [dateFrom, setDateFrom]         = useState("")
-  const [dateTo, setDateTo]             = useState("")
+  const [isPro, setIsPro]                 = useState(false)
+  const [contracts, setContracts]         = useState<ContractRow[]>([])
+  const [obligations, setObligations]     = useState<Record<string, PaymentObligation[]>>({})
+  const [loading, setLoading]             = useState(true)
+  const [dateFrom, setDateFrom]           = useState("")
+  const [dateTo, setDateTo]               = useState("")
   const [expandedFileId, setExpandedFileId] = useState<string | null>(null)
-  const [markPaidForm, setMarkPaidForm] = useState<MarkPaidForm | null>(null)
-  const [saving, setSaving]             = useState(false)
-  const [backfilling, setBackfilling]   = useState(false)
-  const [backfillDone, setBackfillDone] = useState<number | null>(null)
+  const [markPaidForm, setMarkPaidForm]   = useState<MarkPaidForm | null>(null)
+  const [saving, setSaving]               = useState(false)
+  const [backfilling, setBackfilling]     = useState(false)
+  const [backfillDone, setBackfillDone]   = useState<number | null>(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -189,7 +189,6 @@ export default function ContractSummaryPage() {
           confidence_score:  row.confidence_score,
         })))
 
-        // Fetch payment obligations for these contracts
         const { data: obligs } = await supabase
           .from("payment_obligations")
           .select("*")
@@ -214,7 +213,7 @@ export default function ContractSummaryPage() {
 
   useEffect(() => { loadContracts() }, [loadContracts])
 
-  // ── Mark paid handler ──────────────────────────────────────────────────────
+  // ── Mark paid ──────────────────────────────────────────────────────────────
 
   async function handleMarkPaid() {
     if (!markPaidForm) return
@@ -242,7 +241,7 @@ export default function ContractSummaryPage() {
     }
   }
 
-  // ── Backfill handler ───────────────────────────────────────────────────────
+  // ── Backfill ───────────────────────────────────────────────────────────────
 
   async function handleBackfill() {
     setBackfilling(true)
@@ -290,12 +289,12 @@ export default function ContractSummaryPage() {
     }, {})
   ).sort((a, b) => b.count - a.count)
 
-  const allObligations = Object.values(obligations).flat()
-  const totalObligAmt  = allObligations.reduce((s, o) => s + (o.amount ?? 0), 0)
-  const totalPaidAmt   = allObligations.filter((o) => o.status === "paid").reduce((s, o) => s + (o.amount ?? 0), 0)
-  const overdueList    = allObligations.filter((o) => o.status !== "paid" && o.status !== "disputed" && o.due_date < today)
+  const allObligations  = Object.values(obligations).flat()
+  const totalObligAmt   = allObligations.reduce((s, o) => s + (o.amount ?? 0), 0)
+  const totalPaidAmt    = allObligations.filter((o) => o.status === "paid").reduce((s, o) => s + (o.amount ?? 0), 0)
+  const overdueList     = allObligations.filter((o) => o.status !== "paid" && o.status !== "disputed" && o.due_date < today)
   const totalOverdueAmt = overdueList.reduce((s, o) => s + (o.amount ?? 0), 0)
-  const nextDue        = allObligations
+  const nextDue         = allObligations
     .filter((o) => o.status === "pending" && o.due_date >= today)
     .sort((a, b) => a.due_date.localeCompare(b.due_date))[0] ?? null
 
@@ -321,171 +320,209 @@ export default function ContractSummaryPage() {
   return (
     <div className="flex min-h-screen flex-col">
       <Navbar />
-      <main className="flex-1 px-6 py-8">
-        <div className="mx-auto max-w-5xl">
+      <main className="flex-1 px-6 py-10">
+        <div className="mx-auto max-w-4xl">
 
-          {/* Header */}
-          <div className="mb-8 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Link href="/tools/smart-storage">
-                <button className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
-                  <ArrowLeft className="h-4 w-4" />
-                </button>
-              </Link>
-              <div>
-                <h1 className="text-2xl font-semibold text-foreground">Contract Summary</h1>
-                <p className="mt-0.5 text-sm text-muted-foreground">
-                  Generated {new Date().toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "2-digit" })}
-                </p>
-              </div>
+          {/* Back nav */}
+          <div className="mb-8">
+            <Link
+              href="/tools/smart-storage"
+              className="inline-flex items-center gap-2 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              Smart Storage
+            </Link>
+          </div>
+
+          {/* Report header */}
+          <div className="mb-8 flex items-start justify-between">
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                AVINTELLIGENCE · Smart Storage
+              </p>
+              <h1 className="text-2xl font-light tracking-tight text-foreground">
+                Contract Summary
+              </h1>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Generated {new Date().toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "2-digit" })}
+              </p>
             </div>
-            <Button variant="outline" size="sm" className="rounded-lg gap-2" disabled>
-              <Download className="h-4 w-4" />
+            <Button variant="outline" size="sm" className="rounded-md gap-2 text-xs" disabled>
+              <Download className="h-3.5 w-3.5" />
               Export PDF
             </Button>
           </div>
 
           {/* Date filter */}
-          <div className="mb-6 flex items-center gap-3 rounded-xl border border-border bg-card p-4">
-            <span className="text-sm text-muted-foreground">Date range</span>
+          <div className="mb-8 flex items-center gap-3 border-y border-border py-3">
+            <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">Period</span>
             <input
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
-              className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground"
+              className="rounded border border-border bg-background px-2.5 py-1 text-xs text-foreground"
             />
-            <span className="text-sm text-muted-foreground">to</span>
+            <span className="text-xs text-muted-foreground">—</span>
             <input
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
-              className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground"
+              className="rounded border border-border bg-background px-2.5 py-1 text-xs text-foreground"
             />
-            <Button size="sm" variant="outline" className="rounded-lg"
-              onClick={() => { setDateFrom(""); setDateTo("") }}>
+            <button
+              onClick={() => { setDateFrom(""); setDateTo("") }}
+              className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground transition-colors hover:text-foreground"
+            >
               Clear
-            </Button>
+            </button>
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center py-20 text-sm text-muted-foreground">Loading…</div>
+            <div className="flex items-center justify-center py-24 text-sm text-muted-foreground">
+              Loading…
+            </div>
           ) : contracts.length === 0 ? (
-            <div className="flex items-center justify-center py-20 text-sm text-muted-foreground">
+            <div className="flex items-center justify-center py-24 text-sm text-muted-foreground">
               No contract or agreement documents found.
             </div>
           ) : (
-            <div className="space-y-6">
+            <div className="space-y-10">
 
-              {/* Contract KPI row */}
-              <div className="grid grid-cols-3 gap-4">
-                <div className="rounded-xl border border-border bg-card p-5">
-                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Total Contracts</p>
-                  <p className="mt-2 text-2xl font-semibold text-foreground">{contracts.length}</p>
+              {/* Summary strip */}
+              <div className="grid grid-cols-4 divide-x divide-border border border-border">
+                <div className="px-5 py-4">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Contracts</p>
+                  <p className="mt-1.5 font-mono text-xl tabular-nums text-foreground">{contracts.length}</p>
                 </div>
-                <div className="rounded-xl border border-border bg-card p-5">
-                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Counterparties</p>
-                  <p className="mt-2 text-2xl font-semibold text-foreground">{uniqueCounterparties}</p>
+                <div className="px-5 py-4">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Counterparties</p>
+                  <p className="mt-1.5 font-mono text-xl tabular-nums text-foreground">{uniqueCounterparties}</p>
                 </div>
-                <div className="rounded-xl border border-border bg-card p-5">
-                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Active</p>
-                  <p className="mt-2 text-2xl font-semibold text-foreground">{activeCount}</p>
+                <div className="px-5 py-4">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Active</p>
+                  <p className="mt-1.5 font-mono text-xl tabular-nums text-foreground">{activeCount}</p>
+                </div>
+                <div className="px-5 py-4">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Obligations</p>
+                  <p className="mt-1.5 font-mono text-xl tabular-nums text-foreground">{allObligations.length}</p>
                 </div>
               </div>
 
-              {/* Payment obligation KPI row */}
+              {/* Payment obligations strip */}
               {allObligations.length > 0 && (
-                <div className="grid grid-cols-4 gap-4">
-                  <div className="rounded-xl border border-border bg-card p-5">
-                    <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Total Scheduled</p>
-                    <p className="mt-2 text-xl font-semibold text-foreground">
-                      {formatCurrency(totalObligAmt, currency)}
-                    </p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">{allObligations.length} payment{allObligations.length !== 1 ? "s" : ""}</p>
-                  </div>
-                  <div className="rounded-xl border border-border bg-card p-5">
-                    <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Total Paid</p>
-                    <p className="mt-2 text-xl font-semibold text-green-600">
-                      {formatCurrency(totalPaidAmt, currency)}
-                    </p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {allObligations.filter((o) => o.status === "paid").length} cleared
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-border bg-card p-5">
-                    <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Overdue</p>
-                    <p className={`mt-2 text-xl font-semibold ${overdueList.length > 0 ? "text-red-600" : "text-muted-foreground"}`}>
-                      {overdueList.length > 0 ? formatCurrency(totalOverdueAmt, currency) : "—"}
-                    </p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {overdueList.length > 0 ? `${overdueList.length} missed` : "None overdue"}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-border bg-card p-5">
-                    <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Next Due</p>
-                    {nextDue ? (
-                      <>
-                        <p className="mt-2 text-xl font-semibold text-foreground">{formatDate(nextDue.due_date)}</p>
-                        <p className="mt-0.5 text-xs text-muted-foreground truncate">
-                          {nextDue.counterparty_name ?? nextDue.description ?? "—"}
-                        </p>
-                      </>
-                    ) : (
-                      <p className="mt-2 text-xl font-semibold text-muted-foreground">—</p>
-                    )}
+                <div>
+                  <p className="mb-3 text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                    Payment Obligations
+                  </p>
+                  <div className="grid grid-cols-4 divide-x divide-border border border-border">
+                    <div className="px-5 py-4">
+                      <p className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">Total Scheduled</p>
+                      <p className="mt-1.5 font-mono text-sm tabular-nums text-foreground">
+                        {formatCurrency(totalObligAmt, currency)}
+                      </p>
+                      <p className="mt-0.5 text-[10px] text-muted-foreground">{allObligations.length} payment{allObligations.length !== 1 ? "s" : ""}</p>
+                    </div>
+                    <div className="px-5 py-4">
+                      <p className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">Paid</p>
+                      <p className="mt-1.5 font-mono text-sm tabular-nums text-emerald-600 dark:text-emerald-400">
+                        {formatCurrency(totalPaidAmt, currency)}
+                      </p>
+                      <p className="mt-0.5 text-[10px] text-muted-foreground">
+                        {allObligations.filter((o) => o.status === "paid").length} cleared
+                      </p>
+                    </div>
+                    <div className="px-5 py-4">
+                      <p className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">Overdue</p>
+                      <p className={`mt-1.5 font-mono text-sm tabular-nums ${overdueList.length > 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}`}>
+                        {overdueList.length > 0 ? formatCurrency(totalOverdueAmt, currency) : "—"}
+                      </p>
+                      <p className="mt-0.5 text-[10px] text-muted-foreground">
+                        {overdueList.length > 0 ? `${overdueList.length} missed` : "None overdue"}
+                      </p>
+                    </div>
+                    <div className="px-5 py-4">
+                      <p className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">Next Due</p>
+                      {nextDue ? (
+                        <>
+                          <p className="mt-1.5 font-mono text-sm tabular-nums text-foreground">{formatDate(nextDue.due_date)}</p>
+                          <p className="mt-0.5 text-[10px] text-muted-foreground truncate">
+                            {nextDue.counterparty_name ?? nextDue.description ?? "—"}
+                          </p>
+                        </>
+                      ) : (
+                        <p className="mt-1.5 font-mono text-sm tabular-nums text-muted-foreground">—</p>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
 
               {/* By Counterparty */}
-              <div className="rounded-xl border border-border bg-card p-6">
-                <h2 className="mb-4 text-sm font-semibold text-foreground">By Counterparty</h2>
-                <div className="divide-y divide-border">
-                  {byCounterparty.map((cp) => (
-                    <div key={cp.name} className="flex items-center justify-between py-3">
-                      <span className="text-sm text-foreground">{cp.name}</span>
-                      <div className="text-right">
-                        <p className="text-sm font-medium text-foreground">
+              <div>
+                <p className="mb-3 text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                  By Counterparty
+                </p>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th className="pb-2 text-left text-[10px] font-medium uppercase tracking-[0.15em] text-muted-foreground">
+                        Counterparty
+                      </th>
+                      <th className="pb-2 text-right text-[10px] font-medium uppercase tracking-[0.15em] text-muted-foreground">
+                        Contracts
+                      </th>
+                      <th className="pb-2 text-right text-[10px] font-medium uppercase tracking-[0.15em] text-muted-foreground">
+                        Total Value
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {byCounterparty.map((cp) => (
+                      <tr key={cp.name}>
+                        <td className="py-2.5 text-foreground">{cp.name}</td>
+                        <td className="py-2.5 text-right font-mono tabular-nums text-muted-foreground">{cp.count}</td>
+                        <td className="py-2.5 text-right font-mono tabular-nums text-foreground">
                           {cp.total > 0 ? formatCurrency(cp.total, currency) : "—"}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {cp.count} contract{cp.count > 1 ? "s" : ""}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
 
-              {/* Contract Detail + Payment Schedules */}
-              <div className="rounded-xl border border-border bg-card p-6">
-                <div className="mb-4 flex items-center justify-between">
-                  <h2 className="text-sm font-semibold text-foreground">Contract Detail</h2>
+              {/* Contract Detail */}
+              <div>
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                    Contract Detail
+                  </p>
                   <div className="flex items-center gap-3">
                     {backfillDone !== null && (
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-[10px] text-muted-foreground">
                         {backfillDone === 0 ? "Already up to date" : `${backfillDone} obligation${backfillDone !== 1 ? "s" : ""} imported`}
                       </span>
                     )}
                     <button
                       onClick={handleBackfill}
                       disabled={backfilling}
-                      className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+                      className="flex items-center gap-1.5 rounded border border-border px-2.5 py-1 text-[10px] uppercase tracking-[0.15em] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
                     >
                       <RefreshCw className={`h-3 w-3 ${backfilling ? "animate-spin" : ""}`} />
-                      {backfilling ? "Importing…" : "Import Payment Schedules"}
+                      {backfilling ? "Importing…" : "Import Schedules"}
                     </button>
                   </div>
                 </div>
+
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                        <th className="pb-3 pr-4">Date</th>
-                        <th className="pb-3 pr-4">Counterparty</th>
-                        <th className="pb-3 pr-4">Ref No</th>
-                        <th className="pb-3 pr-4">Period</th>
-                        <th className="pb-3 pr-4 text-right">Value</th>
-                        <th className="pb-3">Schedule</th>
+                      <tr className="border-b border-border">
+                        <th className="pb-2 pr-6 text-left text-[10px] font-medium uppercase tracking-[0.15em] text-muted-foreground">Date</th>
+                        <th className="pb-2 pr-6 text-left text-[10px] font-medium uppercase tracking-[0.15em] text-muted-foreground">Counterparty</th>
+                        <th className="pb-2 pr-6 text-left text-[10px] font-medium uppercase tracking-[0.15em] text-muted-foreground">Ref No</th>
+                        <th className="pb-2 pr-6 text-left text-[10px] font-medium uppercase tracking-[0.15em] text-muted-foreground">Period</th>
+                        <th className="pb-2 pr-6 text-right text-[10px] font-medium uppercase tracking-[0.15em] text-muted-foreground">Value</th>
+                        <th className="pb-2 text-left text-[10px] font-medium uppercase tracking-[0.15em] text-muted-foreground">Schedule</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -495,20 +532,20 @@ export default function ContractSummaryPage() {
                         const periodStart = row.period_start ? formatDate(row.period_start) : null
                         const periodEnd   = row.period_end   ? formatDate(row.period_end)   : null
                         const period =
-                          periodStart && periodEnd ? `${periodStart} → ${periodEnd}`
-                          : periodStart             ? `${periodStart} →`
-                          : periodEnd               ? `→ ${periodEnd}`
+                          periodStart && periodEnd ? `${periodStart} – ${periodEnd}`
+                          : periodStart             ? `${periodStart} –`
+                          : periodEnd               ? `– ${periodEnd}`
                           : "—"
                         return (
                           <>
                             <tr key={`r-${i}`} className="border-b border-border">
-                              <td className="py-3 pr-4 text-muted-foreground">
+                              <td className="py-3 pr-6 font-mono tabular-nums text-xs text-muted-foreground whitespace-nowrap">
                                 {row.document_date ? formatDate(row.document_date) : "—"}
                               </td>
-                              <td className="py-3 pr-4 text-foreground">{row.counterparty_name ?? "—"}</td>
-                              <td className="py-3 pr-4 text-muted-foreground">{row.invoice_number ?? "—"}</td>
-                              <td className="py-3 pr-4 text-muted-foreground whitespace-nowrap">{period}</td>
-                              <td className="py-3 pr-4 text-right font-medium text-foreground">
+                              <td className="py-3 pr-6 text-foreground">{row.counterparty_name ?? "—"}</td>
+                              <td className="py-3 pr-6 font-mono tabular-nums text-xs text-muted-foreground">{row.invoice_number ?? "—"}</td>
+                              <td className="py-3 pr-6 text-xs text-muted-foreground whitespace-nowrap">{period}</td>
+                              <td className="py-3 pr-6 text-right font-mono tabular-nums text-foreground">
                                 {row.total_amount != null
                                   ? formatCurrency(row.total_amount, row.currency ?? currency)
                                   : "—"}
@@ -517,13 +554,13 @@ export default function ContractSummaryPage() {
                                 {rowObligations.length > 0 ? (
                                   <button
                                     onClick={() => setExpandedFileId(isExpanded ? null : row.file_id)}
-                                    className="flex items-center gap-1 text-xs text-primary hover:underline underline-offset-2"
+                                    className="flex items-center gap-1 text-[10px] uppercase tracking-[0.15em] text-muted-foreground transition-colors hover:text-foreground"
                                   >
                                     {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                                     {rowObligations.length} payment{rowObligations.length !== 1 ? "s" : ""}
                                   </button>
                                 ) : (
-                                  <span className="text-xs text-muted-foreground/50">—</span>
+                                  <span className="text-xs text-muted-foreground/40">—</span>
                                 )}
                               </td>
                             </tr>
@@ -532,41 +569,41 @@ export default function ContractSummaryPage() {
                             {isExpanded && rowObligations.length > 0 && (
                               <tr key={`oblig-${i}`}>
                                 <td colSpan={6} className="pb-4 pt-0">
-                                  <div className="mx-0 rounded-lg border border-border bg-muted/20 p-4">
-                                    <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                  <div className="border-x border-b border-border bg-muted/30 px-5 py-4">
+                                    <p className="mb-3 text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
                                       Payment Schedule — {row.counterparty_name ?? row.filename}
                                     </p>
                                     <table className="w-full text-xs">
                                       <thead>
-                                        <tr className="text-left font-medium uppercase tracking-wider text-muted-foreground/70">
-                                          <th className="pb-2 pr-3">Due Date</th>
-                                          <th className="pb-2 pr-3">Description</th>
-                                          <th className="pb-2 pr-3">Check No.</th>
-                                          <th className="pb-2 pr-3">Bank</th>
-                                          <th className="pb-2 pr-3 text-right">Amount</th>
-                                          <th className="pb-2 pr-3">Status</th>
-                                          <th className="pb-2">Action</th>
+                                        <tr className="border-b border-border/60">
+                                          <th className="pb-2 pr-4 text-left text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground/70">Due Date</th>
+                                          <th className="pb-2 pr-4 text-left text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground/70">Description</th>
+                                          <th className="pb-2 pr-4 text-left text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground/70">Check No.</th>
+                                          <th className="pb-2 pr-4 text-left text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground/70">Bank</th>
+                                          <th className="pb-2 pr-4 text-right text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground/70">Amount</th>
+                                          <th className="pb-2 pr-4 text-left text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground/70">Status</th>
+                                          <th className="pb-2 text-left text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground/70">Action</th>
                                         </tr>
                                       </thead>
-                                      <tbody className="divide-y divide-border/50">
+                                      <tbody className="divide-y divide-border/40">
                                         {rowObligations.map((o) => {
                                           const s = obligationStatus(o, today)
                                           const isFormOpen = markPaidForm?.obligationId === o.id
                                           return (
-                                            <tr key={o.id} className={s === "overdue" ? "bg-red-50/50 dark:bg-red-950/10" : ""}>
-                                              <td className="py-2 pr-3 text-muted-foreground whitespace-nowrap">
+                                            <tr key={o.id} className={s === "overdue" ? "bg-red-500/5" : ""}>
+                                              <td className="py-2 pr-4 font-mono tabular-nums text-muted-foreground whitespace-nowrap">
                                                 {formatDate(o.due_date)}
                                               </td>
-                                              <td className="py-2 pr-3 text-foreground">{o.description ?? "—"}</td>
-                                              <td className="py-2 pr-3 font-mono text-muted-foreground">{o.check_number ?? "—"}</td>
-                                              <td className="py-2 pr-3 text-muted-foreground">{o.bank_name ?? "—"}</td>
-                                              <td className="py-2 pr-3 text-right font-medium text-foreground">
+                                              <td className="py-2 pr-4 text-foreground">{o.description ?? "—"}</td>
+                                              <td className="py-2 pr-4 font-mono tabular-nums text-muted-foreground">{o.check_number ?? "—"}</td>
+                                              <td className="py-2 pr-4 text-muted-foreground">{o.bank_name ?? "—"}</td>
+                                              <td className="py-2 pr-4 text-right font-mono tabular-nums text-foreground">
                                                 {o.amount != null ? formatCurrency(o.amount, o.currency ?? currency) : "—"}
                                               </td>
-                                              <td className="py-2 pr-3">
+                                              <td className="py-2 pr-4">
                                                 <StatusBadge status={s} />
                                                 {o.paid_at && (
-                                                  <p className="mt-0.5 text-muted-foreground/60">
+                                                  <p className="mt-0.5 text-[10px] text-muted-foreground/60">
                                                     {formatDate(o.paid_at)}{o.paid_via ? ` · ${o.paid_via}` : ""}
                                                   </p>
                                                 )}
@@ -591,7 +628,7 @@ export default function ContractSummaryPage() {
                                                       <button
                                                         onClick={handleMarkPaid}
                                                         disabled={saving}
-                                                        className="rounded bg-green-600 px-2 py-1 text-xs text-white hover:bg-green-700 disabled:opacity-50"
+                                                        className="rounded bg-emerald-600 px-2 py-1 text-xs text-white hover:bg-emerald-700 disabled:opacity-50"
                                                       >
                                                         {saving ? "…" : "Save"}
                                                       </button>
@@ -609,7 +646,7 @@ export default function ContractSummaryPage() {
                                                         paid_at: today,
                                                         paid_via: "",
                                                       })}
-                                                      className="rounded border border-border px-2 py-1 text-xs text-foreground transition-colors hover:bg-muted"
+                                                      className="rounded border border-border px-2 py-1 text-[10px] uppercase tracking-[0.1em] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                                                     >
                                                       Mark Paid
                                                     </button>
@@ -629,7 +666,7 @@ export default function ContractSummaryPage() {
                                                       })
                                                       await loadContracts()
                                                     }}
-                                                    className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
+                                                    className="text-[10px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
                                                   >
                                                     Undo
                                                   </button>
@@ -651,6 +688,11 @@ export default function ContractSummaryPage() {
                   </table>
                 </div>
               </div>
+
+              {/* Disclaimer */}
+              <p className="border-t border-border pt-6 text-[10px] leading-relaxed text-muted-foreground/60">
+                This report is generated from AI-extracted document data. Contract terms, payment obligations, and amounts should be verified against original source documents. Not legal or financial advice.
+              </p>
 
             </div>
           )}

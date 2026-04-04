@@ -88,8 +88,8 @@ const tools: ToolCardProps[] = [
   {
     name: "Smart Storage",
     description:
-      "Upload documents once. Automatically structure receipts, invoices, and records.",
-    subtext: "Generate organized datasets ready for reporting.",
+      "From receipts to lease agreements — upload once and get structured reports, expense breakdowns, and payment schedule tracking automatically.",
+    subtext: "Contracts, payslips, bank statements, and PDC schedules all in one place.",
     href: "/products/smart-storage",
     icon: <StorageIcon className="h-6 w-6" />,
   },

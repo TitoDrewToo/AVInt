@@ -105,7 +105,7 @@ Extract these fields:
   "gross_income": number or null,
   "net_income": number or null,
   "expense_category": "Food|Transport|Housing|Utilities|Healthcare|Entertainment|Shopping|Travel|Office|Salary|Other or null",
-  "line_items": [{"description": "string", "amount": number}],
+  "line_items": [{"description": "string", "amount": number, "due_date": "YYYY-MM-DD or null", "check_number": "string or null", "bank_name": "string or null"}],
   "confidence": number between 0 and 1
 }
 
@@ -117,7 +117,16 @@ Rules:
 - For screenshots of receipts: read the store name from the header of the receipt
 - confidence reflects how certain you are about the extraction
 - if a field cannot be determined return null
-- line_items should be an empty array [] if no line items found, never null`
+- line_items should be an empty array [] if no line items found, never null
+
+SPECIAL RULE — Contracts and lease agreements:
+If the document is a contract or agreement that contains a payment schedule table (e.g. post-dated checks, installment plan, rent payment calendar), extract every row of that table into line_items. For each payment entry use:
+  - description: label or purpose (e.g. "Rent - April 2026", "Installment 1", or blank if unlabeled)
+  - amount: the payment amount as a number
+  - due_date: the due/payment date in YYYY-MM-DD format
+  - check_number: the check or reference number if present (string), otherwise null
+  - bank_name: the bank name printed on the check or schedule if present (string), otherwise null
+Philippine PDC (post-dated check) schedules are common — scan all pages for these tables.`
               }
             ]
           }],

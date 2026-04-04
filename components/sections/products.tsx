@@ -196,7 +196,7 @@ function ProductCard({
 const products: ProductCardProps[] = [
   {
     name: "Smart Storage",
-    description: "Upload documents once. Generate structured reports automatically.",
+    description: "Receipts, contracts, lease agreements, payslips — upload any financial document and get reports, breakdowns, and payment tracking automatically.",
     href: "/products/smart-storage",
     icon: <StorageIcon className="h-5 w-5" />,
   },

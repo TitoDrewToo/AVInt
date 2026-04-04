@@ -259,10 +259,10 @@ export function HeroSection() {
                 <h3 className="text-base font-semibold text-foreground">Smart Storage</h3>
               </div>
               <p className="mb-1 text-sm leading-relaxed text-muted-foreground">
-                Upload documents once. Automatically structure receipts, invoices, and records.
+                From receipts to lease agreements — upload once and get structured reports, expense breakdowns, and payment schedule tracking automatically.
               </p>
               <p className="mb-4 text-xs text-muted-foreground/70">
-                Generate organized datasets ready for reporting.
+                Contracts, payslips, bank statements, and PDC schedules all in one place.
               </p>
 
               {/* Documents + Processing animation */}

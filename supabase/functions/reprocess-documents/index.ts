@@ -38,7 +38,7 @@ Fields to return:
   "period_start":       string or null  — pay period start date YYYY-MM-DD (payslips/statements)
   "period_end":         string or null  — pay period end date YYYY-MM-DD (payslips/statements)
   "counterparty_name":  string or null  — other named party in contracts/agreements
-  "line_items":         array or null   — [{"description": string, "amount": number, "quantity": number or null}]
+  "line_items":         array or null   — preserve all entries from raw_json exactly. For contracts/agreements each entry may contain: {"description": string, "amount": number, "quantity": number or null, "due_date": "YYYY-MM-DD or null", "check_number": "string or null", "bank_name": "string or null"}. Never discard or flatten entries.
   "confidence_score":   number          — your confidence 0.0–1.0 in the overall extraction
 }
 
@@ -47,7 +47,8 @@ Rules:
 - All amount fields must be numbers, never strings
 - If a field truly cannot be determined, return null — do not guess
 - Normalize inconsistent casing, remove trailing punctuation from names
-- For Philippine documents: PHP currency, common vendors include Jollibee, SM, Grab, etc.`
+- For Philippine documents: PHP currency, common vendors include Jollibee, SM, Grab, etc.
+- For contracts/agreements: if raw_json contains a payment schedule table (PDC or installment entries with due_date fields), ensure all entries are preserved in line_items — do not summarize or drop rows.`
 
 async function callAI(systemPrompt: string, userInput: any): Promise<string> {
   if (AI_PROVIDER === "anthropic") {

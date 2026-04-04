@@ -8,8 +8,10 @@ const supabaseAdmin = createClient(
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params
+
   // Auth
   const token = req.headers.get("authorization")?.replace("Bearer ", "")
   if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -39,7 +41,7 @@ export async function PATCH(
   const { data, error } = await supabaseAdmin
     .from("payment_obligations")
     .update(update)
-    .eq("id", params.id)
+    .eq("id", id)
     .eq("user_id", user.id)
     .select()
     .single()

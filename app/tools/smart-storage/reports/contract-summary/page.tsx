@@ -572,7 +572,7 @@ export default function ContractSummaryPage() {
                                                 )}
                                               </td>
                                               <td className="py-2">
-                                                {(s === "pending" || s === "overdue") && (
+                                                {(s === "upcoming" || s === "overdue") && (
                                                   isFormOpen ? (
                                                     <div className="flex flex-wrap items-center gap-1.5">
                                                       <input

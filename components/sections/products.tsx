@@ -196,14 +196,14 @@ function ProductCard({
 const products: ProductCardProps[] = [
   {
     name: "Smart Storage",
-    description: "Receipts, contracts, lease agreements, payslips — upload any financial document and get reports, breakdowns, and payment tracking automatically.",
+    description: "Upload documents and files. AI generates reports: Expense Summary, P&L, and Tax Bundle.",
     href: "/products/smart-storage",
     icon: <StorageIcon className="h-5 w-5" />,
   },
   {
     name: "Smart Dashboard",
     description:
-      "Visualize financial activity and trends derived from structured data.",
+      "AI-powered custom dashboards and visuals.",
     href: "/products/smart-dashboard",
     icon: <DashboardIcon className="h-5 w-5" />,
   },

@@ -88,7 +88,7 @@ const tools: ToolCardProps[] = [
   {
     name: "Smart Storage",
     description:
-      "From receipts to lease agreements — upload once and get structured reports, expense breakdowns, and payment schedule tracking automatically.",
+      "Upload documents and files. AI generates reports: Expense Summary, P&L, and Tax Bundle.",
     subtext: "Contracts, payslips, bank statements, and PDC schedules all in one place.",
     href: "/products/smart-storage",
     icon: <StorageIcon className="h-6 w-6" />,
@@ -96,7 +96,7 @@ const tools: ToolCardProps[] = [
   {
     name: "Smart Dashboard",
     description:
-      "Transform structured information into clear visual insights.",
+      "AI-powered custom dashboards and visuals.",
     subtext: "Interactive dashboards built from real activity data.",
     href: "/products/smart-dashboard",
     icon: <DashboardIcon className="h-6 w-6" />,

@@ -11,12 +11,8 @@ export const metadata: Metadata = {
   title: 'AVIntelligence — AI Powered file storage and reports generator and analytics',
   description: 'AVINT develops intelligent tools that structure information from real-world documents and workflows. Transform files and activity into structured data for dashboards, reports, and decision-making.',
   icons: {
-    icon: [
-      { url: '/icon.svg', type: 'image/svg+xml' },
-      { url: '/icon-dark-32x32.png', sizes: '32x32', type: 'image/png' },
-      { url: '/avint-logo-mark.png', type: 'image/png' },
-    ],
-    apple: '/apple-icon.png',
+    icon: '/avint-logo-mark.png',
+    apple: '/avint-logo-mark.png',
   },
 }
 

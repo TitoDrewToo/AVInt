@@ -4,38 +4,16 @@ import { useState, useEffect } from "react"
 import { Navbar } from "@/components/navbar"
 import { Footer } from "@/components/footer"
 import { Button } from "@/components/ui/button"
-import { Check, CheckCircle, Loader2 } from "lucide-react"
+import { Check, CheckCircle } from "lucide-react"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
-import { FadeUp, StaggerContainer, StaggerItem } from "@/components/fade-up"
 
-// Creem product IDs from env vars — swap test↔prod by changing Vercel config only
-const PRODUCT_IDS: Record<string, string | undefined> = {
-  "Day Pass":    process.env.NEXT_PUBLIC_CREEM_PRODUCT_DAY_PASS_ID,
-  "Pro Monthly": process.env.NEXT_PUBLIC_CREEM_PRODUCT_PRO_MONTHLY_ID,
-  "Pro Annual":  process.env.NEXT_PUBLIC_CREEM_PRODUCT_PRO_ANNUAL_ID,
-  "Gift Codes":  process.env.NEXT_PUBLIC_CREEM_PRODUCT_GIFT_CODE_ID,
-}
-
-async function createCreemCheckout(
-  productId: string,
-  email: string | null,
-  successUrl: string
-): Promise<string | null> {
-  try {
-    const res = await fetch("/api/creem/checkout", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ product_id: productId, email, success_url: successUrl }),
-    })
-    const { checkout_url, error } = await res.json()
-    if (!checkout_url) { console.error("Creem checkout error:", error); return null }
-    return checkout_url
-  } catch (err) {
-    console.error("createCreemCheckout failed:", err)
-    return null
-  }
+const CHECKOUT_URLS: Record<string, string> = {
+  "Day Pass": "https://avintelligence.lemonsqueezy.com/checkout/buy/9a1416cf-c8af-4df4-b4c6-8d20967214bc",
+  "Gift Codes": "https://avintelligence.lemonsqueezy.com/checkout/buy/1831b705-535d-4dd0-bd9d-65f29eba88b0",
+  "Pro Monthly": "https://avintelligence.lemonsqueezy.com/checkout/buy/0546a0f8-42f6-410e-a3f9-b6e326066159",
+  "Pro Annual": "https://avintelligence.lemonsqueezy.com/checkout/buy/deb076b5-4f7d-4d93-ad22-1a97693cc16e",
 }
 
 interface PricingCardProps {
@@ -44,52 +22,56 @@ interface PricingCardProps {
   annualPrice?: string
   description: string
   features: string[]
-  productId: string | null
   isAnnual?: boolean
   highlighted?: boolean
   isSignedIn: boolean
-  userEmail: string | null
   activeStatus: string | null
-  onRequireAuth: (productId: string) => void
+  onRequireAuth: (checkoutUrl: string) => void
 }
 
 function isCardActive(name: string, activeStatus: string | null): boolean {
   if (!activeStatus) return false
   if (name === "Day Pass" && activeStatus === "day_pass") return true
-  if (name === "Pro"      && activeStatus === "pro")      return true
+  if (name === "Pro" && activeStatus === "pro") return true
+  if (name === "Gift Codes" && activeStatus === "gift_code") return true
   return false
 }
 
 function PricingCard({
   name, price, annualPrice, description, features,
-  productId, isAnnual, highlighted, isSignedIn, userEmail, activeStatus, onRequireAuth,
+  isAnnual, highlighted, isSignedIn, activeStatus, onRequireAuth,
 }: PricingCardProps) {
-  const [checkoutLoading, setCheckoutLoading] = useState(false)
+  const displayPrice = isAnnual && annualPrice ? annualPrice : price
+  const checkoutUrl = name === "Pro"
+    ? (isAnnual ? CHECKOUT_URLS["Pro Annual"] : CHECKOUT_URLS["Pro Monthly"])
+    : CHECKOUT_URLS[name] ?? "#"
 
-  const displayPrice    = isAnnual && annualPrice ? annualPrice : price
-  const active          = isCardActive(name, activeStatus)
-  const isPro           = activeStatus === "pro"
-  const isDayPass       = activeStatus === "day_pass"
-  const isGiftCode      = activeStatus === "gift_code"
+  // Is this card the user's current active plan?
+  const active = isCardActive(name, activeStatus) && name !== "Gift Codes"
+
+  // Does the user have a higher/equal plan that makes this card irrelevant?
+  const isPro = activeStatus === "pro"
+  const isDayPass = activeStatus === "day_pass"
+  const isGiftCode = activeStatus === "gift_code"
+
+  // Day pass or gift code users can upgrade to Pro
   const canUpgradeToPro = (isDayPass || isGiftCode) && name === "Pro"
+  // Pro users shouldn't see a Day Pass button — they already have more
   const supersededByPro = isPro && name === "Day Pass"
 
-  const handlePaidClick = async () => {
-    if (!productId) return
+  const handlePaidClick = () => {
+    // Append LemonSqueezy redirect_url so it returns to /purchase/process after payment
     const returnUrl = `${window.location.origin}/purchase/process`
-
+    const urlWithRedirect = `${checkoutUrl}?checkout[redirect_url]=${encodeURIComponent(returnUrl)}`
     if (!isSignedIn) {
-      onRequireAuth(productId)
-      return
+      onRequireAuth(urlWithRedirect)
+    } else {
+      window.location.href = urlWithRedirect
     }
-
-    setCheckoutLoading(true)
-    const checkoutUrl = await createCreemCheckout(productId, userEmail, returnUrl)
-    setCheckoutLoading(false)
-    if (checkoutUrl) window.location.href = checkoutUrl
   }
 
   const renderButton = () => {
+    // Free card
     if (name === "Free") {
       return isSignedIn ? null : (
         <Link href="/tools/smart-storage">
@@ -100,24 +82,20 @@ function PricingCard({
       )
     }
 
+    // Gift Codes — always purchasable (buying for someone else)
     if (name === "Gift Codes") {
-      if (!productId) return (
-        <Button className="mt-8 w-full rounded-xl bg-secondary text-secondary-foreground" size="lg" disabled>
-          Coming Soon
-        </Button>
-      )
       return (
         <Button
           className="mt-8 w-full rounded-xl bg-secondary text-secondary-foreground hover:bg-secondary/80"
           size="lg"
-          disabled={checkoutLoading}
           onClick={handlePaidClick}
         >
-          {checkoutLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Purchase Code"}
+          Purchase Code
         </Button>
       )
     }
 
+    // This card is the user's active plan
     if (active) {
       return (
         <Link href="/tools/smart-storage">
@@ -128,19 +106,20 @@ function PricingCard({
       )
     }
 
+    // Pro card — day pass or gift code user can upgrade immediately
     if (canUpgradeToPro) {
       return (
         <Button
           className="mt-8 w-full rounded-xl"
           size="lg"
-          disabled={checkoutLoading || !productId}
           onClick={handlePaidClick}
         >
-          {checkoutLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Upgrade to Pro"}
+          Upgrade to Pro
         </Button>
       )
     }
 
+    // Day Pass card — pro user already has full access, no action needed
     if (supersededByPro) {
       return (
         <p className="mt-8 text-center text-sm text-muted-foreground">
@@ -149,22 +128,14 @@ function PricingCard({
       )
     }
 
-    if (!productId) {
-      return (
-        <Button className="mt-8 w-full rounded-xl bg-secondary text-secondary-foreground" size="lg" disabled>
-          Coming Soon
-        </Button>
-      )
-    }
-
+    // Default — not signed in or no active sub
     return (
       <Button
         className={`mt-8 w-full rounded-xl ${highlighted ? "" : "bg-secondary text-secondary-foreground hover:bg-secondary/80"}`}
         size="lg"
-        disabled={checkoutLoading}
         onClick={handlePaidClick}
       >
-        {checkoutLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Get Started"}
+        Get Started
       </Button>
     )
   }
@@ -177,6 +148,7 @@ function PricingCard({
         ? "border-primary bg-card shadow-lg"
         : "border-border bg-card"
     }`}>
+      {/* Active badge */}
       {active && (
         <div className="absolute -top-3 left-1/2 -translate-x-1/2">
           <span className="flex items-center gap-1 rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground">
@@ -192,7 +164,7 @@ function PricingCard({
         <div className="mt-6 flex items-center">
           <span className="text-4xl font-semibold text-foreground">{displayPrice}</span>
           {name === "Gift Codes" && <span className="ml-1 text-muted-foreground">/ code</span>}
-          {name === "Day Pass"   && <span className="ml-1 text-muted-foreground">/ day</span>}
+          {name === "Day Pass" && <span className="ml-1 text-muted-foreground">/ day</span>}
           {name === "Pro" && (
             <>
               <span className="ml-1 text-muted-foreground">/{isAnnual ? "year" : "month"}</span>
@@ -250,25 +222,25 @@ const plans = [
 ]
 
 export default function PricingPage() {
-  const [isAnnual,         setIsAnnual]         = useState(false)
-  const [isSignedIn,       setIsSignedIn]       = useState(false)
-  const [userEmail,        setUserEmail]        = useState<string | null>(null)
-  const [activeStatus,     setActiveStatus]     = useState<string | null>(null)
-  const [pendingProductId, setPendingProductId] = useState<string | null>(null)
+  const [isAnnual, setIsAnnual] = useState(false)
+  const [isSignedIn, setIsSignedIn] = useState(false)
+  const [activeStatus, setActiveStatus] = useState<string | null>(null)
+  const [pendingCheckoutUrl, setPendingCheckoutUrl] = useState<string | null>(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data }) => {
       setIsSignedIn(!!data.session)
-      const email = data.session?.user?.email ?? null
-      setUserEmail(email)
-      if (email) await fetchSubscription(email)
+      if (data.session?.user?.email) {
+        await fetchSubscription(data.session.user.email)
+      }
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_e, s) => {
       setIsSignedIn(!!s)
-      const email = s?.user?.email ?? null
-      setUserEmail(email)
-      if (email) await fetchSubscription(email)
-      else setActiveStatus(null)
+      if (s?.user?.email) {
+        await fetchSubscription(s.user.email)
+      } else {
+        setActiveStatus(null)
+      }
     })
     return () => subscription.unsubscribe()
   }, [])
@@ -278,10 +250,9 @@ export default function PricingPage() {
       .from("subscriptions")
       .select("status, current_period_end")
       .eq("email", email)
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle()
+      .single()
     if (!data) return
+    // Check day pass expiry client-side
     if (data.status === "day_pass" && data.current_period_end) {
       const expired = new Date(data.current_period_end) < new Date()
       setActiveStatus(expired ? null : "day_pass")
@@ -290,42 +261,26 @@ export default function PricingPage() {
     }
   }
 
-  const handleRequireAuth = (productId: string) => setPendingProductId(productId)
+  const handleRequireAuth = (checkoutUrl: string) => setPendingCheckoutUrl(checkoutUrl)
 
-  const handleAuthSuccess = async () => {
-    const productId = pendingProductId
-    setPendingProductId(null)
-    if (!productId) return
-
-    const { data } = await supabase.auth.getSession()
-    const email = data.session?.user?.email ?? null
-    const returnUrl = `${window.location.origin}/purchase/process`
-    const checkoutUrl = await createCreemCheckout(productId, email, returnUrl)
-    if (checkoutUrl) window.location.href = checkoutUrl
-  }
-
-  const getProductId = (planName: string): string | null => {
-    if (planName === "Pro") {
-      return isAnnual
-        ? (PRODUCT_IDS["Pro Annual"] ?? PRODUCT_IDS["Pro Monthly"] ?? null)
-        : (PRODUCT_IDS["Pro Monthly"] ?? null)
-    }
-    return PRODUCT_IDS[planName] ?? null
+  const handleAuthSuccess = () => {
+    setPendingCheckoutUrl(null)
+    if (pendingCheckoutUrl) window.location.href = pendingCheckoutUrl
   }
 
   return (
     <div className="flex min-h-screen flex-col">
       <Navbar />
-      <AuthGuardModal isVisible={!!pendingProductId} onSuccess={handleAuthSuccess} />
+      <AuthGuardModal isVisible={!!pendingCheckoutUrl} onSuccess={handleAuthSuccess} />
       <main className="flex-1 px-6 py-24">
         <div className="mx-auto max-w-6xl">
-          <FadeUp className="text-center">
+          <div className="text-center">
             <h1 className="text-4xl font-semibold tracking-tight text-foreground md:text-5xl">
-              Simple, transparent pricing
+              So much more, for less.
             </h1>
             <p className="mt-4 text-lg text-muted-foreground">Choose the plan that works best for you</p>
-          </FadeUp>
-          <FadeUp delay={0.08} className="mt-12 flex items-center justify-center gap-3">
+          </div>
+          <div className="mt-12 flex items-center justify-center gap-3">
             <span className={`text-sm ${!isAnnual ? "text-foreground" : "text-muted-foreground"}`}>Monthly</span>
             <button
               onClick={() => setIsAnnual(!isAnnual)}
@@ -336,22 +291,19 @@ export default function PricingPage() {
             <span className={`text-sm ${isAnnual ? "text-foreground" : "text-muted-foreground"}`}>
               Annually<span className="ml-1 text-xs text-primary">(30% savings)</span>
             </span>
-          </FadeUp>
-          <StaggerContainer className="mt-12 grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
+          </div>
+          <div className="mt-12 grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
             {plans.map((plan) => (
-              <StaggerItem key={plan.name}>
-                <PricingCard
-                  {...plan}
-                  productId={getProductId(plan.name)}
-                  isAnnual={isAnnual}
-                  isSignedIn={isSignedIn}
-                  userEmail={userEmail}
-                  activeStatus={activeStatus}
-                  onRequireAuth={handleRequireAuth}
-                />
-              </StaggerItem>
+              <PricingCard
+                key={plan.name}
+                {...plan}
+                isAnnual={isAnnual}
+                isSignedIn={isSignedIn}
+                activeStatus={activeStatus}
+                onRequireAuth={handleRequireAuth}
+              />
             ))}
-          </StaggerContainer>
+          </div>
         </div>
       </main>
       <Footer />

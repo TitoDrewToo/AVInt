@@ -198,7 +198,64 @@ serve(async (req) => {
       })
       .eq("id", fields.id)
 
-    // 5. Mark job completed
+    // 5. Auto-create payment_obligations for contract/agreement docs with PDC/payment schedules
+    try {
+      const { data: fileRow } = await supabase
+        .from("files")
+        .select("user_id, document_type")
+        .eq("id", file_id)
+        .single()
+
+      const isContract = fileRow?.document_type === "contract" || fileRow?.document_type === "agreement"
+      const lineItems: any[] | null = normalized.line_items ?? fields.raw_json?.line_items ?? null
+
+      if (isContract && fileRow?.user_id && Array.isArray(lineItems)) {
+        const obligations = lineItems
+          .filter((item: any) => item?.due_date)
+          .map((item: any) => ({
+            user_id:           fileRow.user_id,
+            file_id:           file_id,
+            counterparty_name: normalized.counterparty_name ?? fields.counterparty_name ?? null,
+            description:       item.description ?? null,
+            amount:            typeof item.amount === "number" ? item.amount : null,
+            currency:          normalized.currency ?? fields.currency ?? "PHP",
+            due_date:          item.due_date,
+            check_number:      item.check_number ?? null,
+            bank_name:         item.bank_name ?? null,
+            status:            "pending",
+          }))
+
+        if (obligations.length > 0) {
+          // Pre-filter to avoid hitting the unique index — supabase-js cannot
+          // reference expression-based indexes by name in onConflict
+          const { data: existing } = await supabase
+            .from("payment_obligations")
+            .select("due_date, check_number")
+            .eq("file_id", file_id)
+
+          const existingKeys = new Set(
+            (existing ?? []).map((r: any) => `${r.due_date}|${r.check_number ?? ""}`)
+          )
+
+          const toInsert = obligations.filter((o: any) =>
+            !existingKeys.has(`${o.due_date}|${o.check_number ?? ""}`)
+          )
+
+          if (toInsert.length > 0) {
+            const { error: oblErr } = await supabase
+              .from("payment_obligations")
+              .insert(toInsert)
+            if (oblErr) console.error("payment_obligations insert error:", oblErr.message)
+            else console.log(`Created ${toInsert.length} payment obligations for file ${file_id}`)
+          }
+        }
+      }
+    } catch (oblErr: any) {
+      // Non-fatal — normalization succeeded; don't fail the job over this
+      console.error("payment_obligations step error:", oblErr.message)
+    }
+
+    // 6. Mark job completed
     if (job_id) {
       await supabase
         .from("processing_jobs")

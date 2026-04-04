@@ -265,7 +265,7 @@ export default function SmartDashboardProductPage() {
         <section className="border-t border-border px-6 py-24">
           <FadeUp className="mx-auto max-w-3xl text-center">
             <h2 className="text-2xl font-semibold text-foreground md:text-3xl">
-              Structured data becomes usable insight.
+              Customize. Visualize.
             </h2>
             <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
               <StartFreeButton tool="smart-dashboard" />

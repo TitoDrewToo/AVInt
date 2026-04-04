@@ -33,11 +33,13 @@ console.log("─".repeat(60))
 // Output SQL to paste into Supabase SQL editor
 console.log("\n📋 Paste this into Supabase SQL Editor:\n")
 
+const DURATION_HOURS = 867240 // 99 years
+
 const rows = codes.map((code) =>
-  `  ('${code}', 'active', 'monthly', '2099-12-31 00:00:00+00')`
+  `  ('${code}', 'active', 'monthly', '2099-12-31 00:00:00+00', ${DURATION_HOURS})`
 ).join(",\n")
 
-const sql = `INSERT INTO gift_codes (code, status, plan, expires_at)
+const sql = `INSERT INTO gift_codes (code, status, plan, expires_at, duration_hours)
 VALUES
 ${rows};`
 

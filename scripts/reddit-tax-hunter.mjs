@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 /**
- * AVIntelligence — Reddit Tax Prep Hunter
- * Hunts for posts where people are struggling with tax preparation.
- * Drafts an honest reply pointing them to Smart Storage + Tax Bundle report.
- * Run: node scripts/reddit-tax-hunter.mjs
+ * AVIntelligence — Document Chaos Hunter
+ * Hunts Reddit (+ optionally Twitter/X) for people who need what the
+ * AVIntelligence report generator solves: scattered documents → structured
+ * financial output, instantly, without manual entry or a bookkeeper.
+ *
+ * Run:  node scripts/reddit-tax-hunter.mjs
  * Requires: ANTHROPIC_API_KEY in .env.local
+ * Optional: TWITTER_BEARER_TOKEN in .env.local (Twitter Basic tier, $100/mo)
  */
 
 import { readFileSync } from "fs"
@@ -13,45 +16,87 @@ import { stdin as input, stdout as output } from "process"
 
 // ── Config ─────────────────────────────────────────────────────────────────
 
-const SUBREDDITS = [
+const REDDIT_SUBS = [
   "freelance",
   "selfemployed",
   "smallbusiness",
   "personalfinance",
   "Accounting",
   "tax",
-  "taxadvice",
   "Philippines",
   "phcareers",
+  "Entrepreneur",
+  "digitalnomad",
 ]
 
-// Primary tax pain point keywords — at least one MUST match
-const TAX_KEYWORDS = [
-  "tax return", "tax prep", "tax season", "tax time", "tax filing",
-  "file my taxes", "filing taxes", "taxes due", "pay taxes",
-  "quarterly tax", "estimated tax", "self-employed tax",
-  "1099", "freelance tax", "independent contractor tax",
-  "tax deductions", "write-off", "write off", "business deductions",
-  "proof of expenses", "expense receipts", "receipts for tax",
-  "missing receipts", "lost receipts", "organize receipts",
-  "bookkeeper", "accountant", "cpa", "tax professional",
-  "bir", "annual itr", "itr filing", "bir form",
-  "audit", "irs notice", "tax documents", "tax records",
-  "how do i track", "track my expenses", "categorize expenses",
-  "how much do i owe", "taxable income", "income tax",
-  "freelancer taxes", "gig taxes", "side hustle taxes",
+// The specific pain: document chaos → needing structured financial output
+// NOT: tax law, wait times, audit procedures, salary questions
+const PAIN_KEYWORDS = [
+  // Document chaos
+  "pile of receipts", "receipts everywhere", "stack of receipts",
+  "organize receipts", "missing receipts", "lost receipts",
+  "organize invoices", "pile of invoices", "scattered documents",
+  "box of receipts", "shoebox", "bag of receipts",
+
+  // Needing a report but don't have one
+  "need a p&l", "need a profit and loss", "generate p&l",
+  "income and expense report", "expense report",
+  "need to show my income", "prove my income",
+  "send to my accountant", "accountant needs", "give to accountant",
+  "organize for accountant", "bookkeeper",
+
+  // Manual pain / spreadsheet hell
+  "manual entry", "manually entering", "entering receipts manually",
+  "spreadsheet for expenses", "excel for expenses", "google sheets expenses",
+  "hate spreadsheets", "spreadsheet nightmare", "track manually",
+
+  // Income tracking
+  "total income across", "income from multiple", "multiple clients income",
+  "how much did i earn", "track freelance income", "freelance income tracker",
+  "don't know what i earned", "can't figure out my income",
+
+  // Expense categorization
+  "categorize expenses", "categorizing receipts", "sort my expenses",
+  "business vs personal", "separate business expenses",
+  "what can i deduct", "deductible expenses", "track deductions",
+  "don't know what i spent", "can't track expenses",
+
+  // Alternatives to expensive tools
+  "dext alternative", "dext too expensive", "autoentry alternative",
+  "quickbooks alternative", "quickbooks too expensive",
+  "wave accounting", "cheaper than quickbooks", "affordable bookkeeping",
+
+  // Taxable income / filing prep (document-specific, not process)
+  "taxable income", "estimate what i owe", "compute my tax",
+  "1099 income", "freelance tax", "self employed tax",
+  "itr filing documents", "bir requirements", "bir form 1701",
 ]
 
-// Exclude noise — if these dominate the post it's probably not a good fit
+// Exclude — these are out of scope even if keywords match
 const EXCLUDE_KEYWORDS = [
-  "crypto tax", "nft tax", "capital gains stock", "inheritance tax",
-  "estate tax", "property tax",
+  "how long does it take", "wait time", "processing time",
+  "when will i get my refund", "refund status",
+  "tax rate", "tax bracket", "capital gains",
+  "crypto tax", "nft tax", "stock tax",
+  "inheritance", "estate tax", "property tax",
+  "salary negotiation", "how much should i charge",
 ]
 
-const MIN_SCORE = 7     // 0-10, only show posts scoring >= this
-const POSTS_PER_SUB = 30
+const TWITTER_QUERIES = [
+  '"receipts everywhere" OR "pile of receipts" OR "organize receipts" freelance',
+  '"need a P&L" OR "profit and loss" freelancer self-employed',
+  '"send to accountant" OR "accountant needs" receipts invoices',
+  '"manual entry" OR "manually entering" receipts expenses bookkeeping',
+  '"dext alternative" OR "quickbooks too expensive" OR "autoentry"',
+  '"track my expenses" OR "categorize expenses" freelance -crypto',
+  '"income from multiple clients" OR "multiple 1099" OR "freelance income"',
+]
 
-// ── Load API key ────────────────────────────────────────────────────────────
+const MIN_SCORE     = 7
+const REDDIT_LIMIT  = 30   // posts per subreddit
+const TWITTER_LIMIT = 20   // tweets per query
+
+// ── Load env ────────────────────────────────────────────────────────────────
 
 function loadEnv() {
   try {
@@ -64,121 +109,204 @@ function loadEnv() {
 }
 loadEnv()
 
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY
+const ANTHROPIC_API_KEY    = process.env.ANTHROPIC_API_KEY
+const TWITTER_BEARER_TOKEN = process.env.TWITTER_BEARER_TOKEN
+
 if (!ANTHROPIC_API_KEY) {
   console.error("❌ ANTHROPIC_API_KEY not found in .env.local")
   process.exit(1)
 }
 
-// ── Reddit API ──────────────────────────────────────────────────────────────
+// ── Filtering ───────────────────────────────────────────────────────────────
 
-async function fetchSubreddit(sub) {
-  const url = `https://www.reddit.com/r/${sub}/new.json?limit=${POSTS_PER_SUB}`
+function isRelevant(text) {
+  const t = text.toLowerCase()
+  const excluded = EXCLUDE_KEYWORDS.some((kw) => t.includes(kw))
+  if (excluded) return false
+  return PAIN_KEYWORDS.some((kw) => t.includes(kw))
+}
+
+// ── Reddit ──────────────────────────────────────────────────────────────────
+
+async function fetchRedditSub(sub) {
+  const url = `https://www.reddit.com/r/${sub}/new.json?limit=${REDDIT_LIMIT}`
   const res = await fetch(url, {
-    headers: { "User-Agent": "AVIntelligence-TaxHunter/1.0" },
+    headers: { "User-Agent": "AVIntelligence-Scout/1.0" },
   })
   if (!res.ok) return []
   const data = await res.json()
-  return data?.data?.children?.map((c) => c.data) ?? []
+  return (data?.data?.children?.map((c) => c.data) ?? [])
+    .filter((p) => isRelevant(`${p.title} ${p.selftext}`))
+    .map((p) => ({
+      source:     "reddit",
+      id:         `reddit-${p.id}`,
+      title:      p.title,
+      body:       p.selftext?.slice(0, 900) || "",
+      subreddit:  p.subreddit,
+      url:        `https://reddit.com${p.permalink}`,
+      author:     p.author,
+    }))
 }
 
-function isTaxRelated(post) {
-  const text = `${post.title} ${post.selftext}`.toLowerCase()
-  // Must hit a tax keyword
-  const hasTax = TAX_KEYWORDS.some((kw) => text.includes(kw))
-  // Exclude posts dominated by out-of-scope tax topics
-  const excluded = EXCLUDE_KEYWORDS.filter((kw) => text.includes(kw)).length > 1
-  return hasTax && !excluded
+async function fetchAllReddit() {
+  const results = []
+  for (const sub of REDDIT_SUBS) {
+    process.stdout.write(`  r/${sub}... `)
+    try {
+      const posts = await fetchRedditSub(sub)
+      console.log(`${posts.length} matching`)
+      results.push(...posts)
+    } catch (e) {
+      console.log(`error: ${e.message}`)
+    }
+  }
+  return results
 }
 
-// ── Claude API ──────────────────────────────────────────────────────────────
+// ── Twitter/X ───────────────────────────────────────────────────────────────
 
-async function callClaude(systemPrompt, userMessage) {
+async function fetchTwitterQuery(query) {
+  const params = new URLSearchParams({
+    query:        `${query} -is:retweet lang:en`,
+    max_results:  String(TWITTER_LIMIT),
+    "tweet.fields": "author_id,created_at,text",
+    expansions:   "author_id",
+    "user.fields": "username",
+  })
+  const res = await fetch(`https://api.twitter.com/2/tweets/search/recent?${params}`, {
+    headers: { Authorization: `Bearer ${TWITTER_BEARER_TOKEN}` },
+  })
+  if (!res.ok) return []
+  const data = await res.json()
+  const users = Object.fromEntries(
+    (data.includes?.users ?? []).map((u) => [u.id, u.username])
+  )
+  return (data.data ?? [])
+    .filter((t) => isRelevant(t.text))
+    .map((t) => ({
+      source:    "twitter",
+      id:        `twitter-${t.id}`,
+      title:     t.text.slice(0, 100),
+      body:      t.text,
+      subreddit: null,
+      url:       `https://twitter.com/${users[t.author_id] ?? "i"}/status/${t.id}`,
+      author:    users[t.author_id] ?? "unknown",
+    }))
+}
+
+async function fetchAllTwitter() {
+  if (!TWITTER_BEARER_TOKEN) {
+    console.log("  ⚠️  No TWITTER_BEARER_TOKEN — skipping Twitter")
+    return []
+  }
+  const results = []
+  for (const q of TWITTER_QUERIES) {
+    process.stdout.write(`  "${q.slice(0, 50)}..."  `)
+    try {
+      const tweets = await fetchTwitterQuery(q)
+      console.log(`${tweets.length} matching`)
+      results.push(...tweets)
+      // Respect rate limits
+      await new Promise((r) => setTimeout(r, 1200))
+    } catch (e) {
+      console.log(`error: ${e.message}`)
+    }
+  }
+  return results
+}
+
+// ── Claude ──────────────────────────────────────────────────────────────────
+
+async function callClaude(system, user) {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
-      "x-api-key": ANTHROPIC_API_KEY,
+      "Content-Type":    "application/json",
+      "x-api-key":       ANTHROPIC_API_KEY,
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "claude-haiku-4-5-20251001",
+      model:      "claude-haiku-4-5-20251001",
       max_tokens: 1024,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userMessage }],
+      system,
+      messages: [{ role: "user", content: user }],
     }),
   })
-  if (!res.ok) {
-    const err = await res.text()
-    throw new Error(`Claude API error: ${err}`)
-  }
+  if (!res.ok) throw new Error(await res.text())
   const data = await res.json()
   return data.content?.[0]?.text ?? ""
 }
 
-async function scoreAndDraft(post) {
-  const postContent = `
-Title: ${post.title}
-Subreddit: r/${post.subreddit}
-Body: ${post.selftext?.slice(0, 900) || "(no body)"}
-`.trim()
+const SYSTEM_PROMPT = `You are helping the solo founder of AVIntelligence find posts where people are suffering from a very specific problem: they have financial documents (receipts, invoices, payslips, contracts) scattered or disorganized, and they need structured financial output — a report, a P&L, an expense summary, proof of income — but they don't want to do it manually or pay for expensive bookkeeping software.
 
-  const systemPrompt = `You are helping the solo founder of AVIntelligence find Reddit threads where people are struggling with tax preparation — and draft honest, helpful replies.
-
-AVIntelligence — what it actually does:
-- Smart Storage: upload receipts, invoices, payslips, contracts. AI reads every document and extracts fields automatically (amounts, dates, counterparties, categories).
-- Tax Bundle Report: one-click report that computes gross income, deductible expenses, estimated taxable income, and tax withheld — ready for filing or handing to an accountant.
-- Expense Summary, Income Summary, P&L — also auto-generated from uploaded documents.
-- Free tier to try. $6 day pass (full access for 24h). $12/month.
-- No manual data entry. Works on receipts, payslips, invoices — the exact documents you need for tax prep.
+AVIntelligence solves this exactly:
+- Smart Storage: upload receipts, invoices, payslips, contracts → AI reads every document and extracts all fields automatically (no manual entry)
+- Reports generated instantly from uploaded documents:
+  • P&L Report — revenue vs expenses, net position, monthly breakdown
+  • Tax Bundle — gross income, deductible expenses, estimated taxable income, withholding credited
+  • Expense Summary — by category, by vendor, transaction detail
+  • Income Summary — by employer/client, withholding per source
+  • Business Expense — business vs personal split
+  • Contract Summary — payment schedules, obligations tracking
+- Free tier to try. $6 day pass (full access, 24 hours). $12/month.
+- Alternative to Dext ($40-50/mo), AutoEntry, manual spreadsheets.
 - Website: https://avintph.com
 
-Scoring criteria (0-10):
-- 9-10: Person is clearly overwhelmed with tax prep, can't organize receipts/invoices, doesn't know what to deduct, stressed about filing
-- 7-8: Freelancer or self-employed person asking how to track expenses or what they owe
-- 5-6: General tax question that doesn't directly involve document chaos
-- 0-4: Tax question that is theoretical, about crypto, real estate, or not about document organization
+Scoring (0-10) — score HIGH when:
+- 9-10: Person has actual documents (receipts, invoices, payslips) they need to turn into a report or organized output, and they're doing it manually, not doing it at all, or paying too much
+- 7-8: Freelancer/self-employed struggling to track income or expenses across multiple sources
+- 5-6: Adjacent pain — bookkeeping frustration but no clear document pile mentioned
+- 0-4: Tax law question, wait times, salary questions, crypto, no document chaos
 
 Reply rules:
-- Sound like the person who built this, not a marketer
-- Be honest — tell them you made a tool specifically for this problem
-- Tell them: upload their documents (receipts, invoices, payslips), the AI reads them, then generate the Tax Bundle report — it handles the computation
-- Mention the day pass ($6) so they can try it without committing
-- Max 90 words
+- You are the founder who built this — be honest about it
+- Name the specific report that solves their exact problem (P&L, Tax Bundle, Expense Summary, etc.)
+- Tell them: upload the documents → AI reads them → report is generated, no manual entry
+- Mention the $6 day pass so they can try it without committing
+- 80 words max
 - Don't start with "I"
 - No exclamation marks
-- No sycophancy ("great question", "love this thread")
-- Don't pretend to be a neutral third party — you made this
+- No "great question" or sycophancy
+- Sound like a person, not a product page
 
 Respond in exactly this format:
 SCORE: [0-10]
+REPORT: [which specific report(s) solve their problem]
 REPLY:
 [your drafted reply]`
 
-  const response = await callClaude(systemPrompt, postContent)
+async function scoreAndDraft(post) {
+  const content = `Source: ${post.source === "twitter" ? "Twitter/X" : `r/${post.subreddit}`}
+Title: ${post.title}
+Body: ${post.body || "(no body — tweet or short post)"}`.trim()
 
-  const scoreMatch = response.match(/SCORE:\s*(\d+)/)
-  const replyMatch = response.match(/REPLY:\n([\s\S]+)/)
+  const response = await callClaude(SYSTEM_PROMPT, content)
 
-  const score = scoreMatch ? parseInt(scoreMatch[1]) : 0
-  const reply = replyMatch ? replyMatch[1].trim() : ""
+  const scoreMatch  = response.match(/SCORE:\s*(\d+)/)
+  const reportMatch = response.match(/REPORT:\s*(.+)/)
+  const replyMatch  = response.match(/REPLY:\n([\s\S]+)/)
 
-  return { score, reply }
+  return {
+    score:  scoreMatch  ? parseInt(scoreMatch[1])  : 0,
+    report: reportMatch ? reportMatch[1].trim()     : "—",
+    reply:  replyMatch  ? replyMatch[1].trim()      : "",
+  }
 }
 
 // ── Terminal UI ─────────────────────────────────────────────────────────────
 
-function separator() {
-  console.log("\n" + "─".repeat(72) + "\n")
-}
+function separator() { console.log("\n" + "─".repeat(72) + "\n") }
 
-function printPost(post, score, reply, index, total) {
+function printPost(post, score, report, reply, index, total) {
   separator()
-  console.log(`📌 [${index}/${total}] r/${post.subreddit} — Tax pain score: ${score}/10`)
-  console.log(`🔗 https://reddit.com${post.permalink}`)
+  const src = post.source === "twitter"
+    ? `🐦 Twitter/X`
+    : `📌 r/${post.subreddit}`
+  console.log(`${src} [${index}/${total}] — Score: ${score}/10 — Report: ${report}`)
+  console.log(`🔗 ${post.url}`)
   console.log(`\n📝 ${post.title}`)
-  if (post.selftext) {
-    console.log(`\n${post.selftext.slice(0, 500)}${post.selftext.length > 500 ? "..." : ""}`)
+  if (post.body && post.body !== post.title) {
+    console.log(`\n${post.body.slice(0, 400)}${post.body.length > 400 ? "..." : ""}`)
   }
   const finalReply = reply.trimEnd() + "\n\nhttps://avintph.com"
   console.log(`\n💬 Drafted reply:\n`)
@@ -188,26 +316,17 @@ function printPost(post, score, reply, index, total) {
 // ── Main ────────────────────────────────────────────────────────────────────
 
 async function main() {
-  console.log("🎯 AVIntelligence — Reddit Tax Prep Hunter")
-  console.log(`Scanning ${SUBREDDITS.length} subreddits for tax pain...\n`)
+  console.log("🎯 AVIntelligence — Document Chaos Hunter")
+  console.log("Hunting for: scattered docs → needing a financial report\n")
 
-  const allPosts = []
-  for (const sub of SUBREDDITS) {
-    process.stdout.write(`  r/${sub}... `)
-    try {
-      const posts = await fetchSubreddit(sub)
-      const relevant = posts.filter(isTaxRelated)
-      console.log(`${posts.length} posts, ${relevant.length} tax-related`)
-      allPosts.push(...relevant)
-    } catch (e) {
-      console.log(`error: ${e.message}`)
-    }
-  }
+  // Fetch
+  console.log("Reddit:")
+  const redditPosts = await fetchAllReddit()
 
-  if (!allPosts.length) {
-    console.log("\n✅ No tax-related posts found right now. Try again later.")
-    return
-  }
+  console.log("\nTwitter/X:")
+  const twitterPosts = await fetchAllTwitter()
+
+  const allPosts = [...redditPosts, ...twitterPosts]
 
   // Deduplicate
   const seen = new Set()
@@ -217,16 +336,24 @@ async function main() {
     return true
   })
 
+  if (!unique.length) {
+    console.log("\n✅ No matching posts found right now. Try again later.")
+    return
+  }
+
   console.log(`\n⚡ Scoring ${unique.length} posts with Claude...\n`)
 
   const scored = []
   for (const post of unique) {
-    process.stdout.write(`  "${post.title.slice(0, 55)}..." `)
+    const label = post.source === "twitter"
+      ? `[Tweet] ${post.title.slice(0, 50)}`
+      : `[r/${post.subreddit}] ${post.title.slice(0, 45)}`
+    process.stdout.write(`  ${label}... `)
     try {
-      const { score, reply } = await scoreAndDraft(post)
-      process.stdout.write(`→ ${score}/10\n`)
+      const { score, report, reply } = await scoreAndDraft(post)
+      process.stdout.write(`${score}/10\n`)
       if (score >= MIN_SCORE && reply) {
-        scored.push({ post, score, reply })
+        scored.push({ post, score, report, reply })
       }
     } catch (e) {
       process.stdout.write(`error: ${e.message}\n`)
@@ -236,19 +363,19 @@ async function main() {
   scored.sort((a, b) => b.score - a.score)
 
   if (!scored.length) {
-    console.log(`\n✅ No posts scored >= ${MIN_SCORE}. Subreddits may be quiet today.`)
+    console.log(`\n✅ No posts scored >= ${MIN_SCORE}. Try again later or lower MIN_SCORE.`)
     return
   }
 
-  console.log(`\n✅ ${scored.length} high-value posts found. Starting review...\n`)
-  console.log("Controls: [a] approve & open in browser  [e] edit reply  [s] skip  [q] quit\n")
+  console.log(`\n✅ ${scored.length} high-value posts. Starting review...\n`)
+  console.log("Controls: [a] approve & open  [e] edit reply  [s] skip  [q] quit\n")
 
   const rl = readline.createInterface({ input, output })
   const approved = []
 
   for (let i = 0; i < scored.length; i++) {
-    let { post, score, reply } = scored[i]
-    printPost(post, score, reply, i + 1, scored.length)
+    let { post, score, report, reply } = scored[i]
+    printPost(post, score, report, reply, i + 1, scored.length)
 
     let answer = ""
     while (!["a", "e", "s", "q"].includes(answer)) {
@@ -259,51 +386,45 @@ async function main() {
     if (answer === "s") continue
 
     if (answer === "e") {
-      console.log("\nEnter your edited reply (type END on a new line when done):")
+      console.log("\nEnter edited reply (type END on a new line when done):")
       const lines = []
       let line = ""
-      while ((line = await rl.question("")) !== "END") {
-        lines.push(line)
-      }
+      while ((line = await rl.question("")) !== "END") lines.push(line)
       reply = lines.join("\n").trim()
       const finalReply = reply.trimEnd() + "\n\nhttps://avintph.com"
-      console.log(`\n✏️  Updated reply:\n\n${finalReply}`)
-      const confirm = (await rl.question("\nApprove this? [y/n]: ")).trim().toLowerCase()
-      if (confirm !== "y") continue
-      answer = "a"
-      reply = reply
+      console.log(`\n✏️  Updated:\n\n${finalReply}`)
+      const ok = (await rl.question("\nApprove? [y/n]: ")).trim().toLowerCase()
+      if (ok !== "y") continue
     }
 
-    if (answer === "a") {
-      const finalReply = reply.trimEnd() + "\n\nhttps://avintph.com"
-      approved.push({ post, reply: finalReply })
-      console.log("\n✅ Approved — opening thread and copying reply...\n")
-      console.log("┌─ COPY THIS ──────────────────────────────────────────────┐")
-      console.log(finalReply)
-      console.log("└──────────────────────────────────────────────────────────┘")
-      const url = `https://reddit.com${post.permalink}`
-      const openCmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open"
-      const { exec } = await import("child_process")
-      exec(`${openCmd} "${url}"`)
-      await rl.question("\nPress Enter when you've posted the reply...")
-    }
+    const finalReply = reply.trimEnd() + "\n\nhttps://avintph.com"
+    approved.push({ post, report, reply: finalReply })
+    console.log("\n✅ Approved — opening thread...\n")
+    console.log("┌─ COPY THIS ──────────────────────────────────────────────┐")
+    console.log(finalReply)
+    console.log("└──────────────────────────────────────────────────────────┘")
+    const { exec } = await import("child_process")
+    const openCmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open"
+    exec(`${openCmd} "${post.url}"`)
+    await rl.question("\nPress Enter once you've posted...")
   }
 
   rl.close()
   separator()
-  console.log(`🏁 Session complete. ${approved.length} replies posted out of ${scored.length} reviewed.\n`)
+  console.log(`🏁 Done. ${approved.length} posted out of ${scored.length} reviewed.\n`)
 
   if (approved.length) {
     console.log("📋 Session log:\n")
-    approved.forEach(({ post, reply }, i) => {
-      console.log(`[${i + 1}] r/${post.subreddit} — ${post.title.slice(0, 65)}`)
-      console.log(`    https://reddit.com${post.permalink}`)
-      console.log(`    ${reply.split("\n")[0]}...\n`)
+    approved.forEach(({ post, report, reply }, i) => {
+      const src = post.source === "twitter" ? "Twitter" : `r/${post.subreddit}`
+      console.log(`[${i + 1}] ${src} — ${post.title.slice(0, 60)}`)
+      console.log(`    Report pitched: ${report}`)
+      console.log(`    ${post.url}\n`)
     })
   }
 }
 
 main().catch((e) => {
-  console.error("Fatal error:", e.message)
+  console.error("Fatal:", e.message)
   process.exit(1)
 })

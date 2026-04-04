@@ -10,6 +10,7 @@ import { ArrowLeft, Download } from "lucide-react"
 import Link from "next/link"
 
 interface KeyTermsRow {
+  id: string
   filename: string
   document_type: string
   counterparty_name: string | null
@@ -24,7 +25,7 @@ interface KeyTermsRow {
   confidence_score: number | null
 }
 
-function formatCurrency(amount: number, currency: string) {
+function fmt(amount: number, currency: string) {
   try {
     return new Intl.NumberFormat("en-PH", {
       style: "currency",
@@ -46,6 +47,11 @@ function formatDate(dateStr: string) {
 
 function truncate(str: string, max: number) {
   return str.length > max ? str.slice(0, max) + "…" : str
+}
+
+function daysUntil(dateStr: string) {
+  const ms = new Date(dateStr + "T00:00:00").getTime() - Date.now()
+  return Math.ceil(ms / (1000 * 60 * 60 * 24))
 }
 
 export default function KeyTermsPage() {
@@ -72,7 +78,9 @@ export default function KeyTermsPage() {
   useEffect(() => {
     if (!session?.user?.id) return
     supabase.from("subscriptions").select("status").eq("user_id", session.user.id).single()
-      .then(({ data }) => setIsPro(data?.status === "pro" || data?.status === "day_pass" || data?.status === "gift_code"))
+      .then(({ data }) => setIsPro(
+        data?.status === "pro" || data?.status === "day_pass" || data?.status === "gift_code"
+      ))
   }, [session])
 
   const loadDocs = useCallback(async () => {
@@ -85,7 +93,7 @@ export default function KeyTermsPage() {
         .eq("user_id", session.user.id)
         .in("document_type", ["contract", "agreement"])
 
-      if (!userFiles?.length) return
+      if (!userFiles?.length) { setLoading(false); return }
 
       const fileIds = userFiles.map((f) => f.id)
 
@@ -115,6 +123,7 @@ export default function KeyTermsPage() {
 
       if (data) {
         setDocs(data.map((row: any) => ({
+          id:                row.file_id,
           filename:          row.files.filename,
           document_type:     row.files.document_type,
           counterparty_name: row.counterparty_name,
@@ -140,19 +149,40 @@ export default function KeyTermsPage() {
     loadDocs()
   }, [loadDocs])
 
-  // Aggregations
+  // ── Aggregations ──────────────────────────────────────────────────────────────
+
   const uniqueCounterparties = new Set(
     docs.map((d) => d.counterparty_name).filter(Boolean)
   ).size
 
   const termsExtracted = docs.reduce((sum, d) => sum + (d.line_items?.length ?? 0), 0)
 
-  const currencyCount = docs.reduce((acc: Record<string, number>, d) => {
-    const cur = d.currency ?? "USD"
-    acc[cur] = (acc[cur] ?? 0) + 1
-    return acc
+  const totalContractValue = docs.reduce((sum, d) => sum + (d.total_amount ?? 0), 0)
+
+  const _cc = docs.reduce((acc: Record<string, number>, d) => {
+    const c = d.currency ?? "USD"; acc[c] = (acc[c] ?? 0) + 1; return acc
   }, {})
-  const currency = Object.entries(currencyCount).sort(([, a], [, b]) => b - a)[0]?.[0] ?? "USD"
+  const currency = Object.entries(_cc).sort(([, a], [, b]) => b - a)[0]?.[0] ?? "USD"
+
+  // Expiring within 90 days
+  const expiringSoon = docs.filter(d => {
+    if (!d.period_end) return false
+    const days = daysUntil(d.period_end)
+    return days >= 0 && days <= 90
+  }).sort((a, b) => daysUntil(a.period_end!) - daysUntil(b.period_end!))
+
+  // By counterparty rollup
+  const counterpartyMap: Record<string, { count: number; total: number }> = {}
+  for (const d of docs) {
+    const cp = d.counterparty_name ?? "Unknown"
+    if (!counterpartyMap[cp]) counterpartyMap[cp] = { count: 0, total: 0 }
+    counterpartyMap[cp].count += 1
+    counterpartyMap[cp].total += d.total_amount ?? 0
+  }
+  const counterpartyRollup = Object.entries(counterpartyMap)
+    .sort(([, a], [, b]) => b.total - a.total)
+
+  const generatedDate = new Date().toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "2-digit" })
 
   if (!sessionLoaded) return null
   if (!session) return <AuthGuardModal isVisible={true} />
@@ -196,7 +226,7 @@ export default function KeyTermsPage() {
                 Key Terms
               </h1>
               <p className="mt-1 text-xs text-muted-foreground">
-                Generated {new Date().toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "2-digit" })}
+                Generated {generatedDate}
               </p>
             </div>
             <Button variant="outline" size="sm" className="rounded-md gap-2 text-xs" disabled>
@@ -240,30 +270,126 @@ export default function KeyTermsPage() {
           ) : (
             <div className="space-y-10">
 
-              {/* Summary strip */}
-              <div className="grid grid-cols-3 divide-x divide-border border border-border">
-                <div className="px-5 py-4">
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Documents</p>
-                  <p className="mt-1.5 font-mono text-xl tabular-nums text-foreground">{docs.length}</p>
-                </div>
-                <div className="px-5 py-4">
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Counterparties</p>
-                  <p className="mt-1.5 font-mono text-xl tabular-nums text-foreground">{uniqueCounterparties}</p>
-                </div>
-                <div className="px-5 py-4">
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Terms Extracted</p>
-                  <p className="mt-1.5 font-mono text-xl tabular-nums text-foreground">{termsExtracted}</p>
-                </div>
+              {/* ── Summary Strip ── */}
+              <div className="grid grid-cols-2 divide-x divide-border border border-border sm:grid-cols-4">
+                {[
+                  { label: "Documents",           value: String(docs.length) },
+                  { label: "Counterparties",       value: String(uniqueCounterparties) },
+                  { label: "Terms Extracted",      value: String(termsExtracted) },
+                  { label: "Total Contract Value", value: totalContractValue > 0 ? fmt(totalContractValue, currency) : "—" },
+                ].map(item => (
+                  <div key={item.label} className="px-5 py-4">
+                    <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">{item.label}</p>
+                    <p className="mt-1.5 font-mono text-xl tabular-nums text-foreground">{item.value}</p>
+                  </div>
+                ))}
               </div>
 
-              {/* Per-document records */}
+              {/* ── Expiring Soon ── */}
+              {expiringSoon.length > 0 && (
+                <div>
+                  <p className="mb-3 text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                    Expiring Within 90 Days
+                  </p>
+                  <div className="divide-y divide-border border border-border">
+                    {expiringSoon.map((doc) => {
+                      const days = daysUntil(doc.period_end!)
+                      return (
+                        <div key={doc.id} className="flex items-center justify-between px-5 py-3">
+                          <div>
+                            <p className="text-xs text-foreground">{truncate(doc.filename, 50)}</p>
+                            {doc.counterparty_name && (
+                              <p className="mt-0.5 text-[10px] text-muted-foreground">{doc.counterparty_name}</p>
+                            )}
+                          </div>
+                          <div className="text-right">
+                            <p className={`font-mono text-xs tabular-nums ${days <= 14 ? "text-red-500 dark:text-red-400" : days <= 30 ? "text-amber-500 dark:text-amber-400" : "text-muted-foreground"}`}>
+                              {days === 0 ? "Expires today" : `${days}d left`}
+                            </p>
+                            <p className="mt-0.5 text-[10px] text-muted-foreground">
+                              {formatDate(doc.period_end!)}
+                            </p>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* ── Contracts Overview ── */}
+              <div>
+                <p className="mb-3 text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                  Contracts Overview
+                </p>
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-border text-left text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+                      <th className="pb-2 font-medium">Document</th>
+                      <th className="pb-2 font-medium">Counterparty</th>
+                      <th className="pb-2 font-medium">Date</th>
+                      <th className="pb-2 text-right font-medium">Value</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/50">
+                    {docs.map((doc) => (
+                      <tr key={doc.id}>
+                        <td className="py-2 text-foreground">{truncate(doc.filename, 36)}</td>
+                        <td className="py-2 text-muted-foreground">{doc.counterparty_name ?? "—"}</td>
+                        <td className="py-2 text-muted-foreground">
+                          {doc.document_date ? formatDate(doc.document_date) : "—"}
+                        </td>
+                        <td className="py-2 text-right font-mono tabular-nums text-foreground">
+                          {doc.total_amount != null ? fmt(doc.total_amount, doc.currency ?? currency) : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  {totalContractValue > 0 && (
+                    <tfoot>
+                      <tr className="border-t border-border font-medium">
+                        <td colSpan={3} className="pt-2 text-foreground">Total</td>
+                        <td className="pt-2 text-right font-mono tabular-nums text-foreground">
+                          {fmt(totalContractValue, currency)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+
+              {/* ── By Counterparty ── */}
+              {counterpartyRollup.length > 1 && (
+                <div>
+                  <p className="mb-3 text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                    By Counterparty
+                  </p>
+                  <div className="divide-y divide-border border border-border">
+                    {counterpartyRollup.map(([cp, { count, total }]) => (
+                      <div key={cp} className="flex items-center justify-between px-5 py-3">
+                        <div>
+                          <p className="text-xs text-foreground">{cp}</p>
+                          <p className="mt-0.5 text-[10px] text-muted-foreground">
+                            {count} {count === 1 ? "contract" : "contracts"}
+                          </p>
+                        </div>
+                        <span className="font-mono text-xs tabular-nums text-foreground">
+                          {total > 0 ? fmt(total, currency) : "—"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ── Per-document Detail ── */}
               <div>
                 <p className="mb-3 text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
                   Document Terms
                 </p>
                 <div className="divide-y divide-border border border-border">
-                  {docs.map((doc, i) => (
-                    <div key={i} className="px-6 py-5">
+                  {docs.map((doc) => (
+                    <div key={doc.id} className="px-6 py-5">
 
                       {/* Document header */}
                       <div className="mb-4 flex items-start justify-between gap-4">
@@ -320,7 +446,7 @@ export default function KeyTermsPage() {
                             </td>
                             <td className="py-1.5 font-mono tabular-nums text-foreground" colSpan={3}>
                               {doc.total_amount != null
-                                ? formatCurrency(doc.total_amount, doc.currency ?? currency)
+                                ? fmt(doc.total_amount, doc.currency ?? currency)
                                 : "—"}
                             </td>
                           </tr>
@@ -349,7 +475,7 @@ export default function KeyTermsPage() {
                                 <tr key={j}>
                                   <td className="py-1.5 text-foreground">{item.description}</td>
                                   <td className="py-1.5 text-right font-mono tabular-nums text-foreground">
-                                    {formatCurrency(item.amount, doc.currency ?? currency)}
+                                    {fmt(item.amount, doc.currency ?? currency)}
                                   </td>
                                 </tr>
                               ))}

@@ -11,11 +11,22 @@ import Link from "next/link"
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
-const BUSINESS_CATEGORIES = ["Office", "Travel", "Legal", "Transport", "Tax"]
+const BUSINESS_CATEGORIES = new Set([
+  "Office", "Office Supplies", "Equipment", "Hardware", "Software", "Subscriptions",
+  "SaaS", "Cloud Services", "Internet", "Phone", "Utilities", "Rent", "Coworking",
+  "Travel", "Transport", "Fuel", "Parking", "Accommodation", "Airfare",
+  "Marketing", "Advertising", "Design", "Printing",
+  "Meals", "Entertainment", "Client Entertainment",
+  "Legal", "Accounting", "Professional Services", "Consulting",
+  "Training", "Education", "Conferences",
+  "Insurance", "Bank Fees", "Tax", "Taxes",
+  "Repairs", "Maintenance",
+])
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 interface BizExpenseRow {
+  id: string
   filename: string
   document_type: string
   vendor_name: string | null
@@ -32,29 +43,39 @@ interface BizExpenseRow {
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function fmt(amount: number, currency: string) {
-  return new Intl.NumberFormat("en-PH", {
-    style: "currency",
-    currency: currency || "PHP",
-    minimumFractionDigits: 2,
-  }).format(amount)
+  try {
+    return new Intl.NumberFormat("en-PH", {
+      style: "currency",
+      currency: currency || "PHP",
+      minimumFractionDigits: 2,
+    }).format(amount)
+  } catch {
+    return `${currency} ${amount.toFixed(2)}`
+  }
 }
 
 function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString("en-PH", {
+  return new Date(dateStr + "T00:00:00").toLocaleDateString("en-PH", {
     year: "numeric", month: "short", day: "2-digit",
   })
+}
+
+function truncate(str: string, max: number) {
+  return str.length > max ? str.slice(0, max) + "…" : str
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
 
 export default function BusinessExpensePage() {
-  const [session, setSession] = useState<Session | null>(null)
+  const [session, setSession]             = useState<Session | null>(null)
   const [sessionLoaded, setSessionLoaded] = useState(false)
-  const [isPro, setIsPro] = useState(false)
-  const [expenses, setExpenses] = useState<BizExpenseRow[]>([])
-  const [loading, setLoading] = useState(true)
-  const [dateFrom, setDateFrom] = useState("")
-  const [dateTo, setDateTo] = useState("")
+  const [isPro, setIsPro]                 = useState(false)
+  const [expenses, setExpenses]           = useState<BizExpenseRow[]>([])
+  const [loading, setLoading]             = useState(true)
+  const [dateFrom, setDateFrom]           = useState("")
+  const [dateTo, setDateTo]               = useState("")
+  // overrides: id → true (force Business) | false (force Personal)
+  const [overrides, setOverrides]         = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -71,7 +92,9 @@ export default function BusinessExpensePage() {
   useEffect(() => {
     if (!session?.user?.id) return
     supabase.from("subscriptions").select("status").eq("user_id", session.user.id).single()
-      .then(({ data }) => setIsPro(data?.status === "pro" || data?.status === "day_pass" || data?.status === "gift_code"))
+      .then(({ data }) => setIsPro(
+        data?.status === "pro" || data?.status === "day_pass" || data?.status === "gift_code"
+      ))
   }, [session])
 
   const loadExpenses = useCallback(async () => {
@@ -84,7 +107,7 @@ export default function BusinessExpensePage() {
         .eq("user_id", session.user.id)
         .in("document_type", ["receipt", "invoice"])
 
-      if (!userFiles?.length) return
+      if (!userFiles?.length) { setLoading(false); return }
 
       let query = supabase
         .from("document_fields")
@@ -102,20 +125,21 @@ export default function BusinessExpensePage() {
       const { data } = await query
 
       if (data) {
-        setExpenses(data.map((row: any) => {
+        setExpenses(data.map((row: any, i: number) => {
           const expense_category = row.expense_category ?? null
           return {
+            id:               row.file_id ?? String(i),
             filename:         row.files.filename,
             document_type:    row.files.document_type,
             vendor_name:      row.vendor_name,
             document_date:    row.document_date,
-            total_amount:     row.total_amount  != null ? parseFloat(row.total_amount)  || 0 : 0,
+            total_amount:     row.total_amount != null ? parseFloat(row.total_amount) || 0 : 0,
             currency:         row.currency,
             expense_category,
             payment_method:   row.payment_method,
             tax_amount:       row.tax_amount != null ? parseFloat(row.tax_amount) || 0 : null,
             confidence_score: row.confidence_score,
-            isBusiness:       BUSINESS_CATEGORIES.includes(expense_category ?? ""),
+            isBusiness:       BUSINESS_CATEGORIES.has(expense_category ?? ""),
           }
         }))
       }
@@ -128,6 +152,18 @@ export default function BusinessExpensePage() {
 
   useEffect(() => { loadExpenses() }, [loadExpenses])
 
+  function toggle(id: string, current: boolean) {
+    setOverrides(prev => {
+      const next = { ...prev }
+      if (id in next) {
+        delete next[id]
+      } else {
+        next[id] = !current
+      }
+      return next
+    })
+  }
+
   // ── Aggregations ──────────────────────────────────────────────────────────────
 
   const _cc = expenses.reduce((acc: Record<string, number>, e) => {
@@ -135,15 +171,20 @@ export default function BusinessExpensePage() {
   }, {})
   const currency = Object.entries(_cc).sort(([, a], [, b]) => b - a)[0]?.[0] ?? "PHP"
 
-  const businessRows = expenses.filter(e => e.isBusiness)
-  const personalRows = expenses.filter(e => !e.isBusiness)
+  const resolvedExpenses = expenses.map(e => ({
+    ...e,
+    isBusiness: e.id in overrides ? overrides[e.id] : e.isBusiness,
+  }))
+
+  const businessRows = resolvedExpenses.filter(e => e.isBusiness)
+  const personalRows = resolvedExpenses.filter(e => !e.isBusiness)
 
   const totalBusiness = businessRows.reduce((s, e) => s + (e.total_amount ?? 0), 0)
   const totalPersonal = personalRows.reduce((s, e) => s + (e.total_amount ?? 0), 0)
   const totalAll      = totalBusiness + totalPersonal
   const businessPct   = totalAll > 0 ? (totalBusiness / totalAll) * 100 : 0
+  const estTaxSavings = totalBusiness * 0.30
 
-  // Group by category for each segment
   const groupByCategory = (rows: BizExpenseRow[]) =>
     Object.values(
       rows.reduce((acc: Record<string, { category: string; total: number; count: number }>, row) => {
@@ -156,12 +197,20 @@ export default function BusinessExpensePage() {
     ).sort((a, b) => b.total - a.total)
 
   const businessByCategory = groupByCategory(businessRows)
-  const personalByCategory = groupByCategory(personalRows)
 
-  const allDates = expenses.map(e => e.document_date).filter(Boolean) as string[]
+  // Top vendors by business spend
+  const vendorMap: Record<string, number> = {}
+  for (const e of businessRows) {
+    const v = e.vendor_name ?? "Unknown"
+    vendorMap[v] = (vendorMap[v] ?? 0) + (e.total_amount ?? 0)
+  }
+  const topVendors = Object.entries(vendorMap)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 8)
+
+  const allDates   = expenses.map(e => e.document_date).filter(Boolean) as string[]
   const periodStart = allDates.length ? allDates.reduce((a, b) => a < b ? a : b) : null
   const periodEnd   = allDates.length ? allDates.reduce((a, b) => a > b ? a : b) : null
-
   const generatedDate = new Date().toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "2-digit" })
 
   if (!sessionLoaded) return null
@@ -182,218 +231,256 @@ export default function BusinessExpensePage() {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <Navbar />
-      <main className="flex-1 px-6 py-8">
+      <main className="flex-1 px-6 py-10">
         <div className="mx-auto max-w-4xl">
 
           {/* Back nav */}
-          <div className="mb-8 flex items-center gap-3">
-            <Link href="/tools/smart-storage">
-              <button className="flex h-8 w-8 items-center justify-center rounded border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
-                <ArrowLeft className="h-4 w-4" />
-              </button>
+          <div className="mb-8">
+            <Link
+              href="/tools/smart-storage"
+              className="inline-flex items-center gap-2 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              Smart Storage
             </Link>
-            <span className="text-xs text-muted-foreground">Smart Storage / Reports</span>
+          </div>
+
+          {/* Report header */}
+          <div className="mb-8 flex items-start justify-between">
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                AVINTELLIGENCE · Smart Storage
+              </p>
+              <h1 className="text-2xl font-light tracking-tight text-foreground">
+                Business Expense Report
+              </h1>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {periodStart && periodEnd
+                  ? `${formatDate(periodStart)} – ${formatDate(periodEnd)}`
+                  : "All periods"
+                }
+                {" · "}Generated {generatedDate}
+              </p>
+            </div>
+            <Button variant="outline" size="sm" className="rounded-md gap-2 text-xs" disabled>
+              <Download className="h-3.5 w-3.5" />
+              Export PDF
+            </Button>
           </div>
 
           {/* Date filter */}
-          <div className="mb-8 flex flex-wrap items-center gap-3">
-            <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Period</span>
-            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-              className="rounded border border-border bg-background px-3 py-1.5 text-xs text-foreground" />
+          <div className="mb-8 flex items-center gap-3 border-y border-border py-3">
+            <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">Period</span>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={e => setDateFrom(e.target.value)}
+              className="rounded border border-border bg-background px-2.5 py-1 text-xs text-foreground"
+            />
             <span className="text-xs text-muted-foreground">—</span>
-            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-              className="rounded border border-border bg-background px-3 py-1.5 text-xs text-foreground" />
-            <button onClick={() => { setDateFrom(""); setDateTo("") }}
-              className="rounded border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+            <input
+              type="date"
+              value={dateTo}
+              onChange={e => setDateTo(e.target.value)}
+              className="rounded border border-border bg-background px-2.5 py-1 text-xs text-foreground"
+            />
+            <button
+              onClick={() => { setDateFrom(""); setDateTo("") }}
+              className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground transition-colors hover:text-foreground"
+            >
               Clear
             </button>
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center py-32 text-xs uppercase tracking-widest text-muted-foreground">
+            <div className="flex items-center justify-center py-24 text-sm text-muted-foreground">
               Loading…
             </div>
           ) : expenses.length === 0 ? (
-            <div className="flex items-center justify-center py-32 text-xs text-muted-foreground">
+            <div className="flex items-center justify-center py-24 text-sm text-muted-foreground">
               No expense data found for the selected period.
             </div>
           ) : (
             <div className="space-y-10">
 
-              {/* ── Report Header ── */}
-              <div className="border-b border-border pb-6">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="mb-1 text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">AVINTELLIGENCE</p>
-                    <h1 className="text-2xl font-light tracking-tight text-foreground">Business vs Personal Expenses</h1>
-                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                      {periodStart && periodEnd ? (
-                        <span>Period: {formatDate(periodStart)} – {formatDate(periodEnd)}</span>
-                      ) : (
-                        <span>All periods</span>
-                      )}
-                      <span className="text-muted-foreground/30">·</span>
-                      <span>Generated {generatedDate}</span>
-                    </div>
-                  </div>
-                  <Button variant="outline" size="sm" className="shrink-0 gap-2 rounded text-xs" disabled>
-                    <Download className="h-3.5 w-3.5" />
-                    Export PDF
-                  </Button>
-                </div>
-              </div>
-
               {/* ── Summary Strip ── */}
-              <div className="grid grid-cols-2 divide-x divide-border border border-border rounded sm:grid-cols-4">
+              <div className="grid grid-cols-2 divide-x divide-border border border-border sm:grid-cols-4">
                 {[
-                  { label: "Total Business",  value: fmt(totalBusiness, currency) },
-                  { label: "Total Personal",  value: fmt(totalPersonal, currency) },
-                  { label: "Total All",        value: fmt(totalAll, currency) },
-                  { label: "Business %",       value: `${businessPct.toFixed(1)}%` },
+                  { label: "Business Total",  value: fmt(totalBusiness, currency) },
+                  { label: "Personal Total",  value: fmt(totalPersonal, currency) },
+                  { label: "All Expenses",    value: fmt(totalAll, currency) },
+                  { label: "Business Share",  value: `${businessPct.toFixed(1)}%` },
                 ].map(item => (
                   <div key={item.label} className="px-5 py-4">
-                    <p className="text-[10px] uppercase tracking-widest text-muted-foreground">{item.label}</p>
-                    <p className="mt-1.5 font-mono text-base font-medium tabular-nums text-foreground">{item.value}</p>
+                    <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">{item.label}</p>
+                    <p className="mt-1.5 font-mono text-xl tabular-nums text-foreground">{item.value}</p>
                   </div>
                 ))}
               </div>
 
-              {/* ── Business Expenses ── */}
-              {businessRows.length > 0 && (
-                <div>
-                  <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                    Business Expenses ({businessRows.length} documents)
+              {/* ── Est. Tax Savings Callout ── */}
+              {totalBusiness > 0 && (
+                <div className="border border-border bg-muted/30 px-5 py-4">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                    Estimated Tax Savings
                   </p>
-                  <table className="w-full text-sm">
+                  <p className="mt-1 font-mono text-xl tabular-nums text-foreground">
+                    {fmt(estTaxSavings, currency)}
+                  </p>
+                  <p className="mt-1 text-[10px] text-muted-foreground/70">
+                    Based on 30% effective tax rate applied to {fmt(totalBusiness, currency)} in deductible business expenses.
+                    Consult your accountant to verify applicable rates.
+                  </p>
+                </div>
+              )}
+
+              {/* ── Business by Category ── */}
+              {businessByCategory.length > 0 && (
+                <div>
+                  <p className="mb-3 text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                    Business Expenses by Category
+                  </p>
+                  <table className="w-full text-xs">
                     <thead>
-                      <tr className="border-b border-border text-left text-[10px] uppercase tracking-wider text-muted-foreground">
+                      <tr className="border-b border-border text-left text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
                         <th className="pb-2 font-medium">Category</th>
                         <th className="pb-2 text-right font-medium">Amount</th>
-                        <th className="pb-2 text-right font-medium">% of Business</th>
+                        <th className="pb-2 text-right font-medium">Share</th>
                         <th className="pb-2 text-right font-medium">Docs</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border/50">
                       {businessByCategory.map(cat => (
                         <tr key={cat.category}>
-                          <td className="py-2.5 text-foreground">{cat.category}</td>
-                          <td className="py-2.5 text-right font-mono tabular-nums text-foreground">
-                            ({fmt(cat.total, currency)})
+                          <td className="py-2 text-foreground">{cat.category}</td>
+                          <td className="py-2 text-right font-mono tabular-nums text-foreground">
+                            {fmt(cat.total, currency)}
                           </td>
-                          <td className="py-2.5 text-right text-muted-foreground">
+                          <td className="py-2 text-right text-muted-foreground">
                             {totalBusiness > 0 ? `${((cat.total / totalBusiness) * 100).toFixed(1)}%` : "—"}
                           </td>
-                          <td className="py-2.5 text-right text-muted-foreground">{cat.count}</td>
+                          <td className="py-2 text-right text-muted-foreground">{cat.count}</td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
-                      <tr className="border-t-2 border-border font-semibold">
-                        <td className="pt-2.5 text-foreground">Total Business</td>
-                        <td className="pt-2.5 text-right font-mono tabular-nums text-foreground">({fmt(totalBusiness, currency)})</td>
-                        <td className="pt-2.5 text-right text-muted-foreground">100%</td>
-                        <td className="pt-2.5 text-right text-muted-foreground">{businessRows.length}</td>
+                      <tr className="border-t border-border font-medium">
+                        <td className="pt-2 text-foreground">Total</td>
+                        <td className="pt-2 text-right font-mono tabular-nums text-foreground">{fmt(totalBusiness, currency)}</td>
+                        <td className="pt-2 text-right text-muted-foreground">100%</td>
+                        <td className="pt-2 text-right text-muted-foreground">{businessRows.length}</td>
                       </tr>
                     </tfoot>
                   </table>
                 </div>
               )}
 
-              {/* ── Personal Expenses ── */}
-              {personalRows.length > 0 && (
+              {/* ── Top Business Vendors ── */}
+              {topVendors.length > 0 && (
                 <div>
-                  <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                    Personal Expenses ({personalRows.length} documents)
+                  <p className="mb-3 text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                    Top Business Vendors
                   </p>
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border text-left text-[10px] uppercase tracking-wider text-muted-foreground">
-                        <th className="pb-2 font-medium">Category</th>
-                        <th className="pb-2 text-right font-medium">Amount</th>
-                        <th className="pb-2 text-right font-medium">% of Personal</th>
-                        <th className="pb-2 text-right font-medium">Docs</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border/50">
-                      {personalByCategory.map(cat => (
-                        <tr key={cat.category}>
-                          <td className="py-2.5 text-foreground">{cat.category}</td>
-                          <td className="py-2.5 text-right font-mono tabular-nums text-foreground">
-                            ({fmt(cat.total, currency)})
-                          </td>
-                          <td className="py-2.5 text-right text-muted-foreground">
-                            {totalPersonal > 0 ? `${((cat.total / totalPersonal) * 100).toFixed(1)}%` : "—"}
-                          </td>
-                          <td className="py-2.5 text-right text-muted-foreground">{cat.count}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr className="border-t-2 border-border font-semibold">
-                        <td className="pt-2.5 text-foreground">Total Personal</td>
-                        <td className="pt-2.5 text-right font-mono tabular-nums text-foreground">({fmt(totalPersonal, currency)})</td>
-                        <td className="pt-2.5 text-right text-muted-foreground">100%</td>
-                        <td className="pt-2.5 text-right text-muted-foreground">{personalRows.length}</td>
-                      </tr>
-                    </tfoot>
-                  </table>
+                  <div className="divide-y divide-border border border-border">
+                    {topVendors.map(([vendor, total], i) => (
+                      <div key={vendor} className="flex items-center justify-between px-5 py-3">
+                        <div className="flex items-center gap-3">
+                          <span className="w-5 text-right font-mono text-[10px] text-muted-foreground/50">{i + 1}</span>
+                          <span className="text-xs text-foreground">{vendor}</span>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <div className="hidden w-32 sm:block">
+                            <div className="h-1 w-full rounded-full bg-border">
+                              <div
+                                className="h-1 rounded-full bg-foreground/40"
+                                style={{ width: `${(total / topVendors[0][1]) * 100}%` }}
+                              />
+                            </div>
+                          </div>
+                          <span className="font-mono text-xs tabular-nums text-foreground">
+                            {fmt(total, currency)}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 
               {/* ── Full Transaction Detail ── */}
               <div>
-                <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                  Full Transaction Detail
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                    Full Transaction Detail
+                  </p>
+                  {Object.keys(overrides).length > 0 && (
+                    <button
+                      onClick={() => setOverrides({})}
+                      className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      Reset overrides ({Object.keys(overrides).length})
+                    </button>
+                  )}
+                </div>
+                <p className="mb-3 text-[10px] text-muted-foreground/60">
+                  Click the Business / Personal badge to reclassify a transaction.
                 </p>
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="border-b border-border text-left text-muted-foreground">
-                      <th className="pb-2 font-medium">Date</th>
-                      <th className="pb-2 font-medium">Vendor</th>
-                      <th className="pb-2 font-medium">Category</th>
-                      <th className="pb-2 font-medium">Classification</th>
-                      <th className="pb-2 font-medium">Payment</th>
-                      <th className="pb-2 text-right font-medium">Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/50">
-                    {expenses.map((row, i) => (
-                      <tr key={i}>
-                        <td className="py-2 text-muted-foreground">
+                <div className="divide-y divide-border border border-border">
+                  {resolvedExpenses.map((row) => {
+                    const isOverridden = row.id in overrides
+                    return (
+                      <div
+                        key={row.id}
+                        className={`flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3 ${isOverridden ? "ring-1 ring-inset ring-amber-400/60" : ""}`}
+                      >
+                        {/* Date */}
+                        <span className="w-24 shrink-0 text-[10px] text-muted-foreground">
                           {row.document_date ? formatDate(row.document_date) : "—"}
-                        </td>
-                        <td className="py-2 text-foreground">{row.vendor_name ?? "—"}</td>
-                        <td className="py-2 text-muted-foreground">{row.expense_category ?? "—"}</td>
-                        <td className="py-2 text-muted-foreground">
+                        </span>
+                        {/* Vendor */}
+                        <span className="min-w-0 flex-1 text-xs text-foreground">
+                          {truncate(row.vendor_name ?? row.filename, 40)}
+                        </span>
+                        {/* Category */}
+                        <span className="hidden text-[10px] text-muted-foreground/70 sm:block">
+                          {row.expense_category ?? "—"}
+                        </span>
+                        {/* Reclassify badge */}
+                        <button
+                          onClick={() => toggle(row.id, row.isBusiness)}
+                          className={`shrink-0 rounded px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.1em] transition-colors ${
+                            row.isBusiness
+                              ? "bg-foreground/10 text-foreground hover:bg-foreground/20"
+                              : "bg-muted text-muted-foreground hover:bg-muted/70"
+                          }`}
+                        >
                           {row.isBusiness ? "Business" : "Personal"}
-                        </td>
-                        <td className="py-2 text-muted-foreground">{row.payment_method ?? "—"}</td>
-                        <td className="py-2 text-right font-mono tabular-nums text-foreground">
-                          {row.total_amount != null ? `(${fmt(row.total_amount, row.currency ?? currency)})` : "—"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="border-t-2 border-border font-semibold">
-                      <td colSpan={5} className="pt-2 text-foreground">Total</td>
-                      <td className="pt-2 text-right font-mono tabular-nums text-foreground">
-                        ({fmt(totalAll, currency)})
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
+                        </button>
+                        {/* Amount */}
+                        <span className="shrink-0 font-mono text-xs tabular-nums text-foreground">
+                          {row.total_amount != null ? fmt(row.total_amount, row.currency ?? currency) : "—"}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+                {/* Totals row */}
+                <div className="flex items-center justify-between border border-t-0 border-border px-5 py-3">
+                  <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                    Total ({expenses.length} documents)
+                  </span>
+                  <span className="font-mono text-xs font-medium tabular-nums text-foreground">
+                    {fmt(totalAll, currency)}
+                  </span>
+                </div>
               </div>
 
-              {/* ── Classification Note ── */}
-              <div className="border-t border-border pt-4">
-                <p className="text-[10px] leading-relaxed text-muted-foreground/60">
-                  Business classification is based on expense category: {BUSINESS_CATEGORIES.join(", ")}.
-                  Categories are extracted by AI from uploaded receipts and invoices.
-                  Review individual transactions to confirm classification accuracy.
-                  This report is informational and does not constitute a certified financial statement.
-                </p>
-              </div>
+              {/* ── Disclaimer ── */}
+              <p className="border-t border-border pt-6 text-[10px] leading-relaxed text-muted-foreground/60">
+                Business classification is AI-generated based on expense category. Click any badge above to override.
+                Overrides are local to this session. Estimated tax savings use a 30% indicative rate — consult your accountant.
+                This report is informational and does not constitute a certified financial statement.
+              </p>
 
             </div>
           )}

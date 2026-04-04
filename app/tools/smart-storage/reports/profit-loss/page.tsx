@@ -9,7 +9,7 @@ import type { Session } from "@supabase/supabase-js"
 import { ArrowLeft, Download } from "lucide-react"
 import Link from "next/link"
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────────────────────────
 
 interface IncomeEntry {
   document_date: string | null
@@ -31,19 +31,19 @@ interface ExpenseEntry {
 }
 
 interface MonthRow {
-  month: string        // "YYYY-MM"
-  label: string        // "Jan 2025"
+  month: string
+  label: string
   revenue: number
   expenses: number
   net: number
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
-function formatCurrency(amount: number, currency: string) {
+function fmt(amount: number, currency: string) {
   return new Intl.NumberFormat("en-PH", {
     style: "currency",
-    currency: currency || "USD",
+    currency: currency || "PHP",
     minimumFractionDigits: 2,
   }).format(amount)
 }
@@ -64,13 +64,13 @@ function monthLabel(ym: string) {
 function dominantCurrency(entries: { currency: string | null }[]): string {
   const counts: Record<string, number> = {}
   for (const e of entries) {
-    const c = e.currency ?? "USD"
+    const c = e.currency ?? "PHP"
     counts[c] = (counts[c] ?? 0) + 1
   }
-  return Object.entries(counts).sort(([, a], [, b]) => b - a)[0]?.[0] ?? "USD"
+  return Object.entries(counts).sort(([, a], [, b]) => b - a)[0]?.[0] ?? "PHP"
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
+// ── Component ──────────────────────────────────────────────────────────────────
 
 export default function ProfitLossPage() {
   const [session, setSession] = useState<Session | null>(null)
@@ -106,7 +106,6 @@ export default function ProfitLossPage() {
     try {
       const userId = session.user.id
 
-      // ── Income side: payslips + income statements ────────────────────────────
       const { data: incomeFiles } = await supabase
         .from("files")
         .select("id")
@@ -125,18 +124,17 @@ export default function ProfitLossPage() {
         const { data } = await q
         if (data) {
           incomeData = data.map((r: any) => ({
-            document_date:  r.document_date,
-            gross_income:   r.gross_income   != null ? parseFloat(r.gross_income)  : null,
-            net_income:     r.net_income     != null ? parseFloat(r.net_income)    : null,
-            total_amount:   r.total_amount   != null ? parseFloat(r.total_amount)  : null,
-            currency:       r.currency,
-            document_type:  r.files.document_type,
-            employer_name:  r.employer_name,
+            document_date: r.document_date,
+            gross_income:  r.gross_income  != null ? parseFloat(r.gross_income)  : null,
+            net_income:    r.net_income    != null ? parseFloat(r.net_income)    : null,
+            total_amount:  r.total_amount  != null ? parseFloat(r.total_amount)  : null,
+            currency:      r.currency,
+            document_type: r.files.document_type,
+            employer_name: r.employer_name,
           }))
         }
       }
 
-      // ── Expense side: receipts + invoices ────────────────────────────────────
       const { data: expenseFiles } = await supabase
         .from("files")
         .select("id")
@@ -176,17 +174,29 @@ export default function ProfitLossPage() {
 
   useEffect(() => { loadData() }, [loadData])
 
-  // ── Aggregations ─────────────────────────────────────────────────────────────
+  // ── Aggregations ──────────────────────────────────────────────────────────────
 
-  const currency = dominantCurrency([...incomeRows, ...expenseRows])
-
-  // Revenue: prefer gross_income, fall back to total_amount
+  const currency      = dominantCurrency([...incomeRows, ...expenseRows])
   const totalRevenue  = incomeRows.reduce((s, r) => s + (r.gross_income ?? r.total_amount ?? 0), 0)
   const totalExpenses = expenseRows.reduce((s, r) => s + (r.total_amount ?? 0), 0)
   const netPosition   = totalRevenue - totalExpenses
   const netMargin     = totalRevenue > 0 ? (netPosition / totalRevenue) * 100 : null
 
-  // Period covered
+  // Group income by employer / source
+  const incomeBySource = new Map<string, number>()
+  for (const r of incomeRows) {
+    const key = r.employer_name ?? "Other Income"
+    incomeBySource.set(key, (incomeBySource.get(key) ?? 0) + (r.gross_income ?? r.total_amount ?? 0))
+  }
+
+  // Group expenses by category
+  const expenseByCategory = new Map<string, number>()
+  for (const r of expenseRows) {
+    const key = r.expense_category ?? "Uncategorized"
+    expenseByCategory.set(key, (expenseByCategory.get(key) ?? 0) + (r.total_amount ?? 0))
+  }
+
+  // Period
   const allDates = [
     ...incomeRows.map(r => r.document_date),
     ...expenseRows.map(r => r.document_date),
@@ -194,7 +204,7 @@ export default function ProfitLossPage() {
   const periodStart = allDates.length ? allDates.reduce((a, b) => a < b ? a : b) : null
   const periodEnd   = allDates.length ? allDates.reduce((a, b) => a > b ? a : b) : null
 
-  // Monthly breakdown: merge income and expense rows by YYYY-MM
+  // Monthly breakdown
   const monthMap: Record<string, MonthRow> = {}
   for (const r of incomeRows) {
     const ym = r.document_date?.slice(0, 7)
@@ -213,6 +223,7 @@ export default function ProfitLossPage() {
     .map(r => ({ ...r, net: r.revenue - r.expenses }))
 
   const hasData = incomeRows.length > 0 || expenseRows.length > 0
+  const generatedDate = new Date().toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "2-digit" })
 
   if (!sessionLoaded) return null
   if (!session) return <AuthGuardModal isVisible={true} />
@@ -230,229 +241,281 @@ export default function ProfitLossPage() {
   )
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex min-h-screen flex-col bg-background">
       <Navbar />
       <main className="flex-1 px-6 py-8">
-        <div className="mx-auto max-w-5xl">
+        <div className="mx-auto max-w-4xl">
 
-          {/* Header */}
-          <div className="mb-8 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Link href="/tools/smart-storage">
-                <button className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
-                  <ArrowLeft className="h-4 w-4" />
-                </button>
-              </Link>
-              <div>
-                <h1 className="text-2xl font-semibold text-foreground">Profit & Loss Summary</h1>
-                <p className="mt-0.5 text-sm text-muted-foreground">
-                  Generated {new Date().toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "2-digit" })}
-                  {periodStart && periodEnd && (
-                    <span className="ml-2 text-muted-foreground/60">
-                      · Period: {formatDate(periodStart)} – {formatDate(periodEnd)}
-                    </span>
-                  )}
-                </p>
-              </div>
-            </div>
-            <Button variant="outline" size="sm" className="rounded-lg gap-2" disabled>
-              <Download className="h-4 w-4" />
-              Export PDF
-            </Button>
+          {/* Back nav */}
+          <div className="mb-8 flex items-center gap-3">
+            <Link href="/tools/smart-storage">
+              <button className="flex h-8 w-8 items-center justify-center rounded border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+                <ArrowLeft className="h-4 w-4" />
+              </button>
+            </Link>
+            <span className="text-xs text-muted-foreground">Smart Storage / Reports</span>
           </div>
 
           {/* Date filter */}
-          <div className="mb-6 flex items-center gap-3 rounded-xl border border-border bg-card p-4">
-            <span className="text-sm text-muted-foreground">Date range</span>
+          <div className="mb-8 flex flex-wrap items-center gap-3">
+            <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Period</span>
             <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-              className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground" />
-            <span className="text-sm text-muted-foreground">to</span>
+              className="rounded border border-border bg-background px-3 py-1.5 text-xs text-foreground" />
+            <span className="text-xs text-muted-foreground">—</span>
             <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-              className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground" />
-            <Button size="sm" variant="outline" className="rounded-lg"
-              onClick={() => { setDateFrom(""); setDateTo("") }}>Clear</Button>
+              className="rounded border border-border bg-background px-3 py-1.5 text-xs text-foreground" />
+            <button onClick={() => { setDateFrom(""); setDateTo("") }}
+              className="rounded border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+              Clear
+            </button>
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center py-20 text-sm text-muted-foreground">
-              Loading P&L data…
+            <div className="flex items-center justify-center py-32 text-xs uppercase tracking-widest text-muted-foreground">
+              Loading…
             </div>
           ) : !hasData ? (
-            <div className="flex items-center justify-center py-20 text-sm text-muted-foreground">
+            <div className="flex items-center justify-center py-32 text-xs text-muted-foreground">
               No income or expense data found for the selected period.
             </div>
           ) : (
-            <div className="space-y-6">
+            <div className="space-y-10">
 
-              {/* ── KPI row ── */}
-              <div className="grid grid-cols-4 gap-4">
-                <div className="rounded-xl border border-border bg-card p-5">
-                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Total Revenue</p>
-                  <p className="mt-2 text-2xl font-semibold text-foreground">{formatCurrency(totalRevenue, currency)}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{incomeRows.length} income document{incomeRows.length !== 1 ? "s" : ""}</p>
-                </div>
-                <div className="rounded-xl border border-border bg-card p-5">
-                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Total Expenses</p>
-                  <p className="mt-2 text-2xl font-semibold text-foreground">{formatCurrency(totalExpenses, currency)}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{expenseRows.length} expense document{expenseRows.length !== 1 ? "s" : ""}</p>
-                </div>
-                <div className={`rounded-xl border p-5 ${netPosition >= 0 ? "border-border bg-card" : "border-destructive/30 bg-destructive/5"}`}>
-                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Net Position</p>
-                  <p className={`mt-2 text-2xl font-semibold ${netPosition >= 0 ? "text-foreground" : "text-destructive"}`}>
-                    {netPosition >= 0 ? "" : "–"}{formatCurrency(Math.abs(netPosition), currency)}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">{netPosition >= 0 ? "Surplus" : "Deficit"}</p>
-                </div>
-                <div className="rounded-xl border border-border bg-card p-5">
-                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Net Margin</p>
-                  <p className="mt-2 text-2xl font-semibold text-foreground">
-                    {netMargin !== null ? `${netMargin.toFixed(1)}%` : "—"}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">of total revenue</p>
+              {/* ── Report Header ── */}
+              <div className="border-b border-border pb-6">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="mb-1 text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">AVINTELLIGENCE</p>
+                    <h1 className="text-2xl font-light tracking-tight text-foreground">Profit & Loss Statement</h1>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                      {periodStart && periodEnd ? (
+                        <span>Period: {formatDate(periodStart)} – {formatDate(periodEnd)}</span>
+                      ) : (
+                        <span>All periods</span>
+                      )}
+                      <span className="text-muted-foreground/30">·</span>
+                      <span>Generated {generatedDate}</span>
+                    </div>
+                  </div>
+                  <Button variant="outline" size="sm" className="shrink-0 gap-2 rounded text-xs" disabled>
+                    <Download className="h-3.5 w-3.5" />
+                    Export PDF
+                  </Button>
                 </div>
               </div>
 
-              {/* ── P&L Statement ── */}
-              <div className="rounded-xl border border-border bg-card p-6">
-                <h2 className="mb-4 text-sm font-semibold text-foreground">Statement</h2>
+              {/* ── Summary Strip ── */}
+              <div className="grid grid-cols-2 divide-x divide-border border border-border rounded sm:grid-cols-4">
+                {[
+                  { label: "Total Revenue",  value: fmt(totalRevenue, currency),  sub: null, loss: false },
+                  { label: "Total Expenses", value: fmt(totalExpenses, currency), sub: null, loss: false },
+                  {
+                    label: "Net Position",
+                    value: netPosition >= 0 ? fmt(netPosition, currency) : `(${fmt(Math.abs(netPosition), currency)})`,
+                    sub: netPosition >= 0 ? "Surplus" : "Deficit",
+                    loss: netPosition < 0,
+                  },
+                  {
+                    label: "Net Margin",
+                    value: netMargin !== null ? `${netMargin.toFixed(1)}%` : "—",
+                    sub: "of revenue",
+                    loss: netMargin !== null && netMargin < 0,
+                  },
+                ].map(item => (
+                  <div key={item.label} className="px-5 py-4">
+                    <p className="text-[10px] uppercase tracking-widest text-muted-foreground">{item.label}</p>
+                    <p className={`mt-1.5 font-mono text-base font-medium tabular-nums ${item.loss ? "text-destructive" : "text-foreground"}`}>
+                      {item.value}
+                    </p>
+                    {item.sub && (
+                      <p className={`mt-0.5 text-[10px] ${item.loss ? "text-destructive/70" : "text-muted-foreground"}`}>
+                        {item.sub}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* ── P&L Statement Table ── */}
+              <div>
                 <table className="w-full text-sm">
+                  <colgroup>
+                    <col style={{ width: "2rem" }} />
+                    <col />
+                    <col style={{ width: "11rem" }} />
+                  </colgroup>
                   <tbody>
-                    <tr className="border-b border-border">
-                      <td className="py-2.5 font-medium text-foreground">Revenue</td>
-                      <td className="py-2.5 text-right font-medium text-foreground">{formatCurrency(totalRevenue, currency)}</td>
+
+                    {/* REVENUE */}
+                    <tr>
+                      <td colSpan={3} className="pb-2 pt-1">
+                        <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Revenue</span>
+                      </td>
                     </tr>
-                    <tr className="border-b border-border">
-                      <td className="py-2.5 text-foreground">Expenses</td>
-                      <td className="py-2.5 text-right text-foreground">({formatCurrency(totalExpenses, currency)})</td>
+                    {incomeRows.length === 0 ? (
+                      <tr>
+                        <td />
+                        <td className="py-1.5 text-xs italic text-muted-foreground">No income documents in this period</td>
+                        <td className="py-1.5 text-right font-mono text-muted-foreground">—</td>
+                      </tr>
+                    ) : (
+                      Array.from(incomeBySource.entries()).map(([source, amount]) => (
+                        <tr key={source}>
+                          <td />
+                          <td className="py-1.5 text-foreground/80">{source}</td>
+                          <td className="py-1.5 text-right font-mono tabular-nums text-foreground">{fmt(amount, currency)}</td>
+                        </tr>
+                      ))
+                    )}
+                    <tr className="border-t border-border">
+                      <td />
+                      <td className="py-2 font-medium text-foreground">Total Revenue</td>
+                      <td className="py-2 text-right font-mono font-medium tabular-nums text-foreground">{fmt(totalRevenue, currency)}</td>
                     </tr>
-                    <tr className="border-b-2 border-border">
-                      <td className="py-2.5 font-semibold text-foreground">Net Position</td>
-                      <td className={`py-2.5 text-right font-semibold ${netPosition >= 0 ? "text-foreground" : "text-destructive"}`}>
-                        {netPosition >= 0 ? formatCurrency(netPosition, currency) : `(${formatCurrency(Math.abs(netPosition), currency)})`}
+
+                    {/* Spacer */}
+                    <tr><td colSpan={3} className="py-3" /></tr>
+
+                    {/* EXPENSES */}
+                    <tr>
+                      <td colSpan={3} className="pb-2">
+                        <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Expenses</span>
+                      </td>
+                    </tr>
+                    {expenseRows.length === 0 ? (
+                      <tr>
+                        <td />
+                        <td className="py-1.5 text-xs italic text-muted-foreground">No expense documents in this period</td>
+                        <td className="py-1.5 text-right font-mono text-muted-foreground">—</td>
+                      </tr>
+                    ) : (
+                      Array.from(expenseByCategory.entries()).map(([cat, amount]) => (
+                        <tr key={cat}>
+                          <td />
+                          <td className="py-1.5 text-foreground/80">{cat}</td>
+                          <td className="py-1.5 text-right font-mono tabular-nums text-foreground">({fmt(amount, currency)})</td>
+                        </tr>
+                      ))
+                    )}
+                    <tr className="border-t border-border">
+                      <td />
+                      <td className="py-2 font-medium text-foreground">Total Expenses</td>
+                      <td className="py-2 text-right font-mono font-medium tabular-nums text-foreground">({fmt(totalExpenses, currency)})</td>
+                    </tr>
+
+                    {/* NET INCOME — double border */}
+                    <tr className="border-t-4 border-double border-border">
+                      <td />
+                      <td className="py-3 text-base font-semibold text-foreground">
+                        {netPosition >= 0 ? "Net Income" : "Net Loss"}
+                      </td>
+                      <td className={`py-3 text-right font-mono tabular-nums text-base font-semibold ${netPosition >= 0 ? "text-foreground" : "text-destructive"}`}>
+                        {netPosition >= 0
+                          ? fmt(netPosition, currency)
+                          : `(${fmt(Math.abs(netPosition), currency)})`}
                       </td>
                     </tr>
                     {netMargin !== null && (
                       <tr>
-                        <td className="pt-2.5 text-xs text-muted-foreground">Net Margin</td>
-                        <td className="pt-2.5 text-right text-xs text-muted-foreground">{netMargin.toFixed(1)}%</td>
+                        <td />
+                        <td className="pb-2 text-xs text-muted-foreground">Net Margin</td>
+                        <td className={`pb-2 text-right font-mono text-xs tabular-nums ${netMargin < 0 ? "text-destructive" : "text-muted-foreground"}`}>
+                          {netMargin.toFixed(1)}%
+                        </td>
                       </tr>
                     )}
+
                   </tbody>
                 </table>
               </div>
 
               {/* ── Monthly Breakdown ── */}
-              {monthRows.length > 1 && (
-                <div className="rounded-xl border border-border bg-card p-6">
-                  <h2 className="mb-4 text-sm font-semibold text-foreground">Monthly Breakdown</h2>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                          <th className="pb-3 pr-4">Month</th>
-                          <th className="pb-3 pr-4 text-right">Revenue</th>
-                          <th className="pb-3 pr-4 text-right">Expenses</th>
-                          <th className="pb-3 pr-4 text-right">Net</th>
-                          <th className="pb-3 text-right">Margin</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border">
-                        {monthRows.map((row) => {
-                          const margin = row.revenue > 0 ? (row.net / row.revenue) * 100 : null
-                          return (
-                            <tr key={row.month}>
-                              <td className="py-3 pr-4 font-medium text-foreground">{row.label}</td>
-                              <td className="py-3 pr-4 text-right text-foreground">
-                                {row.revenue > 0 ? formatCurrency(row.revenue, currency) : "—"}
-                              </td>
-                              <td className="py-3 pr-4 text-right text-foreground">
-                                {row.expenses > 0 ? formatCurrency(row.expenses, currency) : "—"}
-                              </td>
-                              <td className={`py-3 pr-4 text-right font-medium ${row.net >= 0 ? "text-foreground" : "text-destructive"}`}>
-                                {row.net >= 0 ? formatCurrency(row.net, currency) : `(${formatCurrency(Math.abs(row.net), currency)})`}
-                              </td>
-                              <td className="py-3 text-right text-muted-foreground">
-                                {margin !== null ? `${margin.toFixed(1)}%` : "—"}
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                      <tfoot>
-                        <tr className="border-t-2 border-border text-sm font-semibold">
-                          <td className="pt-3 text-foreground">Total</td>
-                          <td className="pt-3 text-right text-foreground">{formatCurrency(totalRevenue, currency)}</td>
-                          <td className="pt-3 text-right text-foreground">{formatCurrency(totalExpenses, currency)}</td>
-                          <td className={`pt-3 text-right ${netPosition >= 0 ? "text-foreground" : "text-destructive"}`}>
-                            {netPosition >= 0 ? formatCurrency(netPosition, currency) : `(${formatCurrency(Math.abs(netPosition), currency)})`}
-                          </td>
-                          <td className="pt-3 text-right text-muted-foreground">
-                            {netMargin !== null ? `${netMargin.toFixed(1)}%` : "—"}
-                          </td>
-                        </tr>
-                      </tfoot>
-                    </table>
+              {monthRows.length > 0 && (
+                <div>
+                  <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                    Monthly Breakdown
+                  </p>
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-border text-left text-muted-foreground">
+                        <th className="pb-2 font-medium">Month</th>
+                        <th className="pb-2 text-right font-medium">Revenue</th>
+                        <th className="pb-2 text-right font-medium">Expenses</th>
+                        <th className="pb-2 text-right font-medium">Net</th>
+                        <th className="pb-2 text-right font-medium">Margin</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/50">
+                      {monthRows.map((row) => {
+                        const margin = row.revenue > 0 ? (row.net / row.revenue) * 100 : null
+                        return (
+                          <tr key={row.month}>
+                            <td className="py-2 text-foreground">{row.label}</td>
+                            <td className="py-2 text-right font-mono tabular-nums text-foreground">
+                              {row.revenue > 0 ? fmt(row.revenue, currency) : "—"}
+                            </td>
+                            <td className="py-2 text-right font-mono tabular-nums text-foreground">
+                              {row.expenses > 0 ? `(${fmt(row.expenses, currency)})` : "—"}
+                            </td>
+                            <td className={`py-2 text-right font-mono tabular-nums ${row.net >= 0 ? "text-foreground" : "text-destructive"}`}>
+                              {row.net >= 0 ? fmt(row.net, currency) : `(${fmt(Math.abs(row.net), currency)})`}
+                            </td>
+                            <td className="py-2 text-right text-muted-foreground">
+                              {margin !== null ? `${margin.toFixed(1)}%` : "—"}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 border-border font-semibold">
+                        <td className="pt-2 text-foreground">Total</td>
+                        <td className="pt-2 text-right font-mono tabular-nums text-foreground">{fmt(totalRevenue, currency)}</td>
+                        <td className="pt-2 text-right font-mono tabular-nums text-foreground">({fmt(totalExpenses, currency)})</td>
+                        <td className={`pt-2 text-right font-mono tabular-nums ${netPosition >= 0 ? "text-foreground" : "text-destructive"}`}>
+                          {netPosition >= 0 ? fmt(netPosition, currency) : `(${fmt(Math.abs(netPosition), currency)})`}
+                        </td>
+                        <td className="pt-2 text-right text-muted-foreground">
+                          {netMargin !== null ? `${netMargin.toFixed(1)}%` : "—"}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+
+              {/* ── Supporting Documents ── */}
+              {(incomeRows.length > 0 || expenseRows.length > 0) && (
+                <div className="border-t border-border pt-6">
+                  <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                    Supporting Documents ({incomeRows.length + expenseRows.length})
+                  </p>
+                  <div className="grid grid-cols-1 gap-x-10 sm:grid-cols-2">
+                    {incomeRows.map((r, i) => (
+                      <div key={`inc-${i}`} className="flex items-baseline justify-between border-b border-border/40 py-1">
+                        <span className="truncate text-xs text-muted-foreground">{r.employer_name ?? "Income document"}</span>
+                        <span className="ml-4 shrink-0 text-[10px] text-muted-foreground/50">
+                          {r.document_date ? formatDate(r.document_date) : "—"}
+                        </span>
+                      </div>
+                    ))}
+                    {expenseRows.map((r, i) => (
+                      <div key={`exp-${i}`} className="flex items-baseline justify-between border-b border-border/40 py-1">
+                        <span className="truncate text-xs text-muted-foreground">{r.vendor_name ?? "Expense document"}</span>
+                        <span className="ml-4 shrink-0 text-[10px] text-muted-foreground/50">
+                          {r.document_date ? formatDate(r.document_date) : "—"}
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
 
-              {/* ── Source breakdown ── */}
-              <div className="grid grid-cols-2 gap-4">
-                {/* Income sources */}
-                <div className="rounded-xl border border-border bg-card p-6">
-                  <h2 className="mb-4 text-sm font-semibold text-foreground">Revenue Sources</h2>
-                  {incomeRows.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">No income documents in this period.</p>
-                  ) : (
-                    <div className="space-y-3">
-                      {incomeRows.map((r, i) => (
-                        <div key={i} className="flex items-start justify-between gap-2 border-b border-border pb-3 last:border-0 last:pb-0">
-                          <div className="min-w-0">
-                            <p className="text-sm text-foreground truncate">{r.employer_name ?? "Unknown"}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {r.document_date ? formatDate(r.document_date) : "—"} · {r.document_type}
-                            </p>
-                          </div>
-                          <p className="text-sm font-medium text-foreground shrink-0">
-                            {formatCurrency(r.gross_income ?? r.total_amount ?? 0, r.currency ?? currency)}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Expense sources */}
-                <div className="rounded-xl border border-border bg-card p-6">
-                  <h2 className="mb-4 text-sm font-semibold text-foreground">Expense Sources</h2>
-                  {expenseRows.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">No expense documents in this period.</p>
-                  ) : (
-                    <div className="space-y-3">
-                      {expenseRows.map((r, i) => (
-                        <div key={i} className="flex items-start justify-between gap-2 border-b border-border pb-3 last:border-0 last:pb-0">
-                          <div className="min-w-0">
-                            <p className="text-sm text-foreground truncate">{r.vendor_name ?? "Unknown"}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {r.document_date ? formatDate(r.document_date) : "—"} · {r.expense_category ?? r.document_type}
-                            </p>
-                          </div>
-                          <p className="text-sm font-medium text-foreground shrink-0">
-                            ({formatCurrency(r.total_amount ?? 0, r.currency ?? currency)})
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* ── Data quality note ── */}
-              <div className="rounded-xl border border-border bg-muted/30 px-5 py-4">
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  <span className="font-medium text-foreground">Note:</span> Figures are derived from normalized fields extracted from uploaded documents.
-                  Revenue includes payslips and income statements. Expenses include receipts and invoices.
-                  Accuracy depends on document quality and classification confidence.
+              {/* ── Disclaimer ── */}
+              <div className="border-t border-border pt-4">
+                <p className="text-[10px] leading-relaxed text-muted-foreground/60">
+                  Figures are derived from normalized fields extracted from uploaded documents. Revenue includes payslips and income statements.
+                  Expenses include receipts and invoices. Accuracy depends on document quality and AI classification confidence.
                   This report is informational and does not constitute a certified financial statement.
                 </p>
               </div>

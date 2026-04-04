@@ -9,6 +9,8 @@ import type { Session } from "@supabase/supabase-js"
 import { ArrowLeft, Download } from "lucide-react"
 import Link from "next/link"
 
+// ── Types ──────────────────────────────────────────────────────────────────────
+
 interface TaxRow {
   filename: string
   document_type: string
@@ -22,21 +24,23 @@ interface TaxRow {
   currency: string | null
 }
 
-function formatCurrency(amount: number, currency: string) {
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+function fmt(amount: number, currency: string) {
   return new Intl.NumberFormat("en-PH", {
     style: "currency",
-    currency: currency || "USD",
+    currency: currency || "PHP",
     minimumFractionDigits: 2,
   }).format(amount)
 }
 
 function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString("en-PH", {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
+    year: "numeric", month: "short", day: "2-digit",
   })
 }
+
+// ── Component ──────────────────────────────────────────────────────────────────
 
 export default function TaxBundlePage() {
   const [session, setSession] = useState<Session | null>(null)
@@ -76,42 +80,33 @@ export default function TaxBundlePage() {
 
       if (!userFiles?.length) return
 
-      const fileIds = userFiles.map((f) => f.id)
-
       let query = supabase
         .from("document_fields")
         .select(`
-          file_id,
-          vendor_name,
-          employer_name,
-          document_date,
-          total_amount,
-          gross_income,
-          net_income,
-          expense_category,
-          currency,
+          file_id, vendor_name, employer_name, document_date,
+          total_amount, gross_income, net_income, expense_category, currency,
           files!inner(filename, document_type)
         `)
-        .in("file_id", fileIds)
+        .in("file_id", userFiles.map(f => f.id))
         .order("document_date", { ascending: false })
 
       if (dateFrom) query = query.gte("document_date", dateFrom)
-      if (dateTo) query = query.lte("document_date", dateTo)
+      if (dateTo)   query = query.lte("document_date", dateTo)
 
       const { data } = await query
 
       if (data) {
         setRows(data.map((row: any) => ({
-          filename: row.files.filename,
-          document_type: row.files.document_type,
-          vendor_name: row.vendor_name,
-          employer_name: row.employer_name,
-          document_date: row.document_date,
-          total_amount: row.total_amount ? parseFloat(row.total_amount) : null,
-          gross_income: row.gross_income ? parseFloat(row.gross_income) : null,
-          net_income: row.net_income ? parseFloat(row.net_income) : null,
+          filename:         row.files.filename,
+          document_type:    row.files.document_type,
+          vendor_name:      row.vendor_name,
+          employer_name:    row.employer_name,
+          document_date:    row.document_date,
+          total_amount:     row.total_amount  ? parseFloat(row.total_amount)  : null,
+          gross_income:     row.gross_income  ? parseFloat(row.gross_income)  : null,
+          net_income:       row.net_income    ? parseFloat(row.net_income)    : null,
           expense_category: row.expense_category,
-          currency: row.currency,
+          currency:         row.currency,
         })))
       }
     } catch (err) {
@@ -121,21 +116,62 @@ export default function TaxBundlePage() {
     }
   }, [session, dateFrom, dateTo])
 
-  useEffect(() => {
-    loadData()
-  }, [loadData])
+  useEffect(() => { loadData() }, [loadData])
+
+  // ── Aggregations ──────────────────────────────────────────────────────────────
 
   const _currencyCount = rows.reduce((acc: Record<string, number>, r) => {
-    const c = r.currency ?? "USD"; acc[c] = (acc[c] ?? 0) + 1; return acc
-  }, {} as Record<string, number>)
-  const currency = Object.entries(_currencyCount).sort(([,a],[,b]) => (b as number) - (a as number))[0]?.[0] ?? "USD"
-  const incomeRows = rows.filter(r => r.document_type === "payslip" || r.document_type === "income_statement")
-  const expenseRows = rows.filter(r => r.document_type === "receipt" || r.document_type === "invoice")
+    const c = r.currency ?? "PHP"; acc[c] = (acc[c] ?? 0) + 1; return acc
+  }, {})
+  const currency    = Object.entries(_currencyCount).sort(([, a], [, b]) => b - a)[0]?.[0] ?? "PHP"
+  const incomeRows  = rows.filter(r => r.document_type === "payslip" || r.document_type === "income_statement")
+  const expenseRows = rows.filter(r => r.document_type === "receipt"  || r.document_type === "invoice")
 
-  const totalGross = incomeRows.reduce((sum, r) => sum + (r.gross_income ?? r.total_amount ?? 0), 0)
-  const totalNet = incomeRows.reduce((sum, r) => sum + (r.net_income ?? r.total_amount ?? 0), 0)
-  const totalExpenses = expenseRows.reduce((sum, r) => sum + (r.total_amount ?? 0), 0)
-  const estimatedTaxable = totalGross - totalExpenses
+  const totalGross    = incomeRows.reduce((s, r) => s + (r.gross_income ?? r.total_amount ?? 0), 0)
+  const totalNet      = incomeRows.reduce((s, r) => s + (r.net_income ?? 0), 0)
+  const totalExpenses = expenseRows.reduce((s, r) => s + (r.total_amount ?? 0), 0)
+  const estimatedTaxable = totalGross - totalExpenses   // show actual — can be negative
+
+  // Withholding = sum of (gross - net) where both fields known
+  const totalWithholding = incomeRows.reduce((s, r) => {
+    if (r.gross_income != null && r.net_income != null) {
+      return s + Math.max(0, r.gross_income - r.net_income)
+    }
+    return s
+  }, 0)
+
+  // Group income by employer
+  const incomeByEmployer = new Map<string, { gross: number; net: number; withholding: number; docs: number }>()
+  for (const r of incomeRows) {
+    const key = r.employer_name ?? "Unknown Employer"
+    const existing = incomeByEmployer.get(key) ?? { gross: 0, net: 0, withholding: 0, docs: 0 }
+    const gross = r.gross_income ?? r.total_amount ?? 0
+    const net   = r.net_income ?? 0
+    incomeByEmployer.set(key, {
+      gross:       existing.gross + gross,
+      net:         existing.net  + net,
+      withholding: existing.withholding + (r.gross_income != null && r.net_income != null ? Math.max(0, gross - net) : 0),
+      docs:        existing.docs + 1,
+    })
+  }
+
+  // Group expenses by category
+  const expenseByCategory = new Map<string, number>()
+  for (const r of expenseRows) {
+    const key = r.expense_category ?? "Uncategorized"
+    expenseByCategory.set(key, (expenseByCategory.get(key) ?? 0) + (r.total_amount ?? 0))
+  }
+
+  // Tax year from data
+  const allDates = rows.map(r => r.document_date).filter(Boolean) as string[]
+  const taxYear = allDates.length
+    ? new Set(allDates.map(d => d.slice(0, 4))).size === 1
+      ? allDates[0].slice(0, 4)
+      : `${allDates.reduce((a, b) => a < b ? a : b).slice(0, 4)}–${allDates.reduce((a, b) => a > b ? a : b).slice(0, 4)}`
+    : "—"
+
+  const generatedDate = new Date().toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "2-digit" })
+  const hasData = incomeRows.length > 0 || expenseRows.length > 0
 
   if (!sessionLoaded) return null
   if (!session) return <AuthGuardModal isVisible={true} />
@@ -153,127 +189,262 @@ export default function TaxBundlePage() {
   )
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex min-h-screen flex-col bg-background">
       <Navbar />
       <main className="flex-1 px-6 py-8">
-        <div className="mx-auto max-w-5xl">
+        <div className="mx-auto max-w-4xl">
 
-          {/* Header */}
-          <div className="mb-8 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Link href="/tools/smart-storage">
-                <button className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
-                  <ArrowLeft className="h-4 w-4" />
-                </button>
-              </Link>
-              <div>
-                <h1 className="text-2xl font-semibold text-foreground">Tax Bundle Summary</h1>
-                <p className="mt-0.5 text-sm text-muted-foreground">
-                  Generated {new Date().toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "2-digit" })}
-                </p>
-              </div>
-            </div>
-            <Button variant="outline" size="sm" className="rounded-lg gap-2" disabled>
-              <Download className="h-4 w-4" />
-              Export PDF
-            </Button>
+          {/* Back nav */}
+          <div className="mb-8 flex items-center gap-3">
+            <Link href="/tools/smart-storage">
+              <button className="flex h-8 w-8 items-center justify-center rounded border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+                <ArrowLeft className="h-4 w-4" />
+              </button>
+            </Link>
+            <span className="text-xs text-muted-foreground">Smart Storage / Reports</span>
           </div>
 
           {/* Date filter */}
-          <div className="mb-6 flex items-center gap-3 rounded-xl border border-border bg-card p-4">
-            <span className="text-sm text-muted-foreground">Date range</span>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground"
-            />
-            <span className="text-sm text-muted-foreground">to</span>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground"
-            />
-            <Button size="sm" variant="outline" className="rounded-lg" onClick={() => { setDateFrom(""); setDateTo("") }}>
+          <div className="mb-8 flex flex-wrap items-center gap-3">
+            <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Period</span>
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+              className="rounded border border-border bg-background px-3 py-1.5 text-xs text-foreground" />
+            <span className="text-xs text-muted-foreground">—</span>
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+              className="rounded border border-border bg-background px-3 py-1.5 text-xs text-foreground" />
+            <button onClick={() => { setDateFrom(""); setDateTo("") }}
+              className="rounded border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
               Clear
-            </Button>
+            </button>
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center py-20 text-sm text-muted-foreground">Loading tax data…</div>
-          ) : rows.length === 0 ? (
-            <div className="flex items-center justify-center py-20 text-sm text-muted-foreground">No data found for the selected period.</div>
+            <div className="flex items-center justify-center py-32 text-xs uppercase tracking-widest text-muted-foreground">
+              Loading…
+            </div>
+          ) : !hasData ? (
+            <div className="flex items-center justify-center py-32 text-xs text-muted-foreground">
+              No data found for the selected period.
+            </div>
           ) : (
-            <div className="space-y-6">
+            <div className="space-y-10">
 
-              {/* KPI row */}
-              <div className="grid grid-cols-4 gap-4">
-                <div className="rounded-xl border border-border bg-card p-5">
-                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Gross Income</p>
-                  <p className="mt-2 text-xl font-semibold text-foreground">{formatCurrency(totalGross, currency)}</p>
-                </div>
-                <div className="rounded-xl border border-border bg-card p-5">
-                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Total Expenses</p>
-                  <p className="mt-2 text-xl font-semibold text-foreground">{formatCurrency(totalExpenses, currency)}</p>
-                </div>
-                <div className="rounded-xl border border-border bg-card p-5">
-                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Net Income</p>
-                  <p className="mt-2 text-xl font-semibold text-foreground">{totalNet > 0 ? formatCurrency(totalNet, currency) : "—"}</p>
-                </div>
-                <div className="rounded-xl border border-border bg-card p-5">
-                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Est. Taxable</p>
-                  <p className="mt-2 text-xl font-semibold text-foreground">{formatCurrency(Math.max(0, estimatedTaxable), currency)}</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">(gross income minus expenses)</p>
+              {/* ── Report Header ── */}
+              <div className="border-b border-border pb-6">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="mb-1 text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">AVINTELLIGENCE</p>
+                    <h1 className="text-2xl font-light tracking-tight text-foreground">Tax Bundle Summary</h1>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                      <span>Tax Period: {taxYear}</span>
+                      <span className="text-muted-foreground/30">·</span>
+                      <span>Generated {generatedDate}</span>
+                    </div>
+                    <p className="mt-2 text-[10px] text-muted-foreground/60">
+                      For reference only. Consult a licensed tax professional before filing. Not a certified BIR document.
+                    </p>
+                  </div>
+                  <Button variant="outline" size="sm" className="shrink-0 gap-2 rounded text-xs" disabled>
+                    <Download className="h-3.5 w-3.5" />
+                    Export PDF
+                  </Button>
                 </div>
               </div>
 
-              {/* Income breakdown */}
+              {/* ── Summary Strip ── */}
+              <div className="grid grid-cols-1 divide-y divide-border border border-border rounded sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+                {[
+                  { label: "Gross Income",              value: fmt(totalGross, currency), loss: false },
+                  { label: "Total Documented Expenses", value: fmt(totalExpenses, currency), loss: false },
+                  {
+                    label: "Est. Taxable Income",
+                    value: estimatedTaxable >= 0
+                      ? fmt(estimatedTaxable, currency)
+                      : `(${fmt(Math.abs(estimatedTaxable), currency)})`,
+                    loss: estimatedTaxable < 0,
+                  },
+                ].map(item => (
+                  <div key={item.label} className="px-5 py-4">
+                    <p className="text-[10px] uppercase tracking-widest text-muted-foreground">{item.label}</p>
+                    <p className={`mt-1.5 font-mono text-base font-medium tabular-nums ${item.loss ? "text-destructive" : "text-foreground"}`}>
+                      {item.value}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              {/* ── Income Summary ── */}
               {incomeRows.length > 0 && (
-                <div className="rounded-xl border border-border bg-card p-6">
-                  <h2 className="mb-4 text-sm font-semibold text-foreground">Income Documents</h2>
-                  <div className="divide-y divide-border">
-                    {incomeRows.map((row, i) => (
-                      <div key={i} className="flex items-center justify-between py-3">
-                        <div>
-                          <p className="text-sm text-foreground">{row.employer_name ?? row.filename}</p>
-                          <p className="text-xs text-muted-foreground capitalize">{row.document_type} · {row.document_date ? formatDate(row.document_date) : "—"}</p>
-                        </div>
-                        <p className="text-sm font-medium text-foreground">
-                          {formatCurrency(row.gross_income ?? row.total_amount ?? 0, row.currency ?? currency)}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
+                <div>
+                  <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                    Income Summary
+                  </p>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border text-left text-[10px] uppercase tracking-wider text-muted-foreground">
+                        <th className="pb-2 font-medium">Employer / Source</th>
+                        <th className="pb-2 text-right font-medium">Gross Income</th>
+                        <th className="pb-2 text-right font-medium">Net Income</th>
+                        <th className="pb-2 text-right font-medium">Tax Withheld</th>
+                        <th className="pb-2 text-right font-medium">Docs</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/50">
+                      {Array.from(incomeByEmployer.entries()).map(([employer, data]) => (
+                        <tr key={employer}>
+                          <td className="py-2.5 text-foreground">{employer}</td>
+                          <td className="py-2.5 text-right font-mono tabular-nums text-foreground">
+                            {fmt(data.gross, currency)}
+                          </td>
+                          <td className="py-2.5 text-right font-mono tabular-nums text-foreground">
+                            {data.net > 0 ? fmt(data.net, currency) : "—"}
+                          </td>
+                          <td className="py-2.5 text-right font-mono tabular-nums text-foreground">
+                            {data.withholding > 0 ? fmt(data.withholding, currency) : "—"}
+                          </td>
+                          <td className="py-2.5 text-right text-muted-foreground">{data.docs}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 border-border font-semibold">
+                        <td className="pt-2.5 text-foreground">Total</td>
+                        <td className="pt-2.5 text-right font-mono tabular-nums text-foreground">{fmt(totalGross, currency)}</td>
+                        <td className="pt-2.5 text-right font-mono tabular-nums text-foreground">
+                          {totalNet > 0 ? fmt(totalNet, currency) : "—"}
+                        </td>
+                        <td className="pt-2.5 text-right font-mono tabular-nums text-foreground">
+                          {totalWithholding > 0 ? fmt(totalWithholding, currency) : "—"}
+                        </td>
+                        <td className="pt-2.5 text-right text-muted-foreground">{incomeRows.length}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
                 </div>
               )}
 
-              {/* Expense breakdown */}
+              {/* ── Expense Schedule ── */}
               {expenseRows.length > 0 && (
-                <div className="rounded-xl border border-border bg-card p-6">
-                  <h2 className="mb-4 text-sm font-semibold text-foreground">Expense Documents</h2>
-                  <div className="divide-y divide-border">
-                    {expenseRows.map((row, i) => (
-                      <div key={i} className="flex items-center justify-between py-3">
-                        <div>
-                          <p className="text-sm text-foreground">{row.vendor_name ?? row.filename}</p>
-                          <p className="text-xs text-muted-foreground capitalize">{row.document_type} · {row.expense_category ?? "—"} · {row.document_date ? formatDate(row.document_date) : "—"}</p>
-                        </div>
-                        <p className="text-sm font-medium text-foreground">
-                          {formatCurrency(row.total_amount ?? 0, row.currency ?? currency)}
-                        </p>
+                <div>
+                  <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                    Schedule of Expenses
+                  </p>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border text-left text-[10px] uppercase tracking-wider text-muted-foreground">
+                        <th className="pb-2 font-medium">Category</th>
+                        <th className="pb-2 text-right font-medium">Amount</th>
+                        <th className="pb-2 text-right font-medium">% of Gross</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/50">
+                      {Array.from(expenseByCategory.entries()).map(([cat, amount]) => (
+                        <tr key={cat}>
+                          <td className="py-2.5 text-foreground">{cat}</td>
+                          <td className="py-2.5 text-right font-mono tabular-nums text-foreground">
+                            ({fmt(amount, currency)})
+                          </td>
+                          <td className="py-2.5 text-right text-muted-foreground">
+                            {totalGross > 0 ? `${((amount / totalGross) * 100).toFixed(1)}%` : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 border-border font-semibold">
+                        <td className="pt-2.5 text-foreground">Total Expenses</td>
+                        <td className="pt-2.5 text-right font-mono tabular-nums text-foreground">({fmt(totalExpenses, currency)})</td>
+                        <td className="pt-2.5 text-right text-muted-foreground">
+                          {totalGross > 0 ? `${((totalExpenses / totalGross) * 100).toFixed(1)}%` : "—"}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+
+              {/* ── Tax Computation Box ── */}
+              <div>
+                <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                  Tax Computation
+                </p>
+                <div className="rounded border border-border p-6">
+                  <table className="w-full text-sm">
+                    <colgroup>
+                      <col />
+                      <col style={{ width: "13rem" }} />
+                    </colgroup>
+                    <tbody>
+                      <tr>
+                        <td className="py-1.5 text-foreground/80">Gross Income</td>
+                        <td className="py-1.5 text-right font-mono tabular-nums text-foreground">{fmt(totalGross, currency)}</td>
+                      </tr>
+                      <tr>
+                        <td className="py-1.5 text-foreground/80">Less: Documented Expenses</td>
+                        <td className="py-1.5 text-right font-mono tabular-nums text-foreground">({fmt(totalExpenses, currency)})</td>
+                      </tr>
+                      <tr className="border-t border-border">
+                        <td className="py-2 font-semibold text-foreground">Est. Taxable Income</td>
+                        <td className={`py-2 text-right font-mono tabular-nums font-semibold ${estimatedTaxable < 0 ? "text-destructive" : "text-foreground"}`}>
+                          {estimatedTaxable >= 0
+                            ? fmt(estimatedTaxable, currency)
+                            : `(${fmt(Math.abs(estimatedTaxable), currency)})`}
+                        </td>
+                      </tr>
+                      {totalWithholding > 0 && (
+                        <>
+                          <tr><td colSpan={2} className="py-2" /></tr>
+                          <tr>
+                            <td className="py-1.5 text-foreground/80">Withholding Tax Credited</td>
+                            <td className="py-1.5 text-right font-mono tabular-nums text-muted-foreground">
+                              ({fmt(totalWithholding, currency)})
+                            </td>
+                          </tr>
+                        </>
+                      )}
+                    </tbody>
+                  </table>
+                  <p className="mt-4 text-[10px] text-muted-foreground/60">
+                    Actual tax due depends on applicable deductions, exemptions, and BIR tax brackets.
+                    This computation is an estimate for reference only.
+                  </p>
+                </div>
+              </div>
+
+              {/* ── Supporting Documents ── */}
+              {rows.length > 0 && (
+                <div className="border-t border-border pt-6">
+                  <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                    Supporting Documents ({rows.length})
+                  </p>
+                  <div className="grid grid-cols-1 gap-x-10 sm:grid-cols-2">
+                    {incomeRows.map((r, i) => (
+                      <div key={`inc-${i}`} className="flex items-baseline justify-between border-b border-border/40 py-1">
+                        <span className="truncate text-xs text-muted-foreground">{r.employer_name ?? r.filename}</span>
+                        <span className="ml-4 shrink-0 text-[10px] text-muted-foreground/50">
+                          {r.document_date ? formatDate(r.document_date) : "—"}
+                        </span>
+                      </div>
+                    ))}
+                    {expenseRows.map((r, i) => (
+                      <div key={`exp-${i}`} className="flex items-baseline justify-between border-b border-border/40 py-1">
+                        <span className="truncate text-xs text-muted-foreground">{r.vendor_name ?? r.filename}</span>
+                        <span className="ml-4 shrink-0 text-[10px] text-muted-foreground/50">
+                          {r.document_date ? formatDate(r.document_date) : "—"}
+                        </span>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
 
-              {/* Summary note */}
-              <div className="rounded-xl border border-border bg-muted/30 p-5">
-                <p className="text-xs text-muted-foreground">
-                  This report is a reference summary based on uploaded documents. It is not tax advice. 
-                  Estimated taxable amount is calculated as gross income minus total documented expenses. 
-                  Consult a tax professional for filing purposes.
+              {/* ── Disclaimer ── */}
+              <div className="border-t border-border pt-4">
+                <p className="text-[10px] leading-relaxed text-muted-foreground/60">
+                  This report is a reference summary based on uploaded documents. It is not tax advice and does not constitute an official BIR filing.
+                  Estimated taxable income is calculated as gross income minus total documented expenses.
+                  Withholding tax figures are derived from payslip gross/net differentials.
+                  Consult a licensed tax professional for filing purposes.
                 </p>
               </div>
 

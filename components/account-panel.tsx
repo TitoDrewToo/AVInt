@@ -280,8 +280,18 @@ function DeleteAccountModal({
 
         <div className="mt-4">
           {isOAuth ? (
-            <div className="space-y-2">
-              <p className="text-xs text-muted-foreground">Type <span className="font-mono font-semibold text-foreground">DELETE</span> to confirm.</p>
+            <div className="space-y-3">
+              {/* Floating callout for OAuth users */}
+              <div className="relative rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 dark:border-amber-800/50 dark:bg-amber-950/30">
+                <div className="absolute -top-2 left-4 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-amber-700 dark:bg-amber-900/60 dark:text-amber-400">
+                  Google Account
+                </div>
+                <p className="text-xs text-amber-800 dark:text-amber-300">
+                  You signed in with Google — no password needed. Type{" "}
+                  <span className="font-mono font-bold tracking-wider">DELETE</span>{" "}
+                  below to confirm permanent deletion.
+                </p>
+              </div>
               <Input
                 type="text"
                 placeholder="DELETE"

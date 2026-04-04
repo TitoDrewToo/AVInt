@@ -37,7 +37,7 @@ export default function RootLayout({
             c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
             t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
             y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
-          })(window, document, "clarity", "script", "YOUR_CLARITY_ID");
+          })(window, document, "clarity", "script", "w6fazqmi2j");
         `}</Script>
         <Script async src="https://www.googletagmanager.com/gtag/js?id=AW-18059365303" strategy="afterInteractive" />
         <Script id="google-ads" strategy="afterInteractive">{`

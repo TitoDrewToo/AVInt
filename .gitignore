@@ -15,3 +15,5 @@ node_modules
 .next/
 .DS_Store.claude/
 tsconfig.tsbuildinfo
+.DS_Store
+.claude/worktrees/

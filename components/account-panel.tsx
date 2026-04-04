@@ -1,21 +1,12 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { X, User, ChevronDown, AlertTriangle, LogOut } from "lucide-react"
+import { X, User, ChevronDown, ChevronLeft, AlertTriangle, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { GoogleSignInButton } from "@/components/google-sign-in-button"
-import { InAppBrowserBanner } from "@/components/in-app-browser-banner"
 import { supabase } from "@/lib/supabase"
-import Link from "next/link"
 import type { Session } from "@supabase/supabase-js"
-
-interface SubscriptionData {
-  status: string
-  plan: string | null
-  current_period_end: string | null
-  lemonsqueezy_subscription_id: string | null
-}
 
 interface AccountPanelProps {
   isOpen: boolean
@@ -24,6 +15,7 @@ interface AccountPanelProps {
 }
 
 type ExpandedSection = "subscription" | "email" | "password" | null
+type PanelView = "menu" | "privacy" | "terms"
 
 function AccordionItem({
   label,
@@ -66,35 +58,208 @@ function AccordionItem({
   )
 }
 
+function PrivacyPolicyContent() {
+  return (
+    <div className="space-y-6 text-sm">
+      <p className="text-muted-foreground">
+        AVIntelligence respects your privacy. We design our systems to process documents automatically and securely.
+      </p>
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">Information We Collect</h3>
+        <p className="text-muted-foreground">We collect only the information necessary to provide our services:</p>
+        <ul className="ml-4 list-disc space-y-1 text-muted-foreground">
+          <li>Uploaded files and documents</li>
+          <li>Extracted structured data</li>
+          <li>Account email address</li>
+          <li>Usage activity related to reports and dashboards</li>
+        </ul>
+        <p className="text-muted-foreground">We do not manually review documents. Processing is automated.</p>
+      </section>
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">How Data Is Used</h3>
+        <p className="text-muted-foreground">Your data is used to:</p>
+        <ul className="ml-4 list-disc space-y-1 text-muted-foreground">
+          <li>Structure document information</li>
+          <li>Generate reports</li>
+          <li>Power dashboards</li>
+          <li>Improve system performance</li>
+        </ul>
+        <p className="text-muted-foreground">We do not sell personal data. We do not use documents for advertising purposes.</p>
+      </section>
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">Data Storage</h3>
+        <p className="text-muted-foreground">Files and structured data are securely stored using modern cloud infrastructure. We implement access controls to prevent unauthorized access. Only you can access your uploaded documents and generated outputs.</p>
+      </section>
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">AI Processing</h3>
+        <p className="text-muted-foreground">Documents may be processed by automated systems to extract structured information such as dates, amounts, document types, and vendors. Processing is performed programmatically. No human review is required.</p>
+      </section>
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">Data Retention</h3>
+        <p className="text-muted-foreground">Documents remain stored until you delete files or delete your account. You may request deletion at any time.</p>
+      </section>
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">Security</h3>
+        <p className="text-muted-foreground">We apply industry standard practices for data storage, access control, and encrypted connections. No system can guarantee absolute security, but we prioritize protection of user data.</p>
+      </section>
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">User Control</h3>
+        <p className="text-muted-foreground">You may:</p>
+        <ul className="ml-4 list-disc space-y-1 text-muted-foreground">
+          <li>Delete documents</li>
+          <li>Update account email</li>
+          <li>Change password</li>
+          <li>Delete your account</li>
+        </ul>
+        <p className="text-muted-foreground">Account deletion permanently removes stored data.</p>
+      </section>
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">Contact</h3>
+        <p className="text-muted-foreground">support@avintph.com</p>
+      </section>
+    </div>
+  )
+}
 
-function DeleteAccountModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
+function TermsOfServiceContent() {
+  return (
+    <div className="space-y-6 text-sm">
+      <p className="text-muted-foreground">By using AVIntelligence, you agree to the following terms.</p>
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">Use of Service</h3>
+        <p className="text-muted-foreground">AVIntelligence provides tools that help structure and analyze documents. You are responsible for how you use generated outputs. We do not provide financial, legal, or tax advice. Reports are provided as reference tools.</p>
+      </section>
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">Account Responsibility</h3>
+        <p className="text-muted-foreground">You are responsible for maintaining the confidentiality of your account credentials. You agree not to share unauthorized access to your account.</p>
+      </section>
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">Acceptable Use</h3>
+        <p className="text-muted-foreground">You agree not to upload:</p>
+        <ul className="ml-4 list-disc space-y-1 text-muted-foreground">
+          <li>Malicious files</li>
+          <li>Illegal content</li>
+          <li>Content that violates applicable laws</li>
+        </ul>
+        <p className="text-muted-foreground">We reserve the right to suspend accounts that misuse the platform.</p>
+      </section>
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">Service Availability</h3>
+        <p className="text-muted-foreground">We aim to provide reliable service but do not guarantee uninterrupted availability. Features may change or improve over time.</p>
+      </section>
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">Payments</h3>
+        <p className="text-muted-foreground">Paid features provide access to advanced reports and analytics. Billing is handled securely through third-party providers. Access duration depends on selected plan.</p>
+      </section>
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">Limitation of Liability</h3>
+        <p className="text-muted-foreground">AVIntelligence is provided as-is. We are not liable for decisions made using generated reports or insights. Users are responsible for verifying outputs before external use.</p>
+      </section>
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">Updates to Terms</h3>
+        <p className="text-muted-foreground">We may update these terms as the service evolves. Continued use of the platform indicates acceptance of updated terms.</p>
+      </section>
+      <section className="space-y-2">
+        <h3 className="font-medium text-foreground">Contact</h3>
+        <p className="text-muted-foreground">support@avintph.com</p>
+      </section>
+    </div>
+  )
+}
+
+function DeleteAccountModal({
+  isOpen,
+  onClose,
+  session,
+}: {
+  isOpen: boolean
+  onClose: () => void
+  session: Session | null
+}) {
+  const [password, setPassword]   = useState("")
+  const [confirm, setConfirm]     = useState("")
+  const [deleting, setDeleting]   = useState(false)
+  const [error, setError]         = useState("")
+  const [deleted, setDeleted]     = useState(false)
+
+  const isOAuth = session?.user?.app_metadata?.provider !== "email"
+
+  // Reset state when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setPassword("")
+      setConfirm("")
+      setError("")
+      setDeleted(false)
+    }
+  }, [isOpen])
 
   if (!isOpen) return null
 
-  const handleDelete = async () => {
+  async function handleDelete() {
+    if (!session?.user) return
     setError("")
-    setLoading(true)
+    setDeleting(true)
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { setError("Not signed in."); setLoading(false); return }
+      // For email users — re-authenticate first to verify password
+      if (!isOAuth) {
+        const { error: authErr } = await supabase.auth.signInWithPassword({
+          email: session.user.email!,
+          password,
+        })
+        if (authErr) {
+          setError("Incorrect password. Please try again.")
+          setDeleting(false)
+          return
+        }
+      } else {
+        // OAuth: require typing DELETE
+        if (confirm !== "DELETE") {
+          setError('Type DELETE to confirm.')
+          setDeleting(false)
+          return
+        }
+      }
+
+      const { data: { session: fresh } } = await supabase.auth.getSession()
       const res = await fetch("/api/delete-account", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${session.access_token}`,
+          "Authorization": `Bearer ${fresh?.access_token}`,
         },
         body: JSON.stringify({ user_id: session.user.id }),
       })
-      const data = await res.json()
-      if (!res.ok) { setError(data.error ?? "Failed to delete account."); setLoading(false); return }
+      const json = await res.json()
+      if (!res.ok) {
+        setError(json.error ?? "Deletion failed. Please try again.")
+        setDeleting(false)
+        return
+      }
+      setDeleted(true)
       await supabase.auth.signOut()
-      window.location.href = "/"
     } catch {
       setError("Something went wrong. Please try again.")
-      setLoading(false)
+      setDeleting(false)
     }
+  }
+
+  if (deleted) {
+    return (
+      <div className="fixed inset-0 z-[60] flex items-center justify-center">
+        <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" />
+        <div className="relative z-10 w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-lg text-center">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+            <User className="h-6 w-6 text-muted-foreground" />
+          </div>
+          <h3 className="text-lg font-semibold text-foreground">Account deleted</h3>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Your account and all associated data have been permanently deleted.
+          </p>
+          <Button className="mt-6 w-full rounded-lg" onClick={onClose}>Close</Button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -107,14 +272,51 @@ function DeleteAccountModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
           </div>
           <div className="flex-1">
             <h3 className="text-lg font-semibold text-foreground">Delete your account?</h3>
-            <p className="mt-2 text-sm text-muted-foreground">This action cannot be undone. All your documents, data, and subscription will be permanently deleted.</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              This permanently deletes all your documents, reports, and account data. This cannot be undone.
+            </p>
           </div>
         </div>
-        {error && <p className="mt-3 text-xs text-destructive">{error}</p>}
+
+        <div className="mt-4">
+          {isOAuth ? (
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">Type <span className="font-mono font-semibold text-foreground">DELETE</span> to confirm.</p>
+              <Input
+                type="text"
+                placeholder="DELETE"
+                value={confirm}
+                onChange={(e) => { setConfirm(e.target.value); setError("") }}
+                className="rounded-lg font-mono"
+                autoComplete="off"
+              />
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">Enter your password to confirm.</p>
+              <Input
+                type="password"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => { setPassword(e.target.value); setError("") }}
+                className="rounded-lg"
+                autoComplete="current-password"
+              />
+            </div>
+          )}
+          {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
+        </div>
+
         <div className="mt-6 flex gap-3">
-          <Button variant="outline" className="flex-1 rounded-lg" onClick={onClose} disabled={loading}>Cancel</Button>
-          <Button className="flex-1 rounded-lg bg-destructive text-white hover:bg-destructive/90" onClick={handleDelete} disabled={loading}>
-            {loading ? "Deleting…" : "Delete Account"}
+          <Button variant="outline" className="flex-1 rounded-lg" onClick={onClose} disabled={deleting}>
+            Cancel
+          </Button>
+          <Button
+            className="flex-1 rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            onClick={handleDelete}
+            disabled={deleting || (!isOAuth && !password) || (isOAuth && confirm !== "DELETE")}
+          >
+            {deleting ? "Deleting…" : "Delete Account"}
           </Button>
         </div>
       </div>
@@ -127,6 +329,7 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
   const isSignedIn = session !== null
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [expandedSection, setExpandedSection] = useState<ExpandedSection>(null)
+  const [panelView, setPanelView] = useState<PanelView>("menu")
   const [giftCode, setGiftCode] = useState("")
   const [giftCodeLoading, setGiftCodeLoading] = useState(false)
   const [giftCodeError, setGiftCodeError] = useState("")
@@ -140,45 +343,13 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
   const [giftCodeApplied, setGiftCodeApplied] = useState(false)
   const subscriptionRef = useRef<HTMLDivElement>(null)
 
-  // Subscription state
-  const [subscription, setSubscription] = useState<SubscriptionData | null>(null)
-  const [cancelLoading, setCancelLoading] = useState(false)
-  const [cancelDone, setCancelDone] = useState(false)
-
-  // Email change state
-  const [newEmail, setNewEmail] = useState("")
-  const [emailConfirmPassword, setEmailConfirmPassword] = useState("")
-  const [emailChangeLoading, setEmailChangeLoading] = useState(false)
-  const [emailChangeMsg, setEmailChangeMsg] = useState<{type: "error"|"success"; text: string} | null>(null)
-
-  // Password change state
-  const [currentPassword, setCurrentPassword] = useState("")
-  const [newPassword, setNewPassword] = useState("")
-  const [confirmNewPassword, setConfirmNewPassword] = useState("")
-  const [passwordChangeLoading, setPasswordChangeLoading] = useState(false)
-  const [passwordChangeMsg, setPasswordChangeMsg] = useState<{type: "error"|"success"; text: string} | null>(null)
-
-  const fetchSubscription = async (email: string) => {
-    const { data } = await supabase
-      .from("subscriptions")
-      .select("status, plan, current_period_end, lemonsqueezy_subscription_id")
-      .eq("email", email)
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    setSubscription(data ?? null)
-  }
-
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session)
-      if (data.session?.user?.email) fetchSubscription(data.session.user.email)
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
       setSession(newSession)
-      if (newSession?.user?.email) fetchSubscription(newSession.user.email)
-      else setSubscription(null)
     })
 
     return () => subscription.unsubscribe()
@@ -196,6 +367,7 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
   useEffect(() => {
     if (!isOpen) {
       setExpandedSection(null)
+      setPanelView("menu")
       setAuthMode("signin")
       setAuthEmail("")
       setAuthPassword("")
@@ -209,6 +381,13 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
     setExpandedSection(expandedSection === section ? null : section)
   }
 
+  const getPanelTitle = () => {
+    switch (panelView) {
+      case "privacy": return "Privacy Policy"
+      case "terms": return "Terms of Service"
+      default: return "Account"
+    }
+  }
 
   return (
     <>
@@ -230,9 +409,17 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
           {/* Header */}
           <div className="flex items-center justify-between border-b border-border px-6 py-4">
             <div className="flex items-center gap-3">
+              {panelView !== "menu" && (
+                <button
+                  onClick={() => setPanelView("menu")}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
+              )}
               <div>
-                <h2 className="text-lg font-semibold text-foreground">Account</h2>
-                {isSignedIn && (
+                <h2 className="text-lg font-semibold text-foreground">{getPanelTitle()}</h2>
+                {panelView === "menu" && isSignedIn && (
                   <p className="mt-0.5 text-sm text-muted-foreground">
                     Signed in as<br />
                     <span className="text-foreground">{session?.user?.email ?? "email@example.com"}</span>
@@ -250,11 +437,14 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto p-6">
-            <div className="space-y-6">
+            {panelView === "privacy" && <PrivacyPolicyContent />}
+            {panelView === "terms" && <TermsOfServiceContent />}
+
+            {panelView === "menu" && (
+              <div className="space-y-6">
                 {/* Authentication Section */}
                 {!isSignedIn && (
                   <div className="space-y-5">
-                    <InAppBrowserBanner />
                     <GoogleSignInButton />
                     <div className="flex items-center gap-3">
                       <div className="h-px flex-1 bg-border" />
@@ -277,13 +467,7 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                             setAuthError(""); setAuthLoading(true)
                             const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword })
                             setAuthLoading(false)
-                            if (error) {
-                              if (error.message.toLowerCase().includes("invalid login credentials")) {
-                                setAuthError("Invalid credentials. If you signed up with Google, use the button above — or click Forgot Password to set a password.")
-                              } else {
-                                setAuthError(error.message)
-                              }
-                            }
+                            if (error) setAuthError(error.message)
                           }}
                         >
                           {authLoading ? "Signing in…" : "Sign In"}
@@ -364,62 +548,13 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                           {/* Current plan */}
                           <div className="rounded-lg bg-muted/50 p-3">
                             <p className="text-xs text-muted-foreground">Current plan</p>
-                            <p className="mt-1 text-sm font-medium text-foreground capitalize">
-                              {!subscription || subscription.status === "free" || subscription.status === "cancelled"
-                                ? "Free"
-                                : subscription.status === "day_pass" ? "Day Pass"
-                                : subscription.status === "gift_code" ? "Gift Code Access"
-                                : subscription.status === "scheduled_cancel" ? "Pro (cancels at period end)"
-                                : "Pro"}
-                            </p>
-                            {subscription?.current_period_end && ["pro", "day_pass", "gift_code", "scheduled_cancel"].includes(subscription.status) && (
-                              <p className="mt-0.5 text-xs text-muted-foreground">
-                                {subscription.status === "day_pass" ? "Expires" : subscription.status === "scheduled_cancel" ? "Access until" : "Renews"}{" "}
-                                {new Date(subscription.current_period_end).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                              </p>
-                            )}
+                            <p className="mt-1 text-sm font-medium text-foreground">Free</p>
+                            <p className="mt-0.5 text-xs text-muted-foreground">No renewal scheduled</p>
                           </div>
 
-                          {/* Upgrade button for free users */}
-                          {(!subscription || ["free", "cancelled", "day_pass", "gift_code"].includes(subscription.status)) && (
-                            <Link href="/pricing">
-                              <Button size="sm" className="w-full rounded-lg">
-                                {(!subscription || subscription.status === "free" || subscription.status === "cancelled") ? "Upgrade to Pro" : "View plans"}
-                              </Button>
-                            </Link>
-                          )}
-
-                          {/* Cancel subscription for pro users */}
-                          {subscription?.status === "pro" && subscription.lemonsqueezy_subscription_id?.trim() && !cancelDone && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="w-full rounded-lg text-destructive hover:bg-destructive/10 hover:text-destructive"
-                              disabled={cancelLoading}
-                              onClick={async () => {
-                                if (!session?.user?.id) return
-                                setCancelLoading(true)
-                                const res = await fetch("/api/creem/cancel", {
-                                  method: "POST",
-                                  headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({
-                                    subscription_id: subscription.lemonsqueezy_subscription_id,
-                                    user_id: session.user.id,
-                                  }),
-                                })
-                                setCancelLoading(false)
-                                if (res.ok) {
-                                  setCancelDone(true)
-                                  setSubscription(prev => prev ? { ...prev, status: "scheduled_cancel" } : prev)
-                                }
-                              }}
-                            >
-                              {cancelLoading ? "Cancelling…" : "Cancel subscription"}
-                            </Button>
-                          )}
-                          {cancelDone && (
-                            <p className="text-xs text-muted-foreground text-center">Cancellation scheduled — access remains until period end.</p>
-                          )}
+                          <Button variant="outline" size="sm" className="w-full rounded-lg" disabled>
+                            Manage subscription
+                          </Button>
 
                           {/* Divider */}
                           <div className="h-px bg-border" />
@@ -484,6 +619,13 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                         </div>
                       </AccordionItem>
 
+                      <button
+                        className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-muted"
+                        disabled
+                      >
+                        Billing
+                        <span className="text-xs text-muted-foreground">Coming soon</span>
+                      </button>
                     </div>
 
                     {/* Email & Password */}
@@ -495,26 +637,12 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                         onToggle={() => toggleSection("email")}
                       >
                         <div className="space-y-3">
-                          <Input type="email" placeholder="New email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} className="rounded-lg" />
-                          <Input type="password" placeholder="Current password" value={emailConfirmPassword} onChange={(e) => setEmailConfirmPassword(e.target.value)} className="rounded-lg" />
-                          {emailChangeMsg && (
-                            <p className={`text-xs ${emailChangeMsg.type === "error" ? "text-destructive" : "text-primary"}`}>{emailChangeMsg.text}</p>
-                          )}
-                          <Button
-                            size="sm"
-                            className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
-                            disabled={emailChangeLoading || !newEmail}
-                            onClick={async () => {
-                              setEmailChangeLoading(true); setEmailChangeMsg(null)
-                              const { error } = await supabase.auth.updateUser({ email: newEmail })
-                              setEmailChangeLoading(false)
-                              if (error) setEmailChangeMsg({ type: "error", text: error.message })
-                              else setEmailChangeMsg({ type: "success", text: "Confirmation sent to your new email." })
-                            }}
-                          >
-                            {emailChangeLoading ? "Saving…" : "Save email"}
+                          <Input type="email" placeholder="New email" className="rounded-lg" />
+                          <Input type="password" placeholder="Password confirmation" className="rounded-lg" />
+                          <Button size="sm" className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90">
+                            Save email
                           </Button>
-                          <p className="text-xs text-muted-foreground">A confirmation will be sent to the new address.</p>
+                          <p className="text-xs text-muted-foreground">Email change requires password confirmation for security.</p>
                         </div>
                       </AccordionItem>
 
@@ -524,28 +652,13 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                         onToggle={() => toggleSection("password")}
                       >
                         <div className="space-y-3">
-                          <Input type="password" placeholder="Current password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="rounded-lg" />
-                          <Input type="password" placeholder="New password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="rounded-lg" />
-                          <Input type="password" placeholder="Confirm new password" value={confirmNewPassword} onChange={(e) => setConfirmNewPassword(e.target.value)} className="rounded-lg" />
-                          {passwordChangeMsg && (
-                            <p className={`text-xs ${passwordChangeMsg.type === "error" ? "text-destructive" : "text-primary"}`}>{passwordChangeMsg.text}</p>
-                          )}
-                          <Button
-                            size="sm"
-                            className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
-                            disabled={passwordChangeLoading || !newPassword}
-                            onClick={async () => {
-                              if (newPassword !== confirmNewPassword) { setPasswordChangeMsg({ type: "error", text: "Passwords do not match." }); return }
-                              if (newPassword.length < 8) { setPasswordChangeMsg({ type: "error", text: "Password must be at least 8 characters." }); return }
-                              setPasswordChangeLoading(true); setPasswordChangeMsg(null)
-                              const { error } = await supabase.auth.updateUser({ password: newPassword })
-                              setPasswordChangeLoading(false)
-                              if (error) setPasswordChangeMsg({ type: "error", text: error.message })
-                              else { setPasswordChangeMsg({ type: "success", text: "Password updated successfully." }); setCurrentPassword(""); setNewPassword(""); setConfirmNewPassword("") }
-                            }}
-                          >
-                            {passwordChangeLoading ? "Updating…" : "Update password"}
+                          <Input type="password" placeholder="Current password" className="rounded-lg" />
+                          <Input type="password" placeholder="New password" className="rounded-lg" />
+                          <Input type="password" placeholder="Confirm new password" className="rounded-lg" />
+                          <Button size="sm" className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90">
+                            Update password
                           </Button>
+                          <p className="text-xs text-muted-foreground">Use a strong password.</p>
                         </div>
                       </AccordionItem>
                     </div>
@@ -553,22 +666,20 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                     {/* Legal */}
                     <div className="h-px bg-border" />
                     <div className="space-y-1">
-                      <Link
-                        href="/privacy"
-                        onClick={onClose}
+                      <button
+                        onClick={() => setPanelView("privacy")}
                         className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-muted"
                       >
                         Privacy
                         <ChevronDown className="h-4 w-4 -rotate-90 text-muted-foreground" />
-                      </Link>
-                      <Link
-                        href="/terms"
-                        onClick={onClose}
+                      </button>
+                      <button
+                        onClick={() => setPanelView("terms")}
                         className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-muted"
                       >
                         Terms
                         <ChevronDown className="h-4 w-4 -rotate-90 text-muted-foreground" />
-                      </Link>
+                      </button>
                     </div>
 
                     {/* Delete Account */}
@@ -597,11 +708,12 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                   </>
                 )}
               </div>
+            )}
           </div>
         </div>
       </div>
 
-      <DeleteAccountModal isOpen={showDeleteModal} onClose={() => setShowDeleteModal(false)} />
+      <DeleteAccountModal isOpen={showDeleteModal} onClose={() => setShowDeleteModal(false)} session={session} />
     </>
   )
 }

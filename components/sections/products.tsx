@@ -238,6 +238,7 @@ export function ProductsSection() {
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
       setSession(s)
+      setSessionLoaded(true)
     })
     return () => subscription.unsubscribe()
   }, [])

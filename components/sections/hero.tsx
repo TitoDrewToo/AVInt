@@ -315,7 +315,7 @@ export function HeroSection() {
                 <button
                   onClick={(e) => handleToolClick(e, "/tools/smart-storage")}
                   className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90">
-                  Launch Smart Storage →
+                  {session ? "Launch Smart Storage →" : "Try for free"}
                 </button>
               </div>
             </div>
@@ -372,7 +372,7 @@ export function HeroSection() {
                 <button
                   onClick={(e) => handleToolClick(e, "/tools/smart-dashboard")}
                   className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90">
-                  Launch Smart Dashboard →
+                  {session ? "Launch Smart Dashboard →" : "Try for free"}
                 </button>
               </div>
             </div>

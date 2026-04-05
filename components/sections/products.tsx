@@ -169,6 +169,18 @@ function ProductCard({ name, description, status, href, external, disabled, icon
 
 const products: ProductCardProps[] = [
   {
+    name: "Smart Storage",
+    description: "Upload documents once. Generate structured reports automatically.",
+    href: "/products/smart-storage",
+    icon: <StorageIcon className="h-5 w-5" />,
+  },
+  {
+    name: "Smart Dashboard",
+    description: "Visualize financial activity and trends derived from structured data.",
+    href: "/products/smart-dashboard",
+    icon: <DashboardIcon className="h-5 w-5" />,
+  },
+  {
     name: "PicklePal",
     description: "Social and venue management platform with analytics.",
     status: "live",
@@ -182,18 +194,6 @@ const products: ProductCardProps[] = [
     status: "development",
     disabled: true,
     icon: <HooperIcon className="h-5 w-5" />,
-  },
-  {
-    name: "Smart Storage",
-    description: "Upload documents once. Generate structured reports automatically.",
-    href: "/products/smart-storage",
-    icon: <StorageIcon className="h-5 w-5" />,
-  },
-  {
-    name: "Smart Dashboard",
-    description: "Visualize financial activity and trends derived from structured data.",
-    href: "/products/smart-dashboard",
-    icon: <DashboardIcon className="h-5 w-5" />,
   },
 ]
 

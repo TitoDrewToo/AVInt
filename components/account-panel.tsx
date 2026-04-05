@@ -334,9 +334,51 @@ function DeleteAccountModal({
   )
 }
 
+interface SubRecord {
+  status: string | null
+  plan: string | null
+  current_period_end: string | null
+}
+
+function resolveDisplayPlan(sub: SubRecord | null): { label: string; note: string; isActive: boolean } {
+  if (!sub || !sub.status) return { label: "Free", note: "No renewal scheduled", isActive: false }
+
+  const now = Date.now()
+
+  // Day pass: check expiry
+  if (sub.status === "day_pass") {
+    if (sub.current_period_end && new Date(sub.current_period_end).getTime() < now) {
+      return { label: "Free", note: "Day pass expired", isActive: false }
+    }
+    const expiresAt = sub.current_period_end
+      ? new Date(sub.current_period_end).toLocaleString("en-PH", { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" })
+      : "—"
+    return { label: "Day Pass", note: `Expires ${expiresAt}`, isActive: true }
+  }
+
+  if (sub.status === "pro") {
+    const note = sub.current_period_end
+      ? `Renews ${new Date(sub.current_period_end).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "2-digit" })}`
+      : "Active"
+    return { label: "Pro", note, isActive: true }
+  }
+
+  if (sub.status === "gift_code") {
+    const note = sub.current_period_end
+      ? `Access until ${new Date(sub.current_period_end).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "2-digit" })}`
+      : "Active"
+    return { label: "Pro (Gift)", note, isActive: true }
+  }
+
+  if (sub.status === "cancelled") return { label: "Free", note: "Subscription cancelled", isActive: false }
+
+  return { label: "Free", note: "No renewal scheduled", isActive: false }
+}
+
 export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelProps) {
   const [session, setSession] = useState<Session | null>(null)
   const isSignedIn = session !== null
+  const [subRecord, setSubRecord] = useState<SubRecord | null>(null)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [expandedSection, setExpandedSection] = useState<ExpandedSection>(null)
   const [panelView, setPanelView] = useState<PanelView>("menu")
@@ -364,6 +406,17 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
 
     return () => subscription.unsubscribe()
   }, [])
+
+  // Load subscription record whenever session changes
+  useEffect(() => {
+    if (!session?.user?.id) { setSubRecord(null); return }
+    supabase
+      .from("subscriptions")
+      .select("status, plan, current_period_end")
+      .eq("user_id", session.user.id)
+      .single()
+      .then(({ data }) => setSubRecord(data ?? null))
+  }, [session])
 
   useEffect(() => {
     if (isOpen && focusGiftCode) {
@@ -556,11 +609,18 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                       >
                         <div className="space-y-4">
                           {/* Current plan */}
-                          <div className="rounded-lg bg-muted/50 p-3">
-                            <p className="text-xs text-muted-foreground">Current plan</p>
-                            <p className="mt-1 text-sm font-medium text-foreground">Free</p>
-                            <p className="mt-0.5 text-xs text-muted-foreground">No renewal scheduled</p>
-                          </div>
+                          {(() => {
+                            const plan = resolveDisplayPlan(subRecord)
+                            return (
+                              <div className={`rounded-lg p-3 ${plan.isActive ? "bg-primary/5 border border-primary/20" : "bg-muted/50"}`}>
+                                <p className="text-xs text-muted-foreground">Current plan</p>
+                                <p className={`mt-1 text-sm font-medium ${plan.isActive ? "text-primary" : "text-foreground"}`}>
+                                  {plan.label}
+                                </p>
+                                <p className="mt-0.5 text-xs text-muted-foreground">{plan.note}</p>
+                              </div>
+                            )
+                          })()}
 
                           <Button variant="outline" size="sm" className="w-full rounded-lg" disabled>
                             Manage subscription
@@ -606,6 +666,15 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                                       setGiftCodeError(data.error ?? "Failed to redeem code")
                                     } else {
                                       setGiftCodeApplied(true)
+                                      // Refresh subscription display immediately
+                                      if (session?.user?.id) {
+                                        supabase
+                                          .from("subscriptions")
+                                          .select("status, plan, current_period_end")
+                                          .eq("user_id", session.user.id)
+                                          .single()
+                                          .then(({ data: sub }) => setSubRecord(sub ?? null))
+                                      }
                                     }
                                   } catch {
                                     setGiftCodeError("Something went wrong. Please try again.")

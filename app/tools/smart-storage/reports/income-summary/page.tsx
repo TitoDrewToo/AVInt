@@ -6,8 +6,10 @@ import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 import type { Session } from "@supabase/supabase-js"
-import { ArrowLeft, Download } from "lucide-react"
+import { ArrowLeft, Download, FolderOpen } from "lucide-react"
 import Link from "next/link"
+
+interface FolderOption { id: string; name: string }
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -49,6 +51,8 @@ export default function IncomeSummaryPage() {
   const [loading, setLoading] = useState(true)
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
+  const [folders, setFolders] = useState<FolderOption[]>([])
+  const [targetFolder, setTargetFolder] = useState("")
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -68,15 +72,23 @@ export default function IncomeSummaryPage() {
       .then(({ data }) => setIsPro(data?.status === "pro" || data?.status === "day_pass" || data?.status === "gift_code"))
   }, [session])
 
+  useEffect(() => {
+    if (!session?.user?.id) return
+    supabase.from("folders").select("id, name").eq("user_id", session.user.id).order("name")
+      .then(({ data }) => { if (data) setFolders(data) })
+  }, [session])
+
   const loadIncome = useCallback(async () => {
     if (!session?.user?.id) return
     setLoading(true)
     try {
-      const { data: userFiles } = await supabase
+      let filesQuery = supabase
         .from("files")
         .select("id")
         .eq("user_id", session.user.id)
         .in("document_type", ["payslip", "income_statement"])
+      if (targetFolder) filesQuery = filesQuery.eq("folder_id", targetFolder)
+      const { data: userFiles } = await filesQuery
 
       if (!userFiles?.length) return
 
@@ -113,7 +125,7 @@ export default function IncomeSummaryPage() {
     } finally {
       setLoading(false)
     }
-  }, [session, dateFrom, dateTo])
+  }, [session, dateFrom, dateTo, targetFolder])
 
   useEffect(() => { loadIncome() }, [loadIncome])
 
@@ -186,7 +198,7 @@ export default function IncomeSummaryPage() {
             <span className="text-xs text-muted-foreground">Smart Storage / Reports</span>
           </div>
 
-          {/* Date filter */}
+          {/* Filters */}
           <div className="mb-8 flex flex-wrap items-center gap-3">
             <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Period</span>
             <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
@@ -198,6 +210,21 @@ export default function IncomeSummaryPage() {
               className="rounded border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
               Clear
             </button>
+
+            <span className="mx-1 h-4 w-px bg-border" />
+
+            <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Source</span>
+            <div className="relative">
+              <FolderOpen className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+              <select
+                value={targetFolder}
+                onChange={e => setTargetFolder(e.target.value)}
+                className="appearance-none rounded border border-border bg-background py-1.5 pl-7 pr-6 text-xs text-foreground"
+              >
+                <option value="">All data</option>
+                {folders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+              </select>
+            </div>
           </div>
 
           {loading ? (

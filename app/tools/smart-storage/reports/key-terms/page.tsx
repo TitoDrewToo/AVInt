@@ -6,8 +6,10 @@ import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 import type { Session } from "@supabase/supabase-js"
-import { ArrowLeft, Download } from "lucide-react"
+import { ArrowLeft, Download, FolderOpen } from "lucide-react"
 import Link from "next/link"
+
+interface FolderOption { id: string; name: string }
 
 interface KeyTermsRow {
   id: string
@@ -62,6 +64,8 @@ export default function KeyTermsPage() {
   const [loading, setLoading]             = useState(true)
   const [dateFrom, setDateFrom]           = useState("")
   const [dateTo, setDateTo]               = useState("")
+  const [folders, setFolders]             = useState<FolderOption[]>([])
+  const [targetFolder, setTargetFolder]   = useState("")
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -83,15 +87,23 @@ export default function KeyTermsPage() {
       ))
   }, [session])
 
+  useEffect(() => {
+    if (!session?.user?.id) return
+    supabase.from("folders").select("id, name").eq("user_id", session.user.id).order("name")
+      .then(({ data }) => { if (data) setFolders(data) })
+  }, [session])
+
   const loadDocs = useCallback(async () => {
     if (!session?.user?.id) return
     setLoading(true)
     try {
-      const { data: userFiles } = await supabase
+      let filesQuery = supabase
         .from("files")
         .select("id")
         .eq("user_id", session.user.id)
         .in("document_type", ["contract", "agreement"])
+      if (targetFolder) filesQuery = filesQuery.eq("folder_id", targetFolder)
+      const { data: userFiles } = await filesQuery
 
       if (!userFiles?.length) { setLoading(false); return }
 
@@ -143,7 +155,7 @@ export default function KeyTermsPage() {
     } finally {
       setLoading(false)
     }
-  }, [session, dateFrom, dateTo])
+  }, [session, dateFrom, dateTo, targetFolder])
 
   useEffect(() => {
     loadDocs()
@@ -235,7 +247,7 @@ export default function KeyTermsPage() {
             </Button>
           </div>
 
-          {/* Date filter */}
+          {/* Filters */}
           <div className="mb-8 flex items-center gap-3 border-y border-border py-3">
             <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">Period</span>
             <input
@@ -257,6 +269,21 @@ export default function KeyTermsPage() {
             >
               Clear
             </button>
+
+            <span className="mx-1 h-4 w-px bg-border" />
+
+            <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">Source</span>
+            <div className="relative">
+              <FolderOpen className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+              <select
+                value={targetFolder}
+                onChange={e => setTargetFolder(e.target.value)}
+                className="appearance-none rounded border border-border bg-background py-1 pl-7 pr-6 text-xs text-foreground"
+              >
+                <option value="">All data</option>
+                {folders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+              </select>
+            </div>
           </div>
 
           {loading ? (

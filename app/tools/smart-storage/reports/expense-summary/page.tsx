@@ -160,8 +160,8 @@ export default function ExpenseSummaryPage() {
   ).sort((a, b) => b.total - a.total)
 
   const allDates = expenses.map(e => e.document_date).filter(Boolean) as string[]
-  const periodStart = allDates.length ? allDates.reduce((a, b) => a > b ? a : b) : null // most recent first
-  const periodEnd   = allDates.length ? allDates.reduce((a, b) => a < b ? a : b) : null
+  const periodStart = allDates.length ? allDates.reduce((a, b) => a < b ? a : b) : null
+  const periodEnd   = allDates.length ? allDates.reduce((a, b) => a > b ? a : b) : null
 
   const generatedDate = new Date().toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "2-digit" })
 
@@ -243,8 +243,8 @@ export default function ExpenseSummaryPage() {
                     <p className="mb-1 text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">AVINTELLIGENCE</p>
                     <h1 className="text-2xl font-light tracking-tight text-foreground">Expense Summary</h1>
                     <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                      {periodEnd && periodStart ? (
-                        <span>Period: {formatDate(periodEnd)} – {formatDate(periodStart)}</span>
+                      {periodStart && periodEnd ? (
+                        <span>Period: {formatDate(periodStart)} – {formatDate(periodEnd)}</span>
                       ) : (
                         <span>All periods</span>
                       )}

@@ -534,12 +534,26 @@ export default function SmartStoragePage() {
   }, [folders, files, currentFolderId])
 
   // ── Upload ─────────────────────────────────────────────────────────────────
+  const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50 MB
+  const ALLOWED_TYPES = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp", "image/heic", "text/csv", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"])
+  const ALLOWED_EXTS = new Set(["pdf", "jpg", "jpeg", "png", "webp", "heic", "csv", "xls", "xlsx"])
+
   const handleUpload = async (uploadFiles: FileList | File[]) => {
     if (!session?.user?.id) return
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 
     const uploadOne = async (file: File) => {
-      const ext = file.name.split(".").pop()
+      // Validate size
+      if (file.size > MAX_FILE_SIZE) {
+        console.error(`Skipped ${file.name}: exceeds 50 MB limit (${(file.size / 1024 / 1024).toFixed(1)} MB)`)
+        return
+      }
+      // Validate type
+      const ext = (file.name.split(".").pop() ?? "").toLowerCase()
+      if (!ALLOWED_TYPES.has(file.type) && !ALLOWED_EXTS.has(ext)) {
+        console.error(`Skipped ${file.name}: unsupported file type (${file.type || ext})`)
+        return
+      }
       const uniqueName = `${crypto.randomUUID()}.${ext}`
       const storagePath = `${session.user.id}/${uniqueName}`
       const { error: storageError } = await supabase.storage.from("documents").upload(storagePath, file)

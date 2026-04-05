@@ -52,8 +52,11 @@ function truncate(str: string, max: number) {
 }
 
 function daysUntil(dateStr: string) {
-  const ms = new Date(dateStr + "T00:00:00").getTime() - Date.now()
-  return Math.ceil(ms / (1000 * 60 * 60 * 24))
+  const target = new Date(dateStr + "T00:00:00")
+  const now = new Date()
+  now.setHours(0, 0, 0, 0) // normalize to local midnight for consistent day count
+  const ms = target.getTime() - now.getTime()
+  return Math.round(ms / (1000 * 60 * 60 * 24))
 }
 
 export default function KeyTermsPage() {

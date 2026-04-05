@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 import type { Session } from "@supabase/supabase-js"
 
-function StorageIcon({ className }: { className?: string }) {
+export function StorageIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <style>{`
@@ -33,7 +33,7 @@ function StorageIcon({ className }: { className?: string }) {
   )
 }
 
-function DashboardIcon({ className }: { className?: string }) {
+export function DashboardIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <style>{`

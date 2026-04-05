@@ -112,6 +112,7 @@ export default function ContractSummaryPage() {
   const [contracts, setContracts]         = useState<ContractRow[]>([])
   const [obligations, setObligations]     = useState<Record<string, PaymentObligation[]>>({})
   const [loading, setLoading]             = useState(true)
+  const [error, setError]                 = useState<string | null>(null)
   const [dateFrom, setDateFrom]           = useState("")
   const [dateTo, setDateTo]               = useState("")
   const [folders, setFolders]             = useState<FolderOption[]>([])
@@ -151,6 +152,7 @@ export default function ContractSummaryPage() {
   const loadContracts = useCallback(async () => {
     if (!session?.user?.id) return
     setLoading(true)
+    setError(null)
     try {
       let filesQuery = supabase
         .from("files")
@@ -220,6 +222,7 @@ export default function ContractSummaryPage() {
       }
     } catch (err) {
       console.error("loadContracts error:", err)
+      setError("Failed to load contract data. Please try again.")
     } finally {
       setLoading(false)
     }
@@ -409,6 +412,10 @@ export default function ContractSummaryPage() {
           {loading ? (
             <div className="flex items-center justify-center py-24 text-sm text-muted-foreground">
               Loading…
+            </div>
+          ) : error ? (
+            <div className="flex items-center justify-center py-24 text-xs text-red-500">
+              {error}
             </div>
           ) : contracts.length === 0 ? (
             <div className="flex items-center justify-center py-24 text-sm text-muted-foreground">

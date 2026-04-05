@@ -50,6 +50,7 @@ export default function TaxBundlePage() {
   const [isPro, setIsPro] = useState(false)
   const [rows, setRows] = useState<TaxRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
   const [folders, setFolders] = useState<FolderOption[]>([])
@@ -84,6 +85,7 @@ export default function TaxBundlePage() {
   const loadData = useCallback(async () => {
     if (!session?.user?.id) return
     setLoading(true)
+    setError(null)
     try {
       let filesQuery = supabase
         .from("files")
@@ -125,6 +127,7 @@ export default function TaxBundlePage() {
       }
     } catch (err) {
       console.error("loadData error:", err)
+      setError("Failed to load tax data. Please try again.")
     } finally {
       setLoading(false)
     }
@@ -135,7 +138,7 @@ export default function TaxBundlePage() {
   // ── Aggregations ──────────────────────────────────────────────────────────────
 
   const _currencyCount = rows.reduce((acc: Record<string, number>, r) => {
-    const c = r.currency ?? "PHP"; acc[c] = (acc[c] ?? 0) + 1; return acc
+    const c = r.currency ?? "PHP"; acc[c] = (acc[c] ?? 0) + Math.abs(r.total_amount ?? r.gross_income ?? 0); return acc
   }, {})
   const currency    = Object.entries(_currencyCount).sort(([, a], [, b]) => b - a)[0]?.[0] ?? "PHP"
   const incomeRows  = rows.filter(r => r.document_type === "payslip" || r.document_type === "income_statement")
@@ -250,6 +253,10 @@ export default function TaxBundlePage() {
           {loading ? (
             <div className="flex items-center justify-center py-32 text-xs uppercase tracking-widest text-muted-foreground">
               Loading…
+            </div>
+          ) : error ? (
+            <div className="flex items-center justify-center py-32 text-xs text-red-500">
+              {error}
             </div>
           ) : !hasData ? (
             <div className="flex items-center justify-center py-32 text-xs text-muted-foreground">

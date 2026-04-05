@@ -49,6 +49,7 @@ export default function IncomeSummaryPage() {
   const [isPro, setIsPro] = useState(false)
   const [income, setIncome] = useState<IncomeRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
   const [folders, setFolders] = useState<FolderOption[]>([])
@@ -83,6 +84,7 @@ export default function IncomeSummaryPage() {
   const loadIncome = useCallback(async () => {
     if (!session?.user?.id) return
     setLoading(true)
+    setError(null)
     try {
       let filesQuery = supabase
         .from("files")
@@ -124,6 +126,7 @@ export default function IncomeSummaryPage() {
       }
     } catch (err) {
       console.error("loadIncome error:", err)
+      setError("Failed to load income data. Please try again.")
     } finally {
       setLoading(false)
     }
@@ -134,7 +137,7 @@ export default function IncomeSummaryPage() {
   // ── Aggregations ──────────────────────────────────────────────────────────────
 
   const _cc = income.reduce((acc: Record<string, number>, r) => {
-    const c = r.currency ?? "PHP"; acc[c] = (acc[c] ?? 0) + 1; return acc
+    const c = r.currency ?? "PHP"; acc[c] = (acc[c] ?? 0) + Math.abs(r.gross_income ?? r.total_amount ?? 0); return acc
   }, {})
   const currency = Object.entries(_cc).sort(([, a], [, b]) => b - a)[0]?.[0] ?? "PHP"
 
@@ -232,6 +235,10 @@ export default function IncomeSummaryPage() {
           {loading ? (
             <div className="flex items-center justify-center py-32 text-xs uppercase tracking-widest text-muted-foreground">
               Loading…
+            </div>
+          ) : error ? (
+            <div className="flex items-center justify-center py-32 text-xs text-red-500">
+              {error}
             </div>
           ) : income.length === 0 ? (
             <div className="flex items-center justify-center py-32 text-xs text-muted-foreground">

@@ -48,6 +48,7 @@ export default function ExpenseSummaryPage() {
   const [isPro, setIsPro] = useState(false)
   const [expenses, setExpenses] = useState<ExpenseRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
   const [folders, setFolders] = useState<FolderOption[]>([])
@@ -82,6 +83,7 @@ export default function ExpenseSummaryPage() {
   const loadExpenses = useCallback(async () => {
     if (!session?.user?.id) return
     setLoading(true)
+    setError(null)
     try {
       let filesQuery = supabase
         .from("files")
@@ -122,6 +124,7 @@ export default function ExpenseSummaryPage() {
       }
     } catch (err) {
       console.error("loadExpenses error:", err)
+      setError("Failed to load expense data. Please try again.")
     } finally {
       setLoading(false)
     }
@@ -132,7 +135,7 @@ export default function ExpenseSummaryPage() {
   // ── Aggregations ──────────────────────────────────────────────────────────────
 
   const _cc = expenses.reduce((acc: Record<string, number>, e) => {
-    const c = e.currency ?? "PHP"; acc[c] = (acc[c] ?? 0) + 1; return acc
+    const c = e.currency ?? "PHP"; acc[c] = (acc[c] ?? 0) + Math.abs(e.total_amount ?? 0); return acc
   }, {})
   const currency = Object.entries(_cc).sort(([, a], [, b]) => b - a)[0]?.[0] ?? "PHP"
   const totalExpenses = expenses.reduce((s, e) => s + (e.total_amount ?? 0), 0)
@@ -228,6 +231,10 @@ export default function ExpenseSummaryPage() {
           {loading ? (
             <div className="flex items-center justify-center py-32 text-xs uppercase tracking-widest text-muted-foreground">
               Loading…
+            </div>
+          ) : error ? (
+            <div className="flex items-center justify-center py-32 text-xs text-red-500">
+              {error}
             </div>
           ) : expenses.length === 0 ? (
             <div className="flex items-center justify-center py-32 text-xs text-muted-foreground">

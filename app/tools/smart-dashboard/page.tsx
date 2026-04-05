@@ -310,7 +310,7 @@ function WidgetContent({
       <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
         <AnimatedNumber value={kpi.netPosition} prefix={symbol} />
       </p>
-      <p className="text-xs text-muted-foreground">{kpi.savingsRate.toFixed(1)}% savings rate</p>
+      <p className="text-xs text-muted-foreground">{kpi.totalIncome > 0 ? `${kpi.savingsRate.toFixed(1)}% ${kpi.savingsRate >= 0 ? "savings rate" : "overspend"}` : "No income data"}</p>
     </div>
   )
 

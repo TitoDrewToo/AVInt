@@ -65,6 +65,7 @@ export default function KeyTermsPage() {
   const [isPro, setIsPro]                 = useState(false)
   const [docs, setDocs]                   = useState<KeyTermsRow[]>([])
   const [loading, setLoading]             = useState(true)
+  const [error, setError]                 = useState<string | null>(null)
   const [dateFrom, setDateFrom]           = useState("")
   const [dateTo, setDateTo]               = useState("")
   const [folders, setFolders]             = useState<FolderOption[]>([])
@@ -101,6 +102,7 @@ export default function KeyTermsPage() {
   const loadDocs = useCallback(async () => {
     if (!session?.user?.id) return
     setLoading(true)
+    setError(null)
     try {
       let filesQuery = supabase
         .from("files")
@@ -157,6 +159,7 @@ export default function KeyTermsPage() {
       }
     } catch (err) {
       console.error("loadDocs error:", err)
+      setError("Failed to load key terms data. Please try again.")
     } finally {
       setLoading(false)
     }
@@ -177,7 +180,7 @@ export default function KeyTermsPage() {
   const totalContractValue = docs.reduce((sum, d) => sum + (d.total_amount ?? 0), 0)
 
   const _cc = docs.reduce((acc: Record<string, number>, d) => {
-    const c = d.currency ?? "USD"; acc[c] = (acc[c] ?? 0) + 1; return acc
+    const c = d.currency ?? "USD"; acc[c] = (acc[c] ?? 0) + Math.abs(d.total_amount ?? 0); return acc
   }, {})
   const currency = Object.entries(_cc).sort(([, a], [, b]) => b - a)[0]?.[0] ?? "USD"
 
@@ -294,6 +297,10 @@ export default function KeyTermsPage() {
           {loading ? (
             <div className="flex items-center justify-center py-24 text-sm text-muted-foreground">
               Loading…
+            </div>
+          ) : error ? (
+            <div className="flex items-center justify-center py-24 text-xs text-red-500">
+              {error}
             </div>
           ) : docs.length === 0 ? (
             <div className="flex items-center justify-center py-24 text-sm text-muted-foreground">

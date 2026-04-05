@@ -1,3 +1,4 @@
+import type { ReactNode } from "react"
 import Link from "next/link"
 import { ArrowUpRight } from "lucide-react"
 
@@ -10,7 +11,7 @@ interface ProductCardProps {
   href?: string
   external?: boolean
   disabled?: boolean
-  icon?: React.ReactNode
+  icon?: ReactNode
 }
 
 function StatusBadge({ status }: { status: StatusType }) {

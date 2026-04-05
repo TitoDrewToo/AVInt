@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, type ReactNode } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
@@ -64,7 +64,7 @@ interface ToolCardProps {
   subtext: string
   learnMoreHref: string
   launchHref: string
-  icon: React.ReactNode
+  icon: ReactNode
   session: Session | null
   sessionLoaded: boolean
   onTryFree: () => void

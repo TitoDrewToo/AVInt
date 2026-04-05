@@ -1,12 +1,5 @@
-"use client"
-
-import { useState, useEffect } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
 import { ArrowUpRight } from "lucide-react"
-import { supabase } from "@/lib/supabase"
-import { AuthGuardModal } from "@/components/auth-guard-modal"
-import type { Session } from "@supabase/supabase-js"
 
 type StatusType = "live" | "development" | "coming-soon"
 
@@ -15,12 +8,9 @@ interface ProductCardProps {
   description: string
   status?: StatusType
   href?: string
-  launchHref?: string       // actual tool URL for logged-in users
   external?: boolean
   disabled?: boolean
   icon?: React.ReactNode
-  session: Session | null
-  onTryFree?: () => void
 }
 
 function StatusBadge({ status }: { status: StatusType }) {
@@ -59,8 +49,6 @@ function StatusBadge({ status }: { status: StatusType }) {
     </span>
   )
 }
-
-// ── Icons ─────────────────────────────────────────────────────────────────────
 
 function PicklePalIcon({ className }: { className?: string }) {
   return (
@@ -145,20 +133,11 @@ function DashboardIcon({ className }: { className?: string }) {
   )
 }
 
-// ── Card ──────────────────────────────────────────────────────────────────────
-
-function ProductCard({
-  name, description, status, href, launchHref,
-  external, disabled, icon, session, onTryFree,
-}: ProductCardProps) {
-  const router = useRouter()
-
-  const cardBody = (
+function ProductCard({ name, description, status, href, external, disabled, icon }: ProductCardProps) {
+  const content = (
     <div
       className={`group relative flex h-full flex-col rounded-2xl border border-border bg-card p-6 transition-all ${
-        disabled
-          ? "cursor-not-allowed opacity-60"
-          : "hover:border-primary/20 hover:shadow-md"
+        disabled ? "cursor-not-allowed opacity-60" : "hover:border-primary/20 hover:shadow-md"
       }`}
     >
       <div className="flex items-start justify-between">
@@ -173,43 +152,7 @@ function ProductCard({
         {status && <StatusBadge status={status} />}
       </div>
       <p className="mt-3 flex-1 text-sm text-muted-foreground">{description}</p>
-
-      {/* CTA row — only for AVInt tools that have a launchHref */}
-      {!disabled && launchHref && (
-        <div className="mt-5 flex items-center gap-3">
-          {/* Learn more — always visible */}
-          {href && (
-            <Link
-              href={href}
-              onClick={e => e.stopPropagation()}
-              className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              Learn more
-            </Link>
-          )}
-
-          {/* Session-aware primary CTA */}
-          {session ? (
-            <Link
-              href={launchHref}
-              onClick={e => e.stopPropagation()}
-              className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
-            >
-              Launch {name} →
-            </Link>
-          ) : (
-            <button
-              onClick={e => { e.preventDefault(); e.stopPropagation(); onTryFree?.() }}
-              className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
-            >
-              Try for free
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Simple "Learn more" arrow for non-tool cards */}
-      {!disabled && !launchHref && href && (
+      {!disabled && href && (
         <div className="mt-4 flex items-center text-sm font-medium text-primary">
           Learn more
           <ArrowUpRight className="ml-1 h-4 w-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
@@ -218,70 +161,42 @@ function ProductCard({
     </div>
   )
 
-  if (disabled) return cardBody
-  if (launchHref) return <div className="h-full">{cardBody}</div>
-  if (external) return <a href={href} target="_blank" rel="noopener noreferrer">{cardBody}</a>
-  return <Link href={href || "#"}>{cardBody}</Link>
+  if (disabled) return content
+  if (external) return <a href={href} target="_blank" rel="noopener noreferrer">{content}</a>
+  return <Link href={href || "#"}>{content}</Link>
 }
 
-// ── Section ───────────────────────────────────────────────────────────────────
+const products: ProductCardProps[] = [
+  {
+    name: "PicklePal",
+    description: "Social and venue management platform with analytics.",
+    status: "live",
+    href: "https://picklepalph.com",
+    external: true,
+    icon: <PicklePalIcon className="h-5 w-5" />,
+  },
+  {
+    name: "Hooper",
+    description: "Community infrastructure for organized basketball runs and leagues.",
+    status: "development",
+    disabled: true,
+    icon: <HooperIcon className="h-5 w-5" />,
+  },
+  {
+    name: "Smart Storage",
+    description: "Upload documents once. Generate structured reports automatically.",
+    href: "/products/smart-storage",
+    icon: <StorageIcon className="h-5 w-5" />,
+  },
+  {
+    name: "Smart Dashboard",
+    description: "Visualize financial activity and trends derived from structured data.",
+    href: "/products/smart-dashboard",
+    icon: <DashboardIcon className="h-5 w-5" />,
+  },
+]
 
 export function ProductsSection() {
-  const [session, setSession]       = useState<Session | null>(null)
-  const [sessionLoaded, setSessionLoaded] = useState(false)
-  const [authTarget, setAuthTarget] = useState<string | null>(null) // tool URL to redirect after auth
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session)
-      setSessionLoaded(true)
-    })
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
-      setSession(s)
-      setSessionLoaded(true)
-    })
-    return () => subscription.unsubscribe()
-  }, [])
-
-  const router = useRouter()
-
-  function handleAuthSuccess() {
-    setAuthTarget(null)
-    if (authTarget) router.push(authTarget)
-  }
-
-  const products = [
-    {
-      name: "PicklePal",
-      description: "Social and venue management platform with analytics.",
-      status: "live" as const,
-      href: "https://picklepalph.com",
-      external: true,
-      icon: <PicklePalIcon className="h-5 w-5" />,
-    },
-    {
-      name: "Hooper",
-      description: "Community infrastructure for organized basketball runs and leagues.",
-      status: "development" as const,
-      disabled: true,
-      icon: <HooperIcon className="h-5 w-5" />,
-    },
-    {
-      name: "Smart Storage",
-      description: "Upload documents once. Generate structured reports automatically.",
-      href: "/products/smart-storage",
-      launchHref: "/tools/smart-storage",
-      icon: <StorageIcon className="h-5 w-5" />,
-    },
-    {
-      name: "Smart Dashboard",
-      description: "Visualize financial activity and trends derived from structured data.",
-      href: "/products/smart-dashboard",
-      launchHref: "/tools/smart-dashboard",
-      icon: <DashboardIcon className="h-5 w-5" />,
-    },
-  ]
-
   return (
     <section id="products" className="px-6 py-24">
       <div className="mx-auto max-w-6xl">
@@ -294,35 +209,12 @@ export function ProductsSection() {
         <p className="mx-auto mt-2 max-w-2xl text-center text-sm text-muted-foreground">
           Applied intelligence for real-world systems.
         </p>
-
-        {/* Skeleton shimmer on first load */}
-        {!sessionLoaded ? (
-          <div className="mt-12 grid gap-6 sm:grid-cols-2">
-            {[1, 2, 3, 4].map(i => (
-              <div key={i} className="h-40 animate-pulse rounded-2xl border border-border bg-muted" />
-            ))}
-          </div>
-        ) : (
-          <div className="mt-12 grid gap-6 sm:grid-cols-2">
-            {products.map(product => (
-              <ProductCard
-                key={product.name}
-                {...product}
-                session={session}
-                onTryFree={() => setAuthTarget((product as any).launchHref ?? null)}
-              />
-            ))}
-          </div>
-        )}
+        <div className="mt-12 grid gap-6 sm:grid-cols-2">
+          {products.map((product) => (
+            <ProductCard key={product.name} {...product} />
+          ))}
+        </div>
       </div>
-
-      {/* Auth modal — shown when guest clicks "Try for free" */}
-      {authTarget && (
-        <AuthGuardModal
-          isVisible={true}
-          onSuccess={handleAuthSuccess}
-        />
-      )}
     </section>
   )
 }

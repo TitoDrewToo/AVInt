@@ -110,6 +110,8 @@ export default function ProfitLossPage() {
       .then(({ data }) => { if (data) setFolders(data) })
   }, [session])
 
+  const safeNum = (v: unknown): number => { const n = parseFloat(String(v ?? "0")); return isNaN(n) ? 0 : n }
+
   const loadData = useCallback(async () => {
     if (!session?.user?.id) return
     setLoading(true)
@@ -137,11 +139,11 @@ export default function ProfitLossPage() {
         if (data) {
           incomeData = data.map((r: any) => ({
             document_date: r.document_date,
-            gross_income:  r.gross_income  != null ? parseFloat(r.gross_income)  : null,
-            net_income:    r.net_income    != null ? parseFloat(r.net_income)    : null,
-            total_amount:  r.total_amount  != null ? parseFloat(r.total_amount)  : null,
+            gross_income:  r.gross_income  != null ? safeNum(r.gross_income)  : null,
+            net_income:    r.net_income    != null ? safeNum(r.net_income)    : null,
+            total_amount:  r.total_amount  != null ? safeNum(r.total_amount)  : null,
             currency:      r.currency,
-            document_type: r.files.document_type,
+            document_type: r.files?.document_type ?? "unknown",
             employer_name: r.employer_name,
           }))
         }
@@ -168,9 +170,9 @@ export default function ProfitLossPage() {
         if (data) {
           expenseData = data.map((r: any) => ({
             document_date:    r.document_date,
-            total_amount:     r.total_amount != null ? parseFloat(r.total_amount) : null,
+            total_amount:     r.total_amount != null ? safeNum(r.total_amount) : null,
             currency:         r.currency,
-            document_type:    r.files.document_type,
+            document_type:    r.files?.document_type ?? "unknown",
             vendor_name:      r.vendor_name,
             expense_category: r.expense_category,
           }))

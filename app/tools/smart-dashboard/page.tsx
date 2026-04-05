@@ -694,12 +694,14 @@ export default function SmartDashboardPage() {
     const { data: fields } = await query
     if (!fields?.length) { setLoading(false); return }
 
-    const currency = (fields[0] as any)?.currency ?? "USD"
-    const incomeFields = fields.filter((f: any) => ["payslip", "income_statement"].includes(f.files.document_type))
-    const expenseFields = fields.filter((f: any) => ["receipt", "invoice"].includes(f.files.document_type))
+    const safeNum = (v: unknown): number => { const n = parseFloat(String(v ?? "0")); return isNaN(n) ? 0 : n }
 
-    const totalIncome = incomeFields.reduce((s: number, f: any) => s + parseFloat(f.gross_income ?? f.total_amount ?? 0), 0)
-    const totalExpenses = expenseFields.reduce((s: number, f: any) => s + parseFloat(f.total_amount ?? 0), 0)
+    const currency = (fields[0] as any)?.currency ?? "USD"
+    const incomeFields = fields.filter((f: any) => f.files && ["payslip", "income_statement"].includes(f.files.document_type))
+    const expenseFields = fields.filter((f: any) => f.files && ["receipt", "invoice"].includes(f.files.document_type))
+
+    const totalIncome = incomeFields.reduce((s: number, f: any) => s + safeNum(f.gross_income ?? f.total_amount), 0)
+    const totalExpenses = expenseFields.reduce((s: number, f: any) => s + safeNum(f.total_amount), 0)
     const netPosition = totalIncome - totalExpenses
 
     const taxExposure = Math.max(0, netPosition)
@@ -708,19 +710,19 @@ export default function SmartDashboardPage() {
 
     const monthMap: Record<string, { expenses: number; income: number }> = {}
     fields.forEach((f: any) => {
-      if (!f.document_date) return
+      if (!f.document_date || !f.files) return
       const month = f.document_date.slice(0, 7)
       if (!monthMap[month]) monthMap[month] = { expenses: 0, income: 0 }
       if (["payslip", "income_statement"].includes(f.files.document_type))
-        monthMap[month].income += parseFloat(f.gross_income ?? f.total_amount ?? 0)
-      else monthMap[month].expenses += parseFloat(f.total_amount ?? 0)
+        monthMap[month].income += safeNum(f.gross_income ?? f.total_amount)
+      else monthMap[month].expenses += safeNum(f.total_amount)
     })
     setMonthlyData(Object.entries(monthMap).sort(([a],[b]) => a.localeCompare(b)).map(([m, d]) => ({
       month: new Date(m + "-01").toLocaleDateString("en-US", { month: "short", year: "2-digit" }), ...d
     })))
 
     const catMap: Record<string, number> = {}
-    expenseFields.forEach((f: any) => { const cat = f.expense_category ?? "Other"; catMap[cat] = (catMap[cat] ?? 0) + parseFloat(f.total_amount ?? 0) })
+    expenseFields.forEach((f: any) => { const cat = f.expense_category ?? "Other"; catMap[cat] = (catMap[cat] ?? 0) + safeNum(f.total_amount) })
     setCategoryData(Object.entries(catMap).sort(([,a],[,b]) => b - a).map(([name, value]) => ({ name, value })))
 
     const typeMap: Record<string, number> = {}
@@ -729,7 +731,8 @@ export default function SmartDashboardPage() {
 
     // Show "New data" on first visit (never run) OR when new docs arrived since last run
     const lastCountRaw = typeof window !== "undefined" ? localStorage.getItem("aa_last_field_count") : null
-    setHasNewData(lastCountRaw === null || fields.length > parseInt(lastCountRaw))
+    const lastCount = lastCountRaw != null ? parseInt(lastCountRaw, 10) : NaN
+    setHasNewData(isNaN(lastCount) || fields.length > lastCount)
 
     setLoading(false)
   }, [session, dateFrom, dateTo])

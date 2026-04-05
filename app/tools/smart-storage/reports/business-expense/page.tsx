@@ -107,6 +107,8 @@ export default function BusinessExpensePage() {
       .then(({ data }) => { if (data) setFolders(data) })
   }, [session])
 
+  const safeNum = (v: unknown): number => { const n = parseFloat(String(v ?? "0")); return isNaN(n) ? 0 : n }
+
   const loadExpenses = useCallback(async () => {
     if (!session?.user?.id) return
     setLoading(true)
@@ -141,15 +143,15 @@ export default function BusinessExpensePage() {
           const expense_category = row.expense_category ?? null
           return {
             id:               row.file_id ?? String(i),
-            filename:         row.files.filename,
-            document_type:    row.files.document_type,
+            filename:         row.files?.filename ?? "unknown",
+            document_type:    row.files?.document_type ?? "unknown",
             vendor_name:      row.vendor_name,
             document_date:    row.document_date,
-            total_amount:     row.total_amount != null ? parseFloat(row.total_amount) || 0 : 0,
+            total_amount:     safeNum(row.total_amount),
             currency:         row.currency,
             expense_category,
             payment_method:   row.payment_method,
-            tax_amount:       row.tax_amount != null ? parseFloat(row.tax_amount) || 0 : null,
+            tax_amount:       row.tax_amount != null ? safeNum(row.tax_amount) : null,
             confidence_score: row.confidence_score,
             isBusiness:       BUSINESS_CATEGORIES.has(expense_category ?? ""),
           }

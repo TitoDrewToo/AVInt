@@ -536,45 +536,45 @@ export default function SmartStoragePage() {
   // ── Upload ─────────────────────────────────────────────────────────────────
   const handleUpload = async (uploadFiles: FileList | File[]) => {
     if (!session?.user?.id) return
-    for (const file of Array.from(uploadFiles)) {
-      try {
-        const ext = file.name.split(".").pop()
-        const uniqueName = `${crypto.randomUUID()}.${ext}`
-        const storagePath = `${session.user.id}/${uniqueName}`
-        const { error: storageError } = await supabase.storage.from("documents").upload(storagePath, file)
-        if (storageError) throw storageError
-        const { data: fileRecord, error: fileError } = await supabase
-          .from("files")
-          .insert({ user_id: session.user.id, filename: file.name, storage_path: storagePath, file_type: file.type, file_size: file.size, document_type: "unknown", upload_status: "uploaded" })
-          .select().single()
-        if (fileError) throw fileError
-        const { data: jobRecord, error: jobError } = await supabase
-          .from("processing_jobs")
-          .insert({ file_id: fileRecord.id, status: "uploaded" })
-          .select()
-          .single()
-        if (jobError) throw jobError
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 
-        // Trigger Gemini extraction pipeline
-        // Trigger Gemini extraction pipeline — fire and forget
-        const _fileId = fileRecord.id
-        const _jobId = jobRecord.id
-        setTimeout(() => {
-          fetch("https://njbxbltgtxvhmcctdluz.supabase.co/functions/v1/process-document", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
-            },
-            body: JSON.stringify({ file_id: _fileId, job_id: _jobId }),
-          }).catch((err) => console.error("process-document fetch error:", err))
-        }, 0)
-      } catch (err: any) {
-        console.error("Upload failed for", file.name, JSON.stringify(err), err?.message, err?.error, err?.statusCode)
-      }
+    const uploadOne = async (file: File) => {
+      const ext = file.name.split(".").pop()
+      const uniqueName = `${crypto.randomUUID()}.${ext}`
+      const storagePath = `${session.user.id}/${uniqueName}`
+      const { error: storageError } = await supabase.storage.from("documents").upload(storagePath, file)
+      if (storageError) throw storageError
+      const { data: fileRecord, error: fileError } = await supabase
+        .from("files")
+        .insert({ user_id: session.user.id, filename: file.name, storage_path: storagePath, file_type: file.type, file_size: file.size, document_type: "unknown", upload_status: "uploaded" })
+        .select().single()
+      if (fileError) throw fileError
+      const { data: jobRecord, error: jobError } = await supabase
+        .from("processing_jobs")
+        .insert({ file_id: fileRecord.id, status: "uploaded" })
+        .select()
+        .single()
+      if (jobError) throw jobError
+
+      // Trigger Gemini extraction pipeline — fire and forget
+      fetch(`${supabaseUrl}/functions/v1/process-document`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ file_id: fileRecord.id, job_id: jobRecord.id }),
+      }).catch((err) => console.error("process-document fetch error:", err))
     }
-    await checkProcessingState()
+
+    // Upload all files, then refresh — ensures state updates happen after ALL uploads complete
+    const results = await Promise.allSettled(Array.from(uploadFiles).map(uploadOne))
+    for (const r of results) {
+      if (r.status === "rejected") console.error("Upload failed:", r.reason)
+    }
+
     await loadFiles()
+    await checkProcessingState()
     await checkReportAvailability()
   }
 

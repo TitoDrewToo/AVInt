@@ -93,6 +93,8 @@ export default function KeyTermsPage() {
       .then(({ data }) => { if (data) setFolders(data) })
   }, [session])
 
+  const safeNum = (v: unknown): number => { const n = parseFloat(String(v ?? "0")); return isNaN(n) ? 0 : n }
+
   const loadDocs = useCallback(async () => {
     if (!session?.user?.id) return
     setLoading(true)
@@ -136,15 +138,15 @@ export default function KeyTermsPage() {
       if (data) {
         setDocs(data.map((row: any) => ({
           id:                row.file_id,
-          filename:          row.files.filename,
-          document_type:     row.files.document_type,
+          filename:          row.files?.filename ?? "unknown",
+          document_type:     row.files?.document_type ?? "unknown",
           counterparty_name: row.counterparty_name,
           document_date:     row.document_date,
           period_start:      row.period_start,
           period_end:        row.period_end,
           invoice_number:    row.invoice_number,
           payment_method:    row.payment_method,
-          total_amount:      row.total_amount != null ? parseFloat(row.total_amount) || 0 : null,
+          total_amount:      row.total_amount != null ? safeNum(row.total_amount) : null,
           currency:          row.currency,
           line_items:        row.line_items ?? null,
           confidence_score:  row.confidence_score,

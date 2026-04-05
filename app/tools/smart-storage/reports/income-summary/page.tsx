@@ -78,6 +78,8 @@ export default function IncomeSummaryPage() {
       .then(({ data }) => { if (data) setFolders(data) })
   }, [session])
 
+  const safeNum = (v: unknown): number => { const n = parseFloat(String(v ?? "0")); return isNaN(n) ? 0 : n }
+
   const loadIncome = useCallback(async () => {
     if (!session?.user?.id) return
     setLoading(true)
@@ -109,13 +111,13 @@ export default function IncomeSummaryPage() {
 
       if (data) {
         setIncome(data.map((row: any) => ({
-          filename:         row.files.filename,
-          document_type:    row.files.document_type,
+          filename:         row.files?.filename ?? "unknown",
+          document_type:    row.files?.document_type ?? "unknown",
           employer_name:    row.employer_name,
           document_date:    row.document_date,
-          gross_income:     row.gross_income  ? parseFloat(row.gross_income)  : null,
-          net_income:       row.net_income    ? parseFloat(row.net_income)    : null,
-          total_amount:     row.total_amount  ? parseFloat(row.total_amount)  : null,
+          gross_income:     row.gross_income != null ? safeNum(row.gross_income) : null,
+          net_income:       row.net_income != null ? safeNum(row.net_income) : null,
+          total_amount:     row.total_amount != null ? safeNum(row.total_amount) : null,
           currency:         row.currency,
           confidence_score: row.confidence_score,
         })))

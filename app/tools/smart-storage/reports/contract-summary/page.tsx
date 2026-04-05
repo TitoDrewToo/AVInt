@@ -146,6 +146,8 @@ export default function ContractSummaryPage() {
       .then(({ data }) => { if (data) setFolders(data) })
   }, [session])
 
+  const safeNum = (v: unknown): number => { const n = parseFloat(String(v ?? "0")); return isNaN(n) ? 0 : n }
+
   const loadContracts = useCallback(async () => {
     if (!session?.user?.id) return
     setLoading(true)
@@ -188,14 +190,14 @@ export default function ContractSummaryPage() {
       if (data) {
         setContracts(data.map((row: any) => ({
           file_id:           row.file_id,
-          filename:          row.files.filename,
-          document_type:     row.files.document_type,
+          filename:          row.files?.filename ?? "unknown",
+          document_type:     row.files?.document_type ?? "unknown",
           counterparty_name: row.counterparty_name,
           document_date:     row.document_date,
           period_start:      row.period_start,
           period_end:        row.period_end,
           invoice_number:    row.invoice_number,
-          total_amount:      row.total_amount != null ? parseFloat(row.total_amount) || 0 : null,
+          total_amount:      row.total_amount != null ? safeNum(row.total_amount) : null,
           currency:          row.currency,
           payment_method:    row.payment_method,
           confidence_score:  row.confidence_score,

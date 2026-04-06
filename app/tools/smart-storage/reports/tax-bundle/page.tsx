@@ -6,14 +6,76 @@ import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 import type { Session } from "@supabase/supabase-js"
-import { ArrowLeft, Download, FolderOpen } from "lucide-react"
+import {
+  ArrowLeft, Download, FolderOpen, AlertTriangle, CheckCircle2,
+  XCircle, Copy, FileWarning, Ban,
+} from "lucide-react"
 import Link from "next/link"
+
+// ── Schedule C Line-Item Mapping ──────────────────────────────────────────────
+// Maps our generic expense categories → IRS Schedule C line numbers
+// https://www.irs.gov/pub/irs-pdf/f1040sc.pdf
+
+interface ScheduleCLine {
+  line: string        // e.g. "Line 8"
+  label: string       // IRS label
+  categories: string[] // our categories that roll up here
+}
+
+const SCHEDULE_C_LINES: ScheduleCLine[] = [
+  { line: "Line 8",  label: "Advertising",                categories: ["Marketing", "Advertising", "Design", "Printing"] },
+  { line: "Line 9",  label: "Car & Truck Expenses",       categories: ["Fuel", "Parking", "Transport"] },
+  { line: "Line 10", label: "Commissions & Fees",         categories: ["Bank Fees"] },
+  { line: "Line 11", label: "Contract Labor",             categories: ["Consulting"] },
+  { line: "Line 13", label: "Depreciation (§179)",        categories: ["Equipment", "Hardware"] },
+  { line: "Line 15", label: "Insurance",                  categories: ["Insurance"] },
+  { line: "Line 17", label: "Legal & Professional",       categories: ["Legal", "Accounting", "Professional Services"] },
+  { line: "Line 18", label: "Office Expense",             categories: ["Office", "Office Supplies"] },
+  { line: "Line 20b",label: "Rent (Other)",               categories: ["Rent", "Coworking"] },
+  { line: "Line 21", label: "Repairs & Maintenance",      categories: ["Repairs", "Maintenance"] },
+  { line: "Line 22", label: "Supplies",                   categories: ["Subscriptions", "SaaS", "Cloud Services", "Software"] },
+  { line: "Line 23", label: "Taxes & Licenses",           categories: ["Tax", "Taxes"] },
+  { line: "Line 24a",label: "Travel",                     categories: ["Travel", "Accommodation", "Airfare"] },
+  { line: "Line 24b",label: "Meals (50% deductible)",     categories: ["Meals", "Entertainment", "Client Entertainment"] },
+  { line: "Line 25", label: "Utilities",                  categories: ["Utilities", "Internet", "Phone"] },
+  { line: "Line 27a",label: "Other Expenses",             categories: ["Training", "Education", "Conferences"] },
+]
+
+// Reverse lookup: category → schedule C line
+const CATEGORY_TO_LINE = new Map<string, string>()
+for (const sc of SCHEDULE_C_LINES) {
+  for (const cat of sc.categories) {
+    CATEGORY_TO_LINE.set(cat.toLowerCase(), sc.line)
+  }
+}
+
+function getScheduleCLine(category: string | null): string | null {
+  if (!category) return null
+  return CATEGORY_TO_LINE.get(category.toLowerCase()) ?? null
+}
+
+function getScheduleCLabel(lineNum: string): string {
+  return SCHEDULE_C_LINES.find(l => l.line === lineNum)?.label ?? "Other"
+}
+
+// ── Deductibility Confidence ──────────────────────────────────────────────────
+
+type DeductStatus = "deductible" | "review" | "uncategorized"
+
+function getDeductStatus(category: string | null, confidence: number | null): DeductStatus {
+  if (!category || category === "Uncategorized" || category === "Other") return "uncategorized"
+  const line = getScheduleCLine(category)
+  if (!line) return "review"                       // category exists but doesn't map to Schedule C
+  if (confidence !== null && confidence < 0.7) return "review"  // low AI confidence
+  return "deductible"
+}
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface FolderOption { id: string; name: string }
 
-// ── Types ──────────────────────────────────────────────────────────────────────
-
 interface TaxRow {
+  file_id: string
   filename: string
   document_type: string
   vendor_name: string | null
@@ -24,25 +86,32 @@ interface TaxRow {
   net_income: number | null
   expense_category: string | null
   currency: string | null
+  confidence_score: number | null
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function fmt(amount: number, currency: string) {
-  return new Intl.NumberFormat("en-PH", {
-    style: "currency",
-    currency: currency || "PHP",
-    minimumFractionDigits: 2,
-  }).format(amount)
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: currency || "USD",
+      minimumFractionDigits: 2,
+    }).format(amount)
+  } catch {
+    return `${currency} ${amount.toFixed(2)}`
+  }
 }
 
 function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString("en-PH", {
+  return new Date(dateStr + "T00:00:00").toLocaleDateString("en-US", {
     year: "numeric", month: "short", day: "2-digit",
   })
 }
 
-// ── Component ──────────────────────────────────────────────────────────────────
+const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export default function TaxBundlePage() {
   const [session, setSession] = useState<Session | null>(null)
@@ -55,6 +124,7 @@ export default function TaxBundlePage() {
   const [dateTo, setDateTo] = useState("")
   const [folders, setFolders] = useState<FolderOption[]>([])
   const [targetFolder, setTargetFolder] = useState("")
+  const [csvCopied, setCsvCopied] = useState(false)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -94,13 +164,14 @@ export default function TaxBundlePage() {
       if (targetFolder) filesQuery = filesQuery.eq("folder_id", targetFolder)
       const { data: userFiles } = await filesQuery
 
-      if (!userFiles?.length) return
+      if (!userFiles?.length) { setRows([]); return }
 
       let query = supabase
         .from("document_fields")
         .select(`
           file_id, vendor_name, employer_name, document_date,
           total_amount, gross_income, net_income, expense_category, currency,
+          confidence_score,
           files!inner(filename, document_type)
         `)
         .in("file_id", userFiles.map(f => f.id))
@@ -113,6 +184,7 @@ export default function TaxBundlePage() {
 
       if (data) {
         setRows(data.map((row: any) => ({
+          file_id:          row.file_id,
           filename:         row.files?.filename ?? "unknown",
           document_type:    row.files?.document_type ?? "unknown",
           vendor_name:      row.vendor_name,
@@ -123,6 +195,7 @@ export default function TaxBundlePage() {
           net_income:       row.net_income != null ? safeNum(row.net_income) : null,
           expense_category: row.expense_category,
           currency:         row.currency,
+          confidence_score: row.confidence_score != null ? safeNum(row.confidence_score) : null,
         })))
       }
     } catch (err) {
@@ -131,25 +204,25 @@ export default function TaxBundlePage() {
     } finally {
       setLoading(false)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, dateFrom, dateTo, targetFolder])
 
   useEffect(() => { loadData() }, [loadData])
 
-  // ── Aggregations ──────────────────────────────────────────────────────────────
+  // ── Aggregations ────────────────────────────────────────────────────────────
 
   const _currencyCount = rows.reduce((acc: Record<string, number>, r) => {
-    const c = r.currency ?? "PHP"; acc[c] = (acc[c] ?? 0) + Math.abs(r.total_amount ?? r.gross_income ?? 0); return acc
+    const c = r.currency ?? "USD"; acc[c] = (acc[c] ?? 0) + Math.abs(r.total_amount ?? r.gross_income ?? 0); return acc
   }, {})
-  const currency    = Object.entries(_currencyCount).sort(([, a], [, b]) => b - a)[0]?.[0] ?? "PHP"
+  const currency    = Object.entries(_currencyCount).sort(([, a], [, b]) => b - a)[0]?.[0] ?? "USD"
   const incomeRows  = rows.filter(r => r.document_type === "payslip" || r.document_type === "income_statement")
   const expenseRows = rows.filter(r => r.document_type === "receipt"  || r.document_type === "invoice")
 
   const totalGross    = incomeRows.reduce((s, r) => s + (r.gross_income ?? r.total_amount ?? 0), 0)
   const totalNet      = incomeRows.reduce((s, r) => s + (r.net_income ?? 0), 0)
   const totalExpenses = expenseRows.reduce((s, r) => s + (r.total_amount ?? 0), 0)
-  const estimatedTaxable = totalGross - totalExpenses   // show actual — can be negative
+  const estimatedTaxable = totalGross - totalExpenses
 
-  // Withholding = sum of (gross - net) where both fields known
   const totalWithholding = incomeRows.reduce((s, r) => {
     if (r.gross_income != null && r.net_income != null) {
       return s + Math.max(0, r.gross_income - r.net_income)
@@ -166,20 +239,75 @@ export default function TaxBundlePage() {
     const net   = r.net_income ?? 0
     incomeByEmployer.set(key, {
       gross:       existing.gross + gross,
-      net:         existing.net  + net,
+      net:         existing.net + net,
       withholding: existing.withholding + (r.gross_income != null && r.net_income != null ? Math.max(0, gross - net) : 0),
       docs:        existing.docs + 1,
     })
   }
 
-  // Group expenses by category
-  const expenseByCategory = new Map<string, number>()
-  for (const r of expenseRows) {
-    const key = r.expense_category ?? "Uncategorized"
-    expenseByCategory.set(key, (expenseByCategory.get(key) ?? 0) + (r.total_amount ?? 0))
+  // ── Schedule C Expense Grouping ─────────────────────────────────────────────
+
+  interface ScheduleCTotal {
+    line: string
+    label: string
+    amount: number
+    items: TaxRow[]
+    reviewCount: number
   }
 
-  // Tax year from data
+  const scheduleCTotals = new Map<string, ScheduleCTotal>()
+  const uncategorizedItems: TaxRow[] = []
+  const reviewItems: TaxRow[] = []
+
+  for (const r of expenseRows) {
+    const status = getDeductStatus(r.expense_category, r.confidence_score)
+    const scLine = getScheduleCLine(r.expense_category)
+
+    if (status === "uncategorized") {
+      uncategorizedItems.push(r)
+      continue
+    }
+
+    if (status === "review") {
+      reviewItems.push(r)
+    }
+
+    const lineKey = scLine ?? "Line 27a" // unmapped → Other Expenses
+    const existing = scheduleCTotals.get(lineKey) ?? {
+      line: lineKey,
+      label: getScheduleCLabel(lineKey),
+      amount: 0,
+      items: [],
+      reviewCount: 0,
+    }
+    existing.amount += r.total_amount ?? 0
+    existing.items.push(r)
+    if (status === "review") existing.reviewCount++
+    scheduleCTotals.set(lineKey, existing)
+  }
+
+  // Sort by line number
+  const sortedScheduleC = Array.from(scheduleCTotals.values())
+    .sort((a, b) => {
+      const numA = parseFloat(a.line.replace(/[^\d.]/g, "")) || 99
+      const numB = parseFloat(b.line.replace(/[^\d.]/g, "")) || 99
+      return numA - numB
+    })
+
+  // ── Monthly Expense Breakdown ───────────────────────────────────────────────
+
+  const monthlyExpenses = new Map<string, number>() // "2025-01" → amount
+  const allExpenseMonths = new Set<string>()
+
+  for (const r of expenseRows) {
+    if (r.document_date) {
+      const ym = r.document_date.slice(0, 7) // "YYYY-MM"
+      monthlyExpenses.set(ym, (monthlyExpenses.get(ym) ?? 0) + (r.total_amount ?? 0))
+      allExpenseMonths.add(ym)
+    }
+  }
+
+  // Determine year range for gap detection
   const allDates = rows.map(r => r.document_date).filter(Boolean) as string[]
   const taxYear = allDates.length
     ? new Set(allDates.map(d => d.slice(0, 4))).size === 1
@@ -187,8 +315,129 @@ export default function TaxBundlePage() {
       : `${allDates.reduce((a, b) => a < b ? a : b).slice(0, 4)}–${allDates.reduce((a, b) => a > b ? a : b).slice(0, 4)}`
     : "—"
 
-  const generatedDate = new Date().toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "2-digit" })
+  // Build full month range for gap detection
+  const sortedMonths = Array.from(allExpenseMonths).sort()
+  let fullMonthRange: string[] = []
+  if (sortedMonths.length >= 2) {
+    const [startY, startM] = sortedMonths[0].split("-").map(Number)
+    const [endY, endM] = sortedMonths[sortedMonths.length - 1].split("-").map(Number)
+    let y = startY, m = startM
+    while (y < endY || (y === endY && m <= endM)) {
+      fullMonthRange.push(`${y}-${String(m).padStart(2, "0")}`)
+      m++
+      if (m > 12) { m = 1; y++ }
+    }
+  } else {
+    fullMonthRange = sortedMonths
+  }
+
+  const missingMonths = fullMonthRange.filter(m => !monthlyExpenses.has(m))
+
+  // ── Duplicate Detection ─────────────────────────────────────────────────────
+
+  interface DuplicateGroup { key: string; items: TaxRow[] }
+
+  const dupMap = new Map<string, TaxRow[]>()
+  for (const r of expenseRows) {
+    if (r.vendor_name && r.total_amount != null && r.document_date) {
+      const key = `${r.vendor_name.toLowerCase().trim()}|${r.total_amount.toFixed(2)}|${r.document_date}`
+      const arr = dupMap.get(key) ?? []
+      arr.push(r)
+      dupMap.set(key, arr)
+    }
+  }
+  const duplicates: DuplicateGroup[] = []
+  for (const [key, items] of dupMap) {
+    if (items.length > 1) duplicates.push({ key, items })
+  }
+
+  // ── Tax Readiness Score ─────────────────────────────────────────────────────
+
+  const readinessChecks = [
+    { label: "Income documents uploaded", pass: incomeRows.length > 0 },
+    { label: "Expense documents uploaded", pass: expenseRows.length > 0 },
+    { label: "No uncategorized expenses",  pass: uncategorizedItems.length === 0 },
+    { label: "No potential duplicates",    pass: duplicates.length === 0 },
+    { label: "No month gaps in records",   pass: missingMonths.length === 0 },
+    { label: "All expenses map to Schedule C", pass: reviewItems.length === 0 },
+  ]
+  const passCount = readinessChecks.filter(c => c.pass).length
+  const readinessPercent = Math.round((passCount / readinessChecks.length) * 100)
+
+  // ── CSV Export ──────────────────────────────────────────────────────────────
+
+  function generateCSV(): string {
+    const lines: string[] = []
+    // Header
+    lines.push("Schedule C Line,IRS Category,Our Category,Vendor,Date,Amount,Status,Source File")
+
+    for (const sc of sortedScheduleC) {
+      for (const item of sc.items) {
+        const status = getDeductStatus(item.expense_category, item.confidence_score)
+        lines.push([
+          sc.line,
+          `"${sc.label}"`,
+          `"${item.expense_category ?? "Uncategorized"}"`,
+          `"${(item.vendor_name ?? "").replace(/"/g, '""')}"`,
+          item.document_date ?? "",
+          (item.total_amount ?? 0).toFixed(2),
+          status,
+          `"${item.filename.replace(/"/g, '""')}"`,
+        ].join(","))
+      }
+    }
+
+    // Uncategorized at bottom
+    for (const item of uncategorizedItems) {
+      lines.push([
+        "N/A",
+        '"Uncategorized"',
+        `"${item.expense_category ?? "None"}"`,
+        `"${(item.vendor_name ?? "").replace(/"/g, '""')}"`,
+        item.document_date ?? "",
+        (item.total_amount ?? 0).toFixed(2),
+        "uncategorized",
+        `"${item.filename.replace(/"/g, '""')}"`,
+      ].join(","))
+    }
+
+    // Summary section
+    lines.push("")
+    lines.push("SCHEDULE C SUMMARY")
+    lines.push("Line,Category,Annual Total")
+    for (const sc of sortedScheduleC) {
+      lines.push(`${sc.line},"${sc.label}",${sc.amount.toFixed(2)}`)
+    }
+    lines.push(`,"TOTAL EXPENSES",${totalExpenses.toFixed(2)}`)
+    lines.push("")
+    lines.push(`,"Gross Income",${totalGross.toFixed(2)}`)
+    lines.push(`,"Est. Taxable Income",${estimatedTaxable.toFixed(2)}`)
+
+    return lines.join("\n")
+  }
+
+  function downloadCSV() {
+    const csv = generateCSV()
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `schedule-c-tax-bundle-${taxYear}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function copyCSV() {
+    navigator.clipboard.writeText(generateCSV()).then(() => {
+      setCsvCopied(true)
+      setTimeout(() => setCsvCopied(false), 2000)
+    })
+  }
+
+  const generatedDate = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "2-digit" })
   const hasData = incomeRows.length > 0 || expenseRows.length > 0
+
+  // ── Render ──────────────────────────────────────────────────────────────────
 
   if (!sessionLoaded) return null
   if (!session) return <AuthGuardModal isVisible={true} />
@@ -252,7 +501,7 @@ export default function TaxBundlePage() {
 
           {loading ? (
             <div className="flex items-center justify-center py-32 text-xs uppercase tracking-widest text-muted-foreground">
-              Loading…
+              Loading...
             </div>
           ) : error ? (
             <div className="flex items-center justify-center py-32 text-xs text-red-500">
@@ -270,20 +519,64 @@ export default function TaxBundlePage() {
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="mb-1 text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">AVINTELLIGENCE</p>
-                    <h1 className="text-2xl font-light tracking-tight text-foreground">Tax Bundle Summary</h1>
+                    <h1 className="text-2xl font-light tracking-tight text-foreground">Tax Bundle — Schedule C</h1>
                     <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
                       <span>Tax Period: {taxYear}</span>
                       <span className="text-muted-foreground/30">·</span>
                       <span>Generated {generatedDate}</span>
                     </div>
                     <p className="mt-2 text-[10px] text-muted-foreground/60">
-                      For reference only. Consult a licensed tax professional before filing. Not a certified BIR document.
+                      Expense categories mapped to IRS Schedule C (Form 1040) line items.
+                      For reference only — consult a licensed tax professional before filing.
                     </p>
                   </div>
-                  <Button variant="outline" size="sm" className="shrink-0 gap-2 rounded text-xs" disabled>
-                    <Download className="h-3.5 w-3.5" />
-                    Export PDF
-                  </Button>
+                  <div className="flex shrink-0 gap-2">
+                    <Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={copyCSV}>
+                      <Copy className="h-3.5 w-3.5" />
+                      {csvCopied ? "Copied!" : "Copy CSV"}
+                    </Button>
+                    <Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={downloadCSV}>
+                      <Download className="h-3.5 w-3.5" />
+                      Export CSV
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Tax Readiness Check ── */}
+              <div>
+                <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                  Tax Readiness
+                </p>
+                <div className="rounded border border-border p-5">
+                  <div className="mb-4 flex items-center gap-3">
+                    <div className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold ${
+                      readinessPercent === 100 ? "bg-green-500/10 text-green-500" :
+                      readinessPercent >= 50 ? "bg-yellow-500/10 text-yellow-500" :
+                      "bg-red-500/10 text-red-500"
+                    }`}>
+                      {readinessPercent}%
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-foreground">
+                        {readinessPercent === 100 ? "Ready to file" :
+                         readinessPercent >= 50 ? "Almost ready — review items below" :
+                         "Needs attention before filing"}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{passCount} of {readinessChecks.length} checks passed</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {readinessChecks.map(check => (
+                      <div key={check.label} className="flex items-center gap-2 text-xs">
+                        {check.pass
+                          ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-500" />
+                          : <XCircle className="h-3.5 w-3.5 shrink-0 text-red-500" />
+                        }
+                        <span className={check.pass ? "text-muted-foreground" : "text-foreground"}>{check.label}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -308,6 +601,70 @@ export default function TaxBundlePage() {
                   </div>
                 ))}
               </div>
+
+              {/* ── Alerts: Duplicates + Missing Months ── */}
+              {(duplicates.length > 0 || missingMonths.length > 0 || uncategorizedItems.length > 0) && (
+                <div className="space-y-3">
+                  {duplicates.length > 0 && (
+                    <div className="flex items-start gap-3 rounded border border-yellow-500/20 bg-yellow-500/5 p-4">
+                      <Ban className="mt-0.5 h-4 w-4 shrink-0 text-yellow-500" />
+                      <div>
+                        <p className="text-sm font-medium text-foreground">
+                          {duplicates.length} potential duplicate{duplicates.length > 1 ? "s" : ""} detected
+                        </p>
+                        <div className="mt-1.5 space-y-1">
+                          {duplicates.map(d => (
+                            <p key={d.key} className="text-xs text-muted-foreground">
+                              {d.items[0].vendor_name} — {fmt(d.items[0].total_amount ?? 0, currency)} on {d.items[0].document_date}
+                              <span className="ml-1 text-yellow-500">({d.items.length} entries)</span>
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {missingMonths.length > 0 && (
+                    <div className="flex items-start gap-3 rounded border border-yellow-500/20 bg-yellow-500/5 p-4">
+                      <FileWarning className="mt-0.5 h-4 w-4 shrink-0 text-yellow-500" />
+                      <div>
+                        <p className="text-sm font-medium text-foreground">
+                          Missing expense records for {missingMonths.length} month{missingMonths.length > 1 ? "s" : ""}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {missingMonths.map(m => {
+                            const [y, mo] = m.split("-")
+                            return `${MONTH_NAMES[parseInt(mo) - 1]} ${y}`
+                          }).join(", ")}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {uncategorizedItems.length > 0 && (
+                    <div className="flex items-start gap-3 rounded border border-red-500/20 bg-red-500/5 p-4">
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+                      <div>
+                        <p className="text-sm font-medium text-foreground">
+                          {uncategorizedItems.length} uncategorized expense{uncategorizedItems.length > 1 ? "s" : ""} — cannot map to Schedule C
+                        </p>
+                        <div className="mt-1.5 space-y-1">
+                          {uncategorizedItems.slice(0, 5).map((item, i) => (
+                            <p key={i} className="text-xs text-muted-foreground">
+                              {item.vendor_name ?? item.filename} — {fmt(item.total_amount ?? 0, currency)}
+                            </p>
+                          ))}
+                          {uncategorizedItems.length > 5 && (
+                            <p className="text-xs text-muted-foreground/60">
+                              + {uncategorizedItems.length - 5} more
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* ── Income Summary ── */}
               {incomeRows.length > 0 && (
@@ -359,43 +716,128 @@ export default function TaxBundlePage() {
                 </div>
               )}
 
-              {/* ── Expense Schedule ── */}
-              {expenseRows.length > 0 && (
+              {/* ── Schedule C Expense Breakdown ── */}
+              {sortedScheduleC.length > 0 && (
                 <div>
                   <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                    Schedule of Expenses
+                    Schedule C — Expense Breakdown
                   </p>
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-border text-left text-[10px] uppercase tracking-wider text-muted-foreground">
-                        <th className="pb-2 font-medium">Category</th>
+                        <th className="pb-2 font-medium">Line</th>
+                        <th className="pb-2 font-medium">IRS Category</th>
                         <th className="pb-2 text-right font-medium">Amount</th>
-                        <th className="pb-2 text-right font-medium">% of Gross</th>
+                        <th className="pb-2 text-right font-medium">Items</th>
+                        <th className="pb-2 text-right font-medium">Status</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border/50">
-                      {Array.from(expenseByCategory.entries()).map(([cat, amount]) => (
-                        <tr key={cat}>
-                          <td className="py-2.5 text-foreground">{cat}</td>
-                          <td className="py-2.5 text-right font-mono tabular-nums text-foreground">
-                            ({fmt(amount, currency)})
+                      {sortedScheduleC.map(sc => (
+                        <tr key={sc.line}>
+                          <td className="py-2.5 font-mono text-xs text-muted-foreground">{sc.line}</td>
+                          <td className="py-2.5 text-foreground">
+                            {sc.label}
+                            {sc.line === "Line 24b" && (
+                              <span className="ml-1.5 text-[10px] text-yellow-500">50%</span>
+                            )}
                           </td>
-                          <td className="py-2.5 text-right text-muted-foreground">
-                            {totalGross > 0 ? `${((amount / totalGross) * 100).toFixed(1)}%` : "—"}
+                          <td className="py-2.5 text-right font-mono tabular-nums text-foreground">
+                            ({fmt(sc.amount, currency)})
+                          </td>
+                          <td className="py-2.5 text-right text-muted-foreground">{sc.items.length}</td>
+                          <td className="py-2.5 text-right">
+                            {sc.reviewCount > 0 ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-yellow-500/10 px-2 py-0.5 text-[10px] font-medium text-yellow-500">
+                                <AlertTriangle className="h-2.5 w-2.5" />
+                                {sc.reviewCount} review
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-[10px] font-medium text-green-500">
+                                <CheckCircle2 className="h-2.5 w-2.5" />
+                                OK
+                              </span>
+                            )}
                           </td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
                       <tr className="border-t-2 border-border font-semibold">
+                        <td className="pt-2.5" />
                         <td className="pt-2.5 text-foreground">Total Expenses</td>
-                        <td className="pt-2.5 text-right font-mono tabular-nums text-foreground">({fmt(totalExpenses, currency)})</td>
-                        <td className="pt-2.5 text-right text-muted-foreground">
-                          {totalGross > 0 ? `${((totalExpenses / totalGross) * 100).toFixed(1)}%` : "—"}
+                        <td className="pt-2.5 text-right font-mono tabular-nums text-foreground">
+                          ({fmt(totalExpenses, currency)})
                         </td>
+                        <td className="pt-2.5 text-right text-muted-foreground">{expenseRows.length}</td>
+                        <td className="pt-2.5" />
                       </tr>
                     </tfoot>
                   </table>
+                </div>
+              )}
+
+              {/* ── Monthly Expense Summary ── */}
+              {fullMonthRange.length > 0 && (
+                <div>
+                  <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                    Monthly Expense Summary
+                  </p>
+                  <div className="rounded border border-border">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-border text-left text-[10px] uppercase tracking-wider text-muted-foreground">
+                          <th className="px-4 pb-2 pt-3 font-medium">Month</th>
+                          <th className="px-4 pb-2 pt-3 text-right font-medium">Amount</th>
+                          <th className="px-4 pb-2 pt-3 font-medium">Bar</th>
+                          <th className="px-4 pb-2 pt-3 text-right font-medium">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/50">
+                        {fullMonthRange.map(ym => {
+                          const amount = monthlyExpenses.get(ym) ?? 0
+                          const maxMonth = Math.max(...Array.from(monthlyExpenses.values()), 1)
+                          const barPct = (amount / maxMonth) * 100
+                          const isMissing = amount === 0
+                          const [y, mo] = ym.split("-")
+                          return (
+                            <tr key={ym} className={isMissing ? "bg-yellow-500/5" : ""}>
+                              <td className="px-4 py-2 text-foreground">{MONTH_NAMES[parseInt(mo) - 1]} {y}</td>
+                              <td className="px-4 py-2 text-right font-mono tabular-nums text-foreground">
+                                {amount > 0 ? fmt(amount, currency) : "—"}
+                              </td>
+                              <td className="px-4 py-2">
+                                <div className="h-2 w-full rounded-full bg-border/30">
+                                  <div className="h-2 rounded-full bg-foreground/20" style={{ width: `${barPct}%` }} />
+                                </div>
+                              </td>
+                              <td className="px-4 py-2 text-right">
+                                {isMissing ? (
+                                  <span className="text-[10px] text-yellow-500">No records</span>
+                                ) : (
+                                  <span className="text-[10px] text-muted-foreground">{
+                                    expenseRows.filter(r => r.document_date?.startsWith(ym)).length
+                                  } docs</span>
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t-2 border-border font-semibold">
+                          <td className="px-4 pt-2.5 pb-3 text-foreground">Annual Total</td>
+                          <td className="px-4 pt-2.5 pb-3 text-right font-mono tabular-nums text-foreground">
+                            {fmt(totalExpenses, currency)}
+                          </td>
+                          <td className="px-4 pt-2.5 pb-3" />
+                          <td className="px-4 pt-2.5 pb-3 text-right text-xs text-muted-foreground">
+                            {expenseRows.length} total
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
                 </div>
               )}
 
@@ -416,11 +858,11 @@ export default function TaxBundlePage() {
                         <td className="py-1.5 text-right font-mono tabular-nums text-foreground">{fmt(totalGross, currency)}</td>
                       </tr>
                       <tr>
-                        <td className="py-1.5 text-foreground/80">Less: Documented Expenses</td>
+                        <td className="py-1.5 text-foreground/80">Less: Schedule C Expenses</td>
                         <td className="py-1.5 text-right font-mono tabular-nums text-foreground">({fmt(totalExpenses, currency)})</td>
                       </tr>
                       <tr className="border-t border-border">
-                        <td className="py-2 font-semibold text-foreground">Est. Taxable Income</td>
+                        <td className="py-2 font-semibold text-foreground">Est. Taxable Income (Line 31)</td>
                         <td className={`py-2 text-right font-mono tabular-nums font-semibold ${estimatedTaxable < 0 ? "text-destructive" : "text-foreground"}`}>
                           {estimatedTaxable >= 0
                             ? fmt(estimatedTaxable, currency)
@@ -441,8 +883,8 @@ export default function TaxBundlePage() {
                     </tbody>
                   </table>
                   <p className="mt-4 text-[10px] text-muted-foreground/60">
-                    Actual tax due depends on applicable deductions, exemptions, and BIR tax brackets.
-                    This computation is an estimate for reference only.
+                    Actual tax due depends on applicable deductions, exemptions, and tax brackets.
+                    Meals (Line 24b) are typically 50% deductible. This computation is an estimate for reference only.
                   </p>
                 </div>
               </div>
@@ -451,36 +893,64 @@ export default function TaxBundlePage() {
               {rows.length > 0 && (
                 <div className="border-t border-border pt-6">
                   <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                    Supporting Documents ({rows.length})
+                    Audit Trail — Supporting Documents ({rows.length})
                   </p>
-                  <div className="grid grid-cols-1 gap-x-10 sm:grid-cols-2">
-                    {incomeRows.map((r, i) => (
-                      <div key={`inc-${i}`} className="flex items-baseline justify-between border-b border-border/40 py-1">
-                        <span className="truncate text-xs text-muted-foreground">{r.employer_name ?? r.filename}</span>
-                        <span className="ml-4 shrink-0 text-[10px] text-muted-foreground/50">
-                          {r.document_date ? formatDate(r.document_date) : "—"}
-                        </span>
-                      </div>
-                    ))}
-                    {expenseRows.map((r, i) => (
-                      <div key={`exp-${i}`} className="flex items-baseline justify-between border-b border-border/40 py-1">
-                        <span className="truncate text-xs text-muted-foreground">{r.vendor_name ?? r.filename}</span>
-                        <span className="ml-4 shrink-0 text-[10px] text-muted-foreground/50">
-                          {r.document_date ? formatDate(r.document_date) : "—"}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-border text-left text-[10px] uppercase tracking-wider text-muted-foreground">
+                        <th className="pb-2 font-medium">Source File</th>
+                        <th className="pb-2 font-medium">Type</th>
+                        <th className="pb-2 font-medium">Vendor/Employer</th>
+                        <th className="pb-2 text-right font-medium">Amount</th>
+                        <th className="pb-2 font-medium">Category</th>
+                        <th className="pb-2 font-medium">Sched C</th>
+                        <th className="pb-2 text-right font-medium">Date</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/30">
+                      {[...incomeRows, ...expenseRows].map((r, i) => {
+                        const isExpense = r.document_type === "receipt" || r.document_type === "invoice"
+                        const scLine = isExpense ? getScheduleCLine(r.expense_category) : null
+                        const status = isExpense ? getDeductStatus(r.expense_category, r.confidence_score) : null
+                        return (
+                          <tr key={i} className={status === "review" ? "bg-yellow-500/5" : status === "uncategorized" ? "bg-red-500/5" : ""}>
+                            <td className="py-2 max-w-[140px] truncate text-muted-foreground" title={r.filename}>{r.filename}</td>
+                            <td className="py-2 text-muted-foreground">{r.document_type}</td>
+                            <td className="py-2 text-foreground">{r.vendor_name ?? r.employer_name ?? "—"}</td>
+                            <td className="py-2 text-right font-mono tabular-nums text-foreground">
+                              {fmt(r.total_amount ?? r.gross_income ?? 0, currency)}
+                            </td>
+                            <td className="py-2 text-muted-foreground">{r.expense_category ?? "—"}</td>
+                            <td className="py-2">
+                              {scLine ? (
+                                <span className="text-[10px] font-mono text-muted-foreground">{scLine}</span>
+                              ) : isExpense ? (
+                                <span className="text-[10px] text-red-500">unmapped</span>
+                              ) : (
+                                <span className="text-[10px] text-muted-foreground/40">—</span>
+                              )}
+                            </td>
+                            <td className="py-2 text-right text-muted-foreground">
+                              {r.document_date ? formatDate(r.document_date) : "—"}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               )}
 
               {/* ── Disclaimer ── */}
               <div className="border-t border-border pt-4">
                 <p className="text-[10px] leading-relaxed text-muted-foreground/60">
-                  This report is a reference summary based on uploaded documents. It is not tax advice and does not constitute an official BIR filing.
+                  This report maps expense categories to IRS Schedule C (Form 1040) line items for self-employment income.
+                  It is not tax advice and does not constitute an official filing document.
                   Estimated taxable income is calculated as gross income minus total documented expenses.
+                  Meals and entertainment expenses are typically only 50% deductible — adjust accordingly when entering into tax software.
                   Withholding tax figures are derived from payslip gross/net differentials.
-                  Consult a licensed tax professional for filing purposes.
+                  Items flagged &ldquo;Needs Review&rdquo; may contain personal expenses or have low AI confidence.
+                  Always consult a licensed tax professional before filing. Compatible with FreeTaxUSA, TurboTax, and other Schedule C filing platforms.
                 </p>
               </div>
 

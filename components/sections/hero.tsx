@@ -259,10 +259,10 @@ export function HeroSection() {
                 <h3 className="text-base font-semibold text-foreground">Smart Storage</h3>
               </div>
               <p className="mb-1 text-sm leading-relaxed text-muted-foreground">
-                Upload documents and files. AI generates reports: Expense Summary, P&L, and Tax Bundle.
+                AI generates reports: Expense Summary, P&L, and Tax Bundle — with expenses auto-mapped to IRS Schedule C line items, ready for tax filing.
               </p>
               <p className="mb-4 text-xs text-muted-foreground/70">
-                Contracts, payslips, bank statements, and PDC schedules all in one place.
+                Duplicate detection, missing-month flags, deductible tagging, and CSV export built for your tax prep workflow.
               </p>
 
               {/* Documents + Processing animation */}

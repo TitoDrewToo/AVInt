@@ -123,3 +123,28 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Print styles for Tax Bundle PDF export */
+@media print {
+  nav, .print\\:hidden, button, select, input {
+    display: none !important;
+  }
+  body {
+    background: white !important;
+    color: black !important;
+    font-size: 11px !important;
+  }
+  main {
+    padding: 0 !important;
+  }
+  .mx-auto {
+    max-width: 100% !important;
+  }
+  table {
+    font-size: 10px !important;
+  }
+  @page {
+    margin: 1.5cm;
+    size: letter;
+  }
+}

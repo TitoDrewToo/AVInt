@@ -8,9 +8,10 @@ import { AuthGuardModal } from "@/components/auth-guard-modal"
 import type { Session } from "@supabase/supabase-js"
 import {
   ArrowLeft, Download, FolderOpen, AlertTriangle, CheckCircle2,
-  XCircle, Copy, FileWarning, Ban,
+  XCircle, Copy, FileWarning, Ban, Printer, Archive, Save, Loader2,
 } from "lucide-react"
 import Link from "next/link"
+import JSZip from "jszip"
 
 // ── Schedule C Line-Item Mapping ──────────────────────────────────────────────
 // Maps our generic expense categories → IRS Schedule C line numbers
@@ -87,7 +88,11 @@ interface TaxRow {
   expense_category: string | null
   currency: string | null
   confidence_score: number | null
+  storage_path: string | null
 }
+
+// All Schedule C categories available for reassignment
+const ALL_SC_CATEGORIES = SCHEDULE_C_LINES.flatMap(l => l.categories).sort()
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -125,6 +130,8 @@ export default function TaxBundlePage() {
   const [folders, setFolders] = useState<FolderOption[]>([])
   const [targetFolder, setTargetFolder] = useState("")
   const [csvCopied, setCsvCopied] = useState(false)
+  const [zipping, setZipping] = useState(false)
+  const [reassigning, setReassigning] = useState<Record<string, string>>({}) // file_id → new category
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -172,7 +179,7 @@ export default function TaxBundlePage() {
           file_id, vendor_name, employer_name, document_date,
           total_amount, gross_income, net_income, expense_category, currency,
           confidence_score,
-          files!inner(filename, document_type)
+          files!inner(filename, document_type, storage_path)
         `)
         .in("file_id", userFiles.map(f => f.id))
         .order("document_date", { ascending: false })
@@ -196,6 +203,7 @@ export default function TaxBundlePage() {
           expense_category: row.expense_category,
           currency:         row.currency,
           confidence_score: row.confidence_score != null ? safeNum(row.confidence_score) : null,
+          storage_path:     row.files?.storage_path ?? null,
         })))
       }
     } catch (err) {
@@ -434,6 +442,92 @@ export default function TaxBundlePage() {
     })
   }
 
+  // ── PDF Export (print-to-PDF) ───────────────────────────────────────────────
+
+  function printReport() {
+    window.print()
+  }
+
+  // ── Zip Source Documents ────────────────────────────────────────────────────
+
+  async function downloadZip() {
+    if (zipping) return
+    setZipping(true)
+    try {
+      const zip = new JSZip()
+      const seen = new Set<string>()
+
+      // Collect unique file_ids with storage paths
+      const filesToBundle = rows.filter(r => r.storage_path && !seen.has(r.file_id) && seen.add(r.file_id))
+
+      // Download each file from Supabase storage and add to zip
+      const results = await Promise.allSettled(
+        filesToBundle.map(async (r) => {
+          const { data } = await supabase.storage.from("documents").createSignedUrl(r.storage_path!, 120)
+          if (!data?.signedUrl) throw new Error(`No URL for ${r.filename}`)
+          const res = await fetch(data.signedUrl)
+          if (!res.ok) throw new Error(`Failed to fetch ${r.filename}`)
+          const blob = await res.blob()
+
+          // Organize into folders by type
+          const folder = r.document_type === "payslip" || r.document_type === "income_statement"
+            ? "income" : "expenses"
+          zip.file(`${folder}/${r.filename}`, blob)
+        })
+      )
+
+      const failed = results.filter(r => r.status === "rejected").length
+      if (failed > 0 && failed === filesToBundle.length) {
+        setError(`Failed to download all ${failed} files. Please try again.`)
+        return
+      }
+
+      // Add the CSV summary to the zip
+      zip.file(`schedule-c-summary-${taxYear}.csv`, generateCSV())
+
+      // Generate and download
+      const content = await zip.generateAsync({ type: "blob" })
+      const url = URL.createObjectURL(content)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `tax-bundle-${taxYear}.zip`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error("Zip error:", err)
+      setError("Failed to create document bundle. Please try again.")
+    } finally {
+      setZipping(false)
+    }
+  }
+
+  // ── Category Reassignment ───────────────────────────────────────────────────
+
+  async function saveCategory(fileId: string, newCategory: string) {
+    try {
+      const { error: updateError } = await supabase
+        .from("document_fields")
+        .update({ expense_category: newCategory })
+        .eq("file_id", fileId)
+
+      if (updateError) throw updateError
+
+      // Update local state
+      setRows(prev => prev.map(r =>
+        r.file_id === fileId ? { ...r, expense_category: newCategory } : r
+      ))
+      // Remove from reassigning map
+      setReassigning(prev => {
+        const next = { ...prev }
+        delete next[fileId]
+        return next
+      })
+    } catch (err) {
+      console.error("Category update error:", err)
+      setError("Failed to update category. Please try again.")
+    }
+  }
+
   const generatedDate = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "2-digit" })
   const hasData = incomeRows.length > 0 || expenseRows.length > 0
 
@@ -530,7 +624,7 @@ export default function TaxBundlePage() {
                       For reference only — consult a licensed tax professional before filing.
                     </p>
                   </div>
-                  <div className="flex shrink-0 gap-2">
+                  <div className="flex shrink-0 flex-wrap gap-2 print:hidden">
                     <Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={copyCSV}>
                       <Copy className="h-3.5 w-3.5" />
                       {csvCopied ? "Copied!" : "Copy CSV"}
@@ -538,6 +632,14 @@ export default function TaxBundlePage() {
                     <Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={downloadCSV}>
                       <Download className="h-3.5 w-3.5" />
                       Export CSV
+                    </Button>
+                    <Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={printReport}>
+                      <Printer className="h-3.5 w-3.5" />
+                      Print / PDF
+                    </Button>
+                    <Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={downloadZip} disabled={zipping}>
+                      {zipping ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Archive className="h-3.5 w-3.5" />}
+                      {zipping ? "Bundling..." : "Download Zip"}
                     </Button>
                   </div>
                 </div>
@@ -642,23 +744,45 @@ export default function TaxBundlePage() {
                   )}
 
                   {uncategorizedItems.length > 0 && (
-                    <div className="flex items-start gap-3 rounded border border-red-500/20 bg-red-500/5 p-4">
-                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
-                      <div>
-                        <p className="text-sm font-medium text-foreground">
-                          {uncategorizedItems.length} uncategorized expense{uncategorizedItems.length > 1 ? "s" : ""} — cannot map to Schedule C
-                        </p>
-                        <div className="mt-1.5 space-y-1">
-                          {uncategorizedItems.slice(0, 5).map((item, i) => (
-                            <p key={i} className="text-xs text-muted-foreground">
-                              {item.vendor_name ?? item.filename} — {fmt(item.total_amount ?? 0, currency)}
-                            </p>
-                          ))}
-                          {uncategorizedItems.length > 5 && (
-                            <p className="text-xs text-muted-foreground/60">
-                              + {uncategorizedItems.length - 5} more
-                            </p>
-                          )}
+                    <div className="rounded border border-red-500/20 bg-red-500/5 p-4 print:hidden">
+                      <div className="flex items-start gap-3">
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-foreground">
+                            {uncategorizedItems.length} uncategorized expense{uncategorizedItems.length > 1 ? "s" : ""} — assign a category to map to Schedule C
+                          </p>
+                          <div className="mt-3 space-y-2">
+                            {uncategorizedItems.map((item) => (
+                              <div key={item.file_id} className="flex flex-wrap items-center gap-2 rounded border border-border/50 bg-background/50 p-2">
+                                <span className="min-w-0 flex-1 truncate text-xs text-foreground" title={item.filename}>
+                                  {item.vendor_name ?? item.filename}
+                                </span>
+                                <span className="shrink-0 font-mono text-xs text-muted-foreground">
+                                  {fmt(item.total_amount ?? 0, currency)}
+                                </span>
+                                <select
+                                  className="rounded border border-border bg-background px-2 py-1 text-xs text-foreground"
+                                  value={reassigning[item.file_id] ?? ""}
+                                  onChange={e => setReassigning(prev => ({ ...prev, [item.file_id]: e.target.value }))}
+                                >
+                                  <option value="">Select category...</option>
+                                  {ALL_SC_CATEGORIES.map(cat => (
+                                    <option key={cat} value={cat}>{cat} ({getScheduleCLine(cat)})</option>
+                                  ))}
+                                </select>
+                                {reassigning[item.file_id] && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 gap-1 rounded px-2 text-[10px]"
+                                    onClick={() => saveCategory(item.file_id, reassigning[item.file_id])}
+                                  >
+                                    <Save className="h-3 w-3" /> Save
+                                  </Button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       </div>
                     </div>

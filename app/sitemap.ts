@@ -43,48 +43,18 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "monthly",
       priority: 0.9,
     },
-    // ── Report pages (high SEO value — keyword-rich financial report content) ─
+    // ── Legal ──────────────────────────────────────────────────────────────────
     {
-      url: `${BASE_URL}/tools/smart-storage/reports/expense-summary`,
+      url: `${BASE_URL}/privacy`,
       lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.8,
+      changeFrequency: "yearly",
+      priority: 0.3,
     },
     {
-      url: `${BASE_URL}/tools/smart-storage/reports/income-summary`,
+      url: `${BASE_URL}/terms`,
       lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.8,
-    },
-    {
-      url: `${BASE_URL}/tools/smart-storage/reports/tax-bundle`,
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.8,
-    },
-    {
-      url: `${BASE_URL}/tools/smart-storage/reports/profit-loss`,
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.8,
-    },
-    {
-      url: `${BASE_URL}/tools/smart-storage/reports/contract-summary`,
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.7,
-    },
-    {
-      url: `${BASE_URL}/tools/smart-storage/reports/key-terms`,
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.7,
-    },
-    {
-      url: `${BASE_URL}/tools/smart-storage/reports/business-expense`,
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.8,
+      changeFrequency: "yearly",
+      priority: 0.3,
     },
   ]
 }

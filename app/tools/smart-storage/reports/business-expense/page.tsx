@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 import type { Session } from "@supabase/supabase-js"
-import { ArrowLeft, Download, FolderOpen } from "lucide-react"
+import { ArrowLeft, Download, FolderOpen, Printer, Copy, Ban, FileWarning } from "lucide-react"
 import Link from "next/link"
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -25,6 +25,47 @@ const BUSINESS_CATEGORIES = new Set([
   "Repairs", "Maintenance",
 ])
 
+const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+
+// ── Schedule C Line-Item Mapping ─────────────────────────────────────────────
+
+interface ScheduleCLine {
+  line: string
+  label: string
+  categories: string[]
+}
+
+const SCHEDULE_C_LINES: ScheduleCLine[] = [
+  { line: "Line 8",  label: "Advertising",          categories: ["Marketing", "Advertising", "Design", "Printing"] },
+  { line: "Line 9",  label: "Car & Truck",           categories: ["Fuel", "Parking", "Transport"] },
+  { line: "Line 10", label: "Commissions & Fees",    categories: ["Bank Fees"] },
+  { line: "Line 11", label: "Contract Labor",        categories: ["Consulting"] },
+  { line: "Line 13", label: "Depreciation",          categories: ["Equipment", "Hardware"] },
+  { line: "Line 15", label: "Insurance",             categories: ["Insurance"] },
+  { line: "Line 17", label: "Legal & Professional",  categories: ["Legal", "Accounting", "Professional Services"] },
+  { line: "Line 18", label: "Office Expense",        categories: ["Office", "Office Supplies"] },
+  { line: "Line 20b",label: "Rent",                  categories: ["Rent", "Coworking"] },
+  { line: "Line 21", label: "Repairs",               categories: ["Repairs", "Maintenance"] },
+  { line: "Line 22", label: "Supplies",              categories: ["Subscriptions", "SaaS", "Cloud Services", "Software"] },
+  { line: "Line 23", label: "Taxes & Licenses",      categories: ["Tax", "Taxes"] },
+  { line: "Line 24a",label: "Travel",                categories: ["Travel", "Accommodation", "Airfare"] },
+  { line: "Line 24b",label: "Meals (50%)",           categories: ["Meals", "Entertainment", "Client Entertainment"] },
+  { line: "Line 25", label: "Utilities",             categories: ["Utilities", "Internet", "Phone"] },
+  { line: "Line 27a",label: "Other",                 categories: ["Training", "Education", "Conferences"] },
+]
+
+const CATEGORY_TO_LINE = new Map<string, string>()
+for (const sc of SCHEDULE_C_LINES) {
+  for (const cat of sc.categories) {
+    CATEGORY_TO_LINE.set(cat.toLowerCase(), sc.line)
+  }
+}
+
+function getScheduleCLine(category: string | null): string | null {
+  if (!category) return null
+  return CATEGORY_TO_LINE.get(category.toLowerCase()) ?? null
+}
+
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 interface BizExpenseRow {
@@ -42,13 +83,15 @@ interface BizExpenseRow {
   isBusiness: boolean
 }
 
+interface DuplicateGroup { key: string; items: BizExpenseRow[] }
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function fmt(amount: number, currency: string) {
   try {
-    return new Intl.NumberFormat("en-PH", {
+    return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: currency || "PHP",
+      currency: currency || "USD",
       minimumFractionDigits: 2,
     }).format(amount)
   } catch {
@@ -57,13 +100,13 @@ function fmt(amount: number, currency: string) {
 }
 
 function formatDate(dateStr: string) {
-  return new Date(dateStr + "T00:00:00").toLocaleDateString("en-PH", {
+  return new Date(dateStr + "T00:00:00").toLocaleDateString("en-US", {
     year: "numeric", month: "short", day: "2-digit",
   })
 }
 
 function truncate(str: string, max: number) {
-  return str.length > max ? str.slice(0, max) + "…" : str
+  return str.length > max ? str.slice(0, max) + "\u2026" : str
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
@@ -81,6 +124,7 @@ export default function BusinessExpensePage() {
   const [targetFolder, setTargetFolder]   = useState("")
   // overrides: id → true (force Business) | false (force Personal)
   const [overrides, setOverrides]         = useState<Record<string, boolean>>({})
+  const [csvCopied, setCsvCopied]         = useState(false)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -184,9 +228,9 @@ export default function BusinessExpensePage() {
   // ── Aggregations ──────────────────────────────────────────────────────────────
 
   const _cc = expenses.reduce((acc: Record<string, number>, e) => {
-    const c = e.currency ?? "PHP"; acc[c] = (acc[c] ?? 0) + Math.abs(e.total_amount ?? 0); return acc
+    const c = e.currency ?? "USD"; acc[c] = (acc[c] ?? 0) + Math.abs(e.total_amount ?? 0); return acc
   }, {})
-  const currency = Object.entries(_cc).sort(([, a], [, b]) => b - a)[0]?.[0] ?? "PHP"
+  const currency = Object.entries(_cc).sort(([, a], [, b]) => b - a)[0]?.[0] ?? "USD"
 
   const resolvedExpenses = expenses.map(e => ({
     ...e,
@@ -225,10 +269,103 @@ export default function BusinessExpensePage() {
     .sort(([, a], [, b]) => b - a)
     .slice(0, 8)
 
+  // ── Monthly Expense Breakdown ───────────────────────────────────────────────
+
+  const monthlyExpenses = new Map<string, number>()
+  const allExpenseMonths = new Set<string>()
+
+  for (const e of resolvedExpenses) {
+    if (e.isBusiness && e.document_date) {
+      const ym = e.document_date.slice(0, 7)
+      monthlyExpenses.set(ym, (monthlyExpenses.get(ym) ?? 0) + (e.total_amount ?? 0))
+      allExpenseMonths.add(ym)
+    }
+  }
+
+  const sortedMonths = Array.from(allExpenseMonths).sort()
+  let fullMonthRange: string[] = []
+  if (sortedMonths.length >= 2) {
+    const [startY, startM] = sortedMonths[0].split("-").map(Number)
+    const [endY, endM] = sortedMonths[sortedMonths.length - 1].split("-").map(Number)
+    let y = startY, m = startM
+    while (y < endY || (y === endY && m <= endM)) {
+      fullMonthRange.push(`${y}-${String(m).padStart(2, "0")}`)
+      m++
+      if (m > 12) { m = 1; y++ }
+    }
+  } else {
+    fullMonthRange = sortedMonths
+  }
+
+  const missingMonths = fullMonthRange.filter(m => !monthlyExpenses.has(m))
+
+  // ── Duplicate Detection ─────────────────────────────────────────────────────
+
+  const dupMap = new Map<string, BizExpenseRow[]>()
+  for (const e of resolvedExpenses) {
+    if (e.vendor_name && e.total_amount != null && e.document_date) {
+      const key = `${e.vendor_name.toLowerCase().trim()}|${e.total_amount.toFixed(2)}|${e.document_date}`
+      const arr = dupMap.get(key) ?? []
+      arr.push(e)
+      dupMap.set(key, arr)
+    }
+  }
+  const duplicates: DuplicateGroup[] = []
+  for (const [key, items] of dupMap) {
+    if (items.length > 1) duplicates.push({ key, items })
+  }
+
+  // ── Dates & Period ──────────────────────────────────────────────────────────
+
   const allDates   = expenses.map(e => e.document_date).filter(Boolean) as string[]
   const periodStart = allDates.length ? allDates.reduce((a, b) => a < b ? a : b) : null
   const periodEnd   = allDates.length ? allDates.reduce((a, b) => a > b ? a : b) : null
-  const generatedDate = new Date().toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "2-digit" })
+  const generatedDate = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "2-digit" })
+
+  // ── CSV Export ──────────────────────────────────────────────────────────────
+
+  function generateCSV(): string {
+    const lines: string[] = []
+    lines.push("Date,Vendor,Category,Schedule C Line,Amount,Business/Personal,Source File")
+
+    for (const row of resolvedExpenses) {
+      const scLine = getScheduleCLine(row.expense_category) ?? "N/A"
+      lines.push([
+        row.document_date ?? "",
+        `"${(row.vendor_name ?? "").replace(/"/g, '""')}"`,
+        `"${row.expense_category ?? "Uncategorized"}"`,
+        scLine,
+        (row.total_amount ?? 0).toFixed(2),
+        row.isBusiness ? "Business" : "Personal",
+        `"${row.filename.replace(/"/g, '""')}"`,
+      ].join(","))
+    }
+
+    return lines.join("\n")
+  }
+
+  function downloadCSV() {
+    const csv = generateCSV()
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    const periodLabel = periodStart && periodEnd ? `${periodStart}_${periodEnd}` : "all"
+    a.download = `business-expense-report-${periodLabel}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function copyCSV() {
+    navigator.clipboard.writeText(generateCSV()).then(() => {
+      setCsvCopied(true)
+      setTimeout(() => setCsvCopied(false), 2000)
+    })
+  }
+
+  function printReport() {
+    window.print()
+  }
 
   if (!sessionLoaded) return null
   if (!session) return <AuthGuardModal isVisible={true} />
@@ -252,14 +389,13 @@ export default function BusinessExpensePage() {
         <div className="mx-auto max-w-4xl">
 
           {/* Back nav */}
-          <div className="mb-8">
-            <Link
-              href="/tools/smart-storage"
-              className="inline-flex items-center gap-2 text-xs text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              Smart Storage
+          <div className="mb-8 flex items-center gap-3">
+            <Link href="/tools/smart-storage">
+              <button className="flex h-8 w-8 items-center justify-center rounded border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+                <ArrowLeft className="h-4 w-4" />
+              </button>
             </Link>
+            <span className="text-xs text-muted-foreground">Smart Storage / Reports</span>
           </div>
 
           {/* Report header */}
@@ -273,20 +409,30 @@ export default function BusinessExpensePage() {
               </h1>
               <p className="mt-1 text-xs text-muted-foreground">
                 {periodStart && periodEnd
-                  ? `${formatDate(periodStart)} – ${formatDate(periodEnd)}`
+                  ? `${formatDate(periodStart)} \u2013 ${formatDate(periodEnd)}`
                   : "All periods"
                 }
-                {" · "}Generated {generatedDate}
+                {" \u00b7 "}Generated {generatedDate}
               </p>
             </div>
-            <Button variant="outline" size="sm" className="rounded-md gap-2 text-xs" disabled>
-              <Download className="h-3.5 w-3.5" />
-              Export PDF
-            </Button>
+            <div className="flex shrink-0 flex-wrap gap-2 print:hidden">
+              <Button variant="outline" size="sm" className="gap-2 rounded-md text-xs" onClick={copyCSV}>
+                <Copy className="h-3.5 w-3.5" />
+                {csvCopied ? "Copied!" : "Copy CSV"}
+              </Button>
+              <Button variant="outline" size="sm" className="gap-2 rounded-md text-xs" onClick={downloadCSV}>
+                <Download className="h-3.5 w-3.5" />
+                Export CSV
+              </Button>
+              <Button variant="outline" size="sm" className="gap-2 rounded-md text-xs" onClick={printReport}>
+                <Printer className="h-3.5 w-3.5" />
+                Print / PDF
+              </Button>
+            </div>
           </div>
 
           {/* Filters */}
-          <div className="mb-8 flex items-center gap-3 border-y border-border py-3">
+          <div className="mb-8 flex items-center gap-3 border-y border-border py-3 print:hidden">
             <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">Period</span>
             <input
               type="date"
@@ -294,7 +440,7 @@ export default function BusinessExpensePage() {
               onChange={e => setDateFrom(e.target.value)}
               className="rounded border border-border bg-background px-2.5 py-1 text-xs text-foreground"
             />
-            <span className="text-xs text-muted-foreground">—</span>
+            <span className="text-xs text-muted-foreground">&mdash;</span>
             <input
               type="date"
               value={dateTo}
@@ -326,7 +472,7 @@ export default function BusinessExpensePage() {
 
           {loading ? (
             <div className="flex items-center justify-center py-24 text-sm text-muted-foreground">
-              Loading…
+              Loading&hellip;
             </div>
           ) : error ? (
             <div className="flex items-center justify-center py-24 text-xs text-red-500">
@@ -338,6 +484,44 @@ export default function BusinessExpensePage() {
             </div>
           ) : (
             <div className="space-y-10">
+
+              {/* ── Duplicate Warning Banner ── */}
+              {duplicates.length > 0 && (
+                <div className="flex items-start gap-3 rounded border border-yellow-500/20 bg-yellow-500/5 p-4">
+                  <Ban className="mt-0.5 h-4 w-4 shrink-0 text-yellow-500" />
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      {duplicates.length} potential duplicate{duplicates.length > 1 ? "s" : ""} detected
+                    </p>
+                    <div className="mt-1.5 space-y-1">
+                      {duplicates.map(d => (
+                        <p key={d.key} className="text-xs text-muted-foreground">
+                          {d.items[0].vendor_name} &mdash; {fmt(d.items[0].total_amount ?? 0, currency)} on {d.items[0].document_date}
+                          <span className="ml-1 text-yellow-500">({d.items.length} entries)</span>
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Missing Months Warning ── */}
+              {missingMonths.length > 0 && (
+                <div className="flex items-start gap-3 rounded border border-yellow-500/20 bg-yellow-500/5 p-4">
+                  <FileWarning className="mt-0.5 h-4 w-4 shrink-0 text-yellow-500" />
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      {missingMonths.length} month{missingMonths.length > 1 ? "s" : ""} with no business expenses
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {missingMonths.map(ym => {
+                        const [y, mo] = ym.split("-")
+                        return `${MONTH_NAMES[parseInt(mo) - 1]} ${y}`
+                      }).join(", ")}
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* ── Summary Strip ── */}
               <div className="grid grid-cols-2 divide-x divide-border border border-border sm:grid-cols-4">
@@ -380,6 +564,7 @@ export default function BusinessExpensePage() {
                     <thead>
                       <tr className="border-b border-border text-left text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
                         <th className="pb-2 font-medium">Category</th>
+                        <th className="pb-2 font-medium">Sched C</th>
                         <th className="pb-2 text-right font-medium">Amount</th>
                         <th className="pb-2 text-right font-medium">Share</th>
                         <th className="pb-2 text-right font-medium">Docs</th>
@@ -389,11 +574,12 @@ export default function BusinessExpensePage() {
                       {businessByCategory.map(cat => (
                         <tr key={cat.category}>
                           <td className="py-2 text-foreground">{cat.category}</td>
+                          <td className="py-2 text-muted-foreground">{getScheduleCLine(cat.category) ?? "\u2014"}</td>
                           <td className="py-2 text-right font-mono tabular-nums text-foreground">
                             {fmt(cat.total, currency)}
                           </td>
                           <td className="py-2 text-right text-muted-foreground">
-                            {totalBusiness > 0 ? `${((cat.total / totalBusiness) * 100).toFixed(1)}%` : "—"}
+                            {totalBusiness > 0 ? `${((cat.total / totalBusiness) * 100).toFixed(1)}%` : "\u2014"}
                           </td>
                           <td className="py-2 text-right text-muted-foreground">{cat.count}</td>
                         </tr>
@@ -402,12 +588,77 @@ export default function BusinessExpensePage() {
                     <tfoot>
                       <tr className="border-t border-border font-medium">
                         <td className="pt-2 text-foreground">Total</td>
+                        <td className="pt-2" />
                         <td className="pt-2 text-right font-mono tabular-nums text-foreground">{fmt(totalBusiness, currency)}</td>
                         <td className="pt-2 text-right text-muted-foreground">100%</td>
                         <td className="pt-2 text-right text-muted-foreground">{businessRows.length}</td>
                       </tr>
                     </tfoot>
                   </table>
+                </div>
+              )}
+
+              {/* ── Monthly Expense Summary ── */}
+              {fullMonthRange.length > 0 && (
+                <div>
+                  <p className="mb-3 text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                    Monthly Expense Summary
+                  </p>
+                  <div className="rounded border border-border">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-border text-left text-[10px] uppercase tracking-wider text-muted-foreground">
+                          <th className="px-4 pb-2 pt-3 font-medium">Month</th>
+                          <th className="px-4 pb-2 pt-3 text-right font-medium">Amount</th>
+                          <th className="px-4 pb-2 pt-3 font-medium">Bar</th>
+                          <th className="px-4 pb-2 pt-3 text-right font-medium">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/50">
+                        {fullMonthRange.map(ym => {
+                          const amount = monthlyExpenses.get(ym) ?? 0
+                          const maxMonth = Math.max(...Array.from(monthlyExpenses.values()), 1)
+                          const barPct = (amount / maxMonth) * 100
+                          const isMissing = amount === 0
+                          const [y, mo] = ym.split("-")
+                          return (
+                            <tr key={ym} className={isMissing ? "bg-yellow-500/5" : ""}>
+                              <td className="px-4 py-2 text-foreground">{MONTH_NAMES[parseInt(mo) - 1]} {y}</td>
+                              <td className="px-4 py-2 text-right font-mono tabular-nums text-foreground">
+                                {amount > 0 ? fmt(amount, currency) : "\u2014"}
+                              </td>
+                              <td className="px-4 py-2">
+                                <div className="h-2 w-full rounded-full bg-border/30">
+                                  <div className="h-2 rounded-full bg-foreground/20" style={{ width: `${barPct}%` }} />
+                                </div>
+                              </td>
+                              <td className="px-4 py-2 text-right">
+                                {isMissing ? (
+                                  <span className="text-[10px] text-yellow-500">No records</span>
+                                ) : (
+                                  <span className="text-[10px] text-muted-foreground">{
+                                    resolvedExpenses.filter(r => r.isBusiness && r.document_date?.startsWith(ym)).length
+                                  } docs</span>
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t-2 border-border font-semibold">
+                          <td className="px-4 pb-3 pt-2.5 text-foreground">Total</td>
+                          <td className="px-4 pb-3 pt-2.5 text-right font-mono tabular-nums text-foreground">
+                            {fmt(totalBusiness, currency)}
+                          </td>
+                          <td className="px-4 pb-3 pt-2.5" />
+                          <td className="px-4 pb-3 pt-2.5 text-right text-xs text-muted-foreground">
+                            {businessRows.length} total
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
                 </div>
               )}
 
@@ -464,14 +715,15 @@ export default function BusinessExpensePage() {
                 <div className="divide-y divide-border border border-border">
                   {resolvedExpenses.map((row) => {
                     const isOverridden = row.id in overrides
+                    const lowConfidence = row.confidence_score !== null && row.confidence_score < 0.7
                     return (
                       <div
                         key={row.id}
-                        className={`flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3 ${isOverridden ? "ring-1 ring-inset ring-amber-400/60" : ""}`}
+                        className={`flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3 ${isOverridden ? "ring-1 ring-inset ring-amber-400/60" : ""} ${lowConfidence ? "bg-yellow-500/5" : ""}`}
                       >
                         {/* Date */}
                         <span className="w-24 shrink-0 text-[10px] text-muted-foreground">
-                          {row.document_date ? formatDate(row.document_date) : "—"}
+                          {row.document_date ? formatDate(row.document_date) : "\u2014"}
                         </span>
                         {/* Vendor */}
                         <span className="min-w-0 flex-1 text-xs text-foreground">
@@ -479,7 +731,7 @@ export default function BusinessExpensePage() {
                         </span>
                         {/* Category */}
                         <span className="hidden text-[10px] text-muted-foreground/70 sm:block">
-                          {row.expense_category ?? "—"}
+                          {row.expense_category ?? "\u2014"}
                         </span>
                         {/* Reclassify badge */}
                         <button
@@ -494,7 +746,7 @@ export default function BusinessExpensePage() {
                         </button>
                         {/* Amount */}
                         <span className="shrink-0 font-mono text-xs tabular-nums text-foreground">
-                          {row.total_amount != null ? fmt(row.total_amount, row.currency ?? currency) : "—"}
+                          {row.total_amount != null ? fmt(row.total_amount, row.currency ?? currency) : "\u2014"}
                         </span>
                       </div>
                     )
@@ -514,7 +766,7 @@ export default function BusinessExpensePage() {
               {/* ── Disclaimer ── */}
               <p className="border-t border-border pt-6 text-[10px] leading-relaxed text-muted-foreground/60">
                 Business classification is AI-generated based on expense category. Click any badge above to override.
-                Overrides are local to this session. Estimated tax savings use a 30% indicative rate — consult your accountant.
+                Overrides are local to this session. Estimated tax savings use a 30% indicative rate &mdash; consult your accountant.
                 This report is informational and does not constitute a certified financial statement.
               </p>
 

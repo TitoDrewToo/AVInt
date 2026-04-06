@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 import type { Session } from "@supabase/supabase-js"
-import { ArrowLeft, Download, FolderOpen } from "lucide-react"
+import { ArrowLeft, Download, FolderOpen, Printer } from "lucide-react"
 import Link from "next/link"
 
 interface FolderOption { id: string; name: string }
@@ -27,15 +27,15 @@ interface ExpenseRow {
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function fmt(amount: number, currency: string) {
-  return new Intl.NumberFormat("en-PH", {
+  return new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency: currency || "PHP",
+    currency: currency || "USD",
     minimumFractionDigits: 2,
   }).format(amount)
 }
 
 function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString("en-PH", {
+  return new Date(dateStr).toLocaleDateString("en-US", {
     year: "numeric", month: "short", day: "2-digit",
   })
 }
@@ -135,9 +135,9 @@ export default function ExpenseSummaryPage() {
   // ── Aggregations ──────────────────────────────────────────────────────────────
 
   const _cc = expenses.reduce((acc: Record<string, number>, e) => {
-    const c = e.currency ?? "PHP"; acc[c] = (acc[c] ?? 0) + Math.abs(e.total_amount ?? 0); return acc
+    const c = e.currency ?? "USD"; acc[c] = (acc[c] ?? 0) + Math.abs(e.total_amount ?? 0); return acc
   }, {})
-  const currency = Object.entries(_cc).sort(([, a], [, b]) => b - a)[0]?.[0] ?? "PHP"
+  const currency = Object.entries(_cc).sort(([, a], [, b]) => b - a)[0]?.[0] ?? "USD"
   const totalExpenses = expenses.reduce((s, e) => s + (e.total_amount ?? 0), 0)
 
   // Group by category (sorted by amount desc)
@@ -166,7 +166,7 @@ export default function ExpenseSummaryPage() {
   const periodStart = allDates.length ? allDates.reduce((a, b) => a < b ? a : b) : null
   const periodEnd   = allDates.length ? allDates.reduce((a, b) => a > b ? a : b) : null
 
-  const generatedDate = new Date().toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "2-digit" })
+  const generatedDate = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "2-digit" })
 
   if (!sessionLoaded) return null
   if (!session) return <AuthGuardModal isVisible={true} />
@@ -259,10 +259,12 @@ export default function ExpenseSummaryPage() {
                       <span>Generated {generatedDate}</span>
                     </div>
                   </div>
-                  <Button variant="outline" size="sm" className="shrink-0 gap-2 rounded text-xs" disabled>
-                    <Download className="h-3.5 w-3.5" />
-                    Export PDF
-                  </Button>
+                  <div className="print:hidden">
+                    <Button variant="outline" size="sm" className="shrink-0 gap-2 rounded text-xs" onClick={() => window.print()}>
+                      <Printer className="h-3.5 w-3.5" />
+                      Print / PDF
+                    </Button>
+                  </div>
                 </div>
               </div>
 

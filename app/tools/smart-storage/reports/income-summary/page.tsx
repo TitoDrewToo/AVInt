@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 import type { Session } from "@supabase/supabase-js"
-import { ArrowLeft, Download, FolderOpen } from "lucide-react"
+import { ArrowLeft, Download, FolderOpen, Printer } from "lucide-react"
 import Link from "next/link"
 
 interface FolderOption { id: string; name: string }
@@ -28,15 +28,15 @@ interface IncomeRow {
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function fmt(amount: number, currency: string) {
-  return new Intl.NumberFormat("en-PH", {
+  return new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency: currency || "PHP",
+    currency: currency || "USD",
     minimumFractionDigits: 2,
   }).format(amount)
 }
 
 function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString("en-PH", {
+  return new Date(dateStr).toLocaleDateString("en-US", {
     year: "numeric", month: "short", day: "2-digit",
   })
 }
@@ -137,9 +137,9 @@ export default function IncomeSummaryPage() {
   // ── Aggregations ──────────────────────────────────────────────────────────────
 
   const _cc = income.reduce((acc: Record<string, number>, r) => {
-    const c = r.currency ?? "PHP"; acc[c] = (acc[c] ?? 0) + Math.abs(r.gross_income ?? r.total_amount ?? 0); return acc
+    const c = r.currency ?? "USD"; acc[c] = (acc[c] ?? 0) + Math.abs(r.gross_income ?? r.total_amount ?? 0); return acc
   }, {})
-  const currency = Object.entries(_cc).sort(([, a], [, b]) => b - a)[0]?.[0] ?? "PHP"
+  const currency = Object.entries(_cc).sort(([, a], [, b]) => b - a)[0]?.[0] ?? "USD"
 
   const totalGross = income.reduce((s, r) => s + (r.gross_income ?? r.total_amount ?? 0), 0)
   const totalNet   = income.reduce((s, r) => s + (r.net_income ?? 0), 0)
@@ -170,7 +170,7 @@ export default function IncomeSummaryPage() {
   const periodStart = allDates.length ? allDates.reduce((a, b) => a < b ? a : b) : null
   const periodEnd   = allDates.length ? allDates.reduce((a, b) => a > b ? a : b) : null
 
-  const generatedDate = new Date().toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "2-digit" })
+  const generatedDate = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "2-digit" })
 
   if (!sessionLoaded) return null
   if (!session) return <AuthGuardModal isVisible={true} />
@@ -263,10 +263,12 @@ export default function IncomeSummaryPage() {
                       <span>Generated {generatedDate}</span>
                     </div>
                   </div>
-                  <Button variant="outline" size="sm" className="shrink-0 gap-2 rounded text-xs" disabled>
-                    <Download className="h-3.5 w-3.5" />
-                    Export PDF
-                  </Button>
+                  <div className="print:hidden">
+                    <Button variant="outline" size="sm" className="shrink-0 gap-2 rounded text-xs" onClick={() => window.print()}>
+                      <Printer className="h-3.5 w-3.5" />
+                      Print / PDF
+                    </Button>
+                  </div>
                 </div>
               </div>
 

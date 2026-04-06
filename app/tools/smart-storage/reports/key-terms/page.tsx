@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 import type { Session } from "@supabase/supabase-js"
-import { ArrowLeft, Download, FolderOpen } from "lucide-react"
+import { ArrowLeft, Download, FolderOpen, Printer } from "lucide-react"
 import Link from "next/link"
 
 interface FolderOption { id: string; name: string }
@@ -29,7 +29,7 @@ interface KeyTermsRow {
 
 function fmt(amount: number, currency: string) {
   try {
-    return new Intl.NumberFormat("en-PH", {
+    return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: currency || "USD",
       minimumFractionDigits: 2,
@@ -40,7 +40,7 @@ function fmt(amount: number, currency: string) {
 }
 
 function formatDate(dateStr: string) {
-  return new Date(dateStr + "T00:00:00").toLocaleDateString("en-PH", {
+  return new Date(dateStr + "T00:00:00").toLocaleDateString("en-US", {
     year: "numeric",
     month: "short",
     day: "2-digit",
@@ -202,7 +202,7 @@ export default function KeyTermsPage() {
   const counterpartyRollup = Object.entries(counterpartyMap)
     .sort(([, a], [, b]) => b.total - a.total)
 
-  const generatedDate = new Date().toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "2-digit" })
+  const generatedDate = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "2-digit" })
 
   if (!sessionLoaded) return null
   if (!session) return <AuthGuardModal isVisible={true} />
@@ -226,14 +226,13 @@ export default function KeyTermsPage() {
         <div className="mx-auto max-w-4xl">
 
           {/* Back nav */}
-          <div className="mb-8">
-            <Link
-              href="/tools/smart-storage"
-              className="inline-flex items-center gap-2 text-xs text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              Smart Storage
+          <div className="mb-8 flex items-center gap-3">
+            <Link href="/tools/smart-storage">
+              <button className="flex h-8 w-8 items-center justify-center rounded border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+                <ArrowLeft className="h-4 w-4" />
+              </button>
             </Link>
+            <span className="text-xs text-muted-foreground">Smart Storage / Reports</span>
           </div>
 
           {/* Report header */}
@@ -249,10 +248,12 @@ export default function KeyTermsPage() {
                 Generated {generatedDate}
               </p>
             </div>
-            <Button variant="outline" size="sm" className="rounded-md gap-2 text-xs" disabled>
-              <Download className="h-3.5 w-3.5" />
-              Export PDF
-            </Button>
+            <div className="print:hidden">
+              <Button variant="outline" size="sm" className="rounded-md gap-2 text-xs" onClick={() => window.print()}>
+                <Printer className="h-3.5 w-3.5" />
+                Print / PDF
+              </Button>
+            </div>
           </div>
 
           {/* Filters */}

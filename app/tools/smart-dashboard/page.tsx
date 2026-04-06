@@ -583,7 +583,7 @@ export default function SmartDashboardPage() {
   const [session, setSession] = useState<Session | null>(null)
   const [sessionLoaded, setSessionLoaded] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [kpi, setKpi] = useState<KPIData>({ totalIncome: 0, totalExpenses: 0, netPosition: 0, documentCount: 0, savingsRate: 0, taxExposure: 0, taxRatio: 0, currency: "PHP" })
+  const [kpi, setKpi] = useState<KPIData>({ totalIncome: 0, totalExpenses: 0, netPosition: 0, documentCount: 0, savingsRate: 0, taxExposure: 0, taxRatio: 0, currency: "USD" })
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([])
   const [categoryData, setCategoryData] = useState<CategoryData[]>([])
   const [docTypeData, setDocTypeData] = useState<CategoryData[]>([])

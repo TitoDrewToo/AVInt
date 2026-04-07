@@ -1,27 +1,37 @@
 // Refined dimensional icons for how-it-works section
-function UploadIcon({ className }: { className?: string }) {
+function CloudIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
       <style>{`
-        @keyframes upload-arrow {
+        @keyframes cloud-float {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-1.5px); }
+        }
+        @keyframes doc-slide {
           0%, 100% { transform: translateY(0); opacity: 1; }
-          40% { transform: translateY(-3px); opacity: 0.6; }
-          70% { transform: translateY(-1px); opacity: 1; }
+          30% { transform: translateY(-4px); opacity: 0.4; }
+          60% { transform: translateY(-2px); opacity: 0.8; }
         }
-        @keyframes upload-dot {
-          0%, 100% { opacity: 1; r: 3; }
-          50% { opacity: 0.3; r: 2; }
-        }
-        .upload-arrow { animation: upload-arrow 2s ease-in-out infinite; transform-origin: 16px 18px; }
-        .upload-dot { animation: upload-dot 1.2s ease-in-out infinite; }
+        .cloud-body { animation: cloud-float 3s ease-in-out infinite; }
+        .doc-1 { animation: doc-slide 2.8s ease-in-out infinite 0s; }
+        .doc-2 { animation: doc-slide 2.8s ease-in-out infinite 0.4s; }
+        .doc-3 { animation: doc-slide 2.8s ease-in-out infinite 0.8s; }
       `}</style>
-      <rect x="6" y="4" width="20" height="24" rx="2" className="fill-muted stroke-border" strokeWidth="0.75" />
-      <path d="M20 4V10H26" className="stroke-border" strokeWidth="0.75" />
-      <path d="M20 4L26 10V28" className="fill-card stroke-border" strokeWidth="0.75" />
-      <g className="upload-arrow">
-        <path d="M16 22V14M16 14L12 18M16 14L20 18" className="stroke-primary" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      {/* Cloud shape */}
+      <g className="cloud-body">
+        <path d="M8 18C5.8 18 4 16.2 4 14C4 12.1 5.3 10.5 7.1 10.1C7.5 7.8 9.5 6 12 6C14.1 6 15.8 7.3 16.5 9.1C17 8.7 17.7 8.5 18.5 8.5C20.4 8.5 22 10.1 22 12V12.1C23.7 12.5 25 14 25 15.8C25 17.9 23.3 18 22 18H8Z"
+          className="fill-card stroke-border" strokeWidth="0.75" />
       </g>
-      <circle cx="24" cy="6" r="3" fill="rgb(239 68 68)" className="upload-dot" />
+      {/* Documents going into cloud */}
+      <rect x="9" y="21" width="4" height="5" rx="0.5" className="fill-muted stroke-border doc-1" strokeWidth="0.5" />
+      <rect x="14" y="21" width="4" height="5" rx="0.5" className="fill-primary/20 stroke-primary/40 doc-2" strokeWidth="0.5" />
+      <rect x="19" y="21" width="4" height="5" rx="0.5" className="fill-muted stroke-border doc-3" strokeWidth="0.5" />
+      {/* Upload arrows on docs */}
+      <path d="M11 24.5V22.5M11 22.5L10 23.5M11 22.5L12 23.5" className="stroke-muted-foreground/60" strokeWidth="0.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M16 24.5V22.5M16 22.5L15 23.5M16 22.5L17 23.5" className="stroke-primary" strokeWidth="0.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M21 24.5V22.5M21 22.5L20 23.5M21 22.5L22 23.5" className="stroke-muted-foreground/60" strokeWidth="0.5" strokeLinecap="round" strokeLinejoin="round" />
+      {/* Notification dot */}
+      <circle cx="24" cy="7" r="2.5" fill="rgb(239 68 68)" />
     </svg>
   )
 }
@@ -62,7 +72,7 @@ function ProcessIcon({ className }: { className?: string }) {
   )
 }
 
-function DashboardIcon({ className }: { className?: string }) {
+function OutputIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
       <style>{`
@@ -74,35 +84,45 @@ function DashboardIcon({ className }: { className?: string }) {
           0%, 100% { transform: scaleY(0.7); }
           50% { transform: scaleY(1); }
         }
-        @keyframes bar-grow-3 {
-          0%, 100% { transform: scaleY(0.5); }
-          50% { transform: scaleY(1); }
+        @keyframes check-pop {
+          0%, 80% { opacity: 0; transform: scale(0); }
+          90% { opacity: 1; transform: scale(1.2); }
+          100% { opacity: 1; transform: scale(1); }
         }
-        @keyframes bar-grow-4 {
-          0%, 100% { transform: scaleY(0.8); }
-          50% { transform: scaleY(1); }
-        }
-        @keyframes line-draw {
+        @keyframes trend-draw {
           0% { stroke-dashoffset: 40; opacity: 0.3; }
           60% { stroke-dashoffset: 0; opacity: 1; }
           100% { stroke-dashoffset: 0; opacity: 1; }
         }
-        .bar-1 { animation: bar-grow-1 2.4s ease-in-out infinite 0s; transform-origin: 8.5px 26px; }
-        .bar-2 { animation: bar-grow-2 2.4s ease-in-out infinite 0.3s; transform-origin: 13.5px 26px; }
-        .bar-3 { animation: bar-grow-3 2.4s ease-in-out infinite 0.6s; transform-origin: 18.5px 26px; }
-        .bar-4 { animation: bar-grow-4 2.4s ease-in-out infinite 0.9s; transform-origin: 23.5px 26px; }
-        .trend-line { stroke-dasharray: 40; animation: line-draw 2.4s ease-in-out infinite; }
+        .out-bar-1 { animation: bar-grow-1 2.4s ease-in-out infinite 0s; transform-origin: 6px 26px; }
+        .out-bar-2 { animation: bar-grow-2 2.4s ease-in-out infinite 0.3s; transform-origin: 10px 26px; }
+        .out-bar-3 { animation: bar-grow-1 2.4s ease-in-out infinite 0.6s; transform-origin: 14px 26px; }
+        .out-trend { stroke-dasharray: 40; animation: trend-draw 2.4s ease-in-out infinite; }
+        .out-check { animation: check-pop 3s ease-in-out infinite; transform-origin: 25px 7px; }
       `}</style>
-      <rect x="4" y="4" width="24" height="24" rx="2" className="fill-card stroke-border" strokeWidth="0.75" />
-      <rect x="4" y="4" width="24" height="6" rx="2" className="fill-muted stroke-border" strokeWidth="0.5" />
-      <circle cx="8" cy="7" r="1" className="fill-primary/60" />
-      <circle cx="12" cy="7" r="1" className="fill-muted-foreground/30" />
-      <circle cx="16" cy="7" r="1" className="fill-muted-foreground/30" />
-      <rect x="7" y="20" width="3" height="6" rx="0.5" className="fill-muted bar-1" />
-      <rect x="12" y="16" width="3" height="10" rx="0.5" className="fill-primary/40 bar-2" />
-      <rect x="17" y="18" width="3" height="8" rx="0.5" className="fill-muted bar-3" />
-      <rect x="22" y="14" width="3" height="12" rx="0.5" className="fill-primary/20 bar-4" />
-      <path d="M8.5 17L13.5 13L18.5 15L23.5 11" className="stroke-primary trend-line" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
+      {/* Report page */}
+      <rect x="2" y="4" width="18" height="24" rx="1.5" className="fill-card stroke-border" strokeWidth="0.75" />
+      {/* Text lines on report */}
+      <rect x="5" y="7" width="8" height="1" rx="0.5" className="fill-muted-foreground/30" />
+      <rect x="5" y="10" width="12" height="1" rx="0.5" className="fill-muted-foreground/15" />
+      <rect x="5" y="12.5" width="10" height="1" rx="0.5" className="fill-muted-foreground/15" />
+      {/* Mini bar chart in report */}
+      <rect x="5" y="22" width="2" height="4" rx="0.3" className="fill-muted out-bar-1" />
+      <rect x="9" y="19" width="2" height="7" rx="0.3" className="fill-primary/40 out-bar-2" />
+      <rect x="13" y="20.5" width="2" height="5.5" rx="0.3" className="fill-muted out-bar-3" />
+      {/* Trend line */}
+      <path d="M6 20L10 16.5L14 18" className="stroke-primary out-trend" strokeWidth="0.75" strokeLinecap="round" strokeLinejoin="round" />
+      {/* Dashboard card overlapping */}
+      <rect x="16" y="12" width="14" height="14" rx="1.5" className="fill-card stroke-border" strokeWidth="0.75" />
+      <rect x="18" y="14.5" width="5" height="1" rx="0.5" className="fill-primary/40" />
+      <rect x="18" y="17" width="10" height="1" rx="0.5" className="fill-muted-foreground/20" />
+      <rect x="18" y="19.5" width="8" height="1" rx="0.5" className="fill-muted-foreground/15" />
+      <rect x="18" y="22" width="6" height="1" rx="0.5" className="fill-muted-foreground/15" />
+      {/* Checkmark badge */}
+      <g className="out-check">
+        <circle cx="25" cy="7" r="4" className="fill-primary" />
+        <path d="M23 7L24.5 8.5L27 5.5" stroke="white" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
+      </g>
     </svg>
   )
 }
@@ -110,10 +130,11 @@ function DashboardIcon({ className }: { className?: string }) {
 interface StepProps {
   number: number
   title: string
+  subtitle: string
   icon: React.ReactNode
 }
 
-function Step({ number, title, icon }: StepProps) {
+function Step({ number, title, subtitle, icon }: StepProps) {
   return (
     <div className="flex flex-col items-center text-center">
       <div className="relative">
@@ -125,6 +146,7 @@ function Step({ number, title, icon }: StepProps) {
         </span>
       </div>
       <h3 className="mt-6 text-base font-medium text-foreground">{title}</h3>
+      <p className="mt-1.5 max-w-[200px] text-xs leading-relaxed text-muted-foreground">{subtitle}</p>
     </div>
   )
 }
@@ -132,18 +154,21 @@ function Step({ number, title, icon }: StepProps) {
 const steps: StepProps[] = [
   {
     number: 1,
-    title: "Upload documents",
-    icon: <UploadIcon className="h-8 w-8" />,
+    title: "Store in the cloud",
+    subtitle: "Receipts, invoices, payslips, contracts — all secure in one place.",
+    icon: <CloudIcon className="h-8 w-8" />,
   },
   {
     number: 2,
     title: "AI structures data",
+    subtitle: "Fields, amounts, dates, and categories extracted automatically.",
     icon: <ProcessIcon className="h-8 w-8" />,
   },
   {
     number: 3,
-    title: "Reports and dashboards generated",
-    icon: <DashboardIcon className="h-8 w-8" />,
+    title: "Tax-ready reports & dashboards",
+    subtitle: "Schedule C mapped expenses, P&L, CSV export — ready for filing.",
+    icon: <OutputIcon className="h-8 w-8" />,
   },
 ]
 

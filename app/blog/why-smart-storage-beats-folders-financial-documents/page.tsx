@@ -56,9 +56,9 @@ export default function ArticlePage() {
         <article className="mx-auto max-w-2xl">
           <Link
             href="/blog"
-            className="mb-8 inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+            className="mb-8 inline-flex items-center gap-2 rounded-lg px-3 py-2 -ml-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
-            <ArrowLeft className="h-3.5 w-3.5" />
+            <ArrowLeft className="h-4 w-4" />
             All articles
           </Link>
 

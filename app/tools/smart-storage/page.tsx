@@ -29,6 +29,7 @@ import {
   Tag,
   Menu,
   BarChart2,
+  Loader2,
 } from "lucide-react"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -310,6 +311,8 @@ export default function SmartStoragePage() {
   const [detectedTypes, setDetectedTypes] = useState<string[]>([])
 
   // Upload
+  const [isUploading, setIsUploading] = useState(false)
+  const [isNavigatingReport, setIsNavigatingReport] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set())
   const [viewMode, setViewMode] = useState<"list" | "grid">("grid")
@@ -540,6 +543,7 @@ export default function SmartStoragePage() {
 
   const handleUpload = async (uploadFiles: FileList | File[]) => {
     if (!session?.user?.id) return
+    setIsUploading(true)
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 
     const uploadOne = async (file: File) => {
@@ -582,14 +586,18 @@ export default function SmartStoragePage() {
     }
 
     // Upload all files, then refresh — ensures state updates happen after ALL uploads complete
-    const results = await Promise.allSettled(Array.from(uploadFiles).map(uploadOne))
-    for (const r of results) {
-      if (r.status === "rejected") console.error("Upload failed:", r.reason)
-    }
+    try {
+      const results = await Promise.allSettled(Array.from(uploadFiles).map(uploadOne))
+      for (const r of results) {
+        if (r.status === "rejected") console.error("Upload failed:", r.reason)
+      }
 
-    await loadFiles()
-    await checkProcessingState()
-    await checkReportAvailability()
+      await loadFiles()
+      await checkProcessingState()
+      await checkReportAvailability()
+    } finally {
+      setIsUploading(false)
+    }
   }
 
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragOver(true) }
@@ -1115,10 +1123,11 @@ export default function SmartStoragePage() {
                   </button>
                   <button
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex h-7 items-center gap-1.5 rounded px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    disabled={isUploading}
+                    className="flex h-7 items-center gap-1.5 rounded px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50 disabled:pointer-events-none"
                   >
-                    <Upload className="h-3.5 w-3.5" />
-                    Upload
+                    {isUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                    {isUploading ? "Uploading…" : "Upload"}
                   </button>
                   <button
                     onClick={() => setManualEntryOpen(true)}
@@ -1615,16 +1624,19 @@ export default function SmartStoragePage() {
 
               <Button
                 className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
-                disabled={!isPro || !selectedReport || !reportAvailability[selectedReport]}
+                disabled={!isPro || !selectedReport || !reportAvailability[selectedReport] || isNavigatingReport}
                 size="sm"
                 onClick={() => {
                   if (selectedReport && REPORT_ROUTES[selectedReport]) {
+                    setIsNavigatingReport(true)
                     router.push(REPORT_ROUTES[selectedReport])
                   }
                 }}
                 title={!isPro ? "Upgrade to Pro to generate reports" : undefined}
               >
-                {isPro ? "Generate Report" : "Pro Required"}
+                {isNavigatingReport ? (
+                  <><Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />Generating…</>
+                ) : isPro ? "Generate Report" : "Pro Required"}
               </Button>
             </div>
 
@@ -1771,17 +1783,20 @@ export default function SmartStoragePage() {
             )}
             <Button
               className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
-              disabled={!isPro || !selectedReport || !reportAvailability[selectedReport]}
+              disabled={!isPro || !selectedReport || !reportAvailability[selectedReport] || isNavigatingReport}
               size="sm"
               onClick={() => {
                 if (selectedReport && REPORT_ROUTES[selectedReport]) {
+                  setIsNavigatingReport(true)
                   router.push(REPORT_ROUTES[selectedReport])
                 }
                 setMobileReportsOpen(false)
               }}
               title={!isPro ? "Upgrade to Pro to generate reports" : undefined}
             >
-              {isPro ? "Generate Report" : "Pro Required"}
+              {isNavigatingReport ? (
+                <><Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />Generating…</>
+              ) : isPro ? "Generate Report" : "Pro Required"}
             </Button>
           </div>
           <div className="flex-1 overflow-y-auto px-3 pb-3">

@@ -57,9 +57,9 @@ export default function ArticlePage() {
           {/* Back link */}
           <Link
             href="/blog"
-            className="mb-8 inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+            className="mb-8 inline-flex items-center gap-2 rounded-lg px-3 py-2 -ml-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
-            <ArrowLeft className="h-3.5 w-3.5" />
+            <ArrowLeft className="h-4 w-4" />
             All articles
           </Link>
 
@@ -269,10 +269,10 @@ export default function ArticlePage() {
             </p>
             <div className="mt-4 flex items-center gap-3">
               <Link
-                href="/tools/smart-storage"
+                href="/"
                 className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
               >
-                Try Smart Storage for free →
+                Try it free →
               </Link>
               <Link
                 href="/products/smart-storage"

@@ -30,6 +30,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "monthly",
       priority: 0.8,
     },
+    {
+      url: `${BASE_URL}/blog/why-smart-storage-beats-folders-financial-documents`,
+      lastModified: new Date(),
+      changeFrequency: "monthly",
+      priority: 0.8,
+    },
     // ── Product landing pages (SEO targets) ───────────────────────────────────
     {
       url: `${BASE_URL}/products/smart-storage`,

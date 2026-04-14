@@ -7,9 +7,15 @@ const SUPABASE_URL              = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 const AI_PROVIDER               = Deno.env.get("NORMALIZATION_PROVIDER") ?? Deno.env.get("AI_PROVIDER") ?? "anthropic"
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-auth",
+const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") ?? "https://www.avintph.com,https://avintph.com").split(",").map(s => s.trim())
+function buildCorsHeaders(req: Request) {
+  const origin = req.headers.get("origin") ?? ""
+  const allow = ALLOWED_ORIGINS.includes(origin) || /^https:\/\/[a-z0-9-]+\.vercel\.app$/.test(origin) ? origin : ALLOWED_ORIGINS[0]
+  return {
+    "Access-Control-Allow-Origin": allow,
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-auth",
+    "Vary": "Origin",
+  }
 }
 
 // ── OpenAI system prompt ──────────────────────────────────────────────────────
@@ -96,8 +102,18 @@ Rules:
 
 // ── Main handler ──────────────────────────────────────────────────────────────
 serve(async (req) => {
+  const corsHeaders = buildCorsHeaders(req)
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders })
+  }
+
+  const authHeader = req.headers.get("authorization") ?? ""
+  const token = authHeader.replace(/^Bearer\s+/i, "")
+  if (token !== SUPABASE_SERVICE_ROLE_KEY) {
+    return new Response(JSON.stringify({ error: "Service role required" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    })
   }
 
   let body: any = {}

@@ -5,13 +5,20 @@ const ANTHROPIC_API_KEY         = Deno.env.get("ANTHROPIC_API_KEY")!
 const OPENAI_API_KEY            = Deno.env.get("OPENAI_API_KEY")!
 const SUPABASE_URL              = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+const SUPABASE_ANON_KEY         = Deno.env.get("SUPABASE_ANON_KEY")!
 const AI_PROVIDER               = Deno.env.get("ANALYTICS_PROVIDER") ?? Deno.env.get("AI_PROVIDER") ?? "anthropic"
 // R&D gate — set this env var to your Supabase user UUID to unlock advanced features
 const RD_USER_ID                = Deno.env.get("RD_USER_ID") ?? ""
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") ?? "https://www.avintph.com,https://avintph.com").split(",").map(s => s.trim())
+function buildCorsHeaders(req: Request) {
+  const origin = req.headers.get("origin") ?? ""
+  const allow = ALLOWED_ORIGINS.includes(origin) || /^https:\/\/[a-z0-9-]+\.vercel\.app$/.test(origin) ? origin : ALLOWED_ORIGINS[0]
+  return {
+    "Access-Control-Allow-Origin": allow,
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Vary": "Origin",
+  }
 }
 
 // ── Upgrade chart prompt (all users) ──────────────────────────────────────────
@@ -94,6 +101,7 @@ async function callAI(prompt: string, systemPrompt: string): Promise<string> {
 // ── Main handler ──────────────────────────────────────────────────────────────
 
 serve(async (req) => {
+  const corsHeaders = buildCorsHeaders(req)
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders })
   }
@@ -115,6 +123,26 @@ serve(async (req) => {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     })
+  }
+
+  const authHeader = req.headers.get("authorization") ?? ""
+  const token = authHeader.replace(/^Bearer\s+/i, "")
+  const isServiceRole = token === SUPABASE_SERVICE_ROLE_KEY
+  if (!isServiceRole) {
+    if (!token) {
+      return new Response(JSON.stringify({ error: "Missing authorization" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      })
+    }
+    const anonClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+    const { data: userData, error: userErr } = await anonClient.auth.getUser(token)
+    if (userErr || !userData?.user || userData.user.id !== user_id) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      })
+    }
   }
 
   const isRDUser = RD_USER_ID && user_id === RD_USER_ID

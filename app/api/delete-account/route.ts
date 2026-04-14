@@ -37,16 +37,44 @@ export async function POST(req: NextRequest) {
       await supabaseAdmin.from("processing_jobs").delete().in("file_id", fileIds)
     }
 
-    // 4. Delete files
+    // 4. Delete storage objects under ${user_id}/ (canonical, _inbox/, _quarantine/)
+    //    Must happen before deleting the files table rows so we can still look up paths.
+    const storagePaths = (await supabaseAdmin
+      .from("files").select("storage_path").eq("user_id", user_id)).data?.map((f: any) => f.storage_path).filter(Boolean) ?? []
+    if (storagePaths.length) {
+      // Chunk removes — Supabase limits bulk remove to a few hundred per call.
+      const CHUNK = 100
+      for (let i = 0; i < storagePaths.length; i += CHUNK) {
+        await supabaseAdmin.storage.from("documents").remove(storagePaths.slice(i, i + CHUNK))
+      }
+    }
+    // Sweep: also list any remaining objects under the prefix (covers orphans from
+    // failed uploads, legacy rows, or rows that never made it into files).
+    try {
+      const { data: remaining } = await supabaseAdmin.storage.from("documents").list(user_id, { limit: 1000 })
+      if (remaining?.length) {
+        await supabaseAdmin.storage.from("documents").remove(remaining.map((o: any) => `${user_id}/${o.name}`))
+      }
+      for (const sub of ["_inbox", "_quarantine"]) {
+        const { data: subList } = await supabaseAdmin.storage.from("documents").list(`${user_id}/${sub}`, { limit: 1000 })
+        if (subList?.length) {
+          await supabaseAdmin.storage.from("documents").remove(subList.map((o: any) => `${user_id}/${sub}/${o.name}`))
+        }
+      }
+    } catch (e) {
+      console.error("storage sweep failed (non-fatal):", e)
+    }
+
+    // 5. Delete files rows
     await supabaseAdmin.from("files").delete().eq("user_id", user_id)
 
-    // 5. Delete other user-owned tables
+    // 6. Delete other user-owned tables
     await supabaseAdmin.from("advanced_widgets").delete().eq("user_id", user_id)
     await supabaseAdmin.from("dashboard_layouts").delete().eq("user_id", user_id)
     await supabaseAdmin.from("context_summaries").delete().eq("user_id", user_id)
     await supabaseAdmin.from("subscriptions").delete().eq("user_id", user_id)
 
-    // 6. Finally delete the auth user
+    // 7. Finally delete the auth user
     const { error } = await supabaseAdmin.auth.admin.deleteUser(user_id)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 

@@ -6,15 +6,45 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") ?? "https://www.avintph.com,https://avintph.com").split(",").map(s => s.trim())
+function buildCorsHeaders(req: Request) {
+  const origin = req.headers.get("origin") ?? ""
+  const allow = ALLOWED_ORIGINS.includes(origin) || /^https:\/\/[a-z0-9-]+\.vercel\.app$/.test(origin) ? origin : ALLOWED_ORIGINS[0]
+  return {
+    "Access-Control-Allow-Origin": allow,
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Vary": "Origin",
+  }
 }
 
 serve(async (req) => {
+  const corsHeaders = buildCorsHeaders(req)
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders })
   }
+
+  const authHeader = req.headers.get("authorization") ?? ""
+  const token = authHeader.replace(/^Bearer\s+/i, "")
+  let authorizedUserId: string | null = null
+  const isServiceRole = token === SUPABASE_SERVICE_ROLE_KEY
+  if (!isServiceRole) {
+    if (!token) {
+      return new Response(JSON.stringify({ error: "Missing authorization" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      })
+    }
+    const anonClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+    const { data: userData, error: userErr } = await anonClient.auth.getUser(token)
+    if (userErr || !userData?.user) {
+      return new Response(JSON.stringify({ error: "Invalid token" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      })
+    }
+    authorizedUserId = userData.user.id
+  }
+
   // Read body once and store
   let body: any = {}
   try {
@@ -23,22 +53,15 @@ serve(async (req) => {
   } catch {
     return new Response(JSON.stringify({ error: "Invalid or empty request body" }), {
       status: 400,
-      headers: { "Content-Type": "application/json" },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     })
   }
 
   try {
     const { file_id, job_id } = body
-    console.log("Full body received:", JSON.stringify(body))
     console.log("Received file_id:", file_id, "job_id:", job_id)
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-
-    // 1. Mark job as processing
-    await supabase
-      .from("processing_jobs")
-      .update({ status: "processing" })
-      .eq("id", job_id)
 
     // 2. Get file record
     const { data: file, error: fileError } = await supabase
@@ -48,6 +71,29 @@ serve(async (req) => {
       .single()
 
     if (fileError || !file) throw new Error("File not found")
+
+    if (!isServiceRole && file.user_id !== authorizedUserId) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      })
+    }
+
+    // Phase B gate: only proceed on approved or legacy uploaded rows.
+    // approved → passed prescan, safe to OCR.
+    // uploaded → legacy pre-Phase-B rows (backward compat, retire after backfill).
+    if (!["approved", "uploaded"].includes(file.upload_status)) {
+      return new Response(
+        JSON.stringify({ error: "File not approved for processing", current_status: file.upload_status }),
+        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      )
+    }
+
+    // 1. Mark job as processing
+    await supabase
+      .from("processing_jobs")
+      .update({ status: "processing" })
+      .eq("id", job_id)
 
     // 3. Download file from storage
     const { data: fileData, error: downloadError } = await supabase
@@ -59,16 +105,43 @@ serve(async (req) => {
 
     // 4. Convert to base64 (chunked to avoid call stack overflow on large files)
     const arrayBuffer = await fileData.arrayBuffer()
-    const uint8Array = new Uint8Array(arrayBuffer)
+    let uint8Array = new Uint8Array(arrayBuffer)
+
+    // 4b. Spreadsheet → CSV conversion.
+    // xlsx/xls are ZIP/OLE binaries Gemini cannot read directly. Convert to CSV
+    // text using SheetJS, then feed as text/csv inline_data. Downstream multi-row
+    // array handler already covers CSV exports.
+    let mimeType = file.file_type || "application/pdf"
+    const isXlsx = mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+                   mimeType === "application/vnd.ms-excel" ||
+                   /\.xlsx?$/i.test(file.filename ?? "")
+    if (isXlsx) {
+      try {
+        const XLSX = await import("https://esm.sh/xlsx@0.18.5")
+        const wb = XLSX.read(uint8Array, { type: "array" })
+        const csvChunks: string[] = []
+        for (const name of wb.SheetNames) {
+          const sheet = wb.Sheets[name]
+          const csv = XLSX.utils.sheet_to_csv(sheet)
+          if (csv.trim().length > 0) {
+            csvChunks.push(`# Sheet: ${name}\n${csv}`)
+          }
+        }
+        const joined = csvChunks.join("\n\n")
+        uint8Array = new TextEncoder().encode(joined)
+        mimeType = "text/csv"
+        console.log(`Converted xlsx to csv: ${wb.SheetNames.length} sheet(s), ${uint8Array.length} bytes`)
+      } catch (e: any) {
+        throw new Error(`xlsx conversion failed: ${e.message}`)
+      }
+    }
+
     let binary = ""
     const chunkSize = 8192
     for (let i = 0; i < uint8Array.length; i += chunkSize) {
       binary += String.fromCharCode(...uint8Array.subarray(i, i + chunkSize))
     }
     const base64 = btoa(binary)
-
-    // 5. Determine MIME type
-    const mimeType = file.file_type || "application/pdf"
 
     // 6. Call Gemini API
     const geminiResponse = await fetch(
@@ -181,7 +254,7 @@ Philippine PDC (post-dated check) schedules are common — scan all pages for th
       .from("files")
       .update({
         document_type: isCsv ? "csv_export" : (extracted.document_type ?? "general_document"),
-        upload_status: "completed",
+        upload_status: "done",
       })
       .eq("id", file_id)
 

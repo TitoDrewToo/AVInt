@@ -398,7 +398,7 @@ export default function SmartStoragePage() {
     if (!session?.user?.id) return
     const { data } = await supabase
       .from("files")
-      .select("id, filename, file_type, file_size, document_type, created_at, storage_path, folder_id")
+      .select("id, filename, file_type, file_size, document_type, created_at, storage_path, folder_id, upload_status, scan_reason")
       .eq("user_id", session.user.id)
       .order("created_at", { ascending: false })
     if (data) {
@@ -553,12 +553,14 @@ export default function SmartStoragePage() {
         return
       }
       const uniqueName = `${crypto.randomUUID()}.${ext}`
-      const storagePath = `${session.user.id}/${uniqueName}`
+      // Phase B: upload into _inbox/ landing zone. Prescan moves the file to
+      // the canonical path (or _quarantine/) based on scan result.
+      const storagePath = `${session.user.id}/_inbox/${uniqueName}`
       const { error: storageError } = await supabase.storage.from("documents").upload(storagePath, file)
       if (storageError) throw storageError
       const { data: fileRecord, error: fileError } = await supabase
         .from("files")
-        .insert({ user_id: session.user.id, filename: file.name, storage_path: storagePath, file_type: file.type, file_size: file.size, document_type: "unknown", upload_status: "uploaded" })
+        .insert({ user_id: session.user.id, filename: file.name, storage_path: storagePath, file_type: file.type, file_size: file.size, document_type: "unknown", upload_status: "pending_scan" })
         .select().single()
       if (fileError) throw fileError
       const { data: jobRecord, error: jobError } = await supabase
@@ -568,15 +570,17 @@ export default function SmartStoragePage() {
         .single()
       if (jobError) throw jobError
 
-      // Trigger Gemini extraction pipeline — fire and forget
-      fetch(`${supabaseUrl}/functions/v1/process-document`, {
+      // Trigger prescan — it will chain into process-document on approval.
+      // Uses the user JWT so prescan can verify ownership.
+      const userToken = (await supabase.auth.getSession()).data.session?.access_token
+      fetch(`${supabaseUrl}/functions/v1/prescan-document`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+          "Authorization": `Bearer ${userToken ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
         },
-        body: JSON.stringify({ file_id: fileRecord.id, job_id: jobRecord.id }),
-      }).catch((err) => console.error("process-document fetch error:", err))
+        body: JSON.stringify({ file_id: fileRecord.id }),
+      }).catch((err) => console.error("prescan-document fetch error:", err))
     }
 
     // Upload all files, then refresh — ensures state updates happen after ALL uploads complete
@@ -702,7 +706,12 @@ export default function SmartStoragePage() {
   const handleDownloadFile = async (fileId: string) => {
     const file = files.find(f => f.id === fileId)
     if (!file) return
-    const { data } = await supabase.storage.from("documents").createSignedUrl(file.storage_path, 60)
+    // Phase B: force attachment disposition so the browser saves the file
+    // rather than handing it to a native viewer (Adobe Reader, Preview, etc.).
+    // Keeps stored bytes out of any native handler chain.
+    const { data } = await supabase.storage.from("documents").createSignedUrl(file.storage_path, 60, {
+      download: file.filename,
+    })
     if (!data?.signedUrl) return
     window.open(data.signedUrl, "_blank", "noopener,noreferrer")
   }
@@ -1397,9 +1406,15 @@ export default function SmartStoragePage() {
                         ) : (
                           <span className="w-full truncate text-center text-[11px] text-foreground leading-tight">{file.filename}</span>
                         )}
-                        <span className="w-full truncate text-center text-[10px] text-muted-foreground/60 capitalize leading-tight">
-                          {file.document_type === "unknown" ? "Processing…" : file.document_type.replace(/_/g, " ")}
-                        </span>
+                        {file.upload_status === "quarantined" ? (
+                          <span className="w-full truncate text-center text-[10px] text-red-600 leading-tight" title={file.scan_reason ?? "Blocked by security scan"}>
+                            Blocked
+                          </span>
+                        ) : (
+                          <span className="w-full truncate text-center text-[10px] text-muted-foreground/60 capitalize leading-tight">
+                            {file.document_type === "unknown" ? "Processing…" : file.document_type.replace(/_/g, " ")}
+                          </span>
+                        )}
                       </div>
                     )
                   })}
@@ -1438,9 +1453,15 @@ export default function SmartStoragePage() {
                       <span className="truncate text-foreground">{file.filename}</span>
                     )}
                   </div>
-                  <span className="truncate text-muted-foreground capitalize">
-                    {file.document_type === "unknown" ? "Processing…" : file.document_type.replace(/_/g, " ")}
-                  </span>
+                  {file.upload_status === "quarantined" ? (
+                    <span className="truncate text-red-600" title={file.scan_reason ?? "Blocked by security scan"}>
+                      Blocked
+                    </span>
+                  ) : (
+                    <span className="truncate text-muted-foreground capitalize">
+                      {file.document_type === "unknown" ? "Processing…" : file.document_type.replace(/_/g, " ")}
+                    </span>
+                  )}
                   <span className="text-muted-foreground text-xs">
                     {new Date(file.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" })}
                     {" "}

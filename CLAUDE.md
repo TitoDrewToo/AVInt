@@ -60,6 +60,42 @@ Do not silently implement material changes without approval.
 - When evaluating report logic, do not allow labels or disclaimers to overstate the accuracy of the underlying math.
 - If a report is not suitable for accountant-ready or tax-prep use, state that directly.
 
+## Edge Function Deploy Policy — --no-verify-jwt
+
+**All Supabase edge functions in this project are deployed with `--no-verify-jwt`.**
+Do not redeploy without this flag. Auth is enforced inside each function, not at the gateway.
+
+Why this exists:
+- The project uses the new Supabase asymmetric JWT format (ES256, JWKS-based)
+  for user tokens and the new `sb_secret_...` format for service role keys.
+  Neither is accepted by the edge gateway's default `verify_jwt` path, which
+  expects legacy HS256 JWTs signed with the project JWT secret.
+- With the default setting, the gateway returns 401 before the function body
+  runs (`execution_id: null` in logs), making every call fail — both
+  client-originated (user JWT) and internal chains (service role).
+- Disabling gateway verification moves auth into the function where we can
+  validate tokens ourselves via `supabaseAdmin.auth.getUser(token)` for user
+  calls, and direct comparison against `SUPABASE_SERVICE_ROLE_KEY` for
+  service-role-only functions.
+
+Deploy command for every function in this project:
+
+```
+supabase functions deploy <function-name> --no-verify-jwt
+```
+
+Security model this relies on:
+- Every edge function must verify the Authorization header inside its own
+  handler before touching data. Missing in-function auth = open endpoint.
+- User-facing functions: call `adminClient.auth.getUser(token)` and compare
+  `userData.user.id` against resource ownership.
+- Service-role-only functions (normalize-document, reprocess-documents):
+  reject any token that is not exactly `SUPABASE_SERVICE_ROLE_KEY`.
+
+If any future deploy omits `--no-verify-jwt`, every call to that function
+will start returning 401 at the gateway with no function logs to diagnose.
+That is the signature of this issue.
+
 ## Analysis Expectations
 
 When asked to review or assess:

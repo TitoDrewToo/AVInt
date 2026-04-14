@@ -89,11 +89,14 @@ serve(async (req) => {
       )
     }
 
-    // 1. Mark job as processing
+    // 1. Mark active job for this file as processing.
+    // Prescan does not pass job_id through the chain, so we look up the latest
+    // job for the file by file_id. One active job per file in practice.
     await supabase
       .from("processing_jobs")
       .update({ status: "processing" })
-      .eq("id", job_id)
+      .eq("file_id", file_id)
+      .in("status", ["uploaded", "processing"])
 
     // 3. Download file from storage
     const { data: fileData, error: downloadError } = await supabase
@@ -321,6 +324,13 @@ Philippine PDC (post-dated check) schedules are common — scan all pages for th
       console.error("Normalize function failed (non-fatal):", errText)
     }
 
+    // Mark job as completed so UI processing indicator clears
+    await supabase
+      .from("processing_jobs")
+      .update({ status: "completed" })
+      .eq("file_id", file_id)
+      .in("status", ["uploaded", "processing"])
+
     return new Response(JSON.stringify({ success: true, file_id }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     })
@@ -330,12 +340,13 @@ Philippine PDC (post-dated check) schedules are common — scan all pages for th
 
     // Mark job as failed
     try {
-      if (body?.job_id) {
+      if (body?.file_id) {
         const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
         await supabase
           .from("processing_jobs")
           .update({ status: "failed", error_message: error.message })
-          .eq("id", body.job_id)
+          .eq("file_id", body.file_id)
+          .in("status", ["uploaded", "processing"])
       }
     } catch {}
 

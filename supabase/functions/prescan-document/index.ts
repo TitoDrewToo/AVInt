@@ -176,16 +176,24 @@ async function runGeminiSafety(mimeType: string, base64: string): Promise<Safety
         generationConfig: {
           temperature: 0,
           maxOutputTokens: 512,
-          responseMimeType: "application/json",
         },
       }),
     }
   )
-  if (!res.ok) throw new Error(`Gemini safety API error: ${await res.text()}`)
+  if (!res.ok) {
+    const errBody = (await res.text()).slice(0, 500)
+    throw new Error(`Gemini safety HTTP ${res.status}: ${errBody}`)
+  }
   const data = await res.json()
-  const raw = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ""
-  const stripped = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim()
-  const parsed = JSON.parse(stripped)
+  const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text
+  if (!rawText) {
+    throw new Error(`Gemini safety empty response: ${JSON.stringify(data).slice(0, 500)}`)
+  }
+  // Strip markdown fences, then extract first top-level JSON object (matches process-document shape).
+  const stripped = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim()
+  const objectMatch = stripped.match(/\{[\s\S]*\}/)
+  if (!objectMatch) throw new Error(`Gemini safety no JSON object in: ${stripped.slice(0, 300)}`)
+  const parsed = JSON.parse(objectMatch[0])
   return {
     is_processable: Boolean(parsed.is_processable),
     doc_category: String(parsed.doc_category ?? "unrelated"),
@@ -208,8 +216,8 @@ serve(async (req) => {
       status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
     })
   }
-  const anonClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
-  const { data: userData, error: userErr } = await anonClient.auth.getUser(token)
+  const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+  const { data: userData, error: userErr } = await adminClient.auth.getUser(token)
   if (userErr || !userData?.user) {
     return new Response(JSON.stringify({ error: "Invalid token" }), {
       status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -312,10 +320,12 @@ serve(async (req) => {
       try {
         safety = await runGeminiSafety(detected, base64)
       } catch (e) {
+        console.error("Gemini safety attempt 1 failed:", e instanceof Error ? e.message : String(e))
         // One retry on parse/network failure, then fail closed
         try {
           safety = await runGeminiSafety(detected, base64)
-        } catch {
+        } catch (e2) {
+          console.error("Gemini safety attempt 2 failed:", e2 instanceof Error ? e2.message : String(e2))
           throw new PrescanReject("safety_check_failed", "Safety check could not complete. Please try again.")
         }
       }

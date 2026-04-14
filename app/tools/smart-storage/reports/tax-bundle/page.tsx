@@ -47,6 +47,18 @@ function formatDate(dateStr: string) {
 
 const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
 
+function prettyIncomeClass(cls: string | null): string {
+  switch (cls) {
+    case "wage":       return "Wage (payslip)"
+    case "business":   return "Business (Sched C)"
+    case "investment": return "Investment"
+    case "rental":     return "Rental"
+    case "interest":   return "Interest"
+    case "other":      return "Other"
+    default:           return "Unclassified"
+  }
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function TaxBundlePage() {
@@ -60,6 +72,15 @@ export default function TaxBundlePage() {
   const [dateTo, setDateTo] = useState("")
   const [folders, setFolders] = useState<FolderOption[]>([])
   const [targetFolder, setTargetFolder] = useState("")
+  // Auto-scoping: on first load with data, default period to the most recent
+  // tax year that has documents. Tracked so clearing dates doesn't re-apply.
+  const [defaultsApplied, setDefaultsApplied] = useState(false)
+  // Distinguishes "user has no docs at all" from "user has docs but none in
+  // selected window" — each empty state needs a different CTA.
+  const [totalOwnedDocs, setTotalOwnedDocs] = useState<number | null>(null)
+  // Detected years with any document coverage, newest first. Drives the
+  // tax-year preset buttons so they reflect the user's actual data.
+  const [detectedYears, setDetectedYears] = useState<number[]>([])
   const [csvCopied, setCsvCopied] = useState(false)
   const [zipping, setZipping] = useState(false)
   const [reassigning, setReassigning] = useState<Record<string, string>>({}) // file_id → new category
@@ -81,6 +102,48 @@ export default function TaxBundlePage() {
     supabase.from("folders").select("id, name").eq("user_id", session.user.id).order("name")
       .then(({ data }) => { if (data) setFolders(data) })
   }, [session])
+
+  // One-shot probe: detect the set of years with any document coverage and
+  // auto-scope the period filter to the most recent year. Runs once per
+  // session — clearing dates later does NOT re-trigger, so user intent wins.
+  useEffect(() => {
+    if (!session?.user?.id || defaultsApplied) return
+    let cancelled = false
+    ;(async () => {
+      const { data: userFiles } = await supabase
+        .from("files").select("id").eq("user_id", session.user.id)
+      if (cancelled) return
+      const fileCount = userFiles?.length ?? 0
+      setTotalOwnedDocs(fileCount)
+      if (fileCount === 0) { setDefaultsApplied(true); return }
+
+      // Pull just the date columns we need for year detection — cheap scan.
+      const { data: dateRows } = await supabase
+        .from("document_fields")
+        .select("period_start, period_end, document_date, files!inner(user_id)")
+        .eq("files.user_id", session.user.id)
+      if (cancelled) return
+
+      const years = new Set<number>()
+      for (const r of (dateRows ?? []) as Array<{
+        period_start: string | null; period_end: string | null; document_date: string | null
+      }>) {
+        const d = r.period_end ?? r.period_start ?? r.document_date
+        if (d && d.length >= 4) years.add(parseInt(d.slice(0, 4), 10))
+      }
+      const sortedYears = Array.from(years).filter(n => !isNaN(n)).sort((a, b) => b - a)
+      setDetectedYears(sortedYears)
+
+      // Auto-scope to most recent year with data.
+      if (sortedYears.length > 0 && !dateFrom && !dateTo) {
+        const y = sortedYears[0]
+        setDateFrom(`${y}-01-01`)
+        setDateTo(`${y}-12-31`)
+      }
+      setDefaultsApplied(true)
+    })()
+    return () => { cancelled = true }
+  }, [session, defaultsApplied, dateFrom, dateTo])
 
   const safeNum = (v: unknown): number => { const n = parseFloat(String(v ?? "0")); return isNaN(n) ? 0 : n }
 
@@ -114,10 +177,12 @@ export default function TaxBundlePage() {
       // Period overlap: a document is "in" the selected window if its
       // [period_start, period_end] interval intersects [dateFrom, dateTo].
       // Interval intersection = period_end >= dateFrom AND period_start <= dateTo.
-      // Legacy rows without period_start/period_end fall back to document_date
-      // via a COALESCE on the edge function during normalization.
-      if (dateFrom) query = query.or(`period_end.gte.${dateFrom},document_date.gte.${dateFrom}`)
-      if (dateTo)   query = query.or(`period_start.lte.${dateTo},document_date.lte.${dateTo}`)
+      // The v2 normalizer populates period_start/period_end for every row
+      // (falling back to document_date at write time), so no OR fallback is
+      // needed here. Legacy pre-v2 rows without those columns surface via
+      // the "missing classification" advisory instead of silent exclusion.
+      if (dateFrom) query = query.gte("period_end",   dateFrom)
+      if (dateTo)   query = query.lte("period_start", dateTo)
 
       const { data } = await query
 
@@ -401,6 +466,54 @@ export default function TaxBundlePage() {
 
   const generatedDate = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "2-digit" })
   const hasData = incomeRows.length > 0 || expenseRows.length > 0
+  const matchedDocCount = rows.length
+  const hasAnyFilter = Boolean(dateFrom || dateTo || targetFolder)
+  const ownsNoDocs = totalOwnedDocs === 0
+  const folderExcludingEverything = hasAnyFilter && !hasData && !!targetFolder
+
+  // ── Period preset helpers ────────────────────────────────────────────────────
+  // Dates are ISO YYYY-MM-DD strings (what <input type="date"> expects and
+  // what PostgREST .gte/.lte compares against as text).
+
+  const toISO = (d: Date): string => {
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, "0")
+    const day = String(d.getDate()).padStart(2, "0")
+    return `${y}-${m}-${day}`
+  }
+  const applyTaxYear = (year: number) => {
+    setDateFrom(`${year}-01-01`)
+    setDateTo(`${year}-12-31`)
+  }
+  const applyLastQuarter = () => {
+    const now = new Date()
+    // Last completed calendar quarter.
+    const currentQ = Math.floor(now.getMonth() / 3)
+    const lastQ = currentQ === 0 ? 3 : currentQ - 1
+    const year = currentQ === 0 ? now.getFullYear() - 1 : now.getFullYear()
+    const startMonth = lastQ * 3
+    const start = new Date(year, startMonth, 1)
+    const end = new Date(year, startMonth + 3, 0)
+    setDateFrom(toISO(start))
+    setDateTo(toISO(end))
+  }
+  const applyLast30 = () => {
+    const now = new Date()
+    const start = new Date(now)
+    start.setDate(now.getDate() - 29)
+    setDateFrom(toISO(start))
+    setDateTo(toISO(now))
+  }
+  const clearPeriod = () => { setDateFrom(""); setDateTo("") }
+
+  // Which preset (if any) is currently active — used for visual highlight.
+  const activePreset: string | null = (() => {
+    if (!dateFrom && !dateTo) return "all"
+    for (const y of detectedYears) {
+      if (dateFrom === `${y}-01-01` && dateTo === `${y}-12-31`) return `ty-${y}`
+    }
+    return null
+  })()
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -435,33 +548,96 @@ export default function TaxBundlePage() {
             <span className="text-xs text-muted-foreground">Smart Storage / Reports</span>
           </div>
 
-          {/* Filters */}
-          <div className="mb-8 flex flex-wrap items-center gap-3">
-            <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Period</span>
-            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-              className="rounded border border-border bg-background px-3 py-1.5 text-xs text-foreground" />
-            <span className="text-xs text-muted-foreground">—</span>
-            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-              className="rounded border border-border bg-background px-3 py-1.5 text-xs text-foreground" />
-            <button onClick={() => { setDateFrom(""); setDateTo("") }}
-              className="rounded border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
-              Clear
-            </button>
-
-            <span className="mx-1 h-4 w-px bg-border" />
-
-            <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Source</span>
-            <div className="relative">
-              <FolderOpen className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
-              <select
-                value={targetFolder}
-                onChange={e => setTargetFolder(e.target.value)}
-                className="appearance-none rounded border border-border bg-background py-1.5 pl-7 pr-6 text-xs text-foreground"
-              >
-                <option value="">All data</option>
-                {folders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-              </select>
+          {/* Filters — date is the primary auto-filter, folder is optional */}
+          <div className="mb-8 space-y-3 print:hidden">
+            {/* Primary: period */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Period</span>
+              {detectedYears.slice(0, 3).map(y => {
+                const active = activePreset === `ty-${y}`
+                return (
+                  <button key={y} onClick={() => applyTaxYear(y)}
+                    className={`rounded border px-3 py-1.5 text-xs transition-colors ${
+                      active
+                        ? "border-foreground bg-foreground text-background"
+                        : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                    }`}>
+                    Tax Year {y}
+                  </button>
+                )
+              })}
+              <button onClick={applyLastQuarter}
+                className="rounded border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+                Last Quarter
+              </button>
+              <button onClick={applyLast30}
+                className="rounded border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+                Last 30 Days
+              </button>
+              <button onClick={clearPeriod}
+                className={`rounded border px-3 py-1.5 text-xs transition-colors ${
+                  activePreset === "all"
+                    ? "border-foreground bg-foreground text-background"
+                    : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                }`}>
+                All Time
+              </button>
+              <span className="mx-1 h-4 w-px bg-border" />
+              <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+                className="rounded border border-border bg-background px-3 py-1.5 text-xs text-foreground" />
+              <span className="text-xs text-muted-foreground">—</span>
+              <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+                className="rounded border border-border bg-background px-3 py-1.5 text-xs text-foreground" />
             </div>
+
+            {/* Match counter + active window */}
+            <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+              <span>
+                Showing <span className="font-semibold text-foreground">{matchedDocCount}</span>
+                {" "}document{matchedDocCount === 1 ? "" : "s"}
+              </span>
+              <span className="text-muted-foreground/40">·</span>
+              <span>
+                Period{" "}
+                <span className="font-mono text-foreground/80">
+                  {dateFrom || "—"} → {dateTo || "—"}
+                </span>
+              </span>
+              {targetFolder && (
+                <>
+                  <span className="text-muted-foreground/40">·</span>
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-[10px]">
+                    <FolderOpen className="h-3 w-3" />
+                    {folders.find(f => f.id === targetFolder)?.name ?? "folder"}
+                    <button
+                      onClick={() => setTargetFolder("")}
+                      className="ml-0.5 text-muted-foreground hover:text-foreground"
+                      aria-label="Clear folder filter"
+                    >
+                      ×
+                    </button>
+                  </span>
+                </>
+              )}
+            </div>
+
+            {/* Secondary: folder failsafe */}
+            {folders.length > 0 && !targetFolder && (
+              <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                <span className="italic">Optional — narrow to a folder if the auto-filter is picking up unrelated data:</span>
+                <div className="relative">
+                  <FolderOpen className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+                  <select
+                    value={targetFolder}
+                    onChange={e => setTargetFolder(e.target.value)}
+                    className="appearance-none rounded border border-border bg-background py-1 pl-7 pr-6 text-[11px] text-foreground"
+                  >
+                    <option value="">Choose folder…</option>
+                    {folders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                  </select>
+                </div>
+              </div>
+            )}
           </div>
 
           {loading ? (
@@ -473,8 +649,53 @@ export default function TaxBundlePage() {
               {error}
             </div>
           ) : !hasData ? (
-            <div className="flex items-center justify-center py-32 text-xs text-muted-foreground">
-              No data found for the selected period.
+            <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
+              {ownsNoDocs ? (
+                <>
+                  <p className="text-sm font-medium text-foreground">No documents yet</p>
+                  <p className="max-w-sm text-xs text-muted-foreground">
+                    Upload receipts, invoices, payslips, or income statements to Smart Storage
+                    and this report will populate automatically.
+                  </p>
+                  <Link href="/tools/smart-storage">
+                    <button className="mt-2 rounded border border-border px-4 py-2 text-xs text-foreground hover:bg-muted">
+                      Go to Smart Storage
+                    </button>
+                  </Link>
+                </>
+              ) : folderExcludingEverything ? (
+                <>
+                  <p className="text-sm font-medium text-foreground">Folder filter is excluding every document in this period</p>
+                  <p className="max-w-sm text-xs text-muted-foreground">
+                    No documents in the selected folder match the period {dateFrom || "—"} → {dateTo || "—"}.
+                    Clear the folder filter to see all matching data.
+                  </p>
+                  <button onClick={() => setTargetFolder("")}
+                    className="mt-2 rounded border border-border px-4 py-2 text-xs text-foreground hover:bg-muted">
+                    Clear folder filter
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-medium text-foreground">No documents in this period</p>
+                  <p className="max-w-sm text-xs text-muted-foreground">
+                    You have documents on file, but none fall inside {dateFrom || "—"} → {dateTo || "—"}.
+                    Pick a different tax year or switch to All Time.
+                  </p>
+                  <div className="mt-2 flex gap-2">
+                    {detectedYears.slice(0, 2).map(y => (
+                      <button key={y} onClick={() => applyTaxYear(y)}
+                        className="rounded border border-border px-4 py-2 text-xs text-foreground hover:bg-muted">
+                        Tax Year {y}
+                      </button>
+                    ))}
+                    <button onClick={clearPeriod}
+                      className="rounded border border-border px-4 py-2 text-xs text-foreground hover:bg-muted">
+                      All Time
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           ) : (
             <div className="space-y-10">
@@ -629,7 +850,17 @@ export default function TaxBundlePage() {
                 </div>
               )}
 
-              {/* ── Summary Strip ── */}
+              {/* ── Summary Strip (Schedule C only) ── */}
+              <div>
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                  Schedule C Summary
+                </p>
+                {!hasSelfEmploymentIncome && (hasWageIncome || hasOtherIncome) && (
+                  <p className="mb-2 text-[11px] italic text-muted-foreground">
+                    No business (self-employment) income detected — the strip below reads zero for the Schedule C base.
+                    Wage and other income are surfaced in their own sections below and are <strong>not</strong> Schedule C.
+                  </p>
+                )}
               <div className="grid grid-cols-1 divide-y divide-border border border-border rounded sm:grid-cols-3 sm:divide-x sm:divide-y-0">
                 {[
                   {
@@ -657,6 +888,7 @@ export default function TaxBundlePage() {
                     </p>
                   </div>
                 ))}
+              </div>
               </div>
 
               {/* ── Wage Income (informational, NOT part of Schedule C net) ── */}
@@ -713,7 +945,9 @@ export default function TaxBundlePage() {
                     <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
                       {Array.from(otherIncomeByType.entries()).map(([type, amount]) => (
                         <div key={type} className="rounded border border-border/40 px-3 py-2">
-                          <p className="text-[10px] uppercase tracking-widest text-muted-foreground">{type}</p>
+                          <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                            {prettyIncomeClass(type)}
+                          </p>
                           <p className="mt-0.5 font-mono text-xs tabular-nums text-foreground">
                             {fmt(amount, currency)}
                           </p>
@@ -829,18 +1063,20 @@ export default function TaxBundlePage() {
                     </thead>
                     <tbody className="divide-y divide-border/50">
                       {Array.from(incomeByEmployer.entries()).map(([key, data]) => {
-                        const [, name] = key.split("|")
-                        const isWage = data.source === "wage"
+                        const [, , name] = key.split("|")
+                        const isWage = data.cls === "wage"
+                        const isBusiness = data.cls === "business"
+                        const badgeClass = isWage
+                          ? "bg-muted text-muted-foreground"
+                          : isBusiness
+                            ? "bg-primary/10 text-primary"
+                            : "bg-yellow-500/10 text-yellow-600 dark:text-yellow-500"
                         return (
                           <tr key={key}>
                             <td className="py-2.5 text-foreground">{name}</td>
                             <td className="py-2.5">
-                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                                isWage
-                                  ? "bg-muted text-muted-foreground"
-                                  : "bg-primary/10 text-primary"
-                              }`}>
-                                {isWage ? "Wage (payslip)" : "Business (Sched C)"}
+                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${badgeClass}`}>
+                                {prettyIncomeClass(data.cls)}
                               </span>
                             </td>
                             <td className="py-2.5 text-right font-mono tabular-nums text-foreground">
@@ -858,20 +1094,36 @@ export default function TaxBundlePage() {
                       })}
                     </tbody>
                     <tfoot>
-                      {hasWageIncome && hasSelfEmploymentIncome && (
+                      {/* Render an explicit subtotal for every bucket that
+                          contributes to the bookkeeping total — wage, business,
+                          other — so readers can reconcile the footer row-by-row
+                          regardless of which combinations are present. */}
+                      {((hasWageIncome ? 1 : 0) + (hasSelfEmploymentIncome ? 1 : 0) + (hasOtherIncome ? 1 : 0)) >= 2 && (
                         <>
-                          <tr className="border-t border-border/60">
-                            <td className="pt-2 text-xs text-muted-foreground">Wage subtotal</td>
-                            <td />
-                            <td className="pt-2 text-right font-mono tabular-nums text-xs text-muted-foreground">{fmt(wageGross, currency)}</td>
-                            <td colSpan={3} />
-                          </tr>
-                          <tr>
-                            <td className="pt-1 text-xs text-muted-foreground">Business subtotal</td>
-                            <td />
-                            <td className="pt-1 text-right font-mono tabular-nums text-xs text-muted-foreground">{fmt(selfEmploymentGross, currency)}</td>
-                            <td colSpan={3} />
-                          </tr>
+                          {hasWageIncome && (
+                            <tr className="border-t border-border/60">
+                              <td className="pt-2 text-xs text-muted-foreground">Wage subtotal</td>
+                              <td />
+                              <td className="pt-2 text-right font-mono tabular-nums text-xs text-muted-foreground">{fmt(wageGross, currency)}</td>
+                              <td colSpan={3} />
+                            </tr>
+                          )}
+                          {hasSelfEmploymentIncome && (
+                            <tr>
+                              <td className="pt-1 text-xs text-muted-foreground">Business subtotal</td>
+                              <td />
+                              <td className="pt-1 text-right font-mono tabular-nums text-xs text-muted-foreground">{fmt(selfEmploymentGross, currency)}</td>
+                              <td colSpan={3} />
+                            </tr>
+                          )}
+                          {hasOtherIncome && (
+                            <tr>
+                              <td className="pt-1 text-xs text-muted-foreground">Other income subtotal</td>
+                              <td />
+                              <td className="pt-1 text-right font-mono tabular-nums text-xs text-muted-foreground">{fmt(otherIncomeGross, currency)}</td>
+                              <td colSpan={3} />
+                            </tr>
+                          )}
                         </>
                       )}
                       <tr className="border-t-2 border-border font-semibold">

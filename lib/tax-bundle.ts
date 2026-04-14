@@ -128,6 +128,11 @@ export type IncomeSourceType = "wage" | "self_employment"
 
 export interface EmployerIncome {
   source: IncomeSourceType
+  // Fine-grained class — "business"/"wage"/"investment"/"rental"/"interest"/
+  // "other", or null for legacy rows. Needed so the renderer can label
+  // non-business non-wage rows correctly instead of falling back to the
+  // binary source bucket.
+  cls: IncomeSourceClass | null
   gross: number
   net: number
   payrollDeductions: number
@@ -248,11 +253,18 @@ export function computeTaxBundle(rows: TaxRow[]): TaxBundleSummary {
   const otherIncomeGross = otherIncomeRows.reduce(
     (s, r) => s + (r.gross_income ?? r.total_amount ?? 0), 0,
   )
-  const otherIncomeByType = new Map<IncomeSourceClass, number>()
+  // Accumulated first, then rebuilt in a stable canonical order so the UI
+  // doesn't reshuffle by session based on row insertion order.
+  const otherIncomeRaw = new Map<IncomeSourceClass, number>()
   for (const r of otherIncomeRows) {
     const cls = (r.income_source ?? "other") as IncomeSourceClass
     const amt = r.gross_income ?? r.total_amount ?? 0
-    otherIncomeByType.set(cls, (otherIncomeByType.get(cls) ?? 0) + amt)
+    otherIncomeRaw.set(cls, (otherIncomeRaw.get(cls) ?? 0) + amt)
+  }
+  const OTHER_INCOME_ORDER: IncomeSourceClass[] = ["investment", "rental", "interest", "other"]
+  const otherIncomeByType = new Map<IncomeSourceClass, number>()
+  for (const k of OTHER_INCOME_ORDER) {
+    if (otherIncomeRaw.has(k)) otherIncomeByType.set(k, otherIncomeRaw.get(k)!)
   }
 
   // Combined bookkeeping totals — for audit and Summary Strip display only.
@@ -281,11 +293,12 @@ export function computeTaxBundle(rows: TaxRow[]): TaxBundleSummary {
                                      "Other Income"
     const name = r.employer_name ?? r.vendor_name ?? defaultName
     const key = `${source}|${cls ?? "unknown"}|${name}`
-    const existing = incomeByEmployer.get(key) ?? { source, gross: 0, net: 0, payrollDeductions: 0, docs: 0 }
+    const existing = incomeByEmployer.get(key) ?? { source, cls, gross: 0, net: 0, payrollDeductions: 0, docs: 0 }
     const gross = r.gross_income ?? r.total_amount ?? 0
     const net   = r.net_income ?? 0
     incomeByEmployer.set(key, {
       source,
+      cls,
       gross: existing.gross + gross,
       net: existing.net + net,
       payrollDeductions: existing.payrollDeductions + (source === "wage" && r.gross_income != null && r.net_income != null ? Math.max(0, gross - net) : 0),
@@ -394,7 +407,18 @@ export function generateTaxBundleCSV(summary: TaxBundleSummary): string {
     wageGross,
     wagePayrollDeductions,
     selfEmploymentRows,
+    otherIncomeGross,
+    otherIncomeByType,
   } = summary
+
+  const prettyOtherIncomeLabel = (cls: IncomeSourceClass): string => {
+    switch (cls) {
+      case "investment": return "Investment Income"
+      case "rental":     return "Rental Income"
+      case "interest":   return "Interest Income"
+      default:           return "Other Income"
+    }
+  }
 
   const lines: string[] = []
 
@@ -471,6 +495,13 @@ export function generateTaxBundleCSV(summary: TaxBundleSummary): string {
   }
   if (wagePayrollDeductions > 0) {
     lines.push(`,"Payroll Deductions (Gross − Net, informational only)",${wagePayrollDeductions.toFixed(2)},`)
+  }
+
+  if (otherIncomeGross > 0) {
+    lines.push(`,"Other Income — total (informational, NOT Schedule C)",${otherIncomeGross.toFixed(2)},`)
+    for (const [cls, amt] of otherIncomeByType.entries()) {
+      lines.push(`,"  ${prettyOtherIncomeLabel(cls)}",${amt.toFixed(2)},`)
+    }
   }
 
   return lines.join("\n")

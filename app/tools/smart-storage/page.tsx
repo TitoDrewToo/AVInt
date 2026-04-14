@@ -580,6 +580,7 @@ export default function SmartStoragePage() {
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${userToken ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+          "apikey": process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
         },
         body: JSON.stringify({ file_id: fileRecord.id }),
       }).catch((err) => console.error("prescan-document fetch error:", err))

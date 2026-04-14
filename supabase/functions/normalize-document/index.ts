@@ -13,6 +13,10 @@ const corsHeaders = {
 }
 
 // ── OpenAI system prompt ──────────────────────────────────────────────────────
+// Version bumped when this prompt changes. Rows stamped with a lower
+// normalization_version can be lazily re-normalized by scripts/renormalize.ts.
+const NORMALIZATION_VERSION = 2
+
 const SYSTEM_PROMPT = `You are a financial document normalization AI.
 
 You receive:
@@ -24,23 +28,56 @@ Return ONLY valid JSON. No markdown, no code blocks, no explanation.
 
 Fields to return:
 {
-  "vendor_name":        string or null  — clean company name, remove store/branch numbers, title case
-  "employer_name":      string or null  — clean employer name, title case
-  "document_date":      string or null  — ISO date YYYY-MM-DD, infer from context if needed
-  "currency":           string or null  — ISO 4217 code: USD, PHP, SGD, EUR, GBP, etc
-  "total_amount":       number or null  — final total paid/charged, must be a number not string
-  "gross_income":       number or null  — gross pay before deductions
-  "net_income":         number or null  — take-home pay after deductions
-  "tax_amount":         number or null  — VAT, withholding tax, or any tax line extracted
-  "discount_amount":    number or null  — any discount or promo deducted
-  "expense_category":   string or null  — one of: Food, Transport, Housing, Utilities, Healthcare, Entertainment, Shopping, Travel, Office, Salary, Tax, Legal, Other
-  "invoice_number":     string or null  — invoice/receipt/reference number
-  "payment_method":     string or null  — Cash, Credit Card, Debit Card, Bank Transfer, GCash, PayMaya, Check, Other
-  "period_start":       string or null  — pay period start date YYYY-MM-DD (payslips/statements)
-  "period_end":         string or null  — pay period end date YYYY-MM-DD (payslips/statements)
-  "counterparty_name":  string or null  — other named party in contracts/agreements
-  "line_items":         array or null   — preserve all entries from Gemini exactly. For contracts/agreements each entry may contain: {"description": string, "amount": number, "quantity": number or null, "due_date": "YYYY-MM-DD or null", "check_number": "string or null", "bank_name": "string or null"}. For receipts/invoices the standard {"description", "amount", "quantity"} format is used. Never discard or flatten entries.
-  "confidence_score":   number          — your confidence 0.0–1.0 in the overall extraction
+  "vendor_name":            string or null  — clean company name, remove store/branch numbers, title case
+  "vendor_normalized":      string or null  — canonical form of vendor_name suitable for grouping (e.g. "STARBUCKS #1234 SEATTLE" → "Starbucks"). Strip location suffixes, store numbers, legal suffixes (Inc, LLC, Ltd) unless they disambiguate. Use for duplicate detection.
+  "employer_name":          string or null  — clean employer name, title case
+  "document_date":          string or null  — ISO date YYYY-MM-DD, infer from context if needed
+  "currency":               string or null  — ISO 4217 code: USD, PHP, SGD, EUR, GBP, etc
+  "jurisdiction":           string or null  — best-effort ISO-like region tag: "US", "US-CA", "GB", "PH", "SG", "AU", etc. Use currency, address, tax labels (VAT/GST/Sales Tax), and language cues.
+  "total_amount":           number or null  — final total paid/charged, must be a number not string
+  "gross_income":           number or null  — gross pay before deductions
+  "net_income":             number or null  — take-home pay after deductions
+  "tax_amount":             number or null  — VAT, withholding tax, or any tax line extracted
+  "discount_amount":        number or null  — any discount or promo deducted
+  "expense_category":       string or null  — Schedule-C-aligned vocabulary. Pick the most specific match. Allowed values:
+      Marketing, Advertising, Design, Printing,                          (→ Line 8  Advertising)
+      Fuel, Parking, Transport, Tolls, Vehicle Maintenance,              (→ Line 9  Car & Truck)
+      Commissions, Sales Commissions,                                    (→ Line 10 Commissions & Fees)
+      Consulting, Contract Labor, Freelance,                             (→ Line 11 Contract Labor)
+      Equipment, Hardware, Computer,                                     (→ Line 13 Depreciation / §179)
+      Insurance,                                                         (→ Line 15)
+      Loan Interest, Business Interest, Credit Card Interest,            (→ Line 16b Interest Other)
+      Legal, Accounting, Professional Services,                          (→ Line 17 Legal & Professional)
+      Office, Office Supplies,                                           (→ Line 18 Office Expense)
+      Vehicle Rental, Equipment Rental, Machinery Rental,                (→ Line 20a Rent Vehicles/Equipment)
+      Rent, Coworking, Office Rent,                                      (→ Line 20b Rent Other Property)
+      Repairs, Maintenance,                                              (→ Line 21)
+      Subscriptions, SaaS, Cloud Services, Software,                     (→ Line 22 Supplies)
+      Tax, Taxes, Business License, Permit,                              (→ Line 23 Taxes & Licenses)
+      Travel, Accommodation, Airfare, Lodging,                           (→ Line 24a Travel)
+      Meals, Business Meals, Client Meals,                               (→ Line 24b Meals, 50% deductible)
+      Utilities, Internet, Phone, Electricity,                           (→ Line 25 Utilities)
+      Wages, Employee Wages, Payroll,                                    (→ Line 26 Wages)
+      Training, Education, Conferences, Bank Fees, Dues,                 (→ Line 27b Other Expenses)
+      Home Office,                                                       (→ Line 30)
+      Other
+      NOTE: Entertainment is NOT deductible post-TCJA (2018+). Do not use "Entertainment" — only "Meals" when clearly a meal.
+  "income_source":          string or null  — REQUIRED for any income document. One of:
+      "business"   → self-employment / freelance / business revenue → Schedule C base
+      "wage"       → W-2 / payslip / salary from an employer
+      "investment" → brokerage statements, dividends, capital gains, 1099-DIV, 1099-B
+      "rental"     → rental property income
+      "interest"   → interest income, 1099-INT, savings account statements
+      "other"      → anything else (alimony, gifts, refunds treated as income, etc.)
+      Return null for pure expense documents (receipts, invoices) and contracts.
+  "classification_rationale": string or null — one short sentence explaining how you chose expense_category and income_source. Cited evidence beats speculation. Used for audit and user trust.
+  "invoice_number":         string or null  — invoice/receipt/reference number
+  "payment_method":         string or null  — Cash, Credit Card, Debit Card, Bank Transfer, GCash, PayMaya, Check, Other
+  "period_start":           string or null  — period the document COVERS (YYYY-MM-DD). For a payslip this is the pay period start. For a receipt this is the transaction date (same as document_date). For an income statement this is the fiscal period start.
+  "period_end":             string or null  — period end date (YYYY-MM-DD). Same semantics as period_start. If unknown, fall back to document_date.
+  "counterparty_name":      string or null  — other named party in contracts/agreements
+  "line_items":             array or null   — preserve all entries from Gemini exactly. For contracts/agreements each entry may contain: {"description": string, "amount": number, "quantity": number or null, "due_date": "YYYY-MM-DD or null", "check_number": "string or null", "bank_name": "string or null"}. For receipts/invoices the standard {"description", "amount", "quantity"} format is used. Never discard or flatten entries.
+  "confidence_score":       number          — your confidence 0.0–1.0 in the overall extraction
 }
 
 Rules:
@@ -48,7 +85,13 @@ Rules:
 - All amount fields must be numbers, never strings
 - If a field truly cannot be determined, return null — do not guess
 - Normalize inconsistent casing, remove trailing punctuation from names
-- For Philippine documents: PHP currency, common vendors include Jollibee, SM, Grab, etc.
+- period_start and period_end MUST always be populated when the document has any
+  temporal meaning — use document_date as the fallback when no explicit range exists,
+  so downstream period-overlap queries work uniformly.
+- income_source is the single source of truth for how a document's income is treated
+  downstream. If in doubt between business and investment, cite the strongest signal
+  in classification_rationale and pick the most likely.
+- For Philippine documents: PHP currency, jurisdiction "PH", common vendors include Jollibee, SM, Grab, etc.
 - For contracts/agreements: if raw_json contains a payment schedule table (PDC or installment entries with due_date fields), ensure all entries are preserved in line_items — do not summarize or drop rows.`
 
 // ── Main handler ──────────────────────────────────────────────────────────────
@@ -164,37 +207,48 @@ serve(async (req) => {
     //    that was already populated — never overwrite good data with null
     const now = new Date().toISOString()
 
+    // Fall back period_start / period_end to document_date so every row has a
+    // usable temporal range for period-overlap queries.
+    const effectiveDocDate = normalized.document_date ?? fields.document_date ?? null
+    const effectivePeriodStart = normalized.period_start ?? effectiveDocDate
+    const effectivePeriodEnd   = normalized.period_end   ?? effectiveDocDate
+
     await supabase
       .from("document_fields")
       .update({
         // Core fields
-        vendor_name:       normalized.vendor_name       ?? fields.vendor_name,
-        employer_name:     normalized.employer_name     ?? fields.employer_name,
-        document_date:     normalized.document_date     ?? fields.document_date,
-        currency:          normalized.currency          ?? fields.currency,
-        total_amount:      normalized.total_amount      ?? fields.total_amount,
-        gross_income:      normalized.gross_income      ?? fields.gross_income,
-        net_income:        normalized.net_income        ?? fields.net_income,
-        expense_category:  normalized.expense_category  ?? fields.expense_category,
-        confidence_score:  normalized.confidence_score  ?? fields.confidence_score,
-        // New enrichment fields
-        tax_amount:        normalized.tax_amount        ?? null,
-        discount_amount:   normalized.discount_amount   ?? null,
-        invoice_number:    normalized.invoice_number    ?? null,
-        payment_method:    normalized.payment_method    ?? null,
-        period_start:      normalized.period_start      ?? null,
-        period_end:        normalized.period_end        ?? null,
-        counterparty_name: normalized.counterparty_name ?? null,
-        line_items:        normalized.line_items        ?? fields.raw_json?.line_items ?? null,
+        vendor_name:              normalized.vendor_name              ?? fields.vendor_name,
+        vendor_normalized:        normalized.vendor_normalized        ?? null,
+        employer_name:            normalized.employer_name            ?? fields.employer_name,
+        document_date:            normalized.document_date            ?? fields.document_date,
+        currency:                 normalized.currency                 ?? fields.currency,
+        jurisdiction:             normalized.jurisdiction             ?? null,
+        total_amount:             normalized.total_amount             ?? fields.total_amount,
+        gross_income:             normalized.gross_income             ?? fields.gross_income,
+        net_income:               normalized.net_income               ?? fields.net_income,
+        expense_category:         normalized.expense_category         ?? fields.expense_category,
+        income_source:            normalized.income_source            ?? null,
+        classification_rationale: normalized.classification_rationale ?? null,
+        confidence_score:         normalized.confidence_score         ?? fields.confidence_score,
+        // Enrichment fields (v1)
+        tax_amount:               normalized.tax_amount               ?? null,
+        discount_amount:          normalized.discount_amount          ?? null,
+        invoice_number:           normalized.invoice_number           ?? null,
+        payment_method:           normalized.payment_method           ?? null,
+        period_start:             effectivePeriodStart,
+        period_end:               effectivePeriodEnd,
+        counterparty_name:        normalized.counterparty_name        ?? null,
+        line_items:               normalized.line_items               ?? fields.raw_json?.line_items ?? null,
         // Preserve full AI outputs in raw_json — gemini_raw from extraction, openai_enriched from normalization
         raw_json: {
           ...(fields.raw_json ?? {}),
           openai_enriched: normalized,
         },
         // Pipeline state
-        normalization_status: "normalized",
-        normalized_at:        now,
-        normalization_error:  null,
+        normalization_status:  "normalized",
+        normalization_version: NORMALIZATION_VERSION,
+        normalized_at:         now,
+        normalization_error:   null,
       })
       .eq("id", fields.id)
 

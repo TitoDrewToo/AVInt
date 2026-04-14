@@ -6,6 +6,7 @@ import { Navbar } from "@/components/navbar"
 import { Footer } from "@/components/footer"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 import { supabase } from "@/lib/supabase"
+import { useEntitlement } from "@/hooks/use-entitlement"
 import type { Session } from "@supabase/supabase-js"
 import GridLayoutBase, { Layout as RGLLayout } from "react-grid-layout"
 // react-grid-layout v2 changed its TS prop types — cast to any to keep v1-style props working at runtime
@@ -602,7 +603,7 @@ export default function SmartDashboardPage() {
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
   const [hasNewData, setHasNewData] = useState(false)
-  const [isPro, setIsPro] = useState(false)
+  const { isActive: isPro } = useEntitlement(session)
   const [containerWidth, setContainerWidth] = useState(1200)
   const [contextSummary, setContextSummary] = useState<string | null>(null)
   const [contextSummaryDate, setContextSummaryDate] = useState<string | null>(null)
@@ -739,15 +740,6 @@ export default function SmartDashboardPage() {
 
   useEffect(() => { loadLayout() }, [loadLayout])
   useEffect(() => { loadData() }, [loadData])
-  useEffect(() => {
-    if (!session?.user?.id) return
-    supabase
-      .from("subscriptions")
-      .select("status")
-      .eq("user_id", session.user.id)
-      .single()
-      .then(({ data }) => setIsPro(data?.status === "pro" || data?.status === "day_pass" || data?.status === "gift_code"))
-  }, [session])
 
   // ── Context summary ────────────────────────────────────────────────────────
   const loadContextSummary = useCallback(async () => {
@@ -1013,14 +1005,15 @@ export default function SmartDashboardPage() {
                       )}
                     </button>
                   ) : (
-                    <button
-                      disabled
-                      className="flex h-7 cursor-not-allowed items-center gap-1.5 rounded-lg border border-border px-3 text-xs text-muted-foreground opacity-40"
+                    <Link
+                      href="/pricing"
+                      title="Upgrade to Pro to unlock Advanced Analytics"
+                      className="flex h-7 items-center gap-1.5 rounded-lg border border-border px-3 text-xs text-muted-foreground opacity-40 transition-opacity hover:opacity-70"
                     >
                       <Sparkles className="h-3.5 w-3.5" />
                       Advanced Analytics
                       <Lock className="h-3 w-3" />
-                    </button>
+                    </Link>
                   )}
                   {showAdvancedMenu && canUseAA && (
                     <div className="absolute left-0 top-9 z-30 min-w-[220px] rounded-xl border border-border bg-card p-3 shadow-xl">
@@ -1313,8 +1306,7 @@ export default function SmartDashboardPage() {
                 </div>
               )}
 
-              {isPro && (
-                <>
+              <>
                   <div className="my-2 h-px bg-border" />
 
                   {/* Advanced section — collapsible */}
@@ -1327,10 +1319,25 @@ export default function SmartDashboardPage() {
                   </button>
                   {advancedOpen && (
                     <div className="space-y-1">
-                      {/* Context Summary — always first */}
+                      {/* Context Summary — always first. Locked upsell for non-pro. */}
                       {(() => {
                         const item = WIDGET_LIBRARY.find(w => w.type === "context-summary")!
                         const added = widgets.some(w => w.type === item.type)
+                        if (!isPro) {
+                          return (
+                            <Link
+                              key={item.type}
+                              href="/pricing"
+                              title="Upgrade to Pro to unlock Context Summary"
+                              className="flex w-full items-start justify-between rounded-lg px-3 py-2.5 text-left opacity-40 transition-opacity hover:opacity-70"
+                            >
+                              <div className="flex-1 min-w-0 pr-2">
+                                <p className="text-sm font-medium leading-tight text-foreground flex items-center gap-1.5">{item.title}<Lock className="h-3 w-3" /></p>
+                                <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{item.desc}</p>
+                              </div>
+                            </Link>
+                          )
+                        }
                         return (
                           <button
                             key={item.type}
@@ -1348,8 +1355,8 @@ export default function SmartDashboardPage() {
                       })()}
 
                       {/* AI-generated widgets — starred first, then chronological */}
-                      {advancedWidgetsList.length > 0 && <div className="my-1 h-px bg-border/50" />}
-                      {advancedWidgetsList.map((aw) => {
+                      {isPro && advancedWidgetsList.length > 0 && <div className="my-1 h-px bg-border/50" />}
+                      {isPro && advancedWidgetsList.map((aw) => {
                         const plotted = widgets.some(w => w.advancedId === aw.id)
                         return (
                           <div key={aw.id} className="group flex w-full items-start gap-1 rounded-lg px-2 py-2 hover:bg-muted">
@@ -1378,13 +1385,12 @@ export default function SmartDashboardPage() {
                         )
                       })}
 
-                      {advancedWidgetsList.length === 0 && (
+                      {isPro && advancedWidgetsList.length === 0 && (
                         <p className="px-3 py-2 text-xs text-muted-foreground italic">Run Advanced Analytics to generate visualizations</p>
                       )}
                     </div>
                   )}
                 </>
-              )}
 
               {!isPro && (
                 <div className="mt-3 rounded-xl border border-border bg-muted/30 p-3">
@@ -1445,8 +1451,7 @@ export default function SmartDashboardPage() {
               </div>
             )}
 
-            {isPro && (
-              <>
+            <>
                 <div className="my-2 h-px bg-border" />
                 <button
                   onClick={() => setAdvancedOpen(v => !v)}
@@ -1460,6 +1465,21 @@ export default function SmartDashboardPage() {
                     {(() => {
                       const item = WIDGET_LIBRARY.find(w => w.type === "context-summary")!
                       const added = widgets.some(w => w.type === item.type)
+                      if (!isPro) {
+                        return (
+                          <Link
+                            key={item.type}
+                            href="/pricing"
+                            onClick={() => setMobileWidgetPanelOpen(false)}
+                            className="flex w-full items-start justify-between rounded-lg px-3 py-2.5 text-left opacity-40 transition-opacity hover:opacity-70"
+                          >
+                            <div className="flex-1 min-w-0 pr-2">
+                              <p className="text-sm font-medium leading-tight text-foreground flex items-center gap-1.5">{item.title}<Lock className="h-3 w-3" /></p>
+                              <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{item.desc}</p>
+                            </div>
+                          </Link>
+                        )
+                      }
                       return (
                         <button
                           key={item.type}
@@ -1475,8 +1495,8 @@ export default function SmartDashboardPage() {
                         </button>
                       )
                     })()}
-                    {advancedWidgetsList.length > 0 && <div className="my-1 h-px bg-border/50" />}
-                    {advancedWidgetsList.map((aw) => {
+                    {isPro && advancedWidgetsList.length > 0 && <div className="my-1 h-px bg-border/50" />}
+                    {isPro && advancedWidgetsList.map((aw) => {
                       const plotted = widgets.some(w => w.advancedId === aw.id)
                       return (
                         <div key={aw.id} className="group flex w-full items-start gap-1 rounded-lg px-2 py-2 hover:bg-muted">
@@ -1502,13 +1522,12 @@ export default function SmartDashboardPage() {
                         </div>
                       )
                     })}
-                    {advancedWidgetsList.length === 0 && (
+                    {isPro && advancedWidgetsList.length === 0 && (
                       <p className="px-3 py-2 text-xs text-muted-foreground italic">Run Advanced Analytics to generate visualizations</p>
                     )}
                   </div>
                 )}
               </>
-            )}
 
             {!isPro && (
               <div className="mt-3 rounded-xl border border-border bg-muted/30 p-3">

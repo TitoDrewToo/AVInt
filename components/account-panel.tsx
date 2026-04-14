@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { GoogleSignInButton } from "@/components/google-sign-in-button"
 import { supabase } from "@/lib/supabase"
+import { computeEntitlement } from "@/lib/subscription"
 import type { Session } from "@supabase/supabase-js"
 
 interface AccountPanelProps {
@@ -341,37 +342,31 @@ interface SubRecord {
 }
 
 function resolveDisplayPlan(sub: SubRecord | null): { label: string; note: string; isActive: boolean } {
-  if (!sub || !sub.status) return { label: "Free", note: "No renewal scheduled", isActive: false }
+  const ent = computeEntitlement(sub)
 
-  const now = Date.now()
-
-  // Day pass: check expiry
-  if (sub.status === "day_pass") {
-    if (sub.current_period_end && new Date(sub.current_period_end).getTime() < now) {
-      return { label: "Free", note: "Day pass expired", isActive: false }
-    }
-    const expiresAt = sub.current_period_end
-      ? new Date(sub.current_period_end).toLocaleString("en-PH", { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" })
+  if (ent.isDayPass) {
+    const expiresAt = ent.expiresAt
+      ? new Date(ent.expiresAt).toLocaleString("en-PH", { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" })
       : "—"
     return { label: "Day Pass", note: `Expires ${expiresAt}`, isActive: true }
   }
 
-  if (sub.status === "pro") {
-    const note = sub.current_period_end
-      ? `Renews ${new Date(sub.current_period_end).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "2-digit" })}`
+  if (ent.isPro) {
+    const note = ent.expiresAt
+      ? `Renews ${new Date(ent.expiresAt).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "2-digit" })}`
       : "Active"
     return { label: "Pro", note, isActive: true }
   }
 
-  if (sub.status === "gift_code") {
-    const note = sub.current_period_end
-      ? `Access until ${new Date(sub.current_period_end).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "2-digit" })}`
+  if (ent.isGiftCode) {
+    const note = ent.expiresAt
+      ? `Access until ${new Date(ent.expiresAt).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "2-digit" })}`
       : "Active"
     return { label: "Pro (Gift)", note, isActive: true }
   }
 
-  if (sub.status === "cancelled") return { label: "Free", note: "Subscription cancelled", isActive: false }
-
+  if (ent.status === "expired") return { label: "Free", note: "Day pass expired", isActive: false }
+  if (sub?.status === "cancelled") return { label: "Free", note: "Subscription cancelled", isActive: false }
   return { label: "Free", note: "No renewal scheduled", isActive: false }
 }
 

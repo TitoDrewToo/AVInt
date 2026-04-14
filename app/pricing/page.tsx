@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Check, CheckCircle } from "lucide-react"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
+import { computeEntitlement } from "@/lib/subscription"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 
 const CHECKOUT_URLS: Record<string, string> = {
@@ -250,15 +251,9 @@ export default function PricingPage() {
       .from("subscriptions")
       .select("status, current_period_end")
       .eq("email", email)
-      .single()
-    if (!data) return
-    // Check day pass expiry client-side
-    if (data.status === "day_pass" && data.current_period_end) {
-      const expired = new Date(data.current_period_end) < new Date()
-      setActiveStatus(expired ? null : "day_pass")
-    } else {
-      setActiveStatus(["pro", "gift_code"].includes(data.status) ? data.status : null)
-    }
+      .maybeSingle()
+    const ent = computeEntitlement(data)
+    setActiveStatus(ent.isActive ? ent.status : null)
   }
 
   const handleRequireAuth = (checkoutUrl: string) => setPendingCheckoutUrl(checkoutUrl)

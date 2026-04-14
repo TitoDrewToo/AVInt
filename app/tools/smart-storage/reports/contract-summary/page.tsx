@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { Navbar } from "@/components/navbar"
 import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
+import { useEntitlement } from "@/hooks/use-entitlement"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 import type { Session } from "@supabase/supabase-js"
 import { ArrowLeft, Download, ChevronDown, ChevronUp, RefreshCw, FolderOpen, Printer } from "lucide-react"
@@ -108,7 +109,7 @@ function StatusBadge({ status }: { status: ObligationDisplay }) {
 export default function ContractSummaryPage() {
   const [session, setSession]             = useState<Session | null>(null)
   const [sessionLoaded, setSessionLoaded] = useState(false)
-  const [isPro, setIsPro]                 = useState(false)
+  const { isActive: isPro }               = useEntitlement(session)
   const [contracts, setContracts]         = useState<ContractRow[]>([])
   const [obligations, setObligations]     = useState<Record<string, PaymentObligation[]>>({})
   const [loading, setLoading]             = useState(true)
@@ -134,12 +135,6 @@ export default function ContractSummaryPage() {
     })
     return () => subscription.unsubscribe()
   }, [])
-
-  useEffect(() => {
-    if (!session?.user?.id) return
-    supabase.from("subscriptions").select("status").eq("user_id", session.user.id).single()
-      .then(({ data }) => setIsPro(data?.status === "pro" || data?.status === "day_pass" || data?.status === "gift_code"))
-  }, [session])
 
   useEffect(() => {
     if (!session?.user?.id) return

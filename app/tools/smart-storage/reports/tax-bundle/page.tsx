@@ -1,9 +1,10 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { Navbar } from "@/components/navbar"
 import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
+import { useEntitlement } from "@/hooks/use-entitlement"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 import type { Session } from "@supabase/supabase-js"
 import {
@@ -13,86 +14,16 @@ import {
 import Link from "next/link"
 import JSZip from "jszip"
 
-// ── Schedule C Line-Item Mapping ──────────────────────────────────────────────
-// Maps our generic expense categories → IRS Schedule C line numbers
-// https://www.irs.gov/pub/irs-pdf/f1040sc.pdf
-
-interface ScheduleCLine {
-  line: string        // e.g. "Line 8"
-  label: string       // IRS label
-  categories: string[] // our categories that roll up here
-}
-
-const SCHEDULE_C_LINES: ScheduleCLine[] = [
-  { line: "Line 8",  label: "Advertising",                categories: ["Marketing", "Advertising", "Design", "Printing"] },
-  { line: "Line 9",  label: "Car & Truck Expenses",       categories: ["Fuel", "Parking", "Transport"] },
-  { line: "Line 10", label: "Commissions & Fees",         categories: ["Bank Fees"] },
-  { line: "Line 11", label: "Contract Labor",             categories: ["Consulting"] },
-  { line: "Line 13", label: "Depreciation (§179)",        categories: ["Equipment", "Hardware"] },
-  { line: "Line 15", label: "Insurance",                  categories: ["Insurance"] },
-  { line: "Line 17", label: "Legal & Professional",       categories: ["Legal", "Accounting", "Professional Services"] },
-  { line: "Line 18", label: "Office Expense",             categories: ["Office", "Office Supplies"] },
-  { line: "Line 20b",label: "Rent (Other)",               categories: ["Rent", "Coworking"] },
-  { line: "Line 21", label: "Repairs & Maintenance",      categories: ["Repairs", "Maintenance"] },
-  { line: "Line 22", label: "Supplies",                   categories: ["Subscriptions", "SaaS", "Cloud Services", "Software"] },
-  { line: "Line 23", label: "Taxes & Licenses",           categories: ["Tax", "Taxes"] },
-  { line: "Line 24a",label: "Travel",                     categories: ["Travel", "Accommodation", "Airfare"] },
-  { line: "Line 24b",label: "Meals (50% deductible)",     categories: ["Meals", "Entertainment", "Client Entertainment"] },
-  { line: "Line 25", label: "Utilities",                  categories: ["Utilities", "Internet", "Phone"] },
-  { line: "Line 27a",label: "Other Expenses",             categories: ["Training", "Education", "Conferences"] },
-]
-
-// Reverse lookup: category → schedule C line
-const CATEGORY_TO_LINE = new Map<string, string>()
-for (const sc of SCHEDULE_C_LINES) {
-  for (const cat of sc.categories) {
-    CATEGORY_TO_LINE.set(cat.toLowerCase(), sc.line)
-  }
-}
-
-function getScheduleCLine(category: string | null): string | null {
-  if (!category) return null
-  return CATEGORY_TO_LINE.get(category.toLowerCase()) ?? null
-}
-
-function getScheduleCLabel(lineNum: string): string {
-  return SCHEDULE_C_LINES.find(l => l.line === lineNum)?.label ?? "Other"
-}
-
-// ── Deductibility Confidence ──────────────────────────────────────────────────
-
-type DeductStatus = "deductible" | "review" | "uncategorized"
-
-function getDeductStatus(category: string | null, confidence: number | null): DeductStatus {
-  if (!category || category === "Uncategorized" || category === "Other") return "uncategorized"
-  const line = getScheduleCLine(category)
-  if (!line) return "review"                       // category exists but doesn't map to Schedule C
-  if (confidence !== null && confidence < 0.7) return "review"  // low AI confidence
-  return "deductible"
-}
-
-// ── Types ─────────────────────────────────────────────────────────────────────
+import {
+  getScheduleCLine,
+  getDeductStatus,
+  computeTaxBundle,
+  generateTaxBundleCSV,
+  ALL_SC_CATEGORIES,
+  type TaxRow,
+} from "@/lib/tax-bundle"
 
 interface FolderOption { id: string; name: string }
-
-interface TaxRow {
-  file_id: string
-  filename: string
-  document_type: string
-  vendor_name: string | null
-  employer_name: string | null
-  document_date: string | null
-  total_amount: number | null
-  gross_income: number | null
-  net_income: number | null
-  expense_category: string | null
-  currency: string | null
-  confidence_score: number | null
-  storage_path: string | null
-}
-
-// All Schedule C categories available for reassignment
-const ALL_SC_CATEGORIES = SCHEDULE_C_LINES.flatMap(l => l.categories).sort()
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -121,7 +52,7 @@ const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct"
 export default function TaxBundlePage() {
   const [session, setSession] = useState<Session | null>(null)
   const [sessionLoaded, setSessionLoaded] = useState(false)
-  const [isPro, setIsPro] = useState(false)
+  const { isActive: isPro } = useEntitlement(session)
   const [rows, setRows] = useState<TaxRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -144,12 +75,6 @@ export default function TaxBundlePage() {
     })
     return () => subscription.unsubscribe()
   }, [])
-
-  useEffect(() => {
-    if (!session?.user?.id) return
-    supabase.from("subscriptions").select("status").eq("user_id", session.user.id).single()
-      .then(({ data }) => setIsPro(data?.status === "pro" || data?.status === "day_pass" || data?.status === "gift_code"))
-  }, [session])
 
   useEffect(() => {
     if (!session?.user?.id) return
@@ -176,34 +101,47 @@ export default function TaxBundlePage() {
       let query = supabase
         .from("document_fields")
         .select(`
-          file_id, vendor_name, employer_name, document_date,
+          file_id, vendor_name, vendor_normalized, employer_name, document_date,
+          period_start, period_end,
           total_amount, gross_income, net_income, expense_category, currency,
+          income_source, classification_rationale, jurisdiction,
           confidence_score,
           files!inner(filename, document_type, storage_path)
         `)
         .in("file_id", userFiles.map(f => f.id))
         .order("document_date", { ascending: false })
 
-      if (dateFrom) query = query.gte("document_date", dateFrom)
-      if (dateTo)   query = query.lte("document_date", dateTo)
+      // Period overlap: a document is "in" the selected window if its
+      // [period_start, period_end] interval intersects [dateFrom, dateTo].
+      // Interval intersection = period_end >= dateFrom AND period_start <= dateTo.
+      // Legacy rows without period_start/period_end fall back to document_date
+      // via a COALESCE on the edge function during normalization.
+      if (dateFrom) query = query.or(`period_end.gte.${dateFrom},document_date.gte.${dateFrom}`)
+      if (dateTo)   query = query.or(`period_start.lte.${dateTo},document_date.lte.${dateTo}`)
 
       const { data } = await query
 
       if (data) {
         setRows(data.map((row: any) => ({
-          file_id:          row.file_id,
-          filename:         row.files?.filename ?? "unknown",
-          document_type:    row.files?.document_type ?? "unknown",
-          vendor_name:      row.vendor_name,
-          employer_name:    row.employer_name,
-          document_date:    row.document_date,
-          total_amount:     row.total_amount != null ? safeNum(row.total_amount) : null,
-          gross_income:     row.gross_income != null ? safeNum(row.gross_income) : null,
-          net_income:       row.net_income != null ? safeNum(row.net_income) : null,
-          expense_category: row.expense_category,
-          currency:         row.currency,
-          confidence_score: row.confidence_score != null ? safeNum(row.confidence_score) : null,
-          storage_path:     row.files?.storage_path ?? null,
+          file_id:                  row.file_id,
+          filename:                 row.files?.filename ?? "unknown",
+          document_type:            row.files?.document_type ?? "unknown",
+          vendor_name:              row.vendor_name,
+          vendor_normalized:        row.vendor_normalized,
+          employer_name:            row.employer_name,
+          document_date:            row.document_date,
+          period_start:             row.period_start,
+          period_end:               row.period_end,
+          total_amount:             row.total_amount != null ? safeNum(row.total_amount) : null,
+          gross_income:             row.gross_income != null ? safeNum(row.gross_income) : null,
+          net_income:               row.net_income != null ? safeNum(row.net_income) : null,
+          expense_category:         row.expense_category,
+          income_source:            row.income_source,
+          classification_rationale: row.classification_rationale,
+          jurisdiction:             row.jurisdiction,
+          currency:                 row.currency,
+          confidence_score:         row.confidence_score != null ? safeNum(row.confidence_score) : null,
+          storage_path:             row.files?.storage_path ?? null,
         })))
       }
     } catch (err) {
@@ -217,90 +155,44 @@ export default function TaxBundlePage() {
 
   useEffect(() => { loadData() }, [loadData])
 
-  // ── Aggregations ────────────────────────────────────────────────────────────
+  // ── Aggregations (pure) ─────────────────────────────────────────────────────
 
-  const _currencyCount = rows.reduce((acc: Record<string, number>, r) => {
-    const c = r.currency ?? "USD"; acc[c] = (acc[c] ?? 0) + Math.abs(r.total_amount ?? r.gross_income ?? 0); return acc
-  }, {})
-  const currency    = Object.entries(_currencyCount).sort(([, a], [, b]) => b - a)[0]?.[0] ?? "USD"
-  const incomeRows  = rows.filter(r => r.document_type === "payslip" || r.document_type === "income_statement")
-  const expenseRows = rows.filter(r => r.document_type === "receipt"  || r.document_type === "invoice")
+  const summary = useMemo(() => computeTaxBundle(rows), [rows])
+  const {
+    primaryCurrency: currency,
+    currencies,
+    mixedCurrency,
+    incomeRows,
+    expenseRows,
+    wageGross,
+    wageNet,
+    wagePayrollDeductions,
+    selfEmploymentGross,
+    selfEmploymentRows,
+    otherIncomeRows,
+    otherIncomeGross,
+    otherIncomeByType,
+    totalGross,
+    totalExpensesRaw,
+    deductibleExpenses,
+    estimatedNetScheduleC,
+    mealsGross,
+    mealsDeductible,
+    scheduleC: sortedScheduleC,
+    uncategorizedItems,
+    reviewItems,
+    incomeByEmployer,
+  } = summary
+  const hasWageIncome = wageGross > 0
+  const hasSelfEmploymentIncome = selfEmploymentGross > 0
+  const hasOtherIncome = otherIncomeGross > 0
 
-  const totalGross    = incomeRows.reduce((s, r) => s + (r.gross_income ?? r.total_amount ?? 0), 0)
-  const totalNet      = incomeRows.reduce((s, r) => s + (r.net_income ?? 0), 0)
-  const totalExpenses = expenseRows.reduce((s, r) => s + (r.total_amount ?? 0), 0)
-  const estimatedTaxable = totalGross - totalExpenses
-
-  const totalWithholding = incomeRows.reduce((s, r) => {
-    if (r.gross_income != null && r.net_income != null) {
-      return s + Math.max(0, r.gross_income - r.net_income)
-    }
-    return s
-  }, 0)
-
-  // Group income by employer
-  const incomeByEmployer = new Map<string, { gross: number; net: number; withholding: number; docs: number }>()
-  for (const r of incomeRows) {
-    const key = r.employer_name ?? "Unknown Employer"
-    const existing = incomeByEmployer.get(key) ?? { gross: 0, net: 0, withholding: 0, docs: 0 }
-    const gross = r.gross_income ?? r.total_amount ?? 0
-    const net   = r.net_income ?? 0
-    incomeByEmployer.set(key, {
-      gross:       existing.gross + gross,
-      net:         existing.net + net,
-      withholding: existing.withholding + (r.gross_income != null && r.net_income != null ? Math.max(0, gross - net) : 0),
-      docs:        existing.docs + 1,
-    })
-  }
-
-  // ── Schedule C Expense Grouping ─────────────────────────────────────────────
-
-  interface ScheduleCTotal {
-    line: string
-    label: string
-    amount: number
-    items: TaxRow[]
-    reviewCount: number
-  }
-
-  const scheduleCTotals = new Map<string, ScheduleCTotal>()
-  const uncategorizedItems: TaxRow[] = []
-  const reviewItems: TaxRow[] = []
-
-  for (const r of expenseRows) {
-    const status = getDeductStatus(r.expense_category, r.confidence_score)
-    const scLine = getScheduleCLine(r.expense_category)
-
-    if (status === "uncategorized") {
-      uncategorizedItems.push(r)
-      continue
-    }
-
-    if (status === "review") {
-      reviewItems.push(r)
-    }
-
-    const lineKey = scLine ?? "Line 27a" // unmapped → Other Expenses
-    const existing = scheduleCTotals.get(lineKey) ?? {
-      line: lineKey,
-      label: getScheduleCLabel(lineKey),
-      amount: 0,
-      items: [],
-      reviewCount: 0,
-    }
-    existing.amount += r.total_amount ?? 0
-    existing.items.push(r)
-    if (status === "review") existing.reviewCount++
-    scheduleCTotals.set(lineKey, existing)
-  }
-
-  // Sort by line number
-  const sortedScheduleC = Array.from(scheduleCTotals.values())
-    .sort((a, b) => {
-      const numA = parseFloat(a.line.replace(/[^\d.]/g, "")) || 99
-      const numB = parseFloat(b.line.replace(/[^\d.]/g, "")) || 99
-      return numA - numB
-    })
+  // Legacy fallback detection: any non-expense row that still has no
+  // AI-assigned income_source is running on the document_type heuristic.
+  // When every income row is explicitly classified we can drop the
+  // self-employment advisory banner and the forced-fail readiness check.
+  const legacyUnclassifiedIncomeCount = incomeRows.filter(r => !r.income_source).length
+  const hasUnclassifiedIncome = legacyUnclassifiedIncomeCount > 0
 
   // ── Monthly Expense Breakdown ───────────────────────────────────────────────
 
@@ -347,8 +239,9 @@ export default function TaxBundlePage() {
 
   const dupMap = new Map<string, TaxRow[]>()
   for (const r of expenseRows) {
-    if (r.vendor_name && r.total_amount != null && r.document_date) {
-      const key = `${r.vendor_name.toLowerCase().trim()}|${r.total_amount.toFixed(2)}|${r.document_date}`
+    const vendor = r.vendor_normalized ?? r.vendor_name
+    if (vendor && r.total_amount != null && r.document_date) {
+      const key = `${vendor.toLowerCase().trim()}|${r.total_amount.toFixed(2)}|${r.document_date}`
       const arr = dupMap.get(key) ?? []
       arr.push(r)
       dupMap.set(key, arr)
@@ -361,68 +254,46 @@ export default function TaxBundlePage() {
 
   // ── Tax Readiness Score ─────────────────────────────────────────────────────
 
-  const readinessChecks = [
+  // Only include checks that are applicable to the current dataset so the
+  // denominator cannot be inflated by checks that do not apply. Meals 50%
+  // is always applied in math (guaranteed by computeTaxBundle), so the check
+  // is informational: it reads "Applied" when meals are present, and is
+  // omitted entirely when there are no meals rows.
+  const hasMeals = mealsGross > 0
+  const readinessChecks: { label: string; pass: boolean }[] = [
     { label: "Income documents uploaded", pass: incomeRows.length > 0 },
     { label: "Expense documents uploaded", pass: expenseRows.length > 0 },
+    { label: "Single currency across records", pass: !mixedCurrency },
     { label: "No uncategorized expenses",  pass: uncategorizedItems.length === 0 },
+    { label: "No items pending review",    pass: reviewItems.length === 0 },
     { label: "No potential duplicates",    pass: duplicates.length === 0 },
     { label: "No month gaps in records",   pass: missingMonths.length === 0 },
-    { label: "All expenses map to Schedule C", pass: reviewItems.length === 0 },
   ]
+  if (hasMeals) {
+    readinessChecks.push({ label: "Meals (Line 24b) adjusted to 50%", pass: true })
+  }
+  // Only flag the classification check as failing if there are legacy rows
+  // without an AI-assigned income_source. v2-normalized rows carry explicit
+  // classification, so the assumption advisory is unnecessary.
+  if (hasUnclassifiedIncome) {
+    readinessChecks.push({
+      label: `${legacyUnclassifiedIncomeCount} income document${legacyUnclassifiedIncomeCount === 1 ? "" : "s"} missing AI classification — re-normalize`,
+      pass: false,
+    })
+  }
+  // Wage-only negative result is a blocking condition.
+  if (selfEmploymentGross === 0 && deductibleExpenses > 0) {
+    readinessChecks.push({
+      label: "Schedule C has a business-income base",
+      pass: false,
+    })
+  }
   const passCount = readinessChecks.filter(c => c.pass).length
   const readinessPercent = Math.round((passCount / readinessChecks.length) * 100)
 
   // ── CSV Export ──────────────────────────────────────────────────────────────
-
-  function generateCSV(): string {
-    const lines: string[] = []
-    // Header
-    lines.push("Schedule C Line,IRS Category,Our Category,Vendor,Date,Amount,Status,Source File")
-
-    for (const sc of sortedScheduleC) {
-      for (const item of sc.items) {
-        const status = getDeductStatus(item.expense_category, item.confidence_score)
-        lines.push([
-          sc.line,
-          `"${sc.label}"`,
-          `"${item.expense_category ?? "Uncategorized"}"`,
-          `"${(item.vendor_name ?? "").replace(/"/g, '""')}"`,
-          item.document_date ?? "",
-          (item.total_amount ?? 0).toFixed(2),
-          status,
-          `"${item.filename.replace(/"/g, '""')}"`,
-        ].join(","))
-      }
-    }
-
-    // Uncategorized at bottom
-    for (const item of uncategorizedItems) {
-      lines.push([
-        "N/A",
-        '"Uncategorized"',
-        `"${item.expense_category ?? "None"}"`,
-        `"${(item.vendor_name ?? "").replace(/"/g, '""')}"`,
-        item.document_date ?? "",
-        (item.total_amount ?? 0).toFixed(2),
-        "uncategorized",
-        `"${item.filename.replace(/"/g, '""')}"`,
-      ].join(","))
-    }
-
-    // Summary section
-    lines.push("")
-    lines.push("SCHEDULE C SUMMARY")
-    lines.push("Line,Category,Annual Total")
-    for (const sc of sortedScheduleC) {
-      lines.push(`${sc.line},"${sc.label}",${sc.amount.toFixed(2)}`)
-    }
-    lines.push(`,"TOTAL EXPENSES",${totalExpenses.toFixed(2)}`)
-    lines.push("")
-    lines.push(`,"Gross Income",${totalGross.toFixed(2)}`)
-    lines.push(`,"Est. Taxable Income",${estimatedTaxable.toFixed(2)}`)
-
-    return lines.join("\n")
-  }
+  // Pure formatter lives in lib/tax-bundle.ts so it can be unit-tested.
+  const generateCSV = () => generateTaxBundleCSV(summary)
 
   function downloadCSV() {
     const csv = generateCSV()
@@ -625,11 +496,11 @@ export default function TaxBundlePage() {
                     </p>
                   </div>
                   <div className="flex shrink-0 flex-wrap gap-2 print:hidden">
-                    <Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={copyCSV}>
+                    <Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={copyCSV} disabled={mixedCurrency} title={mixedCurrency ? "Disabled while mixed currencies are present" : undefined}>
                       <Copy className="h-3.5 w-3.5" />
                       {csvCopied ? "Copied!" : "Copy CSV"}
                     </Button>
-                    <Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={downloadCSV}>
+                    <Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={downloadCSV} disabled={mixedCurrency} title={mixedCurrency ? "Disabled while mixed currencies are present" : undefined}>
                       <Download className="h-3.5 w-3.5" />
                       Export CSV
                     </Button>
@@ -637,7 +508,7 @@ export default function TaxBundlePage() {
                       <Printer className="h-3.5 w-3.5" />
                       Print / PDF
                     </Button>
-                    <Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={downloadZip} disabled={zipping}>
+                    <Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={downloadZip} disabled={zipping || mixedCurrency} title={mixedCurrency ? "Disabled while mixed currencies are present" : undefined}>
                       {zipping ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Archive className="h-3.5 w-3.5" />}
                       {zipping ? "Bundling..." : "Download Zip"}
                     </Button>
@@ -682,17 +553,101 @@ export default function TaxBundlePage() {
                 </div>
               </div>
 
+              {/* ── What This Report Is (and isn't) — top-of-report disclosure ── */}
+              <div className="rounded border border-border/60 bg-muted/30 p-4">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                  What this report is
+                </p>
+                <p className="mt-2 text-xs leading-relaxed text-foreground/80">
+                  A <strong>tax-preparation worksheet</strong> that cleanses and structures your documented expenses into
+                  IRS Schedule C line items, with the 50% statutory haircut applied to Meals (Line 24b). It is designed for
+                  <strong> accountant review or guided-interview transcription</strong> into whichever tax preparation tool you
+                  or your preparer already use — not for direct file import. It is <strong>not</strong> a tax calculation,
+                  not a Line 31 net profit figure, and does not apply self-employment tax, QBI, depreciation elections,
+                  home office actuals, vehicle actuals, or any other statutory adjustments.
+                </p>
+                <p className="mt-2 text-xs leading-relaxed text-foreground/80">
+                  Income is partitioned by source: <strong>wage income</strong> (from payslip documents, W-2-like) is shown
+                  separately and is <strong>not</strong> used in the Schedule-C-style net calculation —
+                  Schedule C business expenses cannot be deducted against W-2 wages.
+                  The Schedule-C-style net is derived only from <strong>business income</strong> (from income-statement documents)
+                  minus deductible expenses. &ldquo;Payroll Deductions&rdquo; is the gross−net differential from payslips,
+                  not verified withholding. Uncategorized rows are excluded from deductible totals; review-flagged rows
+                  are included and shown inline. Always hand totals to a licensed preparer before filing.
+                </p>
+              </div>
+
+              {/* ── Legacy Classification Advisory (pre-v2 rows only) ── */}
+              {hasUnclassifiedIncome && (
+                <div className="flex items-start gap-3 rounded border border-yellow-500/30 bg-yellow-500/5 p-4">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-yellow-500" />
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      {legacyUnclassifiedIncomeCount} income document{legacyUnclassifiedIncomeCount === 1 ? "" : "s"} missing AI classification
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      These documents were normalized before the income-source classifier was enabled, so they fall back
+                      to a document-type heuristic (payslip → wage, income_statement → business). Re-normalize them to
+                      get explicit per-document classification and remove this warning.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Wage-Only Negative Result Warning ── */}
+              {selfEmploymentGross === 0 && deductibleExpenses > 0 && (
+                <div className="flex items-start gap-3 rounded border border-red-500/30 bg-red-500/5 p-4">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      Negative Schedule-C-style net — no business income detected
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      There are deductible expenses ({fmt(deductibleExpenses, currency)}) but no income-statement
+                      documents, so the Estimated Net below is negative. This is <strong>not</strong> a loss you can
+                      apply against W-2 wages — Schedule C business expenses cannot be offset against wage income.
+                      Either the expenses are not business-related, or an income-statement document is missing.
+                      Preparer review required.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Mixed Currency Warning ── */}
+              {mixedCurrency && (
+                <div className="flex items-start gap-3 rounded border border-red-500/30 bg-red-500/5 p-4">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      Mixed currencies detected ({currencies.join(", ")})
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Totals are shown in {currency} but rows include other currencies. Amounts are <strong>not</strong> FX-converted —
+                      convert to a single currency before filing or exporting.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* ── Summary Strip ── */}
               <div className="grid grid-cols-1 divide-y divide-border border border-border rounded sm:grid-cols-3 sm:divide-x sm:divide-y-0">
                 {[
-                  { label: "Gross Income",              value: fmt(totalGross, currency), loss: false },
-                  { label: "Total Documented Expenses", value: fmt(totalExpenses, currency), loss: false },
                   {
-                    label: "Est. Taxable Income",
-                    value: estimatedTaxable >= 0
-                      ? fmt(estimatedTaxable, currency)
-                      : `(${fmt(Math.abs(estimatedTaxable), currency)})`,
-                    loss: estimatedTaxable < 0,
+                    label: "Business Income (Sched C base)",
+                    value: fmt(selfEmploymentGross, currency),
+                    loss: false,
+                  },
+                  {
+                    label: "Deductible Expenses (Sched C)",
+                    value: fmt(deductibleExpenses, currency),
+                    loss: false,
+                  },
+                  {
+                    label: "Estimated Net (Sched C, pre-adjustments)",
+                    value: estimatedNetScheduleC >= 0
+                      ? fmt(estimatedNetScheduleC, currency)
+                      : `(${fmt(Math.abs(estimatedNetScheduleC), currency)})`,
+                    loss: estimatedNetScheduleC < 0,
                   },
                 ].map(item => (
                   <div key={item.label} className="px-5 py-4">
@@ -703,6 +658,71 @@ export default function TaxBundlePage() {
                   </div>
                 ))}
               </div>
+
+              {/* ── Wage Income (informational, NOT part of Schedule C net) ── */}
+              {hasWageIncome && (
+                <div className="rounded border border-border/60 p-4">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                        Wage Income (informational only)
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        From payslip documents. <strong>Not</strong> used in the Schedule-C-style net above —
+                        Schedule C business expenses cannot be deducted against W-2 wages.
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-mono text-base font-medium tabular-nums text-foreground">
+                        {fmt(wageGross, currency)}
+                      </p>
+                      {wagePayrollDeductions > 0 && (
+                        <p className="text-[10px] text-muted-foreground">
+                          payroll deductions (gross−net): {fmt(wagePayrollDeductions, currency)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Other Income (non-Schedule-C, non-wage) ── */}
+              {hasOtherIncome && (
+                <div className="rounded border border-border/60 p-4">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                        Other Income (informational only)
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Investment, rental, interest, and other non-business income. <strong>Not</strong> offset by
+                        Schedule C expenses and <strong>not</strong> included in the Estimated Net above.
+                        These amounts flow to other parts of Form 1040 (Schedule B, Schedule E, etc.).
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-mono text-base font-medium tabular-nums text-foreground">
+                        {fmt(otherIncomeGross, currency)}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {otherIncomeRows.length} document{otherIncomeRows.length === 1 ? "" : "s"}
+                      </p>
+                    </div>
+                  </div>
+                  {otherIncomeByType.size > 0 && (
+                    <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      {Array.from(otherIncomeByType.entries()).map(([type, amount]) => (
+                        <div key={type} className="rounded border border-border/40 px-3 py-2">
+                          <p className="text-[10px] uppercase tracking-widest text-muted-foreground">{type}</p>
+                          <p className="mt-0.5 font-mono text-xs tabular-nums text-foreground">
+                            {fmt(amount, currency)}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* ── Alerts: Duplicates + Missing Months ── */}
               {(duplicates.length > 0 || missingMonths.length > 0 || uncategorizedItems.length > 0) && (
@@ -799,41 +819,78 @@ export default function TaxBundlePage() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-border text-left text-[10px] uppercase tracking-wider text-muted-foreground">
-                        <th className="pb-2 font-medium">Employer / Source</th>
+                        <th className="pb-2 font-medium">Source</th>
+                        <th className="pb-2 font-medium">Type</th>
                         <th className="pb-2 text-right font-medium">Gross Income</th>
                         <th className="pb-2 text-right font-medium">Net Income</th>
-                        <th className="pb-2 text-right font-medium">Tax Withheld</th>
+                        <th className="pb-2 text-right font-medium">Payroll Deductions</th>
                         <th className="pb-2 text-right font-medium">Docs</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border/50">
-                      {Array.from(incomeByEmployer.entries()).map(([employer, data]) => (
-                        <tr key={employer}>
-                          <td className="py-2.5 text-foreground">{employer}</td>
-                          <td className="py-2.5 text-right font-mono tabular-nums text-foreground">
-                            {fmt(data.gross, currency)}
-                          </td>
-                          <td className="py-2.5 text-right font-mono tabular-nums text-foreground">
-                            {data.net > 0 ? fmt(data.net, currency) : "—"}
-                          </td>
-                          <td className="py-2.5 text-right font-mono tabular-nums text-foreground">
-                            {data.withholding > 0 ? fmt(data.withholding, currency) : "—"}
-                          </td>
-                          <td className="py-2.5 text-right text-muted-foreground">{data.docs}</td>
-                        </tr>
-                      ))}
+                      {Array.from(incomeByEmployer.entries()).map(([key, data]) => {
+                        const [, name] = key.split("|")
+                        const isWage = data.source === "wage"
+                        return (
+                          <tr key={key}>
+                            <td className="py-2.5 text-foreground">{name}</td>
+                            <td className="py-2.5">
+                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                isWage
+                                  ? "bg-muted text-muted-foreground"
+                                  : "bg-primary/10 text-primary"
+                              }`}>
+                                {isWage ? "Wage (payslip)" : "Business (Sched C)"}
+                              </span>
+                            </td>
+                            <td className="py-2.5 text-right font-mono tabular-nums text-foreground">
+                              {fmt(data.gross, currency)}
+                            </td>
+                            <td className="py-2.5 text-right font-mono tabular-nums text-foreground">
+                              {data.net > 0 ? fmt(data.net, currency) : "—"}
+                            </td>
+                            <td className="py-2.5 text-right font-mono tabular-nums text-foreground">
+                              {data.payrollDeductions > 0 ? fmt(data.payrollDeductions, currency) : "—"}
+                            </td>
+                            <td className="py-2.5 text-right text-muted-foreground">{data.docs}</td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                     <tfoot>
+                      {hasWageIncome && hasSelfEmploymentIncome && (
+                        <>
+                          <tr className="border-t border-border/60">
+                            <td className="pt-2 text-xs text-muted-foreground">Wage subtotal</td>
+                            <td />
+                            <td className="pt-2 text-right font-mono tabular-nums text-xs text-muted-foreground">{fmt(wageGross, currency)}</td>
+                            <td colSpan={3} />
+                          </tr>
+                          <tr>
+                            <td className="pt-1 text-xs text-muted-foreground">Business subtotal</td>
+                            <td />
+                            <td className="pt-1 text-right font-mono tabular-nums text-xs text-muted-foreground">{fmt(selfEmploymentGross, currency)}</td>
+                            <td colSpan={3} />
+                          </tr>
+                        </>
+                      )}
                       <tr className="border-t-2 border-border font-semibold">
-                        <td className="pt-2.5 text-foreground">Total</td>
+                        <td className="pt-2.5 text-foreground">Total (bookkeeping)</td>
+                        <td />
                         <td className="pt-2.5 text-right font-mono tabular-nums text-foreground">{fmt(totalGross, currency)}</td>
                         <td className="pt-2.5 text-right font-mono tabular-nums text-foreground">
-                          {totalNet > 0 ? fmt(totalNet, currency) : "—"}
+                          {wageNet > 0 ? fmt(wageNet, currency) : "—"}
                         </td>
                         <td className="pt-2.5 text-right font-mono tabular-nums text-foreground">
-                          {totalWithholding > 0 ? fmt(totalWithholding, currency) : "—"}
+                          {wagePayrollDeductions > 0 ? fmt(wagePayrollDeductions, currency) : "—"}
                         </td>
                         <td className="pt-2.5 text-right text-muted-foreground">{incomeRows.length}</td>
+                      </tr>
+                      <tr>
+                        <td colSpan={6} className="pt-1 text-[10px] text-muted-foreground/70">
+                          Net Income and Payroll Deductions apply to wage (payslip) rows only. Business rows have no
+                          net figure — only gross is meaningful.
+                        </td>
                       </tr>
                     </tfoot>
                   </table>
@@ -843,15 +900,23 @@ export default function TaxBundlePage() {
               {/* ── Schedule C Expense Breakdown ── */}
               {sortedScheduleC.length > 0 && (
                 <div>
-                  <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                     Schedule C — Expense Breakdown
+                  </p>
+                  <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
+                    This table is the primary transcription surface — each row corresponds to a Schedule C
+                    Part II line and the deductible column is what you or your preparer would enter (or read
+                    aloud during a guided interview) into a tax preparation tool. Line 13 rows default to
+                    depreciation / §179; items under the <strong>$2,500 de minimis safe harbor</strong> may be
+                    directly expensed instead — confirm with your preparer.
                   </p>
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-border text-left text-[10px] uppercase tracking-wider text-muted-foreground">
                         <th className="pb-2 font-medium">Line</th>
                         <th className="pb-2 font-medium">IRS Category</th>
-                        <th className="pb-2 text-right font-medium">Amount</th>
+                        <th className="pb-2 text-right font-medium">Raw</th>
+                        <th className="pb-2 text-right font-medium">Deductible</th>
                         <th className="pb-2 text-right font-medium">Items</th>
                         <th className="pb-2 text-right font-medium">Status</th>
                       </tr>
@@ -863,8 +928,11 @@ export default function TaxBundlePage() {
                           <td className="py-2.5 text-foreground">
                             {sc.label}
                             {sc.line === "Line 24b" && (
-                              <span className="ml-1.5 text-[10px] text-yellow-500">50%</span>
+                              <span className="ml-1.5 text-[10px] text-yellow-500">× 50%</span>
                             )}
+                          </td>
+                          <td className="py-2.5 text-right font-mono tabular-nums text-muted-foreground">
+                            {fmt(sc.grossAmount, currency)}
                           </td>
                           <td className="py-2.5 text-right font-mono tabular-nums text-foreground">
                             ({fmt(sc.amount, currency)})
@@ -889,11 +957,14 @@ export default function TaxBundlePage() {
                     <tfoot>
                       <tr className="border-t-2 border-border font-semibold">
                         <td className="pt-2.5" />
-                        <td className="pt-2.5 text-foreground">Total Expenses</td>
-                        <td className="pt-2.5 text-right font-mono tabular-nums text-foreground">
-                          ({fmt(totalExpenses, currency)})
+                        <td className="pt-2.5 text-foreground">Deductible Expenses</td>
+                        <td className="pt-2.5 text-right font-mono tabular-nums text-muted-foreground">
+                          {fmt(totalExpensesRaw, currency)}
                         </td>
-                        <td className="pt-2.5 text-right text-muted-foreground">{expenseRows.length}</td>
+                        <td className="pt-2.5 text-right font-mono tabular-nums text-foreground">
+                          ({fmt(deductibleExpenses, currency)})
+                        </td>
+                        <td className="pt-2.5 text-right text-muted-foreground">{expenseRows.length - uncategorizedItems.length}</td>
                         <td className="pt-2.5" />
                       </tr>
                     </tfoot>
@@ -950,9 +1021,9 @@ export default function TaxBundlePage() {
                       </tbody>
                       <tfoot>
                         <tr className="border-t-2 border-border font-semibold">
-                          <td className="px-4 pt-2.5 pb-3 text-foreground">Annual Total</td>
+                          <td className="px-4 pt-2.5 pb-3 text-foreground">Annual Total (raw)</td>
                           <td className="px-4 pt-2.5 pb-3 text-right font-mono tabular-nums text-foreground">
-                            {fmt(totalExpenses, currency)}
+                            {fmt(totalExpensesRaw, currency)}
                           </td>
                           <td className="px-4 pt-2.5 pb-3" />
                           <td className="px-4 pt-2.5 pb-3 text-right text-xs text-muted-foreground">
@@ -965,10 +1036,10 @@ export default function TaxBundlePage() {
                 </div>
               )}
 
-              {/* ── Tax Computation Box ── */}
+              {/* ── Pre-filing Expense Summary ── */}
               <div>
                 <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                  Tax Computation
+                  Pre-filing Expense Summary
                 </p>
                 <div className="rounded border border-border p-6">
                   <table className="w-full text-sm">
@@ -978,28 +1049,49 @@ export default function TaxBundlePage() {
                     </colgroup>
                     <tbody>
                       <tr>
-                        <td className="py-1.5 text-foreground/80">Gross Income</td>
-                        <td className="py-1.5 text-right font-mono tabular-nums text-foreground">{fmt(totalGross, currency)}</td>
+                        <td className="py-1.5 text-foreground/80">Business Income (income statements)</td>
+                        <td className="py-1.5 text-right font-mono tabular-nums text-foreground">{fmt(selfEmploymentGross, currency)}</td>
                       </tr>
                       <tr>
-                        <td className="py-1.5 text-foreground/80">Less: Schedule C Expenses</td>
-                        <td className="py-1.5 text-right font-mono tabular-nums text-foreground">({fmt(totalExpenses, currency)})</td>
+                        <td className="py-1.5 text-foreground/80">Less: Schedule C deductible expenses</td>
+                        <td className="py-1.5 text-right font-mono tabular-nums text-foreground">({fmt(deductibleExpenses, currency)})</td>
                       </tr>
+                      {mealsGross > 0 && (
+                        <tr>
+                          <td className="py-1.5 pl-4 text-xs text-muted-foreground">
+                            includes Meals raw {fmt(mealsGross, currency)} → deductible {fmt(mealsDeductible, currency)} (50%)
+                          </td>
+                          <td />
+                        </tr>
+                      )}
                       <tr className="border-t border-border">
-                        <td className="py-2 font-semibold text-foreground">Est. Taxable Income (Line 31)</td>
-                        <td className={`py-2 text-right font-mono tabular-nums font-semibold ${estimatedTaxable < 0 ? "text-destructive" : "text-foreground"}`}>
-                          {estimatedTaxable >= 0
-                            ? fmt(estimatedTaxable, currency)
-                            : `(${fmt(Math.abs(estimatedTaxable), currency)})`}
+                        <td className="py-2 font-semibold text-foreground">Estimated Net (Schedule C, before adjustments)</td>
+                        <td className={`py-2 text-right font-mono tabular-nums font-semibold ${estimatedNetScheduleC < 0 ? "text-destructive" : "text-foreground"}`}>
+                          {estimatedNetScheduleC >= 0
+                            ? fmt(estimatedNetScheduleC, currency)
+                            : `(${fmt(Math.abs(estimatedNetScheduleC), currency)})`}
                         </td>
                       </tr>
-                      {totalWithholding > 0 && (
+                      {hasWageIncome && (
                         <>
                           <tr><td colSpan={2} className="py-2" /></tr>
                           <tr>
-                            <td className="py-1.5 text-foreground/80">Withholding Tax Credited</td>
+                            <td className="py-1.5 text-xs text-muted-foreground">
+                              Wage Income (payslips — <strong>not</strong> offset by Schedule C expenses)
+                            </td>
                             <td className="py-1.5 text-right font-mono tabular-nums text-muted-foreground">
-                              ({fmt(totalWithholding, currency)})
+                              {fmt(wageGross, currency)}
+                            </td>
+                          </tr>
+                        </>
+                      )}
+                      {wagePayrollDeductions > 0 && (
+                        <>
+                          <tr><td colSpan={2} className="py-2" /></tr>
+                          <tr>
+                            <td className="py-1.5 text-foreground/80">Payroll Deductions (Gross − Net, informational)</td>
+                            <td className="py-1.5 text-right font-mono tabular-nums text-muted-foreground">
+                              ({fmt(wagePayrollDeductions, currency)})
                             </td>
                           </tr>
                         </>
@@ -1007,8 +1099,11 @@ export default function TaxBundlePage() {
                     </tbody>
                   </table>
                   <p className="mt-4 text-[10px] text-muted-foreground/60">
-                    Actual tax due depends on applicable deductions, exemptions, and tax brackets.
-                    Meals (Line 24b) are typically 50% deductible. This computation is an estimate for reference only.
+                    <strong>Not a tax calculation.</strong> This is a pre-filing summary of documented income and deductible expenses.
+                    It does not account for self-employment tax, QBI, half-SE deduction, estimated payments, credits, or brackets —
+                    and the Payroll Deductions figure is the gross−net differential on payslips, not verified withholding from a W-2/1099.
+                    Schedule C Line 31 (net profit) is computed by your tax software or preparer. Meals (Line 24b) are halved here;
+                    other statutory adjustments are not applied.
                   </p>
                 </div>
               </div>
@@ -1068,13 +1163,18 @@ export default function TaxBundlePage() {
               {/* ── Disclaimer ── */}
               <div className="border-t border-border pt-4">
                 <p className="text-[10px] leading-relaxed text-muted-foreground/60">
-                  This report maps expense categories to IRS Schedule C (Form 1040) line items for self-employment income.
-                  It is not tax advice and does not constitute an official filing document.
-                  Estimated taxable income is calculated as gross income minus total documented expenses.
-                  Meals and entertainment expenses are typically only 50% deductible — adjust accordingly when entering into tax software.
-                  Withholding tax figures are derived from payslip gross/net differentials.
+                  This report maps documented expenses to IRS Schedule C (Form 1040) line items for self-employment income.
+                  It is not tax advice and does not constitute an official filing document or a Line 31 calculation.
+                  The Schedule-C-style net is computed from <strong>business income only</strong> (income-statement documents).
+                  Wage income from payslip documents is shown separately and is <strong>not</strong> netted against Schedule C expenses —
+                  W-2 wages are reported on Form 1040 Line 1a and cannot be offset by business expenses.
+                  Deductible expenses exclude uncategorized items and apply the statutory 50% haircut to Meals (Line 24b);
+                  no other statutory adjustments (SE tax, QBI, depreciation elections, home office, vehicle actuals) are applied.
+                  &ldquo;Payroll Deductions&rdquo; is the gross minus net differential on payslips and is <strong>not</strong> verified withholding —
+                  use the amounts on W-2/1099 forms when filing.
+                  Mixed currencies are not FX-converted; convert before filing.
                   Items flagged &ldquo;Needs Review&rdquo; may contain personal expenses or have low AI confidence.
-                  Always consult a licensed tax professional before filing. Compatible with FreeTaxUSA, TurboTax, and other Schedule C filing platforms.
+                  Always consult a licensed tax professional before filing. This worksheet is designed for accountant review or for transcription into a tax preparation tool — not for direct file import.
                 </p>
               </div>
 

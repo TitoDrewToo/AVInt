@@ -1,9 +1,86 @@
-import { createClient } from "@supabase/supabase-js"
+import { createClient, type SupabaseClient } from "@supabase/supabase-js"
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+let _admin: SupabaseClient | null = null
+function getSupabaseAdmin(): SupabaseClient {
+  if (_admin) return _admin
+  _admin = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+  return _admin
+}
+
+export interface EntitlementRow {
+  status: string | null
+  current_period_end: string | null
+}
+
+export interface Entitlement {
+  status: string
+  isActive: boolean
+  isPro: boolean
+  isDayPass: boolean
+  isGiftCode: boolean
+  expiresAt: string | null
+}
+
+const INACTIVE: Entitlement = {
+  status: "none",
+  isActive: false,
+  isPro: false,
+  isDayPass: false,
+  isGiftCode: false,
+  expiresAt: null,
+}
+
+// Single source of truth for premium access. Day passes expire on
+// current_period_end; pro/gift_code lifecycles are managed by webhooks so a
+// matching status is sufficient.
+export function computeEntitlement(row: EntitlementRow | null | undefined): Entitlement {
+  if (!row || !row.status) return INACTIVE
+
+  const { status, current_period_end } = row
+  const expired =
+    !!current_period_end && new Date(current_period_end).getTime() < Date.now()
+
+  if (status === "pro") {
+    return {
+      status: "pro",
+      isActive: true,
+      isPro: true,
+      isDayPass: false,
+      isGiftCode: false,
+      expiresAt: current_period_end,
+    }
+  }
+
+  if (status === "day_pass") {
+    if (!current_period_end || expired) {
+      return { ...INACTIVE, status: "expired", expiresAt: current_period_end }
+    }
+    return {
+      status: "day_pass",
+      isActive: true,
+      isPro: false,
+      isDayPass: true,
+      isGiftCode: false,
+      expiresAt: current_period_end,
+    }
+  }
+
+  if (status === "gift_code") {
+    return {
+      status: "gift_code",
+      isActive: true,
+      isPro: false,
+      isDayPass: false,
+      isGiftCode: true,
+      expiresAt: current_period_end,
+    }
+  }
+
+  return { ...INACTIVE, status, expiresAt: current_period_end }
+}
 
 export interface SubscriptionInfo {
   status: string
@@ -18,39 +95,23 @@ export interface SubscriptionInfo {
 export async function getUserSubscription(email: string): Promise<SubscriptionInfo | null> {
   if (!email) return null
 
-  const { data, error } = await supabaseAdmin
+  const { data, error } = await getSupabaseAdmin()
     .from("subscriptions")
     .select("status, plan, product_name, current_period_end")
     .eq("email", email)
-    .single()
+    .maybeSingle()
 
   if (error || !data) return null
 
-  const isActive = ["pro", "day_pass"].includes(data.status)
-  const isPro = data.status === "pro"
-  const isDayPass = data.status === "day_pass"
-
-  // Check day pass expiry
-  if (isDayPass && data.current_period_end) {
-    const expired = new Date(data.current_period_end) < new Date()
-    if (expired) return {
-      status: "expired",
-      plan: data.plan,
-      productName: data.product_name,
-      currentPeriodEnd: data.current_period_end,
-      isPro: false,
-      isDayPass: false,
-      isActive: false,
-    }
-  }
+  const ent = computeEntitlement(data)
 
   return {
-    status: data.status,
+    status: ent.status,
     plan: data.plan,
     productName: data.product_name,
     currentPeriodEnd: data.current_period_end,
-    isPro,
-    isDayPass,
-    isActive,
+    isPro: ent.isPro,
+    isDayPass: ent.isDayPass,
+    isActive: ent.isActive,
   }
 }

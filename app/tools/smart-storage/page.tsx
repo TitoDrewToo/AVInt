@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { ProcessingIndicator } from "@/components/ui/processing-indicator"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 import { supabase } from "@/lib/supabase"
+import { useEntitlement } from "@/hooks/use-entitlement"
 import type { Session } from "@supabase/supabase-js"
 import {
   Folder,
@@ -125,7 +126,7 @@ interface ReportDef {
 const REPORTS: ReportDef[] = [
   { id: "expense_summary",     label: "Expense Summary",          description: "Categorized breakdown of all expenses with totals and trends. Ideal for budgeting reviews and cost management.",                             requires: "date_and_amount_2",  coreEnabled: true  },
   { id: "income_summary",      label: "Income Summary",           description: "Consolidated view of all income sources, employer details, and gross/net figures. Perfect for tax filing and financial planning.",            requires: "income_amount",       coreEnabled: true  },
-  { id: "tax_bundle",          label: "Tax Bundle Summary",       description: "Complete tax document compilation with tax paid, deductible expenses, and estimated liability. Built for accountants and tax season.",         requires: "expense_or_income",   coreEnabled: true  },
+  { id: "tax_bundle",          label: "Tax Bundle — Schedule C",  description: "Complete tax document compilation with tax paid, deductible expenses, and estimated liability. Built for accountants and tax season.",         requires: "expense_or_income",   coreEnabled: true  },
   { id: "profit_loss",         label: "Profit & Loss Summary",    description: "Income vs. expenses comparison showing net position and savings rate. Essential for freelancers, consultants, and business owners.",           requires: "expense_or_income",   coreEnabled: true  },
   { id: "contract_summary",    label: "Contract Summary",         description: "Key parties, dates, obligations, and terms extracted from all contracts. Useful for legal reviews, renewals, and compliance tracking.",        requires: "contract_fields",     coreEnabled: true  },
   { id: "key_terms",           label: "Key Terms Summary",        description: "Critical clauses and definitions consolidated across all contract documents. Great for quick reference before negotiations or renewals.",       requires: "contract_fields",     coreEnabled: true  },
@@ -285,7 +286,7 @@ function DateRangeSelector({ dateRange, onChange }: { dateRange: DateRange; onCh
 export default function SmartStoragePage() {
   const [session, setSession] = useState<Session | null>(null)
   const [sessionLoaded, setSessionLoaded] = useState(false)
-  const [isPro, setIsPro] = useState(false)
+  const { isActive: isPro } = useEntitlement(session)
   const [isProcessing, setIsProcessing] = useState(false)
 
   // Folder/navigation state
@@ -374,13 +375,6 @@ export default function SmartStoragePage() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => { setSession(s); setSessionLoaded(true) })
     return () => subscription.unsubscribe()
   }, [])
-
-  // ── Subscription check ─────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!session?.user?.id) return
-    supabase.from("subscriptions").select("status").eq("user_id", session.user.id).single()
-      .then(({ data }) => setIsPro(data?.status === "pro" || data?.status === "day_pass"))
-  }, [session])
 
   // ── Processing indicator + polling ────────────────────────────────────────
   const checkProcessingState = useCallback(async () => {
@@ -1624,9 +1618,10 @@ export default function SmartStoragePage() {
 
               <Button
                 className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
-                disabled={!isPro || !selectedReport || !reportAvailability[selectedReport] || isNavigatingReport}
+                disabled={isPro && (!selectedReport || !reportAvailability[selectedReport] || isNavigatingReport)}
                 size="sm"
                 onClick={() => {
+                  if (!isPro) { router.push("/pricing"); return }
                   if (selectedReport && REPORT_ROUTES[selectedReport]) {
                     setIsNavigatingReport(true)
                     router.push(REPORT_ROUTES[selectedReport])
@@ -1636,7 +1631,7 @@ export default function SmartStoragePage() {
               >
                 {isNavigatingReport ? (
                   <><Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />Generating…</>
-                ) : isPro ? "Generate Report" : "Pro Required"}
+                ) : isPro ? "Generate Report" : "Upgrade to Pro"}
               </Button>
             </div>
 
@@ -1645,22 +1640,28 @@ export default function SmartStoragePage() {
               <div className="space-y-0.5">
                 {REPORTS.map((report) => {
                   const enabled = report.coreEnabled && (reportAvailability[report.id] ?? false)
+                  const locked = !isPro
                   const isSelected = selectedReport === report.id
+                  const dimmed = !enabled || locked
                   return (
                     <button
                       key={report.id}
-                      disabled={!enabled}
-                      onClick={() => enabled && setSelectedReport(report.id)}
+                      onClick={() => {
+                        if (locked) { router.push("/pricing"); return }
+                        if (enabled) setSelectedReport(report.id)
+                      }}
+                      disabled={!locked && !enabled}
+                      title={locked ? "Upgrade to Pro to generate reports" : undefined}
                       className={`w-full rounded px-2 py-2 text-left transition-colors ${
                         isSelected
                           ? "bg-primary/10 text-primary"
-                          : enabled
-                          ? "text-foreground hover:bg-muted"
-                          : "cursor-not-allowed text-muted-foreground/35"
-                      }`}
+                          : dimmed
+                          ? "text-muted-foreground/35 hover:bg-muted/40"
+                          : "text-foreground hover:bg-muted"
+                      } ${locked ? "cursor-pointer" : !enabled ? "cursor-not-allowed" : ""}`}
                     >
                       <span className="block text-sm font-medium">{report.label}</span>
-                      <span className={`block text-xs leading-snug mt-0.5 ${isSelected ? "text-primary/70" : enabled ? "text-muted-foreground" : "text-muted-foreground/35"}`}>{report.description}</span>
+                      <span className={`block text-xs leading-snug mt-0.5 ${isSelected ? "text-primary/70" : dimmed ? "text-muted-foreground/35" : "text-muted-foreground"}`}>{report.description}</span>
                     </button>
                   )
                 })}
@@ -1783,9 +1784,14 @@ export default function SmartStoragePage() {
             )}
             <Button
               className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
-              disabled={!isPro || !selectedReport || !reportAvailability[selectedReport] || isNavigatingReport}
+              disabled={isPro && (!selectedReport || !reportAvailability[selectedReport] || isNavigatingReport)}
               size="sm"
               onClick={() => {
+                if (!isPro) {
+                  setMobileReportsOpen(false)
+                  router.push("/pricing")
+                  return
+                }
                 if (selectedReport && REPORT_ROUTES[selectedReport]) {
                   setIsNavigatingReport(true)
                   router.push(REPORT_ROUTES[selectedReport])
@@ -1796,25 +1802,35 @@ export default function SmartStoragePage() {
             >
               {isNavigatingReport ? (
                 <><Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />Generating…</>
-              ) : isPro ? "Generate Report" : "Pro Required"}
+              ) : isPro ? "Generate Report" : "Upgrade to Pro"}
             </Button>
           </div>
           <div className="flex-1 overflow-y-auto px-3 pb-3">
             <div className="space-y-0.5">
               {REPORTS.map((report) => {
                 const enabled = report.coreEnabled && (reportAvailability[report.id] ?? false)
+                const locked = !isPro
                 const isSelected = selectedReport === report.id
+                const dimmed = !enabled || locked
                 return (
                   <button
                     key={report.id}
-                    disabled={!enabled}
-                    onClick={() => { enabled && setSelectedReport(report.id) }}
+                    onClick={() => {
+                      if (locked) { setMobileReportsOpen(false); router.push("/pricing"); return }
+                      if (enabled) setSelectedReport(report.id)
+                    }}
+                    disabled={!locked && !enabled}
+                    title={locked ? "Upgrade to Pro to generate reports" : undefined}
                     className={`w-full rounded px-2 py-2 text-left transition-colors ${
-                      isSelected ? "bg-primary/10 text-primary" : enabled ? "text-foreground hover:bg-muted" : "cursor-not-allowed text-muted-foreground/35"
-                    }`}
+                      isSelected
+                        ? "bg-primary/10 text-primary"
+                        : dimmed
+                        ? "text-muted-foreground/35 hover:bg-muted/40"
+                        : "text-foreground hover:bg-muted"
+                    } ${locked ? "cursor-pointer" : !enabled ? "cursor-not-allowed" : ""}`}
                   >
                     <span className="block text-sm font-medium">{report.label}</span>
-                    <span className={`block text-xs leading-snug mt-0.5 ${isSelected ? "text-primary/70" : enabled ? "text-muted-foreground" : "text-muted-foreground/35"}`}>{report.description}</span>
+                    <span className={`block text-xs leading-snug mt-0.5 ${isSelected ? "text-primary/70" : dimmed ? "text-muted-foreground/35" : "text-muted-foreground"}`}>{report.description}</span>
                   </button>
                 )
               })}

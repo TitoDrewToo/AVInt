@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { Navbar } from "@/components/navbar"
 import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
+import { useEntitlement } from "@/hooks/use-entitlement"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 import type { Session } from "@supabase/supabase-js"
 import { ArrowLeft, Download, FolderOpen, Printer, Copy, Ban, FileWarning } from "lucide-react"
@@ -114,7 +115,7 @@ function truncate(str: string, max: number) {
 export default function BusinessExpensePage() {
   const [session, setSession]             = useState<Session | null>(null)
   const [sessionLoaded, setSessionLoaded] = useState(false)
-  const [isPro, setIsPro]                 = useState(false)
+  const { isActive: isPro }               = useEntitlement(session)
   const [expenses, setExpenses]           = useState<BizExpenseRow[]>([])
   const [loading, setLoading]             = useState(true)
   const [error, setError]                 = useState<string | null>(null)
@@ -137,14 +138,6 @@ export default function BusinessExpensePage() {
     })
     return () => subscription.unsubscribe()
   }, [])
-
-  useEffect(() => {
-    if (!session?.user?.id) return
-    supabase.from("subscriptions").select("status").eq("user_id", session.user.id).single()
-      .then(({ data }) => setIsPro(
-        data?.status === "pro" || data?.status === "day_pass" || data?.status === "gift_code"
-      ))
-  }, [session])
 
   useEffect(() => {
     if (!session?.user?.id) return

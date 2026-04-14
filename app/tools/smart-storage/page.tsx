@@ -151,6 +151,8 @@ interface UploadedFile {
   created_at: string
   storage_path: string
   folder_id: string | null
+  upload_status?: string | null
+  scan_reason?: string | null
 }
 
 function formatBytes(bytes: number): string {

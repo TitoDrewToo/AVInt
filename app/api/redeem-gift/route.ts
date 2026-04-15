@@ -17,11 +17,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 })
   }
 
-  const { code, user_id, email } = body
+  const { code } = body
 
-  if (!code || !user_id || !email) {
-    return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
+  if (!code) {
+    return NextResponse.json({ error: "Gift code required" }, { status: 400 })
   }
+
+  const authHeader = req.headers.get("authorization")
+  if (!authHeader?.startsWith("Bearer ")) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const token = authHeader.slice("Bearer ".length)
+  const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token)
+  if (authError || !user?.id || !user.email) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const user_id = user.id
+  const email = user.email
 
   const normalizedCode = String(code).trim().toUpperCase()
 

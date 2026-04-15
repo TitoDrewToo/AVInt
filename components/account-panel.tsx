@@ -666,13 +666,19 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                                   setGiftCodeLoading(true)
                                   setGiftCodeError("")
                                   try {
+                                    const { data: { session: fresh } } = await supabase.auth.getSession()
+                                    if (!fresh?.access_token) {
+                                      setGiftCodeError("Please sign in again and retry.")
+                                      return
+                                    }
                                     const res = await fetch("/api/redeem-gift", {
                                       method: "POST",
-                                      headers: { "Content-Type": "application/json" },
+                                      headers: {
+                                        "Content-Type": "application/json",
+                                        "Authorization": `Bearer ${fresh.access_token}`,
+                                      },
                                       body: JSON.stringify({
-                                        code:    giftCode.trim(),
-                                        user_id: session.user.id,
-                                        email:   session.user.email,
+                                        code: giftCode.trim(),
                                       }),
                                     })
                                     const data = await res.json()

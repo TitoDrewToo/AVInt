@@ -11,10 +11,10 @@ import { computeEntitlement } from "@/lib/subscription"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 
 const CHECKOUT_URLS: Record<string, string> = {
-  "Day Pass": "https://avintelligence.lemonsqueezy.com/checkout/buy/9a1416cf-c8af-4df4-b4c6-8d20967214bc",
-  "Gift Codes": "https://avintelligence.lemonsqueezy.com/checkout/buy/1831b705-535d-4dd0-bd9d-65f29eba88b0",
-  "Pro Monthly": "https://avintelligence.lemonsqueezy.com/checkout/buy/0546a0f8-42f6-410e-a3f9-b6e326066159",
-  "Pro Annual": "https://avintelligence.lemonsqueezy.com/checkout/buy/deb076b5-4f7d-4d93-ad22-1a97693cc16e",
+  "Day Pass": "https://www.creem.io/payment/prod_RBLECFWVb9ObYTbyzHqRN",
+  "Gift Codes": "https://www.creem.io/payment/prod_1E1svEziUd9azxQBFJ0OGE",
+  "Pro Monthly": "https://www.creem.io/payment/prod_6L974BwObN2XQwqi9qxnGF",
+  "Pro Annual": "https://www.creem.io/payment/prod_5hA2fqm9pKV27X9XurBwQs",
 }
 
 interface PricingCardProps {
@@ -61,13 +61,10 @@ function PricingCard({
   const supersededByPro = isPro && name === "Day Pass"
 
   const handlePaidClick = () => {
-    // Append LemonSqueezy redirect_url so it returns to /purchase/process after payment
-    const returnUrl = `${window.location.origin}/purchase/process`
-    const urlWithRedirect = `${checkoutUrl}?checkout[redirect_url]=${encodeURIComponent(returnUrl)}`
     if (!isSignedIn) {
-      onRequireAuth(urlWithRedirect)
+      onRequireAuth(checkoutUrl)
     } else {
-      window.location.href = urlWithRedirect
+      window.location.href = checkoutUrl
     }
   }
 

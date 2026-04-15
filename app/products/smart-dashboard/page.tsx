@@ -243,17 +243,28 @@ export default function SmartDashboardProductPage() {
 
         {/* CTA */}
         <section className="relative px-6 py-24">
-          <div className="relative mx-auto max-w-3xl text-center">
-            <h2 className="text-2xl font-semibold text-foreground md:text-3xl">
-              Structured data becomes usable insight.
-            </h2>
-            <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
-              <StartFreeButton tool="smart-dashboard" />
-              <Link href="/pricing">
-                <Button variant="outline" size="lg" className="rounded-xl glass-surface-sm">
-                  View Pricing
-                </Button>
-              </Link>
+          <div aria-hidden className="pointer-events-none absolute inset-0 retro-grid-bg opacity-30" />
+          <div className="relative mx-auto max-w-5xl">
+            <div className="grid items-center gap-10 md:grid-cols-[1.3fr_1fr] md:gap-16">
+              <FadeUp className="text-left">
+                <h2 className="text-balance text-3xl font-semibold leading-[1.1] text-foreground md:text-4xl lg:text-5xl">
+                  Structured data becomes{" "}
+                  <span className="text-primary">usable insight.</span>
+                </h2>
+                <div className="mt-10 flex flex-col items-start gap-4 sm:flex-row">
+                  <StartFreeButton tool="smart-dashboard" />
+                  <Link href="/pricing">
+                    <Button variant="outline" size="lg" className="rounded-xl glass-surface-sm">
+                      View Pricing
+                    </Button>
+                  </Link>
+                </div>
+              </FadeUp>
+              <FadeUp delay={0.15}>
+                <div className="mx-auto w-full max-w-[260px] md:max-w-none">
+                  <PomelliClip name="insight-ready" rounded="rounded-3xl" glow />
+                </div>
+              </FadeUp>
             </div>
           </div>
         </section>

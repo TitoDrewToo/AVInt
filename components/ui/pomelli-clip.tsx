@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { cn } from "@/lib/utils"
 
 type PomelliClipProps = {
-  name: "connect-drive" | "extract-data" | "automate-visibility" | "stop-hunting" | "mess-to-data" | "unlock-cloud"
+  name: "connect-drive" | "extract-data" | "automate-visibility" | "stop-hunting" | "mess-to-data" | "unlock-cloud" | "insight-ready"
   className?: string
   glow?: boolean
   rounded?: string

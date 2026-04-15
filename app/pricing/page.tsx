@@ -266,7 +266,11 @@ export default function PricingPage() {
   return (
     <div className="flex min-h-screen flex-col">
       <Navbar />
-      <AuthGuardModal isVisible={!!pendingCheckoutUrl} onSuccess={handleAuthSuccess} />
+      <AuthGuardModal
+        isVisible={!!pendingCheckoutUrl}
+        onSuccess={handleAuthSuccess}
+        onClose={() => setPendingCheckoutUrl(null)}
+      />
       <main className="flex-1 px-6 py-24">
         <div className="mx-auto max-w-6xl">
           <div className="text-center">

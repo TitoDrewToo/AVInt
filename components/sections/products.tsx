@@ -137,14 +137,14 @@ function DashboardIcon({ className }: { className?: string }) {
 function ProductCard({ name, description, status, href, external, disabled, icon }: ProductCardProps) {
   const content = (
     <div
-      className={`group relative flex h-full flex-col rounded-2xl border border-border bg-card p-6 transition-all ${
-        disabled ? "cursor-not-allowed opacity-60" : "hover:border-primary/20 hover:shadow-md"
+      className={`group relative flex h-full flex-col rounded-2xl glass-surface p-6 ${
+        disabled ? "cursor-not-allowed opacity-60" : "hover-bloom"
       }`}
     >
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-3">
           {icon && (
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-card shadow-sm">
+            <div className="glass-surface-sm flex h-10 w-10 items-center justify-center rounded-xl transition-all group-hover:[box-shadow:0_0_24px_-4px_var(--retro-glow-red)]">
               {icon}
             </div>
           )}
@@ -199,8 +199,9 @@ const products: ProductCardProps[] = [
 
 export function ProductsSection() {
   return (
-    <section id="products" className="px-6 py-24">
-      <div className="mx-auto max-w-6xl">
+    <section id="products" className="relative px-6 py-24">
+      <div aria-hidden className="pointer-events-none absolute inset-0 retro-grid-bg opacity-30" />
+      <div className="relative mx-auto max-w-6xl">
         <h2 className="text-center text-sm font-medium uppercase tracking-wider text-primary">
           Products
         </h2>

@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { GoogleSignInButton } from "@/components/google-sign-in-button"
@@ -10,9 +11,10 @@ import { supabase } from "@/lib/supabase"
 interface AuthGuardModalProps {
   isVisible: boolean
   onSuccess?: () => void
+  onClose?: () => void
 }
 
-export function AuthGuardModal({ isVisible, onSuccess }: AuthGuardModalProps) {
+export function AuthGuardModal({ isVisible, onSuccess, onClose }: AuthGuardModalProps) {
   const [mode, setMode] = useState<"signin" | "signup" | "forgot">("signin")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -25,33 +27,64 @@ export function AuthGuardModal({ isVisible, onSuccess }: AuthGuardModalProps) {
     setMode(nextMode); setError(""); setSuccess("")
   }
 
+  useEffect(() => {
+    if (!isVisible || !onClose) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose() }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [isVisible, onClose])
+
   if (!isVisible) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-background/60 backdrop-blur-md" />
-      <div className="relative z-10 w-full max-w-sm rounded-2xl border border-border bg-card p-8 shadow-xl">
-        <div className="text-center">
-          <h2 className="text-xl font-semibold text-foreground">
+    <div className="fixed inset-0 z-50 flex items-center justify-center font-sans">
+      <div
+        className={`absolute inset-0 bg-background/40 backdrop-blur-sm ${onClose ? "cursor-pointer" : ""}`}
+        onClick={onClose}
+      />
+      <div className="glass-surface relative z-10 w-full max-w-sm overflow-hidden rounded-2xl p-8 shadow-xl">
+        {onClose && (
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="glass-surface-sm absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-all hover:text-primary hover:[box-shadow:0_0_20px_-4px_var(--retro-glow-red)]"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
+        {/* Retro grid backdrop */}
+        <div aria-hidden className="retro-grid-bg pointer-events-none absolute inset-0 opacity-40" />
+        {/* Centered red radial wash */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute left-1/2 top-1/2 h-[460px] w-[460px] -translate-x-1/2 -translate-y-1/2 rounded-full"
+          style={{
+            background: "radial-gradient(ellipse at center, var(--retro-glow-red) 0%, transparent 65%)",
+            filter: "blur(40px)",
+            opacity: 0.5,
+          }}
+        />
+        <div className="relative text-center">
+          <h2 className="font-sans text-xl font-semibold text-foreground">
             {mode === "signin" && "Sign in required"}
             {mode === "signup" && "Create an account"}
             {mode === "forgot" && "Reset your password"}
           </h2>
-          <p className="mt-2 text-sm text-muted-foreground">
+          <p className="mt-2 font-sans text-sm text-muted-foreground">
             {mode === "signin" && "Please sign in to continue."}
             {mode === "signup" && "Create an account to continue."}
             {mode === "forgot" && "Enter your email to receive a reset link."}
           </p>
         </div>
 
-        <div className="mt-8 space-y-4">
+        <div className="relative mt-8 space-y-4">
           <InAppBrowserBanner />
           {mode === "signin" && <GoogleSignInButton />}
           {mode === "signin" && (
             <div className="flex items-center gap-3">
-              <div className="h-px flex-1 bg-border" />
+              <div className="retro-divider h-px flex-1" />
               <span className="text-xs text-muted-foreground">or</span>
-              <div className="h-px flex-1 bg-border" />
+              <div className="retro-divider h-px flex-1" />
             </div>
           )}
 

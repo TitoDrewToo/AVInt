@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { StartFreeButton } from "@/components/start-free-button"
 import { FadeUp, StaggerContainer, StaggerItem } from "@/components/fade-up"
+import { PomelliClip } from "@/components/ui/pomelli-clip"
 
 export const metadata = {
   title: "Smart Storage — AI Document Storage & Analysis | AVIntelligence",
@@ -226,36 +227,47 @@ export default function SmartStorageProductPage() {
       <Navbar />
       <main className="flex-1">
         {/* Hero */}
-        <section className="px-6 py-24 md:py-32">
-          <div className="mx-auto max-w-3xl text-center">
-            <FadeUp>
-              <h1 className="text-balance text-4xl font-semibold tracking-tight text-foreground md:text-5xl">
-                Structure your real-world documents automatically.
-              </h1>
-            </FadeUp>
-            <FadeUp delay={0.1}>
-              <p className="mt-6 text-lg text-muted-foreground">
-                Smart Storage transforms receipts, invoices, and records into organized data ready for reporting and analysis.
-              </p>
-            </FadeUp>
-            <FadeUp delay={0.18} className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
-              <Link href="/pricing">
-                <Button size="lg" className="rounded-xl bg-primary text-primary-foreground hover:bg-primary/90">
-                  View Pricing
-                </Button>
-              </Link>
-              <Link href="/products/smart-dashboard">
-                <Button variant="outline" size="lg" className="rounded-xl">
-                  Explore Dashboard
-                </Button>
-              </Link>
-            </FadeUp>
+        <section className="relative px-6 py-24 md:py-32">
+          <div aria-hidden className="pointer-events-none absolute inset-0 retro-grid-bg opacity-40" />
+          <div className="relative mx-auto max-w-6xl">
+            <div className="grid items-center gap-10 md:grid-cols-[1.6fr_1fr] md:gap-16">
+              <div className="text-left">
+                <FadeUp>
+                  <h1 className="text-balance text-4xl font-semibold leading-[1.1] tracking-tight text-foreground md:text-5xl lg:text-6xl">
+                    Structure your <span className="text-primary">real-world</span> documents automatically.
+                  </h1>
+                </FadeUp>
+                <FadeUp delay={0.1}>
+                  <p className="mt-6 max-w-xl text-lg text-muted-foreground">
+                    Smart Storage transforms receipts, invoices, and records into organized data ready for reporting and analysis.
+                  </p>
+                </FadeUp>
+                <FadeUp delay={0.18} className="mt-10 flex flex-col items-start gap-4 sm:flex-row">
+                  <Link href="/pricing">
+                    <Button size="lg" className="rounded-xl bg-primary text-primary-foreground hover:bg-primary/90">
+                      View Pricing
+                    </Button>
+                  </Link>
+                  <Link href="/products/smart-dashboard">
+                    <Button variant="outline" size="lg" className="rounded-xl glass-surface-sm">
+                      Explore Dashboard
+                    </Button>
+                  </Link>
+                </FadeUp>
+              </div>
+              <FadeUp delay={0.24}>
+                <div className="mx-auto w-full max-w-[280px] md:max-w-none">
+                  <PomelliClip name="mess-to-data" rounded="rounded-3xl" glow />
+                </div>
+              </FadeUp>
+            </div>
           </div>
         </section>
 
         {/* What Smart Storage does */}
-        <section className="border-t border-border bg-muted/30 px-6 py-24">
-          <div className="mx-auto max-w-4xl">
+        <section className="relative px-6 py-24">
+          <div aria-hidden className="pointer-events-none absolute inset-0 retro-grid-bg opacity-30" />
+          <div className="relative mx-auto max-w-4xl">
             <FadeUp className="text-center">
               <h2 className="text-sm font-medium uppercase tracking-wider text-primary">
                 What Smart Storage does
@@ -269,7 +281,7 @@ export default function SmartStorageProductPage() {
             <StaggerContainer className="mt-12 flex flex-wrap items-center justify-center gap-3">
               {supportedFiles.map((file) => (
                 <StaggerItem key={file}>
-                  <span className="rounded-full border border-border bg-card px-4 py-2 text-sm text-foreground">
+                  <span className="glass-surface-sm rounded-full px-4 py-2 text-sm text-foreground">
                     {file}
                   </span>
                 </StaggerItem>
@@ -279,8 +291,8 @@ export default function SmartStorageProductPage() {
         </section>
 
         {/* Core capabilities */}
-        <section className="border-t border-border px-6 py-24">
-          <div className="mx-auto max-w-5xl">
+        <section className="relative px-6 py-24">
+          <div className="relative mx-auto max-w-5xl">
             <FadeUp className="text-center">
               <h2 className="text-sm font-medium uppercase tracking-wider text-primary">
                 Core capabilities
@@ -290,8 +302,8 @@ export default function SmartStorageProductPage() {
             <StaggerContainer className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {capabilities.map((capability) => (
                 <StaggerItem key={capability.title}>
-                  <div className="rounded-xl border border-border bg-card p-6">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <div className="group glass-surface hover-bloom rounded-2xl p-6">
+                    <div className="glass-surface-sm flex h-10 w-10 items-center justify-center rounded-lg text-primary transition-all group-hover:[box-shadow:0_0_24px_-4px_var(--retro-glow-red)]">
                       {capability.icon}
                     </div>
                     <h3 className="mt-4 font-medium text-foreground">{capability.title}</h3>
@@ -304,8 +316,9 @@ export default function SmartStorageProductPage() {
         </section>
 
         {/* Workflow simplicity */}
-        <section className="border-t border-border bg-muted/30 px-6 py-24">
-          <div className="mx-auto max-w-4xl">
+        <section className="relative px-6 py-24">
+          <div aria-hidden className="pointer-events-none absolute inset-0 retro-grid-bg opacity-30" />
+          <div className="relative mx-auto max-w-4xl">
             <FadeUp className="text-center">
               <h2 className="text-sm font-medium uppercase tracking-wider text-primary">
                 Workflow simplicity
@@ -316,14 +329,14 @@ export default function SmartStorageProductPage() {
               {workflowSteps.map((step, index) => (
                 <StaggerItem key={step.title} className="flex items-center gap-4">
                   <div className="flex flex-col items-center text-center">
-                    <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-border bg-card text-primary">
+                    <div className="glass-surface hover-bloom flex h-16 w-16 items-center justify-center rounded-2xl text-primary">
                       {step.icon}
                     </div>
                     <span className="mt-3 text-xs font-medium text-primary">{step.step}</span>
                     <span className="mt-1 text-sm font-medium text-foreground">{step.title}</span>
                   </div>
                   {index < workflowSteps.length - 1 && (
-                    <div className="hidden h-px w-16 bg-border md:block" />
+                    <div className="retro-divider hidden w-16 md:block" />
                   )}
                 </StaggerItem>
               ))}
@@ -332,8 +345,8 @@ export default function SmartStorageProductPage() {
         </section>
 
         {/* Infrastructure & Security */}
-        <section className="border-t border-border bg-muted/30 px-6 py-24">
-          <div className="mx-auto max-w-4xl">
+        <section className="relative px-6 py-24">
+          <div className="relative mx-auto max-w-4xl">
             <FadeUp className="text-center">
               <h2 className="text-sm font-medium uppercase tracking-wider text-primary">
                 Built on enterprise infrastructure
@@ -347,7 +360,7 @@ export default function SmartStorageProductPage() {
 
               {/* Database */}
               <StaggerItem>
-                <div className="rounded-xl border border-border bg-card p-5">
+                <div className="glass-surface hover-bloom rounded-2xl p-5">
                   <div className="flex items-center gap-2">
                     <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
                     <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Database & Storage</span>
@@ -359,7 +372,7 @@ export default function SmartStorageProductPage() {
 
               {/* Hosting */}
               <StaggerItem>
-                <div className="rounded-xl border border-border bg-card p-5">
+                <div className="glass-surface hover-bloom rounded-2xl p-5">
                   <div className="flex items-center gap-2">
                     <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
                     <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Hosting</span>
@@ -371,7 +384,7 @@ export default function SmartStorageProductPage() {
 
               {/* AI Providers */}
               <StaggerItem>
-                <div className="rounded-xl border border-border bg-card p-5">
+                <div className="glass-surface hover-bloom rounded-2xl p-5">
                   <div className="flex items-center gap-2">
                     <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
                     <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">AI Processing</span>
@@ -383,7 +396,7 @@ export default function SmartStorageProductPage() {
 
               {/* Payments */}
               <StaggerItem>
-                <div className="rounded-xl border border-border bg-card p-5">
+                <div className="glass-surface hover-bloom rounded-2xl p-5">
                   <div className="flex items-center gap-2">
                     <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
                     <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Payments</span>
@@ -395,7 +408,7 @@ export default function SmartStorageProductPage() {
 
               {/* Encryption */}
               <StaggerItem>
-                <div className="rounded-xl border border-border bg-card p-5">
+                <div className="glass-surface hover-bloom rounded-2xl p-5">
                   <div className="flex items-center gap-2">
                     <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
                     <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Data Isolation</span>
@@ -407,7 +420,7 @@ export default function SmartStorageProductPage() {
 
               {/* Access */}
               <StaggerItem>
-                <div className="rounded-xl border border-border bg-card p-5">
+                <div className="glass-surface hover-bloom rounded-2xl p-5">
                   <div className="flex items-center gap-2">
                     <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
                     <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Access Control</span>
@@ -422,20 +435,30 @@ export default function SmartStorageProductPage() {
         </section>
 
         {/* CTA */}
-        <section className="border-t border-border px-6 py-24">
-          <FadeUp className="mx-auto max-w-3xl text-center">
-            <h2 className="text-2xl font-semibold text-foreground md:text-3xl">
-              Upload. Generate.
-            </h2>
-            <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
-              <StartFreeButton tool="smart-storage" />
-              <Link href="/pricing">
-                <Button variant="outline" size="lg" className="rounded-xl">
-                  View Pricing
-                </Button>
-              </Link>
+        <section className="relative px-6 py-24">
+          <div aria-hidden className="pointer-events-none absolute inset-0 retro-grid-bg opacity-30" />
+          <div className="relative mx-auto max-w-5xl">
+            <div className="grid items-center gap-10 md:grid-cols-[1.3fr_1fr] md:gap-16">
+              <FadeUp className="text-left">
+                <h2 className="text-balance text-3xl font-semibold leading-[1.1] text-foreground md:text-4xl lg:text-5xl">
+                  Upload. <span className="text-primary">Generate.</span>
+                </h2>
+                <div className="mt-10 flex flex-col items-start gap-4 sm:flex-row">
+                  <StartFreeButton tool="smart-storage" />
+                  <Link href="/pricing">
+                    <Button variant="outline" size="lg" className="rounded-xl glass-surface-sm">
+                      View Pricing
+                    </Button>
+                  </Link>
+                </div>
+              </FadeUp>
+              <FadeUp delay={0.15}>
+                <div className="mx-auto w-full max-w-[260px] md:max-w-none">
+                  <PomelliClip name="unlock-cloud" rounded="rounded-3xl" glow />
+                </div>
+              </FadeUp>
             </div>
-          </FadeUp>
+          </div>
         </section>
       </main>
       <Footer />

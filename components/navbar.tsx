@@ -26,7 +26,7 @@ function ThemeToggle() {
   return (
     <button
       onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-      className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      className="glass-surface-sm flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-all hover:text-foreground hover:[box-shadow:0_0_20px_-4px_var(--retro-glow-red)]"
       aria-label="Toggle theme"
     >
       <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
@@ -39,7 +39,7 @@ function AccountMenuButton({ onClick }: { onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      className="glass-surface-sm flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-all hover:text-foreground hover:[box-shadow:0_0_20px_-4px_var(--retro-glow-red)]"
       aria-label="Open account menu"
     >
       <User className="h-4 w-4" />
@@ -55,8 +55,8 @@ export function Navbar() {
 
   return (
     <>
-      <header className="dark sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur-md">
-        <nav className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+      <header className="sticky top-0 z-50 w-full px-4 pt-4">
+        <nav className="glass-surface mx-auto flex max-w-6xl items-center justify-between rounded-2xl px-5 py-3">
           {/* Desktop Logo */}
           <Link href="/" className="flex-shrink-0">
             <Image
@@ -65,7 +65,7 @@ export function Navbar() {
               width={180}
               height={36}
               style={{ width: 'auto', height: '34px' }}
-              className="hidden md:block"
+              className="hidden brightness-0 md:block dark:brightness-100"
               priority
             />
             <Image
@@ -74,7 +74,7 @@ export function Navbar() {
               width={32}
               height={40}
               style={{ width: 'auto', height: '36px' }}
-              className="md:hidden"
+              className="brightness-0 md:hidden dark:brightness-100"
               priority
             />
           </Link>
@@ -88,13 +88,13 @@ export function Navbar() {
                   setProductsOpen(!productsOpen)
                   setToolsOpen(false)
                 }}
-                className="flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+                className="flex items-center gap-1 font-sans text-sm font-medium text-foreground/75 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
               >
                 Products
                 <ChevronDown className="h-4 w-4" />
               </button>
               {productsOpen && (
-                <div className="absolute left-0 top-full mt-2 w-48 rounded-xl border border-border bg-card p-2 shadow-lg">
+                <div className="glass-surface absolute left-0 top-full mt-3 w-48 rounded-xl p-2">
                   {products.map((product) => (
                     product.external ? (
                       <a
@@ -102,7 +102,7 @@ export function Navbar() {
                         href={product.href}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="block rounded-lg px-3 py-2 text-sm text-foreground transition-colors hover:bg-muted"
+                        className="block rounded-lg px-3 py-2 font-sans text-sm text-foreground/80 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
                         onClick={() => setProductsOpen(false)}
                       >
                         {product.name}
@@ -111,10 +111,10 @@ export function Navbar() {
                       <Link
                         key={product.name}
                         href={product.disabled ? "#" : product.href}
-                        className={`block rounded-lg px-3 py-2 text-sm transition-colors ${
+                        className={`block rounded-lg px-3 py-2 font-sans text-sm transition-all ${
                           product.disabled
                             ? "cursor-not-allowed text-muted-foreground"
-                            : "text-foreground hover:bg-muted"
+                            : "text-foreground/80 hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
                         }`}
                         onClick={() => setProductsOpen(false)}
                       >
@@ -133,20 +133,20 @@ export function Navbar() {
                   setToolsOpen(!toolsOpen)
                   setProductsOpen(false)
                 }}
-                className="flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+                className="flex items-center gap-1 font-sans text-sm font-medium text-foreground/75 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
               >
                 Tools
                 <ChevronDown className="h-4 w-4" />
               </button>
               {toolsOpen && (
-                <div className="absolute left-0 top-full mt-2 w-48 rounded-xl border border-border bg-card p-2 shadow-lg">
+                <div className="glass-surface absolute left-0 top-full mt-3 w-48 rounded-xl p-2">
                   {tools.map((tool) => (
                     <a
                       key={tool.name}
                       href={tool.href}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="block rounded-lg px-3 py-2 text-sm text-foreground transition-colors hover:bg-muted"
+                      className="block rounded-lg px-3 py-2 font-sans text-sm text-foreground/80 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
                       onClick={() => setToolsOpen(false)}
                     >
                       {tool.name}
@@ -158,7 +158,7 @@ export function Navbar() {
 
             <Link
               href="/pricing"
-              className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+              className="font-sans text-sm font-medium text-foreground/75 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
             >
               Pricing
             </Link>
@@ -189,7 +189,7 @@ export function Navbar() {
 
         {/* Mobile Menu */}
         {mobileMenuOpen && (
-          <div className="border-t border-border bg-background px-6 py-4 md:hidden">
+          <div className="glass-surface mx-4 mt-2 rounded-2xl px-6 py-4 md:hidden">
             <div className="flex flex-col gap-4">
               <div className="flex flex-col gap-2">
                 <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">

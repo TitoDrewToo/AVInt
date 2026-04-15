@@ -18,7 +18,7 @@ function PricingCard({ name, price, annualPrice, features, isAnnual }: PricingCa
   const displayPrice = isAnnual && annualPrice ? annualPrice : price
 
   return (
-    <div className="flex flex-col rounded-2xl border border-border bg-card p-6">
+    <div className="glass-surface hover-bloom flex h-full flex-col rounded-2xl p-6">
       <h3 className="text-lg font-semibold text-foreground">{name}</h3>
       {displayPrice && (
         <div className="mt-4 flex items-center">
@@ -91,8 +91,9 @@ export function PricingPreviewSection() {
   const [isAnnual, setIsAnnual] = useState(false)
 
   return (
-    <section className="border-t border-border bg-muted/30 px-6 py-24">
-      <div className="mx-auto max-w-6xl">
+    <section className="relative px-6 py-24">
+      <div aria-hidden className="pointer-events-none absolute inset-0 retro-grid-bg opacity-30" />
+      <div className="relative mx-auto max-w-6xl">
         <FadeUp>
           <h2 className="text-center text-sm font-medium uppercase tracking-wider text-primary">
             Pricing

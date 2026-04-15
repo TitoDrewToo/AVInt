@@ -138,7 +138,7 @@ function Step({ number, title, subtitle, icon }: StepProps) {
   return (
     <div className="flex flex-col items-center text-center">
       <div className="relative">
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-border bg-card text-primary shadow-sm">
+        <div className="glass-surface hover-bloom flex h-16 w-16 items-center justify-center rounded-2xl text-primary">
           {icon}
         </div>
         <span className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-medium text-primary-foreground">
@@ -186,7 +186,7 @@ export function HowItWorksSection() {
                 <Step {...step} />
               </div>
               {index < steps.length - 1 && (
-                <div className="hidden h-px w-24 shrink-0 bg-border md:block md:mt-8" />
+                <div className="retro-divider hidden w-24 shrink-0 md:block md:mt-8" />
               )}
             </div>
           ))}

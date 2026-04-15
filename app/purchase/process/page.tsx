@@ -7,6 +7,7 @@ import { Navbar } from "@/components/navbar"
 import { Footer } from "@/components/footer"
 import { ProcessingIndicator } from "@/components/ui/processing-indicator"
 import { supabase } from "@/lib/supabase"
+import { FadeUp, PopIn } from "@/components/fade-up"
 
 // Creem redirects here after successful payment.
 // Creem may append ?checkout_id=, ?order_id=, or similar params to the success URL.
@@ -91,10 +92,32 @@ function ProcessContent() {
     <div className="flex min-h-screen flex-col">
       <Navbar />
       <main className="flex flex-1 items-center justify-center px-6 py-24">
-        <div className="flex flex-col items-center gap-4 text-center">
-          <ProcessingIndicator active={true} />
-          <p className="text-sm font-medium text-foreground">Confirming your purchase…</p>
-          <p className="text-xs text-muted-foreground">This takes just a moment</p>
+        <div className="mx-auto w-full max-w-md">
+          <div className="rounded-2xl border border-border bg-card/90 p-10 text-center shadow-sm">
+            <PopIn>
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
+                <ProcessingIndicator active={true} />
+              </div>
+            </PopIn>
+            <FadeUp delay={0.08}>
+              <h1 className="mt-6 text-2xl font-semibold text-foreground">Confirming your purchase…</h1>
+            </FadeUp>
+            <FadeUp delay={0.14}>
+              <p className="mt-2 text-sm text-muted-foreground">
+                We&apos;re checking for the payment confirmation and updating your access.
+              </p>
+            </FadeUp>
+            <FadeUp delay={0.2}>
+              <div className="mt-8 overflow-hidden rounded-full border border-border/70 bg-muted/40">
+                <div className="h-2 w-full origin-left animate-pulse bg-primary/70" />
+              </div>
+            </FadeUp>
+            <FadeUp delay={0.26}>
+              <p className="mt-3 text-xs uppercase tracking-[0.18em] text-muted-foreground/80">
+                Secure handoff from Creem to AVIntelligence
+              </p>
+            </FadeUp>
+          </div>
         </div>
       </main>
       <Footer />
@@ -107,8 +130,10 @@ export default function PurchaseProcessPage() {
     <Suspense fallback={
       <div className="flex min-h-screen flex-col">
         <Navbar />
-        <main className="flex flex-1 items-center justify-center">
-          <ProcessingIndicator active={true} />
+        <main className="flex flex-1 items-center justify-center px-6">
+          <div className="rounded-2xl border border-border bg-card/90 p-10 shadow-sm">
+            <ProcessingIndicator active={true} />
+          </div>
         </main>
         <Footer />
       </div>

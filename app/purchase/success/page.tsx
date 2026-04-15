@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { CheckCircle, Copy, Check } from "lucide-react"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
+import { FadeUp, PopIn } from "@/components/fade-up"
 
 function CopyableCode({ code }: { code: string }) {
   const [copied, setCopied] = useState(false)
@@ -74,20 +75,24 @@ function SuccessContent() {
           <div className="rounded-2xl border border-border bg-card p-10 text-center shadow-sm">
 
             {/* Success icon */}
-            <div className="flex justify-center">
+            <PopIn className="flex justify-center">
               <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
                 <CheckCircle className="h-7 w-7 text-primary" />
               </div>
-            </div>
+            </PopIn>
 
             {isGift ? (
               <>
-                <h1 className="mt-6 text-2xl font-semibold text-foreground">Gift codes ready</h1>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Share these codes — each grants 24-hour full access.
-                </p>
+                <FadeUp delay={0.08}>
+                  <h1 className="mt-6 text-2xl font-semibold text-foreground">Gift codes ready</h1>
+                </FadeUp>
+                <FadeUp delay={0.14}>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Share these codes — each grants 24-hour full access.
+                  </p>
+                </FadeUp>
 
-                <div className="mt-8 text-left">
+                <FadeUp delay={0.2} className="mt-8 text-left">
                   {loadingCodes ? (
                     <div className="flex items-center justify-center py-6">
                       <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
@@ -106,28 +111,36 @@ function SuccessContent() {
                   <p className="mt-3 text-xs text-muted-foreground">
                     Each code grants 24-hour access to Smart Storage, all reports, and dashboards.
                   </p>
-                </div>
+                </FadeUp>
               </>
             ) : (
               <>
-                <h1 className="mt-6 text-2xl font-semibold text-foreground">You&apos;re all set</h1>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Your access is now active. Head to Smart Storage to get started.
-                </p>
+                <FadeUp delay={0.08}>
+                  <h1 className="mt-6 text-2xl font-semibold text-foreground">You&apos;re all set</h1>
+                </FadeUp>
+                <FadeUp delay={0.14}>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Your access is now active. Head to Smart Storage to get started.
+                  </p>
+                </FadeUp>
               </>
             )}
 
-            <Link href="/tools/smart-storage">
-              <Button size="lg" className="mt-8 w-full rounded-xl">
-                Go to Smart Storage
-              </Button>
-            </Link>
+            <FadeUp delay={0.28}>
+              <Link href="/tools/smart-storage">
+                <Button size="lg" className="mt-8 w-full rounded-xl">
+                  Go to Smart Storage
+                </Button>
+              </Link>
+            </FadeUp>
 
-            <Link href="/pricing">
-              <p className="mt-3 text-xs text-muted-foreground underline-offset-2 hover:underline cursor-pointer">
-                Back to pricing
-              </p>
-            </Link>
+            <FadeUp delay={0.34}>
+              <Link href="/pricing">
+                <p className="mt-3 cursor-pointer text-xs text-muted-foreground underline-offset-2 hover:underline">
+                  Back to pricing
+                </p>
+              </Link>
+            </FadeUp>
           </div>
         </div>
       </main>

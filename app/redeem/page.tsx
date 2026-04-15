@@ -42,13 +42,18 @@ export default function RedeemPage() {
     }
 
     try {
+      if (!session.access_token) {
+        setError("Please sign in again to redeem your code.")
+        return
+      }
       const res = await fetch("/api/redeem-gift", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session.access_token}`,
+        },
         body: JSON.stringify({
-          code:    code.trim(),
-          user_id: session.user.id,
-          email:   session.user.email,
+          code: code.trim(),
         }),
       })
       const data = await res.json()

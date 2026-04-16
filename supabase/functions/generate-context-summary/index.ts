@@ -21,6 +21,19 @@ function buildCorsHeaders(req: Request) {
   }
 }
 
+function hasActiveEntitlement(row: { status: string | null; current_period_end: string | null } | null): boolean {
+  if (!row?.status) return false
+
+  if (row.status === "pro") return true
+
+  if (row.status === "day_pass" || row.status === "gift_code") {
+    if (!row.current_period_end) return false
+    return new Date(row.current_period_end).getTime() >= Date.now()
+  }
+
+  return false
+}
+
 const SYSTEM_PROMPT = `You are a personal financial analyst AI. You receive structured data extracted from a user's financial documents (receipts, invoices, payslips, etc.).
 
 Write a concise, friendly, and insightful financial summary for the user. Use natural language — no bullet points, no headers, no markdown. Write 3-5 sentences max.
@@ -131,6 +144,28 @@ serve(async (req) => {
   }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+  if (!isServiceRole) {
+    const { data: subscriptionRow, error: subscriptionErr } = await supabase
+      .from("subscriptions")
+      .select("status, current_period_end")
+      .eq("user_id", user_id)
+      .maybeSingle()
+
+    if (subscriptionErr) {
+      return new Response(JSON.stringify({ error: "Failed to verify entitlement" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      })
+    }
+
+    if (!hasActiveEntitlement(subscriptionRow)) {
+      return new Response(JSON.stringify({ error: "Active premium access required" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      })
+    }
+  }
 
   try {
     // 1. Fetch user's files + document_fields

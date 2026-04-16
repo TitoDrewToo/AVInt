@@ -21,6 +21,19 @@ function buildCorsHeaders(req: Request) {
   }
 }
 
+function hasActiveEntitlement(row: { status: string | null; current_period_end: string | null } | null): boolean {
+  if (!row?.status) return false
+
+  if (row.status === "pro") return true
+
+  if (row.status === "day_pass" || row.status === "gift_code") {
+    if (!row.current_period_end) return false
+    return new Date(row.current_period_end).getTime() >= Date.now()
+  }
+
+  return false
+}
+
 // ── Upgrade chart prompt (all users) ──────────────────────────────────────────
 // Haiku selects which standard chart types to upgrade with AI insight.
 // Dedup is enforced against plotted_advanced_types — not existing_widget_types —
@@ -148,6 +161,28 @@ serve(async (req) => {
   const isRDUser = RD_USER_ID && user_id === RD_USER_ID
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+  if (!isServiceRole) {
+    const { data: subscriptionRow, error: subscriptionErr } = await supabase
+      .from("subscriptions")
+      .select("status, current_period_end")
+      .eq("user_id", user_id)
+      .maybeSingle()
+
+    if (subscriptionErr) {
+      return new Response(JSON.stringify({ error: "Failed to verify entitlement" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      })
+    }
+
+    if (!hasActiveEntitlement(subscriptionRow)) {
+      return new Response(JSON.stringify({ error: "Active premium access required" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      })
+    }
+  }
 
   try {
     // ── 1. Fetch user files ─────────────────────────────────────────────────

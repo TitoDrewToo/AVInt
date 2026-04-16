@@ -33,9 +33,9 @@ const INACTIVE: Entitlement = {
   expiresAt: null,
 }
 
-// Single source of truth for premium access. Day passes expire on
-// current_period_end; pro/gift_code lifecycles are managed by webhooks so a
-// matching status is sufficient.
+// Single source of truth for premium access. Day passes and redeemed gift
+// codes expire on current_period_end; pro lifecycles are managed by webhooks
+// so a matching status is sufficient.
 export function computeEntitlement(row: EntitlementRow | null | undefined): Entitlement {
   if (!row || !row.status) return INACTIVE
 
@@ -69,6 +69,9 @@ export function computeEntitlement(row: EntitlementRow | null | undefined): Enti
   }
 
   if (status === "gift_code") {
+    if (!current_period_end || expired) {
+      return { ...INACTIVE, status: "expired", expiresAt: current_period_end }
+    }
     return {
       status: "gift_code",
       isActive: true,

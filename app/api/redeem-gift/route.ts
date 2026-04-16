@@ -58,7 +58,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "This gift code has expired" }, { status: 410 })
   }
 
-  const now = new Date().toISOString()
+  const nowDate = new Date()
+  const now = nowDate.toISOString()
+  const accessEndsAt = new Date(nowDate.getTime() + 24 * 60 * 60 * 1000).toISOString()
 
   // 2. Mark code as redeemed
   const { error: redeemError } = await supabaseAdmin
@@ -85,8 +87,9 @@ export async function POST(req: NextRequest) {
   const subPayload = {
     user_id,
     email,
-    status:  "pro",
-    plan:    giftCode.plan ?? "monthly",
+    status:  "gift_code",
+    plan:    "gift_code",
+    current_period_end: accessEndsAt,
     updated_at: now,
   }
 
@@ -103,5 +106,5 @@ export async function POST(req: NextRequest) {
 
   console.log("Gift code redeemed:", normalizedCode, "by", email)
 
-  return NextResponse.json({ success: true, plan: giftCode.plan ?? "monthly" })
+  return NextResponse.json({ success: true, plan: "gift_code", expires_at: accessEndsAt })
 }

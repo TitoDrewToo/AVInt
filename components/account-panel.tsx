@@ -370,6 +370,7 @@ function resolveDisplayPlan(sub: SubRecord | null): { label: string; note: strin
     return { label: "Pro (Gift)", note, isActive: true }
   }
 
+  if (sub?.status === "gift_code") return { label: "Free", note: "Gift access expired", isActive: false }
   if (ent.status === "expired") return { label: "Free", note: "Day pass expired", isActive: false }
   if (sub?.status === "cancelled") return { label: "Free", note: "Subscription cancelled", isActive: false }
   return { label: "Free", note: "No renewal scheduled", isActive: false }

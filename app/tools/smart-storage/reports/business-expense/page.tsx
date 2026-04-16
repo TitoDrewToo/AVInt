@@ -572,19 +572,19 @@ export default function BusinessExpensePage() {
               )}
 
               {/* ── Assumptions + Tax Impact ── */}
-              {!mixedCurrency && (
-                <div className="rounded border border-border bg-muted/20">
+              <div className="rounded border border-border bg-muted/20">
                   <button
                     type="button"
                     onClick={() => setAssumptionsOpen((open) => !open)}
-                    className="flex w-full items-center justify-between px-5 py-4 text-left"
+                    className="flex w-full items-center justify-between px-5 py-4 text-left transition-colors hover:bg-muted/30"
                   >
                     <div>
                       <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                        Assumptions
+                        Custom Tax Assumptions
                       </p>
                       <p className="mt-1 text-xs text-foreground/80">
                         {assumptions.filing_context === "self_employed" ? "Self-employed" : "Employed"} · {assumptions.federal_marginal_rate.toFixed(1)}% federal · {assumptions.state_marginal_rate.toFixed(1)}% state{assumptions.include_self_employment_tax ? ` · ${assumptions.self_employment_tax_rate.toFixed(1)}% SE tax` : ""}
+                        {!assumptionsLoaded ? " · loading…" : ""}
                       </p>
                     </div>
                     {assumptionsOpen ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
@@ -592,6 +592,11 @@ export default function BusinessExpensePage() {
 
                   {assumptionsOpen && (
                     <div className="border-t border-border px-5 py-4">
+                      {mixedCurrency && (
+                        <div className="mb-4 rounded border border-yellow-500/20 bg-yellow-500/5 p-3 text-xs text-muted-foreground">
+                          Custom assumptions can still be saved, but illustrative tax impact is disabled while multiple currencies are included in the filtered dataset.
+                        </div>
+                      )}
                       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <label className="space-y-1">
                           <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">Filing Context</span>
@@ -693,16 +698,21 @@ export default function BusinessExpensePage() {
                     </div>
                   )}
                 </div>
-              )}
 
-              {!mixedCurrency && totalBusiness > 0 && (
+              {totalBusiness > 0 && (
                 <div className="border border-border bg-muted/30 px-5 py-4">
                   <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
                     Illustrative Tax Impact
                   </p>
-                  <p className="mt-1 font-mono text-xl tabular-nums text-foreground">
-                    {fmt(estimatedTaxImpact, currency)}
-                  </p>
+                  {mixedCurrency ? (
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Unavailable while mixed currencies are included in the report.
+                    </p>
+                  ) : (
+                    <p className="mt-1 font-mono text-xl tabular-nums text-foreground">
+                      {fmt(estimatedTaxImpact, currency)}
+                    </p>
+                  )}
                   <p className="mt-1 text-[10px] text-muted-foreground/70">
                     Based on {fmt(totalBusiness, currency)} of business-classified expenses and your selected assumptions:
                     {` ${assumptions.federal_marginal_rate.toFixed(1)}% federal + ${assumptions.state_marginal_rate.toFixed(1)}% state`}

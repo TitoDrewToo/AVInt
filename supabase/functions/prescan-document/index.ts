@@ -32,6 +32,45 @@ const ALLOWED_MIME_PREFIXES = [
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 ]
 
+const SUSPICIOUS_PDF_MARKERS = [
+  "/JavaScript",
+  "/JS",
+  "/Launch",
+  "/EmbeddedFile",
+  "/OpenAction",
+  "/AA",
+]
+
+function hasAsciiSequence(bytes: Uint8Array, needle: string): boolean {
+  const encoded = new TextEncoder().encode(needle)
+  outer: for (let i = 0; i <= bytes.length - encoded.length; i++) {
+    for (let j = 0; j < encoded.length; j++) {
+      if (bytes[i + j] !== encoded[j]) continue outer
+    }
+    return true
+  }
+  return false
+}
+
+function validateSpreadsheetContainer(bytes: Uint8Array, detected: string): { ok: boolean; reason?: string } {
+  if (detected === "application/vnd.ms-excel") {
+    return { ok: true }
+  }
+  if (detected !== "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") {
+    return { ok: true }
+  }
+  const requiredMarkers = [
+    "[Content_Types].xml",
+    "_rels/.rels",
+    "xl/workbook.xml",
+  ]
+  const hasAllMarkers = requiredMarkers.every((marker) => hasAsciiSequence(bytes, marker))
+  if (!hasAllMarkers) {
+    return { ok: false, reason: "Spreadsheet container is malformed or not a valid workbook." }
+  }
+  return { ok: true }
+}
+
 // Magic-byte signatures. First-4KB sniff.
 function detectMagicMime(bytes: Uint8Array): string | null {
   if (bytes.length >= 4 && bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46) {
@@ -82,6 +121,9 @@ async function analyzePdf(bytes: Uint8Array): Promise<{ ok: boolean; reason?: st
   if (!head.startsWith("%PDF-")) return { ok: false, reason: "Not a valid PDF header" }
   const fullText = new TextDecoder("latin1").decode(bytes)
   if (/\/Encrypt\s/.test(fullText)) return { ok: false, reason: "Encrypted PDFs are not supported" }
+  if (SUSPICIOUS_PDF_MARKERS.some((marker) => fullText.includes(marker))) {
+    return { ok: false, reason: "PDF contains active or embedded content that is not supported." }
+  }
   // /Count N inside a /Type /Pages dict. Multiple may exist; take the largest non-leaf.
   const counts = [...fullText.matchAll(/\/Count\s+(\d+)/g)].map(m => parseInt(m[1], 10)).filter(n => !Number.isNaN(n))
   const pages = counts.length ? Math.max(...counts) : undefined
@@ -304,9 +346,23 @@ serve(async (req) => {
       const pdf = await analyzePdf(bytes)
       if (!pdf.ok) throw new PrescanReject("pdf_invalid", pdf.reason ?? "Invalid PDF structure.")
     }
+    const workbookCheck = validateSpreadsheetContainer(bytes, detected)
+    if (!workbookCheck.ok) {
+      throw new PrescanReject("spreadsheet_invalid", workbookCheck.reason ?? "Spreadsheet validation failed.")
+    }
 
     // Tier 1.4 — hash
     const sha = await sha256Hex(bytes)
+    const { data: duplicateQuarantine } = await supabase
+      .from("files")
+      .select("id, scan_reason")
+      .eq("sha256", sha)
+      .eq("upload_status", "quarantined")
+      .limit(1)
+      .maybeSingle()
+    if (duplicateQuarantine) {
+      throw new PrescanReject("known_quarantined_hash", duplicateQuarantine.scan_reason || "This file matches a previously quarantined upload.")
+    }
 
     // Tier 2 — Gemini Safety Pass
     // Spreadsheets skip safety (Gemini can't see them); Tier 1 magic byte is the gate.

@@ -18,6 +18,7 @@ interface FolderOption { id: string; name: string }
 interface IncomeRow {
   filename: string
   document_type: string
+  income_source: string | null
   employer_name: string | null
   document_date: string | null
   gross_income: number | null
@@ -26,6 +27,8 @@ interface IncomeRow {
   currency: string | null
   confidence_score: number | null
 }
+
+type IncomeSourceClass = "business" | "wage" | "investment" | "rental" | "interest" | "other"
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -41,6 +44,26 @@ function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString("en-US", {
     year: "numeric", month: "short", day: "2-digit",
   })
+}
+
+function classifyIncome(row: IncomeRow): IncomeSourceClass {
+  if (row.income_source === "business" || row.income_source === "wage" || row.income_source === "investment" || row.income_source === "rental" || row.income_source === "interest" || row.income_source === "other") {
+    return row.income_source
+  }
+  if (row.document_type === "payslip") return "wage"
+  if (row.document_type === "income_statement") return "business"
+  return "other"
+}
+
+function prettyIncomeClass(cls: IncomeSourceClass) {
+  switch (cls) {
+    case "wage": return "Wage"
+    case "business": return "Business"
+    case "investment": return "Investment"
+    case "rental": return "Rental"
+    case "interest": return "Interest"
+    default: return "Other"
+  }
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
@@ -103,6 +126,7 @@ export default function IncomeSummaryPage() {
       setIncome(rows.map((row: any) => ({
         filename:         row.files?.filename ?? "unknown",
         document_type:    row.files?.document_type ?? "unknown",
+        income_source:    row.income_source ?? null,
         employer_name:    row.employer_name,
         document_date:    row.document_date,
         gross_income:     row.gross_income != null ? safeNum(row.gross_income) : null,
@@ -124,25 +148,39 @@ export default function IncomeSummaryPage() {
   // ── Aggregations ──────────────────────────────────────────────────────────────
 
   const { primaryCurrency: currency, currencies, mixedCurrency } = summarizeCurrencies(income)
+  const classifiedIncome = income.map((row) => ({
+    ...row,
+    incomeClass: classifyIncome(row),
+  }))
 
-  const totalGross = income.reduce((s, r) => s + (r.gross_income ?? r.total_amount ?? 0), 0)
-  const totalNet   = income.reduce((s, r) => s + (r.net_income ?? 0), 0)
-  const totalWithholding = income.reduce((s, r) => {
+  const totalGross = classifiedIncome.reduce((s, r) => s + (r.gross_income ?? r.total_amount ?? 0), 0)
+  const wageGross = classifiedIncome.filter((r) => r.incomeClass === "wage").reduce((s, r) => s + (r.gross_income ?? r.total_amount ?? 0), 0)
+  const businessGross = classifiedIncome.filter((r) => r.incomeClass === "business").reduce((s, r) => s + (r.gross_income ?? r.total_amount ?? 0), 0)
+  const otherGross = classifiedIncome.filter((r) => r.incomeClass !== "wage" && r.incomeClass !== "business").reduce((s, r) => s + (r.gross_income ?? r.total_amount ?? 0), 0)
+  const totalNet   = classifiedIncome.reduce((s, r) => s + (r.net_income ?? 0), 0)
+  const totalWithholding = classifiedIncome.reduce((s, r) => {
     if (r.gross_income != null && r.net_income != null) return s + Math.max(0, r.gross_income - r.net_income)
     return s
   }, 0)
 
-  const uniqueMonths = new Set(income.map(r => r.document_date?.slice(0, 7)).filter(Boolean)).size
+  const uniqueMonths = new Set(classifiedIncome.map(r => r.document_date?.slice(0, 7)).filter(Boolean)).size
   const avgMonthly   = uniqueMonths > 0 ? totalGross / uniqueMonths : totalGross
 
-  // Group by employer
-  const byEmployer = new Map<string, { gross: number; net: number; withholding: number; docs: number }>()
-  for (const r of income) {
-    const key = r.employer_name ?? "Unknown Employer"
-    const existing = byEmployer.get(key) ?? { gross: 0, net: 0, withholding: 0, docs: 0 }
+  // Group by income class + name so wage/business/other do not collapse.
+  const byEmployer = new Map<string, { source: IncomeSourceClass; label: string; gross: number; net: number; withholding: number; docs: number }>()
+  for (const r of classifiedIncome) {
+    const label =
+      r.employer_name ??
+      (r.incomeClass === "wage" ? "Unknown Employer" :
+        r.incomeClass === "business" ? "Unknown Business Source" :
+        `${prettyIncomeClass(r.incomeClass)} income`)
+    const key = `${r.incomeClass}|${label}`
+    const existing = byEmployer.get(key) ?? { source: r.incomeClass, label, gross: 0, net: 0, withholding: 0, docs: 0 }
     const gross = r.gross_income ?? r.total_amount ?? 0
     const net   = r.net_income ?? 0
     byEmployer.set(key, {
+      source: existing.source,
+      label: existing.label,
       gross:       existing.gross + gross,
       net:         existing.net  + net,
       withholding: existing.withholding + (r.gross_income != null && r.net_income != null ? Math.max(0, gross - net) : 0),
@@ -150,7 +188,7 @@ export default function IncomeSummaryPage() {
     })
   }
 
-  const allDates  = income.map(r => r.document_date).filter(Boolean) as string[]
+  const allDates  = classifiedIncome.map(r => r.document_date).filter(Boolean) as string[]
   const periodStart = allDates.length ? allDates.reduce((a, b) => a < b ? a : b) : null
   const periodEnd   = allDates.length ? allDates.reduce((a, b) => a > b ? a : b) : null
 
@@ -256,6 +294,17 @@ export default function IncomeSummaryPage() {
                 </div>
               </div>
 
+              <div className="rounded border border-border/60 bg-muted/30 p-4">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                  Scope
+                </p>
+                <p className="mt-2 text-xs leading-relaxed text-foreground/80">
+                  This report separates wage, business, and other income where classification is available, while still
+                  showing a combined bookkeeping total for the filtered dataset. Net Income and Tax Withheld are most
+                  meaningful for wage-style documents that carry both gross and net values.
+                </p>
+              </div>
+
               {mixedCurrency && (
                 <div className="flex items-start gap-3 rounded border border-red-500/30 bg-red-500/5 p-4">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
@@ -275,10 +324,23 @@ export default function IncomeSummaryPage() {
                   {/* ── Summary Strip ── */}
                   <div className="grid grid-cols-2 divide-x divide-border border border-border rounded sm:grid-cols-4">
                     {[
-                      { label: "Gross Income",   value: fmt(totalGross, currency) },
-                      { label: "Net Income",      value: totalNet > 0 ? fmt(totalNet, currency) : "—" },
-                      { label: "Tax Withheld",    value: totalWithholding > 0 ? fmt(totalWithholding, currency) : "—" },
-                      { label: "Avg Monthly",     value: fmt(avgMonthly, currency) },
+                      { label: "Total Income",    value: fmt(totalGross, currency) },
+                      { label: "Wage Income",     value: wageGross > 0 ? fmt(wageGross, currency) : "—" },
+                      { label: "Business Income", value: businessGross > 0 ? fmt(businessGross, currency) : "—" },
+                      { label: "Other Income",    value: otherGross > 0 ? fmt(otherGross, currency) : "—" },
+                    ].map(item => (
+                      <div key={item.label} className="px-5 py-4">
+                        <p className="text-[10px] uppercase tracking-widest text-muted-foreground">{item.label}</p>
+                        <p className="mt-1.5 font-mono text-base font-medium tabular-nums text-foreground">{item.value}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-2 divide-x divide-border border border-border rounded sm:grid-cols-3">
+                    {[
+                      { label: "Net Income", value: totalNet > 0 ? fmt(totalNet, currency) : "—" },
+                      { label: "Tax Withheld", value: totalWithholding > 0 ? fmt(totalWithholding, currency) : "—" },
+                      { label: "Avg Monthly", value: fmt(avgMonthly, currency) },
                     ].map(item => (
                       <div key={item.label} className="px-5 py-4">
                         <p className="text-[10px] uppercase tracking-widest text-muted-foreground">{item.label}</p>
@@ -290,11 +352,12 @@ export default function IncomeSummaryPage() {
                   {/* ── Income by Employer ── */}
                   <div>
                     <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                      Income by Employer
+                      Income by Source
                     </p>
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-border text-left text-[10px] uppercase tracking-wider text-muted-foreground">
+                          <th className="pb-2 font-medium">Type</th>
                           <th className="pb-2 font-medium">Employer / Source</th>
                           <th className="pb-2 text-right font-medium">Gross Income</th>
                           <th className="pb-2 text-right font-medium">Net Income</th>
@@ -304,9 +367,14 @@ export default function IncomeSummaryPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border/50">
-                        {Array.from(byEmployer.entries()).map(([employer, data]) => (
-                          <tr key={employer}>
-                            <td className="py-2.5 text-foreground">{employer}</td>
+                        {Array.from(byEmployer.entries()).map(([key, data]) => (
+                          <tr key={key}>
+                            <td className="py-2.5">
+                              <span className="inline-flex rounded-full bg-foreground/8 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">
+                                {prettyIncomeClass(data.source)}
+                              </span>
+                            </td>
+                            <td className="py-2.5 text-foreground">{data.label}</td>
                             <td className="py-2.5 text-right font-mono tabular-nums text-foreground">
                               {fmt(data.gross, currency)}
                             </td>
@@ -325,6 +393,7 @@ export default function IncomeSummaryPage() {
                       </tbody>
                       <tfoot>
                         <tr className="border-t-2 border-border font-semibold">
+                          <td className="pt-2.5" />
                           <td className="pt-2.5 text-foreground">Total</td>
                           <td className="pt-2.5 text-right font-mono tabular-nums text-foreground">{fmt(totalGross, currency)}</td>
                           <td className="pt-2.5 text-right font-mono tabular-nums text-foreground">
@@ -334,7 +403,7 @@ export default function IncomeSummaryPage() {
                             {totalWithholding > 0 ? fmt(totalWithholding, currency) : "—"}
                           </td>
                           <td className="pt-2.5 text-right text-muted-foreground">100%</td>
-                          <td className="pt-2.5 text-right text-muted-foreground">{income.length}</td>
+                          <td className="pt-2.5 text-right text-muted-foreground">{classifiedIncome.length}</td>
                         </tr>
                       </tfoot>
                     </table>
@@ -351,20 +420,20 @@ export default function IncomeSummaryPage() {
                   <thead>
                     <tr className="border-b border-border text-left text-muted-foreground">
                       <th className="pb-2 font-medium">Date</th>
-                      <th className="pb-2 font-medium">Employer</th>
                       <th className="pb-2 font-medium">Type</th>
+                      <th className="pb-2 font-medium">Employer</th>
                       <th className="pb-2 text-right font-medium">Gross</th>
                       <th className="pb-2 text-right font-medium">Net</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/50">
-                    {income.map((row, i) => (
+                    {classifiedIncome.map((row, i) => (
                       <tr key={i}>
                         <td className="py-2 text-muted-foreground">
                           {row.document_date ? formatDate(row.document_date) : "—"}
                         </td>
+                        <td className="py-2 text-muted-foreground">{prettyIncomeClass(row.incomeClass)}</td>
                         <td className="py-2 text-foreground">{row.employer_name ?? "—"}</td>
-                        <td className="py-2 capitalize text-muted-foreground">{row.document_type}</td>
                         <td className="py-2 text-right font-mono tabular-nums text-foreground">
                           {fmt(row.gross_income ?? row.total_amount ?? 0, row.currency ?? currency)}
                         </td>
@@ -377,7 +446,7 @@ export default function IncomeSummaryPage() {
                   <tfoot>
                     {!mixedCurrency && (
                       <tr className="border-t-2 border-border font-semibold">
-                        <td colSpan={3} className="pt-2 text-foreground">Total</td>
+                        <td colSpan={4} className="pt-2 text-foreground">Total</td>
                         <td className="pt-2 text-right font-mono tabular-nums text-foreground">{fmt(totalGross, currency)}</td>
                         <td className="pt-2 text-right font-mono tabular-nums text-foreground">
                           {totalNet > 0 ? fmt(totalNet, currency) : "—"}
@@ -391,9 +460,10 @@ export default function IncomeSummaryPage() {
               {/* ── Disclaimer ── */}
               <div className="border-t border-border pt-4">
                 <p className="text-[10px] leading-relaxed text-muted-foreground/60">
-                  Figures are derived from normalized fields extracted from uploaded payslips and income statements.
-                  Withholding tax is estimated from gross/net differentials. Average monthly income is calculated across
-                  unique calendar months in the dataset.
+                  Figures are derived from normalized fields extracted from uploaded income documents. Wage, business,
+                  investment, rental, interest, and other income are shown as separate buckets when classification is available,
+                  with document-type fallback for older rows. Withholding tax is estimated from gross/net differentials on rows
+                  that include both values. Average monthly income is calculated across unique calendar months in the dataset.
                   This report is informational and does not constitute a certified financial statement.
                 </p>
               </div>

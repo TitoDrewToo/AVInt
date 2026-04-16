@@ -6,10 +6,17 @@ import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
 import { useEntitlement } from "@/hooks/use-entitlement"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
+import {
+  BUSINESS_EXPENSE_SCOPE,
+  getBusinessExpenseEffectiveRate,
+  getDefaultBusinessExpenseAssumptions,
+  normalizeBusinessExpenseAssumptions,
+  type BusinessExpenseAssumptions,
+} from "@/lib/report-assumptions"
 import { summarizeCurrencies } from "@/lib/report-utils"
 import { ALL_SC_CATEGORIES, getScheduleCLine } from "@/lib/tax-bundle"
 import type { Session } from "@supabase/supabase-js"
-import { AlertTriangle, ArrowLeft, Download, FolderOpen, Printer, Copy, Ban, FileWarning } from "lucide-react"
+import { AlertTriangle, ArrowLeft, ChevronDown, ChevronUp, Download, FolderOpen, Printer, Copy, Ban, FileWarning, Loader2 } from "lucide-react"
 import Link from "next/link"
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -79,6 +86,11 @@ export default function BusinessExpensePage() {
   // overrides: id → true (force Business) | false (force Personal)
   const [overrides, setOverrides]         = useState<Record<string, boolean>>({})
   const [csvCopied, setCsvCopied]         = useState(false)
+  const [assumptions, setAssumptions]     = useState<BusinessExpenseAssumptions>(getDefaultBusinessExpenseAssumptions())
+  const [assumptionsLoaded, setAssumptionsLoaded] = useState(false)
+  const [savingAssumptions, setSavingAssumptions] = useState(false)
+  const [assumptionsDirty, setAssumptionsDirty]   = useState(false)
+  const [assumptionsOpen, setAssumptionsOpen]     = useState(false)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -96,6 +108,36 @@ export default function BusinessExpensePage() {
     if (!session?.user?.id) return
     supabase.from("folders").select("id, name").eq("user_id", session.user.id).order("name")
       .then(({ data }) => { if (data) setFolders(data) })
+  }, [session])
+
+  useEffect(() => {
+    if (!session?.user?.id) return
+    let cancelled = false
+
+    ;(async () => {
+      try {
+        const { data: auth } = await supabase.auth.getSession()
+        const token = auth.session?.access_token
+        if (!token) return
+
+        const res = await fetch(`/api/report-assumptions?scope=${BUSINESS_EXPENSE_SCOPE}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        const json = await res.json()
+        if (!res.ok) throw new Error(json.error ?? "Failed to load assumptions")
+        if (cancelled) return
+        setAssumptions(normalizeBusinessExpenseAssumptions(json.assumptions))
+        setAssumptionsLoaded(true)
+        setAssumptionsDirty(false)
+      } catch (err) {
+        console.error("load assumptions error:", err)
+        if (cancelled) return
+        setAssumptions(getDefaultBusinessExpenseAssumptions())
+        setAssumptionsLoaded(true)
+      }
+    })()
+
+    return () => { cancelled = true }
   }, [session])
 
   const safeNum = (v: unknown): number => { const n = parseFloat(String(v ?? "0")); return isNaN(n) ? 0 : n }
@@ -178,7 +220,8 @@ export default function BusinessExpensePage() {
   const totalPersonal = personalRows.reduce((s, e) => s + (e.total_amount ?? 0), 0)
   const totalAll      = totalBusiness + totalPersonal
   const businessPct   = totalAll > 0 ? (totalBusiness / totalAll) * 100 : 0
-  const estTaxSavings = totalBusiness * 0.30
+  const effectiveTaxRate = getBusinessExpenseEffectiveRate(assumptions)
+  const estimatedTaxImpact = totalBusiness * (effectiveTaxRate / 100)
 
   const groupByCategory = (rows: BizExpenseRow[]) =>
     Object.values(
@@ -301,6 +344,46 @@ export default function BusinessExpensePage() {
     window.print()
   }
 
+  function updateAssumptions(patch: Partial<BusinessExpenseAssumptions>) {
+    setAssumptions((prev) => normalizeBusinessExpenseAssumptions({ ...prev, ...patch }))
+    setAssumptionsDirty(true)
+  }
+
+  async function saveAssumptions() {
+    setSavingAssumptions(true)
+    try {
+      const { data: auth } = await supabase.auth.getSession()
+      const token = auth.session?.access_token
+      if (!token) throw new Error("Unauthorized")
+
+      const res = await fetch("/api/report-assumptions", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          scope: BUSINESS_EXPENSE_SCOPE,
+          assumptions,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? "Failed to save assumptions")
+      setAssumptions(normalizeBusinessExpenseAssumptions(json.assumptions))
+      setAssumptionsDirty(false)
+    } catch (err) {
+      console.error("save assumptions error:", err)
+      setError("Failed to save tax assumptions. Please try again.")
+    } finally {
+      setSavingAssumptions(false)
+    }
+  }
+
+  function resetAssumptions(filingContext = assumptions.filing_context) {
+    setAssumptions(getDefaultBusinessExpenseAssumptions(filingContext))
+    setAssumptionsDirty(true)
+  }
+
   if (!sessionLoaded) return null
   if (!session) return <AuthGuardModal isVisible={true} />
   if (!isPro) return (
@@ -373,7 +456,7 @@ export default function BusinessExpensePage() {
                   Mixed currencies detected ({currencies.join(", ")})
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Business Expense Report only aggregates a single currency at a time. Filter to one currency before relying on totals, duplicates, or estimated tax savings.
+                  Business Expense Report only aggregates a single currency at a time. Filter to one currency before relying on totals, duplicates, or tax-impact estimates.
                 </p>
               </div>
             </div>
@@ -488,18 +571,145 @@ export default function BusinessExpensePage() {
               </div>
               )}
 
-              {/* ── Est. Tax Savings Callout ── */}
+              {/* ── Assumptions + Tax Impact ── */}
+              {!mixedCurrency && (
+                <div className="rounded border border-border bg-muted/20">
+                  <button
+                    type="button"
+                    onClick={() => setAssumptionsOpen((open) => !open)}
+                    className="flex w-full items-center justify-between px-5 py-4 text-left"
+                  >
+                    <div>
+                      <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                        Assumptions
+                      </p>
+                      <p className="mt-1 text-xs text-foreground/80">
+                        {assumptions.filing_context === "self_employed" ? "Self-employed" : "Employed"} · {assumptions.federal_marginal_rate.toFixed(1)}% federal · {assumptions.state_marginal_rate.toFixed(1)}% state{assumptions.include_self_employment_tax ? ` · ${assumptions.self_employment_tax_rate.toFixed(1)}% SE tax` : ""}
+                      </p>
+                    </div>
+                    {assumptionsOpen ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                  </button>
+
+                  {assumptionsOpen && (
+                    <div className="border-t border-border px-5 py-4">
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <label className="space-y-1">
+                          <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">Filing Context</span>
+                          <select
+                            value={assumptions.filing_context}
+                            onChange={(e) => {
+                              const next = e.target.value === "employed" ? "employed" : "self_employed"
+                              const defaults = getDefaultBusinessExpenseAssumptions(next)
+                              setAssumptions((prev) => normalizeBusinessExpenseAssumptions({
+                                ...prev,
+                                filing_context: next,
+                                include_self_employment_tax: next === "employed" ? false : prev.include_self_employment_tax,
+                                self_employment_tax_rate: defaults.self_employment_tax_rate,
+                              }))
+                              setAssumptionsDirty(true)
+                            }}
+                            className="w-full rounded border border-border bg-background px-3 py-2 text-sm text-foreground"
+                          >
+                            <option value="self_employed">Self-employed</option>
+                            <option value="employed">Employed</option>
+                          </select>
+                        </label>
+
+                        <label className="space-y-1">
+                          <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">Federal Marginal Rate %</span>
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.1"
+                            value={assumptions.federal_marginal_rate}
+                            onChange={(e) => updateAssumptions({ federal_marginal_rate: Number(e.target.value) })}
+                            className="w-full rounded border border-border bg-background px-3 py-2 text-sm text-foreground"
+                          />
+                        </label>
+
+                        <label className="space-y-1">
+                          <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">State Marginal Rate %</span>
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.1"
+                            value={assumptions.state_marginal_rate}
+                            onChange={(e) => updateAssumptions({ state_marginal_rate: Number(e.target.value) })}
+                            className="w-full rounded border border-border bg-background px-3 py-2 text-sm text-foreground"
+                          />
+                        </label>
+
+                        <div className="space-y-2 rounded border border-border/60 bg-background/60 px-3 py-3">
+                          <label className="flex items-center justify-between gap-3">
+                            <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">Include SE Tax</span>
+                            <input
+                              type="checkbox"
+                              checked={assumptions.include_self_employment_tax}
+                              onChange={(e) => updateAssumptions({ include_self_employment_tax: e.target.checked })}
+                              className="h-4 w-4"
+                            />
+                          </label>
+                          <label className="space-y-1">
+                            <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">SE Tax Rate %</span>
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.1"
+                              value={assumptions.self_employment_tax_rate}
+                              onChange={(e) => updateAssumptions({ self_employment_tax_rate: Number(e.target.value) })}
+                              disabled={!assumptions.include_self_employment_tax}
+                              className="w-full rounded border border-border bg-background px-3 py-2 text-sm text-foreground disabled:opacity-50"
+                            />
+                          </label>
+                        </div>
+                      </div>
+
+                      <label className="mt-4 block space-y-1">
+                        <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">Notes</span>
+                        <textarea
+                          value={assumptions.notes}
+                          onChange={(e) => updateAssumptions({ notes: e.target.value })}
+                          rows={3}
+                          className="w-full rounded border border-border bg-background px-3 py-2 text-sm text-foreground"
+                          placeholder="Optional assumptions or preparer notes"
+                        />
+                      </label>
+
+                      <div className="mt-4 flex flex-wrap items-center gap-2">
+                        <Button variant="outline" size="sm" className="gap-2 rounded-md text-xs" onClick={saveAssumptions} disabled={!assumptionsDirty || savingAssumptions}>
+                          {savingAssumptions ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                          {savingAssumptions ? "Saving..." : "Save Assumptions"}
+                        </Button>
+                        <Button variant="outline" size="sm" className="rounded-md text-xs" onClick={() => resetAssumptions()}>
+                          Reset Defaults
+                        </Button>
+                        {assumptionsLoaded && !assumptionsDirty && (
+                          <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">Saved</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {!mixedCurrency && totalBusiness > 0 && (
                 <div className="border border-border bg-muted/30 px-5 py-4">
                   <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                    Estimated Tax Savings
+                    Illustrative Tax Impact
                   </p>
                   <p className="mt-1 font-mono text-xl tabular-nums text-foreground">
-                    {fmt(estTaxSavings, currency)}
+                    {fmt(estimatedTaxImpact, currency)}
                   </p>
                   <p className="mt-1 text-[10px] text-muted-foreground/70">
-                    Based on 30% effective tax rate applied to {fmt(totalBusiness, currency)} in deductible business expenses.
-                    Consult your accountant to verify applicable rates.
+                    Based on {fmt(totalBusiness, currency)} of business-classified expenses and your selected assumptions:
+                    {` ${assumptions.federal_marginal_rate.toFixed(1)}% federal + ${assumptions.state_marginal_rate.toFixed(1)}% state`}
+                    {assumptions.include_self_employment_tax ? ` + ${assumptions.self_employment_tax_rate.toFixed(1)}% SE tax` : ""}.
+                  </p>
+                  <p className="mt-1 text-[10px] text-muted-foreground/60">
+                    Uses your selected assumptions. Not a filing calculation.
                   </p>
                 </div>
               )}
@@ -718,7 +928,7 @@ export default function BusinessExpensePage() {
               {/* ── Disclaimer ── */}
               <p className="border-t border-border pt-6 text-[10px] leading-relaxed text-muted-foreground/60">
                 Business classification is AI-generated based on expense category. Click any badge above to override.
-                Overrides are local to this session. Estimated tax savings use a 30% indicative rate &mdash; consult your accountant.
+                Overrides are local to this session. Illustrative tax impact uses your saved assumptions and remains an estimate only &mdash; consult your accountant.
                 This report is informational and does not constitute a certified financial statement.
               </p>
 

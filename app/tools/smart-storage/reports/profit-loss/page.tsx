@@ -22,6 +22,7 @@ interface IncomeEntry {
   total_amount: number | null
   currency: string | null
   document_type: string
+  income_source: string | null
   employer_name: string | null
 }
 
@@ -41,6 +42,8 @@ interface MonthRow {
   expenses: number
   net: number
 }
+
+type IncomeSourceClass = "business" | "wage" | "investment" | "rental" | "interest" | "other"
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -63,6 +66,26 @@ function monthLabel(ym: string) {
   return new Date(parseInt(y), parseInt(m) - 1, 1).toLocaleDateString("en-US", {
     year: "numeric", month: "short",
   })
+}
+
+function classifyIncome(row: IncomeEntry): IncomeSourceClass {
+  if (row.income_source === "business" || row.income_source === "wage" || row.income_source === "investment" || row.income_source === "rental" || row.income_source === "interest" || row.income_source === "other") {
+    return row.income_source
+  }
+  if (row.document_type === "payslip") return "wage"
+  if (row.document_type === "income_statement") return "business"
+  return "other"
+}
+
+function prettyIncomeClass(cls: IncomeSourceClass) {
+  switch (cls) {
+    case "wage": return "Wage"
+    case "business": return "Business"
+    case "investment": return "Investment"
+    case "rental": return "Rental"
+    case "interest": return "Interest"
+    default: return "Other"
+  }
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
@@ -130,6 +153,7 @@ export default function ProfitLossPage() {
         total_amount:  r.total_amount  != null ? safeNum(r.total_amount)  : null,
         currency:      r.currency,
         document_type: r.files?.document_type ?? "unknown",
+        income_source: r.income_source ?? null,
         employer_name: r.employer_name,
       })) : []
 
@@ -157,15 +181,30 @@ export default function ProfitLossPage() {
   // ── Aggregations ──────────────────────────────────────────────────────────────
 
   const { primaryCurrency: currency, currencies, mixedCurrency } = summarizeCurrencies([...incomeRows, ...expenseRows])
-  const totalRevenue  = incomeRows.reduce((s, r) => s + (r.gross_income ?? r.total_amount ?? 0), 0)
+  const classifiedIncome = incomeRows.map((row) => ({
+    ...row,
+    incomeClass: classifyIncome(row),
+  }))
+  const businessIncome = classifiedIncome.filter((r) => r.incomeClass === "business")
+  const wageIncome = classifiedIncome.filter((r) => r.incomeClass === "wage")
+  const otherIncome = classifiedIncome.filter((r) => r.incomeClass !== "business" && r.incomeClass !== "wage")
+  const totalRevenue  = classifiedIncome.reduce((s, r) => s + (r.gross_income ?? r.total_amount ?? 0), 0)
+  const businessRevenue = businessIncome.reduce((s, r) => s + (r.gross_income ?? r.total_amount ?? 0), 0)
+  const wageRevenue = wageIncome.reduce((s, r) => s + (r.gross_income ?? r.total_amount ?? 0), 0)
+  const otherRevenue = otherIncome.reduce((s, r) => s + (r.gross_income ?? r.total_amount ?? 0), 0)
   const totalExpenses = expenseRows.reduce((s, r) => s + (r.total_amount ?? 0), 0)
   const netPosition   = totalRevenue - totalExpenses
   const netMargin     = totalRevenue > 0 ? (netPosition / totalRevenue) * 100 : null
+  const businessNetPosition = businessRevenue - totalExpenses
+  const businessNetMargin = businessRevenue > 0 ? (businessNetPosition / businessRevenue) * 100 : null
+  const businessOnlyScope = businessIncome.length > 0 && wageIncome.length === 0 && otherIncome.length === 0
+  const mixedScope = wageIncome.length > 0 || otherIncome.length > 0
+  const incomeScopeLabel = businessOnlyScope ? "Business-only dataset" : mixedScope ? "Mixed personal/business dataset" : "Non-business income dataset"
 
   // Group income by employer / source
   const incomeBySource = new Map<string, number>()
-  for (const r of incomeRows) {
-    const key = r.employer_name ?? "Other Income"
+  for (const r of classifiedIncome) {
+    const key = `${prettyIncomeClass(r.incomeClass)} — ${r.employer_name ?? "Unlabeled source"}`
     incomeBySource.set(key, (incomeBySource.get(key) ?? 0) + (r.gross_income ?? r.total_amount ?? 0))
   }
 
@@ -178,7 +217,7 @@ export default function ProfitLossPage() {
 
   // Period
   const allDates = [
-    ...incomeRows.map(r => r.document_date),
+    ...classifiedIncome.map(r => r.document_date),
     ...expenseRows.map(r => r.document_date),
   ].filter(Boolean) as string[]
   const periodStart = allDates.length ? allDates.reduce((a, b) => a < b ? a : b) : null
@@ -186,7 +225,7 @@ export default function ProfitLossPage() {
 
   // Monthly breakdown
   const monthMap: Record<string, MonthRow> = {}
-  for (const r of incomeRows) {
+  for (const r of classifiedIncome) {
     const ym = r.document_date?.slice(0, 7)
     if (!ym) continue
     if (!monthMap[ym]) monthMap[ym] = { month: ym, label: monthLabel(ym), revenue: 0, expenses: 0, net: 0 }
@@ -305,6 +344,19 @@ export default function ProfitLossPage() {
                 </div>
               </div>
 
+              <div className="rounded border border-border/60 bg-muted/30 p-4">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                  Scope
+                </p>
+                <p className="mt-2 text-xs leading-relaxed text-foreground/80">
+                  {businessOnlyScope
+                    ? "The filtered set contains business income only, so this view reads as a business profit-and-loss statement."
+                    : mixedScope
+                      ? "The filtered set includes wage and/or other non-business income, so this view is a bookkeeping rollup rather than a pure business P&L."
+                      : "The filtered set contains non-business income only, so the totals below should be read as a general income-versus-expense rollup."}
+                </p>
+              </div>
+
               {mixedCurrency && (
                 <div className="flex items-start gap-3 rounded border border-red-500/30 bg-red-500/5 p-4">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
@@ -324,18 +376,18 @@ export default function ProfitLossPage() {
                   {/* ── Summary Strip ── */}
                   <div className="grid grid-cols-2 divide-x divide-border border border-border rounded sm:grid-cols-4">
                     {[
-                      { label: "Total Revenue",  value: fmt(totalRevenue, currency),  sub: null, loss: false },
+                      { label: businessOnlyScope ? "Business Revenue" : "Bookkeeping Income",  value: fmt(totalRevenue, currency),  sub: incomeScopeLabel, loss: false },
                       { label: "Total Expenses", value: fmt(totalExpenses, currency), sub: null, loss: false },
                       {
-                        label: "Net Position",
+                        label: businessOnlyScope ? "Business Net" : "Net Position",
                         value: netPosition >= 0 ? fmt(netPosition, currency) : `(${fmt(Math.abs(netPosition), currency)})`,
                         sub: netPosition >= 0 ? "Surplus" : "Deficit",
                         loss: netPosition < 0,
                       },
                       {
-                        label: "Net Margin",
+                        label: businessOnlyScope ? "Business Margin" : "Net Margin",
                         value: netMargin !== null ? `${netMargin.toFixed(1)}%` : "—",
-                        sub: "of revenue",
+                        sub: businessOnlyScope ? "of business revenue" : "of included income",
                         loss: netMargin !== null && netMargin < 0,
                       },
                     ].map(item => (
@@ -353,6 +405,21 @@ export default function ProfitLossPage() {
                     ))}
                   </div>
 
+                  {mixedScope && (
+                    <div className="grid grid-cols-3 divide-x divide-border border border-border rounded">
+                      {[
+                        { label: "Business Income", value: businessRevenue > 0 ? fmt(businessRevenue, currency) : "—" },
+                        { label: "Wage Income", value: wageRevenue > 0 ? fmt(wageRevenue, currency) : "—" },
+                        { label: "Other Income", value: otherRevenue > 0 ? fmt(otherRevenue, currency) : "—" },
+                      ].map(item => (
+                        <div key={item.label} className="px-5 py-4">
+                          <p className="text-[10px] uppercase tracking-widest text-muted-foreground">{item.label}</p>
+                          <p className="mt-1.5 font-mono text-base font-medium tabular-nums text-foreground">{item.value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   {/* ── P&L Statement Table ── */}
                   <div>
                     <table className="w-full text-sm">
@@ -366,10 +433,12 @@ export default function ProfitLossPage() {
                     {/* REVENUE */}
                     <tr>
                       <td colSpan={3} className="pb-2 pt-1">
-                        <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Revenue</span>
+                        <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                          {businessOnlyScope ? "Business Revenue" : "Included Income"}
+                        </span>
                       </td>
                     </tr>
-                    {incomeRows.length === 0 ? (
+                    {classifiedIncome.length === 0 ? (
                       <tr>
                         <td />
                         <td className="py-1.5 text-xs italic text-muted-foreground">No income documents in this period</td>
@@ -386,7 +455,7 @@ export default function ProfitLossPage() {
                     )}
                     <tr className="border-t border-border">
                       <td />
-                      <td className="py-2 font-medium text-foreground">Total Revenue</td>
+                      <td className="py-2 font-medium text-foreground">{businessOnlyScope ? "Total Business Revenue" : "Total Included Income"}</td>
                       <td className="py-2 text-right font-mono font-medium tabular-nums text-foreground">{fmt(totalRevenue, currency)}</td>
                     </tr>
 
@@ -424,7 +493,9 @@ export default function ProfitLossPage() {
                     <tr className="border-t-4 border-double border-border">
                       <td />
                       <td className="py-3 text-base font-semibold text-foreground">
-                        {netPosition >= 0 ? "Net Income" : "Net Loss"}
+                        {businessOnlyScope
+                          ? netPosition >= 0 ? "Business Net Income" : "Business Net Loss"
+                          : netPosition >= 0 ? "Net Position" : "Net Deficit"}
                       </td>
                       <td className={`py-3 text-right font-mono tabular-nums text-base font-semibold ${netPosition >= 0 ? "text-foreground" : "text-destructive"}`}>
                         {netPosition >= 0
@@ -450,7 +521,7 @@ export default function ProfitLossPage() {
                   {monthRows.length > 0 && (
                     <div>
                       <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                        Monthly Breakdown
+                        {businessOnlyScope ? "Monthly Breakdown" : "Monthly Rollup"}
                       </p>
                       <table className="w-full text-xs">
                     <thead>
@@ -510,9 +581,9 @@ export default function ProfitLossPage() {
                     Supporting Documents ({incomeRows.length + expenseRows.length})
                   </p>
                   <div className="grid grid-cols-1 gap-x-10 sm:grid-cols-2">
-                    {incomeRows.map((r, i) => (
+                    {classifiedIncome.map((r, i) => (
                       <div key={`inc-${i}`} className="flex items-baseline justify-between border-b border-border/40 py-1">
-                        <span className="truncate text-xs text-muted-foreground">{r.employer_name ?? "Income document"}</span>
+                        <span className="truncate text-xs text-muted-foreground">{`${prettyIncomeClass(r.incomeClass)} · ${r.employer_name ?? "Income document"}`}</span>
                         <span className="ml-4 shrink-0 text-[10px] text-muted-foreground/50">
                           {r.document_date ? formatDate(r.document_date) : "—"}
                         </span>
@@ -533,9 +604,10 @@ export default function ProfitLossPage() {
               {/* ── Disclaimer ── */}
               <div className="border-t border-border pt-4">
                 <p className="text-[10px] leading-relaxed text-muted-foreground/60">
-                  Figures are derived from normalized fields extracted from uploaded documents. Revenue includes payslips and income statements.
-                  Expenses include receipts and invoices. Accuracy depends on document quality and AI classification confidence.
-                  This report is informational and does not constitute a certified financial statement.
+                  Figures are derived from normalized fields extracted from uploaded documents. Income is bucketed into business,
+                  wage, and other classes when classification is available, with document-type fallback for older rows. When the
+                  filtered dataset includes wage or other non-business income, this page should be read as a bookkeeping rollup,
+                  not a pure business profit-and-loss statement. This report is informational and does not constitute a certified financial statement.
                 </p>
               </div>
 

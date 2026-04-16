@@ -104,8 +104,8 @@ export async function GET(
         let query = supabaseAdmin
           .from("document_fields")
           .select(`
-            file_id, employer_name, document_date,
-            gross_income, net_income, total_amount, currency, confidence_score,
+          file_id, employer_name, document_date,
+            gross_income, net_income, total_amount, currency, confidence_score, income_source,
             files!inner(filename, document_type)
           `)
           .in("file_id", fileIds)
@@ -129,7 +129,7 @@ export async function GET(
         if (incomeFileIds.length > 0) {
           let incomeQuery = supabaseAdmin
             .from("document_fields")
-            .select("document_date, gross_income, net_income, total_amount, currency, employer_name, files!inner(document_type)")
+            .select("document_date, gross_income, net_income, total_amount, currency, employer_name, income_source, files!inner(document_type)")
             .in("file_id", incomeFileIds)
             .order("document_date", { ascending: true })
           if (dateFrom) incomeQuery = incomeQuery.gte("document_date", dateFrom)

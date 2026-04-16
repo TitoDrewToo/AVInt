@@ -234,7 +234,7 @@ export default function SmartStorageProductPage() {
               <div className="text-left">
                 <FadeUp>
                   <h1 className="text-balance text-4xl font-semibold leading-[1.1] tracking-tight text-foreground md:text-5xl lg:text-6xl">
-                    Structure your <span className="text-primary">real-world</span> documents automatically.
+                    <span className="text-primary">Structure</span> your real-world documents automatically.
                   </h1>
                 </FadeUp>
                 <FadeUp delay={0.1}>
@@ -249,7 +249,7 @@ export default function SmartStorageProductPage() {
                     </Button>
                   </Link>
                   <Link href="/products/smart-dashboard">
-                    <Button variant="outline" size="lg" className="rounded-xl glass-surface-sm">
+                    <Button variant="outline" size="lg" className="rounded-xl glass-surface-sm hover:text-primary">
                       Explore Dashboard
                     </Button>
                   </Link>

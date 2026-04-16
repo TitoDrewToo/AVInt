@@ -164,7 +164,7 @@ export default function SmartDashboardProductPage() {
                       </Button>
                     </Link>
                     <Link href="/products/smart-storage">
-                      <Button variant="outline" size="lg" className="rounded-xl glass-surface-sm">
+                      <Button variant="outline" size="lg" className="rounded-xl glass-surface-sm hover:text-primary">
                         See Smart Storage
                       </Button>
                     </Link>

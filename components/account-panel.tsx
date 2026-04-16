@@ -35,7 +35,7 @@ function AccordionItem({
     <div>
       <button
         onClick={onToggle}
-        className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 font-sans text-sm transition-all ${
+        className={`font-geist-explicit flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm transition-all ${
           variant === "destructive"
             ? "text-destructive hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
             : "text-foreground/85 hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
@@ -249,7 +249,7 @@ function DeleteAccountModal({
     return (
       <div className="fixed inset-0 z-[60] flex items-center justify-center">
         <div className="absolute inset-0 bg-background/80 backdrop-blur-md" />
-        <div className="glass-surface relative z-10 w-full max-w-sm rounded-2xl p-6 font-sans shadow-lg text-center">
+        <div className="glass-surface font-geist-explicit relative z-10 w-full max-w-sm rounded-2xl p-6 shadow-lg text-center">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
             <User className="h-6 w-6 text-muted-foreground" />
           </div>
@@ -266,7 +266,7 @@ function DeleteAccountModal({
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center">
       <div className="absolute inset-0 bg-background/80 backdrop-blur-md" onClick={onClose} />
-      <div className="glass-surface relative z-10 w-full max-w-sm rounded-2xl p-6 font-sans shadow-lg">
+      <div className="glass-surface font-geist-explicit relative z-10 w-full max-w-sm rounded-2xl p-6 shadow-lg">
         <div className="flex items-start gap-4">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-destructive/10">
             <AlertTriangle className="h-5 w-5 text-destructive" />
@@ -459,7 +459,7 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
 
       {/* Panel */}
       <div
-        className={`glass-surface fixed right-0 top-0 z-50 h-full w-full max-w-[420px] transform overflow-hidden border-0 font-sans !rounded-none shadow-2xl transition-transform duration-300 ease-out ${
+        className={`glass-surface font-geist-explicit fixed right-0 top-0 z-50 h-full w-full max-w-[420px] transform overflow-hidden border-0 !rounded-none shadow-2xl transition-transform duration-300 ease-out ${
           isOpen ? "translate-x-0" : "translate-x-full"
         }`}
       >
@@ -719,7 +719,7 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                       </AccordionItem>
 
                       <button
-                        className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 font-sans text-sm text-foreground/60 transition-all"
+                        className="font-geist-explicit flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground/60 transition-all"
                         disabled
                       >
                         Billing
@@ -767,14 +767,14 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                     <div className="space-y-1">
                       <button
                         onClick={() => setPanelView("privacy")}
-                        className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 font-sans text-sm text-foreground/85 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+                        className="font-geist-explicit flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground/85 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
                       >
                         Privacy
                         <ChevronDown className="h-4 w-4 -rotate-90 text-muted-foreground" />
                       </button>
                       <button
                         onClick={() => setPanelView("terms")}
-                        className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 font-sans text-sm text-foreground/85 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+                        className="font-geist-explicit flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground/85 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
                       >
                         Terms
                         <ChevronDown className="h-4 w-4 -rotate-90 text-muted-foreground" />
@@ -786,7 +786,7 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                     <div className="space-y-1">
                       <button
                         onClick={() => setShowDeleteModal(true)}
-                        className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 font-sans text-sm text-destructive transition-all hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+                        className="font-geist-explicit flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-destructive transition-all hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
                       >
                         Delete account
                         <ChevronDown className="h-4 w-4 -rotate-90" />
@@ -798,7 +798,7 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                     <div className="space-y-1">
                       <button
                         onClick={() => supabase.auth.signOut()}
-                        className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 font-sans text-sm text-foreground/85 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+                        className="font-geist-explicit flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground/85 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
                       >
                         Sign out
                         <LogOut className="h-4 w-4 text-muted-foreground" />

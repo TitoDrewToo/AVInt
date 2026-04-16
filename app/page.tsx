@@ -11,6 +11,7 @@ import { WhatWeDoSection } from "@/components/sections/what-we-do"
 import { ProductsSection } from "@/components/sections/products"
 import { HowItWorksSection } from "@/components/sections/how-it-works"
 import { PricingPreviewSection } from "@/components/sections/pricing-preview"
+import { HomeInteractiveTrail } from "@/components/home-interactive-trail"
 
 export default function HomePage() {
   return (
@@ -19,9 +20,11 @@ export default function HomePage() {
       <main className="flex-1">
         <HeroSection />
         <WhatWeDoSection />
-        <HowItWorksSection />
-        <ProductsSection />
-        <PricingPreviewSection />
+        <HomeInteractiveTrail>
+          <HowItWorksSection />
+          <ProductsSection />
+          <PricingPreviewSection />
+        </HomeInteractiveTrail>
       </main>
       <Footer />
     </div>

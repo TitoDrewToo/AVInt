@@ -147,6 +147,10 @@
   }
 }
 
+.font-geist-explicit {
+  font-family: var(--font-aldrich), "Aldrich", var(--font-geist), "Geist", "Geist Fallback", sans-serif;
+}
+
 /* Glass surface utilities — apply to cards, nav, modals. Font tinting and
    contrast must still pass 4.5:1 when used with body copy. */
 .glass-surface {

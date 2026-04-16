@@ -2,11 +2,15 @@
 
 import Link from "next/link"
 import Image from "next/image"
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useTheme } from "next-themes"
 import { ChevronDown, Menu, X, Sun, Moon, User } from "lucide-react"
 import { AccountPanel } from "@/components/account-panel"
 import { SystemStatusIndicator } from "@/components/ui/system-status-indicator"
+
+const geistFontStyle = {
+  fontFamily: 'var(--font-aldrich), "Aldrich", var(--font-geist), "Geist", "Geist Fallback", sans-serif',
+} as const
 
 const products = [
   { name: "PicklePal", href: "https://picklepalph.com", external: true },
@@ -52,6 +56,45 @@ export function Navbar() {
   const [productsOpen, setProductsOpen] = useState(false)
   const [toolsOpen, setToolsOpen] = useState(false)
   const [accountPanelOpen, setAccountPanelOpen] = useState(false)
+  const productsCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const toolsCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (productsCloseTimerRef.current) clearTimeout(productsCloseTimerRef.current)
+      if (toolsCloseTimerRef.current) clearTimeout(toolsCloseTimerRef.current)
+    }
+  }, [])
+
+  function cancelProductsClose() {
+    if (productsCloseTimerRef.current) {
+      clearTimeout(productsCloseTimerRef.current)
+      productsCloseTimerRef.current = null
+    }
+  }
+
+  function cancelToolsClose() {
+    if (toolsCloseTimerRef.current) {
+      clearTimeout(toolsCloseTimerRef.current)
+      toolsCloseTimerRef.current = null
+    }
+  }
+
+  function scheduleProductsClose() {
+    cancelProductsClose()
+    productsCloseTimerRef.current = setTimeout(() => {
+      setProductsOpen(false)
+      productsCloseTimerRef.current = null
+    }, 180)
+  }
+
+  function scheduleToolsClose() {
+    cancelToolsClose()
+    toolsCloseTimerRef.current = setTimeout(() => {
+      setToolsOpen(false)
+      toolsCloseTimerRef.current = null
+    }, 180)
+  }
 
   return (
     <>
@@ -82,19 +125,30 @@ export function Navbar() {
           {/* Desktop Navigation */}
           <div className="hidden items-center gap-6 md:flex">
             {/* Products Dropdown */}
-            <div className="relative">
+            <div
+              className="relative"
+              onMouseEnter={() => {
+                cancelProductsClose()
+                cancelToolsClose()
+                setProductsOpen(true)
+                setToolsOpen(false)
+              }}
+              onMouseLeave={scheduleProductsClose}
+            >
               <button
                 onClick={() => {
+                  cancelProductsClose()
                   setProductsOpen(!productsOpen)
                   setToolsOpen(false)
                 }}
-                className="flex items-center gap-1 font-sans text-sm font-medium text-foreground/75 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+                className="flex items-center gap-1 text-sm font-medium text-foreground/75 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+                style={geistFontStyle}
               >
                 Products
                 <ChevronDown className="h-4 w-4" />
               </button>
               {productsOpen && (
-                <div className="glass-surface absolute left-0 top-full mt-3 w-48 rounded-xl p-2">
+                <div className="glass-surface absolute left-0 top-full mt-3 w-48 rounded-xl p-2" style={geistFontStyle}>
                   {products.map((product) => (
                     product.external ? (
                       <a
@@ -102,7 +156,8 @@ export function Navbar() {
                         href={product.href}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="block rounded-lg px-3 py-2 font-sans text-sm text-foreground/80 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+                        className="block rounded-lg px-3 py-2 text-sm text-foreground/80 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+                        style={geistFontStyle}
                         onClick={() => setProductsOpen(false)}
                       >
                         {product.name}
@@ -111,11 +166,12 @@ export function Navbar() {
                       <Link
                         key={product.name}
                         href={product.disabled ? "#" : product.href}
-                        className={`block rounded-lg px-3 py-2 font-sans text-sm transition-all ${
+                        className={`block rounded-lg px-3 py-2 text-sm transition-all ${
                           product.disabled
                             ? "cursor-not-allowed text-muted-foreground"
                             : "text-foreground/80 hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
                         }`}
+                        style={geistFontStyle}
                         onClick={() => setProductsOpen(false)}
                       >
                         {product.name}
@@ -127,26 +183,38 @@ export function Navbar() {
             </div>
 
             {/* Tools Dropdown */}
-            <div className="relative">
+            <div
+              className="relative"
+              onMouseEnter={() => {
+                cancelToolsClose()
+                cancelProductsClose()
+                setToolsOpen(true)
+                setProductsOpen(false)
+              }}
+              onMouseLeave={scheduleToolsClose}
+            >
               <button
                 onClick={() => {
+                  cancelToolsClose()
                   setToolsOpen(!toolsOpen)
                   setProductsOpen(false)
                 }}
-                className="flex items-center gap-1 font-sans text-sm font-medium text-foreground/75 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+                className="flex items-center gap-1 text-sm font-medium text-foreground/75 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+                style={geistFontStyle}
               >
                 Tools
                 <ChevronDown className="h-4 w-4" />
               </button>
               {toolsOpen && (
-                <div className="glass-surface absolute left-0 top-full mt-3 w-48 rounded-xl p-2">
+                <div className="glass-surface absolute left-0 top-full mt-3 w-48 rounded-xl p-2" style={geistFontStyle}>
                   {tools.map((tool) => (
                     <a
                       key={tool.name}
                       href={tool.href}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="block rounded-lg px-3 py-2 font-sans text-sm text-foreground/80 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+                      className="block rounded-lg px-3 py-2 text-sm text-foreground/80 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+                      style={geistFontStyle}
                       onClick={() => setToolsOpen(false)}
                     >
                       {tool.name}
@@ -158,7 +226,8 @@ export function Navbar() {
 
             <Link
               href="/pricing"
-              className="font-sans text-sm font-medium text-foreground/75 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+              className="text-sm font-medium text-foreground/75 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+              style={geistFontStyle}
             >
               Pricing
             </Link>
@@ -203,6 +272,7 @@ export function Navbar() {
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-sm text-foreground"
+                      style={geistFontStyle}
                       onClick={() => setMobileMenuOpen(false)}
                     >
                       {product.name}
@@ -214,6 +284,7 @@ export function Navbar() {
                       className={`text-sm ${
                         product.disabled ? "text-muted-foreground" : "text-foreground"
                       }`}
+                      style={geistFontStyle}
                       onClick={() => setMobileMenuOpen(false)}
                     >
                       {product.name}
@@ -232,6 +303,7 @@ export function Navbar() {
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-sm text-foreground"
+                    style={geistFontStyle}
                     onClick={() => setMobileMenuOpen(false)}
                   >
                     {tool.name}
@@ -241,6 +313,7 @@ export function Navbar() {
               <Link
                 href="/pricing"
                 className="text-sm text-foreground"
+                style={geistFontStyle}
                 onClick={() => setMobileMenuOpen(false)}
               >
                 Pricing

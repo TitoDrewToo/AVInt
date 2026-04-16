@@ -168,7 +168,7 @@ export function HeroSection() {
                     "linear-gradient(180deg, color-mix(in oklab, var(--background) 74%, transparent) 0%, color-mix(in oklab, var(--background) 34%, transparent) 24%, transparent 52%, transparent 80%, color-mix(in oklab, var(--background) 36%, transparent) 100%)",
                 }}
               />
-              <div className="relative z-[1] flex h-full max-w-[16rem] flex-col">
+              <div className="relative z-[1] flex h-full max-w-[18.5rem] flex-col">
               <div className="mb-2 flex items-center gap-2">
                 <div className="cw-button-flow glass-surface-sm flex h-9 w-9 items-center justify-center rounded-xl transition-all group-hover:[box-shadow:0_0_24px_-4px_var(--retro-glow-red)]">
                   <StorageIcon className="h-5 w-5" />
@@ -189,15 +189,15 @@ export function HeroSection() {
               </div>
 
               {/* Actions */}
-              <div className="mt-auto flex items-center gap-2 pt-6">
+              <div className="mt-auto flex flex-wrap items-center gap-2 pt-6">
                 <Link href="/products/smart-storage"
                   onClick={(e) => e.stopPropagation()}
-                  className="cw-button-flow rounded-lg border border-border/60 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground">
+                  className="cw-button-flow inline-flex min-h-9 items-center justify-center whitespace-nowrap rounded-lg border border-border/60 px-3.5 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground">
                   Learn more
                 </Link>
                 <button
                   onClick={(e) => handleToolClick(e, "/tools/smart-storage")}
-                  className="cw-button-flow rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90">
+                  className="cw-button-flow inline-flex min-h-9 items-center justify-center whitespace-nowrap rounded-lg bg-primary px-3.5 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90">
                   {session ? "Launch Smart Storage →" : "Try for free"}
                 </button>
               </div>
@@ -222,7 +222,7 @@ export function HeroSection() {
                     "linear-gradient(180deg, color-mix(in oklab, var(--background) 74%, transparent) 0%, color-mix(in oklab, var(--background) 34%, transparent) 24%, transparent 54%, transparent 82%, color-mix(in oklab, var(--background) 38%, transparent) 100%)",
                 }}
               />
-              <div className="relative z-[1] flex h-full max-w-[16rem] flex-col">
+              <div className="relative z-[1] flex h-full max-w-[18.5rem] flex-col">
               <div className="mb-2 flex items-center gap-2">
                 <div className="cw-button-flow glass-surface-sm flex h-9 w-9 items-center justify-center rounded-xl transition-all group-hover:[box-shadow:0_0_24px_-4px_var(--retro-glow-red)]">
                   <DashboardIcon className="h-5 w-5" />
@@ -243,15 +243,15 @@ export function HeroSection() {
               </div>
 
               {/* Actions */}
-              <div className="mt-auto flex items-center gap-2 pt-6">
+              <div className="mt-auto flex flex-wrap items-center gap-2 pt-6">
                 <Link href="/products/smart-dashboard"
                   onClick={(e) => e.stopPropagation()}
-                  className="cw-button-flow rounded-lg border border-border/60 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground">
+                  className="cw-button-flow inline-flex min-h-9 items-center justify-center whitespace-nowrap rounded-lg border border-border/60 px-3.5 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground">
                   Learn more
                 </Link>
                 <button
                   onClick={(e) => handleToolClick(e, "/tools/smart-dashboard")}
-                  className="cw-button-flow rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90">
+                  className="cw-button-flow inline-flex min-h-9 items-center justify-center whitespace-nowrap rounded-lg bg-primary px-3.5 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90">
                   {session ? "Launch Smart Dashboard →" : "Try for free"}
                 </button>
               </div>

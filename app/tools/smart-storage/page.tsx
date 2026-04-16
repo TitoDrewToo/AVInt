@@ -1,11 +1,26 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { Navbar } from "@/components/navbar"
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { ProcessingIndicator } from "@/components/ui/processing-indicator"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuLabel,
+  ContextMenuSeparator,
+  ContextMenuShortcut,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu"
 import { supabase } from "@/lib/supabase"
 import { useEntitlement } from "@/hooks/use-entitlement"
 import type { Session } from "@supabase/supabase-js"
@@ -161,11 +176,139 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+function isEditableTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false
+  return (
+    target.tagName === "INPUT" ||
+    target.tagName === "TEXTAREA" ||
+    target.tagName === "SELECT" ||
+    target.isContentEditable
+  )
+}
+
 function fileIcon(fileType: string) {
   if (fileType === "manual") return <PenLine className="h-4 w-4 shrink-0 text-primary/70" />
   if (fileType.startsWith("image/")) return <ImageIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
   if (fileType === "application/pdf") return <FileText className="h-4 w-4 shrink-0 text-primary/60" />
   return <File className="h-4 w-4 shrink-0 text-muted-foreground" />
+}
+
+interface StorageItemMenuProps {
+  kind: "file" | "folder"
+  filename: string
+  isMultiSelect: boolean
+  multiSelectCount: number
+  canMoveUp?: boolean
+  onRename: () => void
+  onDelete: () => void | Promise<void>
+  onDownload?: () => void | Promise<void>
+  onDownloadSelection?: () => void | Promise<void>
+  onDeleteSelection?: () => void | Promise<void>
+  onMoveUp?: () => void | Promise<void>
+  onReclassify?: () => void
+  onContextIntent?: () => void
+  children: React.ReactNode
+}
+
+function StorageItemMenu({
+  kind,
+  filename,
+  isMultiSelect,
+  multiSelectCount,
+  canMoveUp = false,
+  onRename,
+  onDelete,
+  onDownload,
+  onDownloadSelection,
+  onDeleteSelection,
+  onMoveUp,
+  onReclassify,
+  onContextIntent,
+  children,
+}: StorageItemMenuProps) {
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger onContextMenuCapture={() => onContextIntent?.()} className="block">
+        {children}
+      </ContextMenuTrigger>
+      <ContextMenuContent className="min-w-[196px] rounded-xl">
+        {isMultiSelect ? (
+          <>
+            <ContextMenuLabel>{multiSelectCount} files selected</ContextMenuLabel>
+            <ContextMenuSeparator />
+            <ContextMenuItem inset onSelect={() => void onDownloadSelection?.()}>
+              <Download className="h-3.5 w-3.5" />
+              Download all
+              <ContextMenuShortcut>Enter</ContextMenuShortcut>
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem inset variant="destructive" onSelect={() => void onDeleteSelection?.()}>
+              <X className="h-3.5 w-3.5" />
+              Delete all selected
+              <ContextMenuShortcut>Del</ContextMenuShortcut>
+            </ContextMenuItem>
+          </>
+        ) : kind === "folder" ? (
+          <>
+            <ContextMenuLabel className="truncate">{filename}</ContextMenuLabel>
+            <ContextMenuSeparator />
+            <ContextMenuItem inset onSelect={() => void onRename()}>
+              <Pencil className="h-3.5 w-3.5" />
+              Rename
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem inset variant="destructive" onSelect={() => void onDelete()}>
+              <X className="h-3.5 w-3.5" />
+              Delete folder
+            </ContextMenuItem>
+          </>
+        ) : (
+          <>
+            <ContextMenuLabel className="truncate">{filename}</ContextMenuLabel>
+            <ContextMenuSeparator />
+            <ContextMenuItem inset onSelect={() => void onRename()}>
+              <Pencil className="h-3.5 w-3.5" />
+              Rename
+            </ContextMenuItem>
+            {canMoveUp && onMoveUp && (
+              <>
+                <ContextMenuSeparator />
+                <ContextMenuItem inset onSelect={() => void onMoveUp()}>
+                  <FolderOutput className="h-3.5 w-3.5" />
+                  Move up
+                </ContextMenuItem>
+              </>
+            )}
+            {onReclassify && (
+              <>
+                <ContextMenuSeparator />
+                <ContextMenuItem inset onSelect={onReclassify}>
+                  <Tag className="h-3.5 w-3.5" />
+                  Reclassify
+                </ContextMenuItem>
+              </>
+            )}
+            {onDownload && (
+              <>
+                <ContextMenuSeparator />
+                <ContextMenuItem inset onSelect={() => void onDownload()}>
+                  <Download className="h-3.5 w-3.5" />
+                  Download
+                  <ContextMenuShortcut>Enter</ContextMenuShortcut>
+                </ContextMenuItem>
+              </>
+            )}
+            <ContextMenuSeparator />
+            <ContextMenuItem inset variant="destructive" onSelect={() => void onDelete()}>
+              <X className="h-3.5 w-3.5" />
+              Delete file
+              <ContextMenuShortcut>Del</ContextMenuShortcut>
+            </ContextMenuItem>
+          </>
+        )}
+      </ContextMenuContent>
+    </ContextMenu>
+  )
 }
 
 // ── Left pane folder tree item ────────────────────────────────────────────────
@@ -322,7 +465,6 @@ export default function SmartStoragePage() {
   const [boxSelect, setBoxSelect] = useState<{ startX: number; startY: number; currentX: number; currentY: number } | null>(null)
   const lastSelectedRef = useRef<string | null>(null)
   const canvasBoxSelectStart = useRef<{ x: number; y: number } | null>(null)
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; fileId: string; filename: string } | null>(null)
 
   // Preview (hover + double-click)
   const [hoverPreview, setHoverPreview] = useState<{ fileId: string; url: string | null; x: number; y: number } | null>(null)
@@ -336,6 +478,7 @@ export default function SmartStoragePage() {
   const [renamingFileId, setRenamingFileId] = useState<string | null>(null)
   const [renameFileValue, setRenameFileValue] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const directoryInputRef = useRef<HTMLInputElement>(null)
 
   // Canvas drag state
   const CELL_W = 90
@@ -344,6 +487,7 @@ export default function SmartStoragePage() {
   const canvasRef = useRef<HTMLDivElement>(null)
   const [itemPositions, setItemPositions] = useState<Record<string, { col: number; row: number }>>({})
   const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [dragSelectionIds, setDragSelectionIds] = useState<string[]>([])
   // Drag intent tracking — refs avoid stale closure issues in pointer handlers
   const hasDraggedRef = useRef(false)
   const pointerDownPosRef = useRef<{ x: number; y: number } | null>(null)
@@ -507,18 +651,79 @@ export default function SmartStoragePage() {
     )
   })()
 
+  const orderedDisplayedFiles = useMemo(() => {
+    if (viewMode !== "grid" || classificationView) return displayedFiles
+    return [...displayedFiles].sort((a, b) => {
+      const posA = itemPositions[a.id] ?? { row: Number.MAX_SAFE_INTEGER, col: Number.MAX_SAFE_INTEGER }
+      const posB = itemPositions[b.id] ?? { row: Number.MAX_SAFE_INTEGER, col: Number.MAX_SAFE_INTEGER }
+      if (posA.row !== posB.row) return posA.row - posB.row
+      return posA.col - posB.col
+    })
+  }, [classificationView, displayedFiles, itemPositions, viewMode])
+
+  useEffect(() => {
+    if (!directoryInputRef.current) return
+    directoryInputRef.current.setAttribute("webkitdirectory", "")
+    directoryInputRef.current.setAttribute("directory", "")
+  }, [])
+
+  const selectOnly = useCallback((ids: string[]) => {
+    const next = new Set(ids)
+    setSelectedFiles(next)
+    lastSelectedRef.current = ids.at(-1) ?? null
+  }, [])
+
+  const toggleSelection = useCallback((fileId: string) => {
+    setSelectedFiles(prev => {
+      const next = new Set(prev)
+      if (next.has(fileId)) next.delete(fileId)
+      else next.add(fileId)
+      return next
+    })
+    lastSelectedRef.current = fileId
+  }, [])
+
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (isEditableTarget(e.target)) return
       if ((e.metaKey || e.ctrlKey) && e.key === "a") {
         e.preventDefault()
         setSelectedFiles(new Set(displayedFiles.map(f => f.id)))
       }
-      if (e.key === "Escape") { setSelectedFiles(new Set()); setContextMenu(null) }
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedFiles.size > 0) {
+        e.preventDefault()
+        void Promise.all([...selectedFiles].map((id) => handleDeleteFile(id)))
+        return
+      }
+      if (e.key === "Enter" && selectedFiles.size === 1) {
+        e.preventDefault()
+        void handleDownloadFile([...selectedFiles][0])
+        return
+      }
+      if (e.key === "Escape") {
+        setSelectedFiles(new Set())
+        return
+      }
+      if (orderedDisplayedFiles.length === 0) return
+      if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) {
+        e.preventDefault()
+        const ids = orderedDisplayedFiles.map(file => file.id)
+        const currentId = lastSelectedRef.current && ids.includes(lastSelectedRef.current)
+          ? lastSelectedRef.current
+          : ids[0]
+        const currentIndex = Math.max(ids.indexOf(currentId), 0)
+        const step =
+          e.key === "ArrowLeft" || e.key === "ArrowUp"
+            ? -1
+            : 1
+        const nextIndex = Math.min(Math.max(currentIndex + step, 0), ids.length - 1)
+        selectOnly([ids[nextIndex]])
+      }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [displayedFiles])
+  }, [displayedFiles, orderedDisplayedFiles, selectOnly, selectedFiles])
 
   // ── Auto-assign canvas positions ───────────────────────────────────────────
   useEffect(() => {
@@ -555,6 +760,43 @@ export default function SmartStoragePage() {
     if (!session?.user?.id) return
     setIsUploading(true)
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const folderCache = new Map<string, string | null>()
+    const currentParentId = currentFolderId === "root" ? null : currentFolderId
+
+    for (const folder of folders) {
+      folderCache.set(`${folder.parentId ?? "root"}::${folder.name}`, folder.id)
+    }
+
+    const ensureFolderPath = async (segments: string[]) => {
+      let parentId = currentParentId
+      for (const rawSegment of segments) {
+        const name = rawSegment.trim()
+        if (!name) continue
+        const cacheKey = `${parentId ?? "root"}::${name}`
+        let existingId = folderCache.get(cacheKey)
+        if (existingId == null) {
+          const { data, error } = await supabase
+            .from("folders")
+            .insert({
+              user_id: session.user.id,
+              name,
+              parent_id: parentId,
+            })
+            .select("id, name, parent_id")
+            .single()
+          if (error || !data) throw error ?? new Error(`Failed to create folder ${name}`)
+          const createdId = data.id
+          existingId = createdId
+          folderCache.set(cacheKey, createdId)
+          setFolders(prev => {
+            if (prev.some(folder => folder.id === createdId)) return prev
+            return [...prev, { id: data.id, name: data.name, parentId: data.parent_id }]
+          })
+        }
+        parentId = existingId ?? null
+      }
+      return parentId
+    }
 
     const uploadOne = async (file: File) => {
       // Validate size
@@ -568,6 +810,9 @@ export default function SmartStoragePage() {
         console.error(`Skipped ${file.name}: unsupported file type (${file.type || ext})`)
         return
       }
+      const relativePath = file.webkitRelativePath?.split("/").filter(Boolean) ?? []
+      const folderSegments = relativePath.slice(0, -1)
+      const targetFolderId = folderSegments.length > 0 ? await ensureFolderPath(folderSegments) : currentParentId
       const uniqueName = `${crypto.randomUUID()}.${ext}`
       // Phase B: upload into _inbox/ landing zone. Prescan moves the file to
       // the canonical path (or _quarantine/) based on scan result.
@@ -576,7 +821,16 @@ export default function SmartStoragePage() {
       if (storageError) throw storageError
       const { data: fileRecord, error: fileError } = await supabase
         .from("files")
-        .insert({ user_id: session.user.id, filename: file.name, storage_path: storagePath, file_type: file.type, file_size: file.size, document_type: "unknown", upload_status: "pending_scan" })
+        .insert({
+          user_id: session.user.id,
+          filename: file.name,
+          storage_path: storagePath,
+          file_type: file.type,
+          file_size: file.size,
+          document_type: "unknown",
+          upload_status: "pending_scan",
+          folder_id: targetFolderId,
+        })
         .select().single()
       if (fileError) throw fileError
       const { data: jobRecord, error: jobError } = await supabase
@@ -659,7 +913,9 @@ export default function SmartStoragePage() {
         const ft = GRID_PAD + pos.row * CELL_H
         return fl < selRight && fl + CELL_W - 6 > selLeft && ft < selBottom && ft + CELL_H > selTop
       })
-      if (hit.length > 0) setSelectedFiles(new Set(hit.map(f => f.id)))
+      if (hit.length > 0) {
+        setSelectedFiles(prev => e.shiftKey ? new Set([...prev, ...hit.map(f => f.id)]) : new Set(hit.map(f => f.id)))
+      }
     }
     canvasBoxSelectStart.current = null
     setBoxSelect(null)
@@ -676,25 +932,17 @@ export default function SmartStoragePage() {
         const [start, end] = fromIdx < toIdx ? [fromIdx, toIdx] : [toIdx, fromIdx]
         setSelectedFiles(prev => new Set([...prev, ...allIds.slice(start, end + 1)]))
       }
+    } else if (e.metaKey || e.ctrlKey) {
+      toggleSelection(fileId)
     } else {
-      // Plain click: select only this file
-      setSelectedFiles(new Set([fileId]))
-      lastSelectedRef.current = fileId
+      selectOnly([fileId])
     }
-    setContextMenu(null)
   }
 
-  const handleFileRightClick = (e: React.MouseEvent, fileId: string, filename: string) => {
-    e.preventDefault()
-    setContextMenu({ x: e.clientX, y: e.clientY, fileId, filename })
-    setSelectedFiles(prev => {
-      // First right-click (nothing selected): select only this file
-      if (prev.size === 0) return new Set([fileId])
-      // Already have a selection: always ADD this file (never deselect via right-click)
-      const next = new Set(prev)
-      next.add(fileId)
-      return next
-    })
+  const handleFileContextIntent = (fileId: string) => {
+    if (!selectedFiles.has(fileId) || selectedFiles.size === 0) {
+      selectOnly([fileId])
+    }
   }
 
   // ── Hover preview ─────────────────────────────────────────────────────────
@@ -739,8 +987,11 @@ export default function SmartStoragePage() {
     await supabase.storage.from("documents").remove([file.storage_path])
     await supabase.from("files").delete().eq("id", fileId)
     setFiles(prev => prev.filter(f => f.id !== fileId))
-    setSelectedFiles(new Set())
-    setContextMenu(null)
+    setSelectedFiles(prev => {
+      const next = new Set(prev)
+      next.delete(fileId)
+      return next
+    })
   }
 
   const handleRenameFile = async (fileId: string, newName: string) => {
@@ -748,7 +999,6 @@ export default function SmartStoragePage() {
     await supabase.from("files").update({ filename: newName.trim() }).eq("id", fileId)
     setFiles(prev => prev.map(f => f.id === fileId ? { ...f, filename: newName.trim() } : f))
     setRenamingFileId(null)
-    setContextMenu(null)
   }
 
   // ── Canvas helpers ─────────────────────────────────────────────────────────
@@ -774,6 +1024,17 @@ export default function SmartStoragePage() {
     await supabase.from("files").update({ folder_id: targetFolderId }).eq("id", fileId)
   }
 
+  const moveFilesToFolder = async (fileIds: string[], targetFolderId: string | null) => {
+    if (fileIds.length === 0) return
+    setFiles(prev => prev.map(file => fileIds.includes(file.id) ? { ...file, folder_id: targetFolderId } : file))
+    setItemPositions(prev => {
+      const next = { ...prev }
+      fileIds.forEach(id => { delete next[id] })
+      return next
+    })
+    await supabase.from("files").update({ folder_id: targetFolderId }).in("id", fileIds)
+  }
+
   const handleCanvasPointerDown = (e: React.PointerEvent, id: string) => {
     e.preventDefault()
     e.stopPropagation()
@@ -783,6 +1044,13 @@ export default function SmartStoragePage() {
     pointerDownPosRef.current = { x: e.clientX, y: e.clientY }
     draggingIdRef.current = id
     setDraggingId(id)
+    if (files.some(file => file.id === id) && selectedFiles.has(id) && selectedFiles.size > 1) {
+      setDragSelectionIds([...selectedFiles])
+    } else if (files.some(file => file.id === id)) {
+      setDragSelectionIds([id])
+    } else {
+      setDragSelectionIds([])
+    }
     setDragOffset({ x: e.clientX - rect.left, y: e.clientY - rect.top })
     setDragGhostPos(null)
   }
@@ -811,8 +1079,9 @@ export default function SmartStoragePage() {
   }
 
   const handleCanvasPointerUp = (e: React.PointerEvent, id: string, hoveredCanvasFolderId: string | null) => {
-    if (draggingIdRef.current !== id) { draggingIdRef.current = null; setDraggingId(null); setDragGhostPos(null); setHoveredLeftFolderId(null); return }
+    if (draggingIdRef.current !== id) { draggingIdRef.current = null; setDraggingId(null); setDragGhostPos(null); setHoveredLeftFolderId(null); setDragSelectionIds([]); return }
     draggingIdRef.current = null
+    const draggedFileIds = dragSelectionIds.length > 0 ? dragSelectionIds : [id]
 
     // No drag movement → treat as click or double-click
     if (!hasDraggedRef.current) {
@@ -827,37 +1096,57 @@ export default function SmartStoragePage() {
       }
       setDraggingId(null)
       setDragGhostPos(null)
+      setDragSelectionIds([])
       return
     }
 
     const isFile = files.some(f => f.id === id)
     // Drop onto left pane folder
     if (isFile && hoveredLeftFolderId) {
-      moveFileToFolder(id, hoveredLeftFolderId)
-      setDraggingId(null); setDragGhostPos(null); setHoveredLeftFolderId(null)
+      void moveFilesToFolder(draggedFileIds, hoveredLeftFolderId)
+      setDraggingId(null); setDragGhostPos(null); setHoveredLeftFolderId(null); setDragSelectionIds([])
       return
     }
     // Drop onto canvas folder
     if (isFile && hoveredCanvasFolderId) {
-      moveFileToFolder(id, hoveredCanvasFolderId)
-      setDraggingId(null); setDragGhostPos(null)
+      void moveFilesToFolder(draggedFileIds, hoveredCanvasFolderId)
+      setDraggingId(null); setDragGhostPos(null); setDragSelectionIds([])
       return
     }
-    if (!canvasRef.current) { setDraggingId(null); setDragGhostPos(null); return }
+    if (!canvasRef.current) { setDraggingId(null); setDragGhostPos(null); setDragSelectionIds([]); return }
     // Snap to grid
     const cr = canvasRef.current.getBoundingClientRect()
     const x = e.clientX - cr.left - dragOffset.x
     const y = e.clientY - cr.top - dragOffset.y
     const targetCol = Math.max(0, Math.round((x - GRID_PAD) / CELL_W))
     const targetRow = Math.max(0, Math.round((y - GRID_PAD) / CELL_H))
+    const origin = itemPositions[id] ?? { col: 0, row: 0 }
+    const deltaCol = targetCol - origin.col
+    const deltaRow = targetRow - origin.row
     const occupied = new Set(
       Object.entries(itemPositions)
-        .filter(([itemId]) => itemId !== id)
+        .filter(([itemId]) => !draggedFileIds.includes(itemId) && itemId !== id)
         .map(([, p]) => `${p.col},${p.row}`)
     )
-    const { col, row } = findFreeSlot(targetCol, targetRow, occupied)
-    setItemPositions(prev => ({ ...prev, [id]: { col, row } }))
-    setDraggingId(null); setDragGhostPos(null)
+    setItemPositions(prev => {
+      const next = { ...prev }
+      if (isFile && draggedFileIds.length > 1) {
+        draggedFileIds.forEach(fileId => {
+          const current = prev[fileId]
+          if (!current) return
+          const proposedCol = Math.max(0, current.col + deltaCol)
+          const proposedRow = Math.max(0, current.row + deltaRow)
+          const slot = findFreeSlot(proposedCol, proposedRow, occupied)
+          next[fileId] = slot
+          occupied.add(`${slot.col},${slot.row}`)
+        })
+      } else {
+        const slot = findFreeSlot(targetCol, targetRow, occupied)
+        next[id] = slot
+      }
+      return next
+    })
+    setDraggingId(null); setDragGhostPos(null); setDragSelectionIds([])
   }
 
   // ── Folder management ──────────────────────────────────────────────────────
@@ -1057,7 +1346,6 @@ export default function SmartStoragePage() {
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            onClick={() => setContextMenu(null)}
           >
             {/* Toolbar */}
             <div className="flex h-10 items-center gap-2 border-b border-border bg-card/50 px-4">
@@ -1108,13 +1396,14 @@ export default function SmartStoragePage() {
                       const file = files.find(f => f.id === fileId)
                       if (file) { setRenamingFileId(fileId); setRenameFileValue(file.filename) }
                     }}
+                    disabled={selectedFiles.size !== 1}
                     className="flex h-6 items-center gap-1 rounded px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                   >
                     <Pencil className="h-3 w-3" />
                     Rename
                   </button>
                   <button
-                    onClick={() => { selectedFiles.forEach(id => handleDeleteFile(id)); setSelectedFiles(new Set()) }}
+                    onClick={() => { void Promise.all([...selectedFiles].map(id => handleDeleteFile(id))) }}
                     className="flex h-6 items-center gap-1 rounded px-2 text-xs text-destructive transition-colors hover:bg-destructive/10"
                   >
                     <X className="h-3 w-3" />
@@ -1141,14 +1430,27 @@ export default function SmartStoragePage() {
                     <Plus className="h-3.5 w-3.5" />
                     New folder
                   </button>
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={isUploading}
-                    className="flex h-7 items-center gap-1.5 rounded px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50 disabled:pointer-events-none"
-                  >
-                    {isUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-                    {isUploading ? "Uploading…" : "Upload"}
-                  </button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild disabled={isUploading}>
+                      <button
+                        className="flex h-7 items-center gap-1.5 rounded px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50 disabled:pointer-events-none"
+                      >
+                        {isUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                        {isUploading ? "Uploading…" : "Upload"}
+                        <ChevronDown className="h-3.5 w-3.5" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="min-w-[176px] rounded-xl">
+                      <DropdownMenuItem onSelect={() => fileInputRef.current?.click()}>
+                        <Upload className="h-3.5 w-3.5" />
+                        Upload files
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => directoryInputRef.current?.click()}>
+                        <FolderOpen className="h-3.5 w-3.5" />
+                        Upload folder
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                   <button
                     onClick={() => setManualEntryOpen(true)}
                     className="flex h-7 items-center gap-1.5 rounded px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -1192,6 +1494,7 @@ export default function SmartStoragePage() {
                   </button>
                 </div>
                 <input ref={fileInputRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,image/*,application/pdf" className="hidden" onChange={(e) => e.target.files && handleUpload(e.target.files)} />
+                <input ref={directoryInputRef} type="file" multiple className="hidden" onChange={(e) => e.target.files && handleUpload(e.target.files)} />
               </div>
             </div>
 
@@ -1227,40 +1530,53 @@ export default function SmartStoragePage() {
 
               {/* Subfolders */}
               {viewMode === "list" && currentSubfolders.map((folder) => (
-                <div
+                <StorageItemMenu
                   key={folder.id}
-                  onDoubleClick={() => openFolder(folder)}
-                  onContextMenu={(e) => {
-                    e.preventDefault()
-                    setContextMenu({ x: e.clientX, y: e.clientY, fileId: folder.id, filename: folder.name })
+                  kind="folder"
+                  filename={folder.name}
+                  isMultiSelect={false}
+                  multiSelectCount={0}
+                  onRename={() => startRename(folder)}
+                  onDelete={async () => {
+                    await supabase.from("folders").delete().eq("id", folder.id)
+                    setFolders(prev => prev.filter(f => f.id !== folder.id))
+                    if (currentFolderId === folder.id) {
+                      setCurrentFolderId("root")
+                      setBreadcrumb([{ id: "root", name: "Documents" }])
+                      setSelectedLeftFolder("Documents")
+                    }
                   }}
-                  className="group grid cursor-pointer grid-cols-[1fr_120px_140px_80px] items-center gap-2 rounded px-3 py-1 text-sm transition-colors hover:bg-muted"
                 >
-                  {renamingId === folder.id ? (
-                    <div className="col-span-4 flex items-center gap-2">
-                      <Folder className="h-4 w-4 shrink-0 text-primary/70" />
-                      <Input
-                        autoFocus
-                        value={renameValue}
-                        onChange={(e) => setRenameValue(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === "Enter") confirmRename(); if (e.key === "Escape") setRenamingId(null) }}
-                        className="h-6 flex-1 border-0 p-0 text-sm shadow-none focus-visible:ring-0"
-                      />
-                      <button onClick={confirmRename} className="text-primary"><Check className="h-3.5 w-3.5" /></button>
-                      <button onClick={() => setRenamingId(null)} className="text-muted-foreground"><X className="h-3.5 w-3.5" /></button>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="flex items-center gap-2">
+                  <div
+                    onDoubleClick={() => openFolder(folder)}
+                    className="group grid cursor-pointer grid-cols-[1fr_120px_140px_80px] items-center gap-2 rounded px-3 py-1 text-sm transition-colors hover:bg-muted"
+                  >
+                    {renamingId === folder.id ? (
+                      <div className="col-span-4 flex items-center gap-2">
                         <Folder className="h-4 w-4 shrink-0 text-primary/70" />
-                        <span className="truncate font-medium text-foreground">{folder.name}</span>
+                        <Input
+                          autoFocus
+                          value={renameValue}
+                          onChange={(e) => setRenameValue(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") confirmRename(); if (e.key === "Escape") setRenamingId(null) }}
+                          className="h-6 flex-1 border-0 p-0 text-sm shadow-none focus-visible:ring-0"
+                        />
+                        <button onClick={confirmRename} className="text-primary"><Check className="h-3.5 w-3.5" /></button>
+                        <button onClick={() => setRenamingId(null)} className="text-muted-foreground"><X className="h-3.5 w-3.5" /></button>
                       </div>
-                      <span className="text-muted-foreground">Folder</span>
-                      <span className="text-muted-foreground">—</span>
-                      <span className="text-muted-foreground">—</span>
-                    </>
-                  )}
-                </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <Folder className="h-4 w-4 shrink-0 text-primary/70" />
+                          <span className="truncate font-medium text-foreground">{folder.name}</span>
+                        </div>
+                        <span className="text-muted-foreground">Folder</span>
+                        <span className="text-muted-foreground">—</span>
+                        <span className="text-muted-foreground">—</span>
+                      </>
+                    )}
+                  </div>
+                </StorageItemMenu>
               ))}
 
               {/* Canvas — draggable snap-to-grid view */}
@@ -1281,35 +1597,51 @@ export default function SmartStoragePage() {
                     const left = isDragging && dragGhostPos ? dragGhostPos.x : GRID_PAD + pos.col * CELL_W
                     const top  = isDragging && dragGhostPos ? dragGhostPos.y : GRID_PAD + pos.row * CELL_H
                     return (
-                      <div
+                      <StorageItemMenu
                         key={folder.id}
-                        style={{ position: "absolute", left, top, width: CELL_W - 6, zIndex: isDragging ? 50 : 1 }}
-                        className={`flex flex-col items-center gap-1 rounded-lg px-1 py-2 select-none transition-colors ${
-                          isDragging ? "opacity-90 shadow-xl ring-1 ring-primary/30 cursor-grabbing"
-                          : isDropTarget ? "bg-primary/15 ring-2 ring-primary cursor-grab"
-                          : "hover:bg-muted cursor-grab"
-                        }`}
-                        onPointerDown={(e) => handleCanvasPointerDown(e, folder.id)}
-                        onPointerMove={(e) => handleCanvasPointerMove(e, folder.id)}
-                        onPointerUp={(e) => handleCanvasPointerUp(e, folder.id, hoveredFolderId)}
-                        onDoubleClick={() => openFolder(folder)}
-                        onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, fileId: folder.id, filename: folder.name }) }}
+                        kind="folder"
+                        filename={folder.name}
+                        isMultiSelect={false}
+                        multiSelectCount={0}
+                        onRename={() => startRename(folder)}
+                        onDelete={async () => {
+                          await supabase.from("folders").delete().eq("id", folder.id)
+                          setFolders(prev => prev.filter(f => f.id !== folder.id))
+                          if (currentFolderId === folder.id) {
+                            setCurrentFolderId("root")
+                            setBreadcrumb([{ id: "root", name: "Documents" }])
+                            setSelectedLeftFolder("Documents")
+                          }
+                        }}
                       >
-                        <Folder className={`h-10 w-10 ${isDropTarget ? "text-primary" : isDragging ? "text-primary" : "text-primary/70"}`} />
-                        {renamingId === folder.id ? (
-                          <input
-                            autoFocus
-                            value={renameValue}
-                            onChange={(e) => setRenameValue(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === "Enter") confirmRename(); if (e.key === "Escape") setRenamingId(null) }}
-                            onBlur={confirmRename}
-                            onClick={(e) => e.stopPropagation()}
-                            className="w-full rounded border border-primary bg-background px-1 py-0.5 text-center text-[11px] text-foreground focus:outline-none"
-                          />
-                        ) : (
-                          <span className="w-full truncate text-center text-[11px] text-foreground leading-tight">{folder.name}</span>
-                        )}
-                      </div>
+                        <div
+                          style={{ position: "absolute", left, top, width: CELL_W - 6, zIndex: isDragging ? 50 : 1 }}
+                          className={`flex flex-col items-center gap-1 rounded-lg px-1 py-2 select-none transition-colors ${
+                            isDragging ? "opacity-90 shadow-xl ring-1 ring-primary/30 cursor-grabbing"
+                            : isDropTarget ? "bg-primary/15 ring-2 ring-primary cursor-grab"
+                            : "hover:bg-muted cursor-grab"
+                          }`}
+                          onPointerDown={(e) => handleCanvasPointerDown(e, folder.id)}
+                          onPointerMove={(e) => handleCanvasPointerMove(e, folder.id)}
+                          onPointerUp={(e) => handleCanvasPointerUp(e, folder.id, hoveredFolderId)}
+                          onDoubleClick={() => openFolder(folder)}
+                        >
+                          <Folder className={`h-10 w-10 ${isDropTarget ? "text-primary" : isDragging ? "text-primary" : "text-primary/70"}`} />
+                          {renamingId === folder.id ? (
+                            <input
+                              autoFocus
+                              value={renameValue}
+                              onChange={(e) => setRenameValue(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === "Enter") confirmRename(); if (e.key === "Escape") setRenamingId(null) }}
+                              onBlur={confirmRename}
+                              onClick={(e) => e.stopPropagation()}
+                              className="w-full rounded border border-primary bg-background px-1 py-0.5 text-center text-[11px] text-foreground focus:outline-none"
+                            />
+                          ) : (
+                            <span className="w-full truncate text-center text-[11px] text-foreground leading-tight">{folder.name}</span>
+                          )}
+                        </div>
+                      </StorageItemMenu>
                     )
                   })}
 
@@ -1327,7 +1659,7 @@ export default function SmartStoragePage() {
                           <ImageIcon className="h-8 w-8 text-muted-foreground" />
                         </div>
                       </div>
-                      <p className="text-sm text-muted-foreground/40">Drop files here or click Upload</p>
+                      <p className="text-sm text-muted-foreground/40">Drop files or folders here, or use Upload</p>
                       <div className="flex flex-wrap items-center justify-center gap-2">
                         {["PDF", "JPG", "PNG", "WEBP", "HEIC"].map((ext) => (
                           <span key={ext} className="text-xs text-muted-foreground/25">{ext}</span>
@@ -1361,69 +1693,93 @@ export default function SmartStoragePage() {
                     const isSelected = selectedFiles.has(file.id)
                     const left = isDragging && dragGhostPos ? dragGhostPos.x : GRID_PAD + pos.col * CELL_W
                     const top  = isDragging && dragGhostPos ? dragGhostPos.y : GRID_PAD + pos.row * CELL_H
+                    const dragCount = dragSelectionIds.includes(file.id) ? dragSelectionIds.length : 0
                     return (
-                      <div
+                      <StorageItemMenu
                         key={file.id}
-                        style={{ position: "absolute", left, top, width: CELL_W - 6, zIndex: isDragging ? 50 : 1 }}
-                        className={`group relative flex flex-col items-center gap-1 rounded-lg px-1 py-2 select-none ${
-                          isDragging
-                            ? "opacity-90 shadow-xl ring-1 ring-primary/30 cursor-grabbing"
-                            : isSelected
-                            ? "bg-primary/10 ring-1 ring-primary/30 cursor-grab"
-                            : "hover:bg-muted cursor-grab"
-                        }`}
-                        onPointerDown={(e) => { if (renamingFileId === file.id) return; handleCanvasPointerDown(e, file.id) }}
-                        onPointerMove={(e) => handleCanvasPointerMove(e, file.id)}
-                        onPointerUp={(e) => handleCanvasPointerUp(e, file.id, hoveredFolderId)}
-                        onContextMenu={(e) => handleFileRightClick(e, file.id, file.filename)}
-                        onMouseEnter={(e) => handleFileHoverEnter(file.id, e.clientX, e.clientY)}
-                        onMouseLeave={handleFileHoverLeave}
+                        kind="file"
+                        filename={file.filename}
+                        isMultiSelect={selectedFiles.size > 1 && selectedFiles.has(file.id)}
+                        multiSelectCount={selectedFiles.size}
+                        canMoveUp={Boolean(file.folder_id)}
+                        onRename={() => { setRenamingFileId(file.id); setRenameFileValue(file.filename) }}
+                        onDelete={() => handleDeleteFile(file.id)}
+                        onDownload={() => handleDownloadFile(file.id)}
+                        onDownloadSelection={() => Promise.all([...selectedFiles].map(fid => handleDownloadFile(fid))).then(() => undefined)}
+                        onDeleteSelection={() => Promise.all([...selectedFiles].map(fid => handleDeleteFile(fid))).then(() => undefined)}
+                        onMoveUp={() => {
+                          const parentFolderId = folders.find(f => f.id === file.folder_id)?.parentId ?? null
+                          return moveFileToFolder(file.id, parentFolderId)
+                        }}
+                        onReclassify={() => setReclassifyTarget({ fileId: file.id, filename: file.filename })}
+                        onContextIntent={() => handleFileContextIntent(file.id)}
                       >
-                        {/* Checkbox — visible on hover or when any file is selected */}
                         <div
-                          className={`absolute left-1 top-1 transition-opacity ${
-                            isSelected || selectedFiles.size > 0 ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                          style={{ position: "absolute", left, top, width: CELL_W - 6, zIndex: isDragging ? 50 : 1 }}
+                          className={`group relative flex flex-col items-center gap-1 rounded-lg px-1 py-2 select-none ${
+                            isDragging
+                              ? "opacity-90 shadow-xl ring-1 ring-primary/30 cursor-grabbing"
+                              : isSelected
+                              ? "bg-primary/10 ring-1 ring-primary/30 cursor-grab"
+                              : "hover:bg-muted cursor-grab"
                           }`}
-                          onClick={(e) => { e.stopPropagation(); handleFileClick(file.id, e) }}
+                          onPointerDown={(e) => { if (renamingFileId === file.id) return; handleCanvasPointerDown(e, file.id) }}
+                          onPointerMove={(e) => handleCanvasPointerMove(e, file.id)}
+                          onPointerUp={(e) => handleCanvasPointerUp(e, file.id, hoveredFolderId)}
+                          onClick={(e) => { e.stopPropagation(); handleFileClick(file.id, e as unknown as React.MouseEvent) }}
+                          onMouseEnter={(e) => handleFileHoverEnter(file.id, e.clientX, e.clientY)}
+                          onMouseLeave={handleFileHoverLeave}
                         >
-                          <div className={`flex h-4 w-4 items-center justify-center rounded border ${
-                            isSelected ? "border-primary bg-primary" : "border-border bg-background/80"
-                          }`}>
-                            {isSelected && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
+                          {/* Checkbox — visible on hover or when any file is selected */}
+                          <div
+                            className={`absolute left-1 top-1 transition-opacity ${
+                              isSelected || selectedFiles.size > 0 ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                            }`}
+                            onClick={(e) => { e.stopPropagation(); toggleSelection(file.id) }}
+                          >
+                            <div className={`flex h-4 w-4 items-center justify-center rounded border ${
+                              isSelected ? "border-primary bg-primary" : "border-border bg-background/80"
+                            }`}>
+                              {isSelected && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
+                            </div>
                           </div>
+                          {dragCount > 1 && isDragging && (
+                            <span className="absolute right-1 top-1 rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-medium text-primary-foreground shadow-sm">
+                              {dragCount}
+                            </span>
+                          )}
+                          <div className="flex h-10 w-10 items-center justify-center">
+                            {file.file_type === "application/pdf"
+                              ? <FileText className="h-9 w-9 text-primary/60" />
+                              : file.file_type.startsWith("image/")
+                              ? <ImageIcon className="h-9 w-9 text-blue-400/70" />
+                              : <File className="h-9 w-9 text-muted-foreground" />
+                            }
+                          </div>
+                          {renamingFileId === file.id ? (
+                            <input
+                              autoFocus
+                              value={renameFileValue}
+                              onChange={(e) => setRenameFileValue(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === "Enter") handleRenameFile(file.id, renameFileValue); if (e.key === "Escape") setRenamingFileId(null) }}
+                              onBlur={() => handleRenameFile(file.id, renameFileValue)}
+                              onClick={(e) => e.stopPropagation()}
+                              className="w-full rounded border border-primary bg-background px-1 py-0.5 text-center text-[11px] text-foreground focus:outline-none"
+                            />
+                          ) : (
+                            <span className="w-full truncate text-center text-[11px] text-foreground leading-tight">{file.filename}</span>
+                          )}
+                          {file.upload_status === "quarantined" ? (
+                            <span className="w-full truncate text-center text-[10px] text-red-600 leading-tight" title={file.scan_reason ?? "Blocked by security scan"}>
+                              Blocked
+                            </span>
+                          ) : (
+                            <span className="w-full truncate text-center text-[10px] text-muted-foreground/60 capitalize leading-tight">
+                              {file.document_type === "unknown" ? "Processing…" : file.document_type.replace(/_/g, " ")}
+                            </span>
+                          )}
                         </div>
-
-                        <div className="flex h-10 w-10 items-center justify-center">
-                          {file.file_type === "application/pdf"
-                            ? <FileText className="h-9 w-9 text-primary/60" />
-                            : file.file_type.startsWith("image/")
-                            ? <ImageIcon className="h-9 w-9 text-blue-400/70" />
-                            : <File className="h-9 w-9 text-muted-foreground" />
-                          }
-                        </div>
-                        {renamingFileId === file.id ? (
-                          <input
-                            autoFocus
-                            value={renameFileValue}
-                            onChange={(e) => setRenameFileValue(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === "Enter") handleRenameFile(file.id, renameFileValue); if (e.key === "Escape") setRenamingFileId(null) }}
-                            onBlur={() => handleRenameFile(file.id, renameFileValue)}
-                            onClick={(e) => e.stopPropagation()}
-                            className="w-full rounded border border-primary bg-background px-1 py-0.5 text-center text-[11px] text-foreground focus:outline-none"
-                          />
-                        ) : (
-                          <span className="w-full truncate text-center text-[11px] text-foreground leading-tight">{file.filename}</span>
-                        )}
-                        {file.upload_status === "quarantined" ? (
-                          <span className="w-full truncate text-center text-[10px] text-red-600 leading-tight" title={file.scan_reason ?? "Blocked by security scan"}>
-                            Blocked
-                          </span>
-                        ) : (
-                          <span className="w-full truncate text-center text-[10px] text-muted-foreground/60 capitalize leading-tight">
-                            {file.document_type === "unknown" ? "Processing…" : file.document_type.replace(/_/g, " ")}
-                          </span>
-                        )}
-                      </div>
+                      </StorageItemMenu>
                     )
                   })}
                 </div>
@@ -1431,168 +1787,73 @@ export default function SmartStoragePage() {
 
               {/* Files — list view (or classification view) */}
               {(viewMode === "list" || classificationView) && displayedFiles.map((file) => (
-                <div
+                <StorageItemMenu
                   key={file.id}
-                  onClick={(e) => { e.stopPropagation(); handleFileClick(file.id, e) }}
-                  onDoubleClick={() => handleDownloadFile(file.id)}
-                  onContextMenu={(e) => handleFileRightClick(e, file.id, file.filename)}
-                  onMouseEnter={(e) => handleFileHoverEnter(file.id, e.clientX, e.clientY)}
-                  onMouseLeave={handleFileHoverLeave}
-                  className={`grid grid-cols-[1fr_120px_140px_80px] items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition-colors cursor-pointer select-none ${
-                    selectedFiles.has(file.id) ? "bg-primary/10 text-foreground" : "hover:bg-muted"
-                  }`}
+                  kind="file"
+                  filename={file.filename}
+                  isMultiSelect={selectedFiles.size > 1 && selectedFiles.has(file.id)}
+                  multiSelectCount={selectedFiles.size}
+                  canMoveUp={Boolean(file.folder_id)}
+                  onRename={() => { setRenamingFileId(file.id); setRenameFileValue(file.filename) }}
+                  onDelete={() => handleDeleteFile(file.id)}
+                  onDownload={() => handleDownloadFile(file.id)}
+                  onDownloadSelection={() => Promise.all([...selectedFiles].map(fid => handleDownloadFile(fid))).then(() => undefined)}
+                  onDeleteSelection={() => Promise.all([...selectedFiles].map(fid => handleDeleteFile(fid))).then(() => undefined)}
+                  onMoveUp={() => {
+                    const parentFolderId = folders.find(f => f.id === file.folder_id)?.parentId ?? null
+                    return moveFileToFolder(file.id, parentFolderId)
+                  }}
+                  onReclassify={() => setReclassifyTarget({ fileId: file.id, filename: file.filename })}
+                  onContextIntent={() => handleFileContextIntent(file.id)}
                 >
-                  <div className="flex items-center gap-2">
-                    {fileIcon(file.file_type)}
-                    {renamingFileId === file.id ? (
-                      <input
-                        autoFocus
-                        value={renameFileValue}
-                        onChange={(e) => setRenameFileValue(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") handleRenameFile(file.id, renameFileValue)
-                          if (e.key === "Escape") setRenamingFileId(null)
-                        }}
-                        onBlur={() => handleRenameFile(file.id, renameFileValue)}
-                        onClick={(e) => e.stopPropagation()}
-                        className="flex-1 rounded border border-primary bg-background px-2 py-0.5 text-sm text-foreground focus:outline-none"
-                      />
+                  <div
+                    onClick={(e) => { e.stopPropagation(); handleFileClick(file.id, e as unknown as React.MouseEvent) }}
+                    onDoubleClick={() => handleDownloadFile(file.id)}
+                    onMouseEnter={(e) => handleFileHoverEnter(file.id, e.clientX, e.clientY)}
+                    onMouseLeave={handleFileHoverLeave}
+                    className={`grid grid-cols-[1fr_120px_140px_80px] items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition-colors cursor-pointer select-none ${
+                      selectedFiles.has(file.id) ? "bg-primary/10 text-foreground" : "hover:bg-muted"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      {fileIcon(file.file_type)}
+                      {renamingFileId === file.id ? (
+                        <input
+                          autoFocus
+                          value={renameFileValue}
+                          onChange={(e) => setRenameFileValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleRenameFile(file.id, renameFileValue)
+                            if (e.key === "Escape") setRenamingFileId(null)
+                          }}
+                          onBlur={() => handleRenameFile(file.id, renameFileValue)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex-1 rounded border border-primary bg-background px-2 py-0.5 text-sm text-foreground focus:outline-none"
+                        />
+                      ) : (
+                        <span className="truncate text-foreground">{file.filename}</span>
+                      )}
+                    </div>
+                    {file.upload_status === "quarantined" ? (
+                      <span className="truncate text-red-600" title={file.scan_reason ?? "Blocked by security scan"}>
+                        Blocked
+                      </span>
                     ) : (
-                      <span className="truncate text-foreground">{file.filename}</span>
+                      <span className="truncate text-muted-foreground capitalize">
+                        {file.document_type === "unknown" ? "Processing…" : file.document_type.replace(/_/g, " ")}
+                      </span>
                     )}
+                    <span className="text-muted-foreground text-xs">
+                      {new Date(file.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" })}
+                      {" "}
+                      <span className="text-muted-foreground/60">
+                        {new Date(file.created_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </span>
+                    <span className="text-right text-muted-foreground">{formatBytes(file.file_size)}</span>
                   </div>
-                  {file.upload_status === "quarantined" ? (
-                    <span className="truncate text-red-600" title={file.scan_reason ?? "Blocked by security scan"}>
-                      Blocked
-                    </span>
-                  ) : (
-                    <span className="truncate text-muted-foreground capitalize">
-                      {file.document_type === "unknown" ? "Processing…" : file.document_type.replace(/_/g, " ")}
-                    </span>
-                  )}
-                  <span className="text-muted-foreground text-xs">
-                    {new Date(file.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" })}
-                    {" "}
-                    <span className="text-muted-foreground/60">
-                      {new Date(file.created_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
-                    </span>
-                  </span>
-                  <span className="text-right text-muted-foreground">{formatBytes(file.file_size)}</span>
-                </div>
+                </StorageItemMenu>
               ))}
-
-              {/* Context menu — files and folders */}
-              {contextMenu && (
-                <div
-                  className="fixed z-50 min-w-[160px] rounded-xl border border-border bg-card py-1 shadow-xl"
-                  style={{ left: contextMenu.x, top: contextMenu.y }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {/* Multi-select bulk actions */}
-                  {selectedFiles.size > 1 ? (
-                    <>
-                      <div className="px-4 py-1.5 text-xs font-medium text-muted-foreground">
-                        {selectedFiles.size} files selected
-                      </div>
-                      <div className="my-1 h-px bg-border" />
-                      <button
-                        onClick={async () => {
-                          for (const fid of selectedFiles) await handleDownloadFile(fid)
-                          setContextMenu(null)
-                        }}
-                        className="flex w-full items-center gap-2 px-4 py-2 text-sm text-foreground transition-colors hover:bg-muted"
-                      >
-                        <Download className="h-3.5 w-3.5 text-muted-foreground" />
-                        Download all
-                      </button>
-                      <div className="my-1 h-px bg-border" />
-                      <button
-                        onClick={async () => {
-                          for (const fid of [...selectedFiles]) await handleDeleteFile(fid)
-                          setContextMenu(null)
-                        }}
-                        className="flex w-full items-center gap-2 px-4 py-2 text-sm text-destructive transition-colors hover:bg-destructive/10"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                        Delete all selected
-                      </button>
-                    </>
-                  ) : /* Check if it's a folder */
-                  folders.some(f => f.id === contextMenu.fileId) ? (
-                    <>
-                      <button
-                        onClick={() => { startRename(folders.find(f => f.id === contextMenu.fileId)!); setContextMenu(null) }}
-                        className="flex w-full items-center gap-2 px-4 py-2 text-sm text-foreground transition-colors hover:bg-muted"
-                      >
-                        <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
-                        Rename
-                      </button>
-                      <div className="my-1 h-px bg-border" />
-                      <button
-                        onClick={async () => {
-                          await supabase.from("folders").delete().eq("id", contextMenu.fileId)
-                          setFolders(prev => prev.filter(f => f.id !== contextMenu.fileId))
-                          setContextMenu(null)
-                        }}
-                        className="flex w-full items-center gap-2 px-4 py-2 text-sm text-destructive transition-colors hover:bg-destructive/10"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                        Delete folder
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button
-                        onClick={() => { setRenamingFileId(contextMenu.fileId); setRenameFileValue(contextMenu.filename); setContextMenu(null) }}
-                        className="flex w-full items-center gap-2 px-4 py-2 text-sm text-foreground transition-colors hover:bg-muted"
-                      >
-                        <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
-                        Rename
-                      </button>
-                      {files.find(f => f.id === contextMenu.fileId)?.folder_id && (() => {
-                        const fileFolderId = files.find(f => f.id === contextMenu.fileId)!.folder_id!
-                        const parentFolderId = folders.find(f => f.id === fileFolderId)?.parentId ?? null
-                        return (
-                          <>
-                            <div className="my-1 h-px bg-border" />
-                            <button
-                              onClick={() => { moveFileToFolder(contextMenu.fileId, parentFolderId); setContextMenu(null) }}
-                              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-foreground transition-colors hover:bg-muted"
-                            >
-                              <FolderOutput className="h-3.5 w-3.5 text-muted-foreground" />
-                              Move up
-                            </button>
-                          </>
-                        )
-                      })()}
-                      <div className="my-1 h-px bg-border" />
-                      <button
-                        onClick={() => { setReclassifyTarget({ fileId: contextMenu.fileId, filename: contextMenu.filename }); setContextMenu(null) }}
-                        className="flex w-full items-center gap-2 px-4 py-2 text-sm text-foreground transition-colors hover:bg-muted"
-                      >
-                        <Tag className="h-3.5 w-3.5 text-muted-foreground" />
-                        Reclassify
-                      </button>
-                      <div className="my-1 h-px bg-border" />
-                      <button
-                        onClick={() => { handleDownloadFile(contextMenu.fileId); setContextMenu(null) }}
-                        className="flex w-full items-center gap-2 px-4 py-2 text-sm text-foreground transition-colors hover:bg-muted"
-                      >
-                        <Download className="h-3.5 w-3.5 text-muted-foreground" />
-                        Download
-                      </button>
-                      <div className="my-1 h-px bg-border" />
-                      <button
-                        onClick={() => handleDeleteFile(contextMenu.fileId)}
-                        className="flex w-full items-center gap-2 px-4 py-2 text-sm text-destructive transition-colors hover:bg-destructive/10"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                        Delete file
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
 
 
               {/* Empty state */}
@@ -1609,7 +1870,7 @@ export default function SmartStoragePage() {
                       <ImageIcon className="h-8 w-8 text-muted-foreground" />
                     </div>
                   </div>
-                  <p className="text-sm text-muted-foreground">Drop files here or click Upload</p>
+                  <p className="text-sm text-muted-foreground">Drop files or folders here, or use Upload</p>
                   <div className="flex flex-wrap items-center justify-center gap-2">
                     {["PDF", "JPG", "JPEG", "PNG", "WEBP", "HEIC"].map((ext) => (
                       <span key={ext} className="text-xs text-muted-foreground/50">{ext}</span>

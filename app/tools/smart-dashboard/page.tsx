@@ -927,8 +927,8 @@ export default function SmartDashboardPage() {
       <div className="flex flex-1 flex-col overflow-hidden">
 
         {/* TOP TOOLBAR */}
-        <div className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-card px-4 gap-2">
-          <div className="flex flex-1 items-center gap-2 overflow-x-auto scrollbar-none min-w-0">
+        <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-4">
+          <div className="flex min-w-0 flex-1 items-center gap-2 overflow-visible">
 
             {/* Date filter */}
             <div className="relative">

@@ -9,6 +9,10 @@ import { supabase } from "@/lib/supabase"
 import { computeEntitlement } from "@/lib/subscription"
 import type { Session } from "@supabase/supabase-js"
 
+const chromeFontStyle = {
+  fontFamily: 'var(--font-aldrich), "Aldrich", var(--font-geist), "Geist", "Geist Fallback", sans-serif',
+} as const
+
 interface AccountPanelProps {
   isOpen: boolean
   onClose: () => void
@@ -35,11 +39,12 @@ function AccordionItem({
     <div>
       <button
         onClick={onToggle}
-        className={`font-geist-explicit flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm transition-all ${
+        className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm transition-all ${
           variant === "destructive"
             ? "text-destructive hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
             : "text-foreground/85 hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
         }`}
+        style={chromeFontStyle}
       >
         {label}
         <ChevronDown
@@ -249,7 +254,7 @@ function DeleteAccountModal({
     return (
       <div className="fixed inset-0 z-[60] flex items-center justify-center">
         <div className="absolute inset-0 bg-background/80 backdrop-blur-md" />
-        <div className="glass-surface font-geist-explicit relative z-10 w-full max-w-sm rounded-2xl p-6 shadow-lg text-center">
+        <div className="glass-surface relative z-10 w-full max-w-sm rounded-2xl p-6 shadow-lg text-center" style={chromeFontStyle}>
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
             <User className="h-6 w-6 text-muted-foreground" />
           </div>
@@ -266,7 +271,7 @@ function DeleteAccountModal({
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center">
       <div className="absolute inset-0 bg-background/80 backdrop-blur-md" onClick={onClose} />
-      <div className="glass-surface font-geist-explicit relative z-10 w-full max-w-sm rounded-2xl p-6 shadow-lg">
+      <div className="glass-surface relative z-10 w-full max-w-sm rounded-2xl p-6 shadow-lg" style={chromeFontStyle}>
         <div className="flex items-start gap-4">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-destructive/10">
             <AlertTriangle className="h-5 w-5 text-destructive" />
@@ -459,9 +464,10 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
 
       {/* Panel */}
       <div
-        className={`glass-surface font-geist-explicit fixed right-0 top-0 z-50 h-full w-full max-w-[420px] transform overflow-hidden border-0 !rounded-none shadow-2xl transition-transform duration-300 ease-out ${
+        className={`glass-surface fixed right-0 top-0 z-50 h-full w-full max-w-[420px] transform overflow-hidden border-0 !rounded-none shadow-2xl transition-transform duration-300 ease-out ${
           isOpen ? "translate-x-0" : "translate-x-full"
         }`}
+        style={chromeFontStyle}
       >
         {/* Retro grid backdrop — faint, masked at edges */}
         <div aria-hidden className="retro-grid-bg pointer-events-none absolute inset-0 opacity-40" />
@@ -719,7 +725,8 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                       </AccordionItem>
 
                       <button
-                        className="font-geist-explicit flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground/60 transition-all"
+                        className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground/60 transition-all"
+                        style={chromeFontStyle}
                         disabled
                       >
                         Billing
@@ -767,14 +774,16 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                     <div className="space-y-1">
                       <button
                         onClick={() => setPanelView("privacy")}
-                        className="font-geist-explicit flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground/85 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+                        className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground/85 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+                        style={chromeFontStyle}
                       >
                         Privacy
                         <ChevronDown className="h-4 w-4 -rotate-90 text-muted-foreground" />
                       </button>
                       <button
                         onClick={() => setPanelView("terms")}
-                        className="font-geist-explicit flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground/85 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+                        className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground/85 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+                        style={chromeFontStyle}
                       >
                         Terms
                         <ChevronDown className="h-4 w-4 -rotate-90 text-muted-foreground" />
@@ -786,7 +795,8 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                     <div className="space-y-1">
                       <button
                         onClick={() => setShowDeleteModal(true)}
-                        className="font-geist-explicit flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-destructive transition-all hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+                        className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-destructive transition-all hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+                        style={chromeFontStyle}
                       >
                         Delete account
                         <ChevronDown className="h-4 w-4 -rotate-90" />
@@ -798,7 +808,8 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                     <div className="space-y-1">
                       <button
                         onClick={() => supabase.auth.signOut()}
-                        className="font-geist-explicit flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground/85 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+                        className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground/85 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+                        style={chromeFontStyle}
                       >
                         Sign out
                         <LogOut className="h-4 w-4 text-muted-foreground" />

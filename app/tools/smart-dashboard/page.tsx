@@ -616,8 +616,64 @@ export default function SmartDashboardPage() {
   const [advancedOpen, setAdvancedOpen] = useState(true)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; widgetId: string } | null>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
+  const dateFilterCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const advancedMenuCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const colorPickerCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const selectedWidget = widgets.find(w => w.id === selectedWidgetId)
+
+  useEffect(() => {
+    return () => {
+      if (dateFilterCloseTimerRef.current) clearTimeout(dateFilterCloseTimerRef.current)
+      if (advancedMenuCloseTimerRef.current) clearTimeout(advancedMenuCloseTimerRef.current)
+      if (colorPickerCloseTimerRef.current) clearTimeout(colorPickerCloseTimerRef.current)
+    }
+  }, [])
+
+  function cancelDateFilterClose() {
+    if (dateFilterCloseTimerRef.current) {
+      clearTimeout(dateFilterCloseTimerRef.current)
+      dateFilterCloseTimerRef.current = null
+    }
+  }
+
+  function scheduleDateFilterClose() {
+    cancelDateFilterClose()
+    dateFilterCloseTimerRef.current = setTimeout(() => {
+      setShowDateFilter(false)
+      dateFilterCloseTimerRef.current = null
+    }, 180)
+  }
+
+  function cancelAdvancedMenuClose() {
+    if (advancedMenuCloseTimerRef.current) {
+      clearTimeout(advancedMenuCloseTimerRef.current)
+      advancedMenuCloseTimerRef.current = null
+    }
+  }
+
+  function scheduleAdvancedMenuClose() {
+    cancelAdvancedMenuClose()
+    advancedMenuCloseTimerRef.current = setTimeout(() => {
+      setShowAdvancedMenu(false)
+      advancedMenuCloseTimerRef.current = null
+    }, 180)
+  }
+
+  function cancelColorPickerClose() {
+    if (colorPickerCloseTimerRef.current) {
+      clearTimeout(colorPickerCloseTimerRef.current)
+      colorPickerCloseTimerRef.current = null
+    }
+  }
+
+  function scheduleColorPickerClose() {
+    cancelColorPickerClose()
+    colorPickerCloseTimerRef.current = setTimeout(() => {
+      setShowColorPicker(false)
+      colorPickerCloseTimerRef.current = null
+    }, 180)
+  }
 
   // ── Measure canvas width ───────────────────────────────────────────────────
   useEffect(() => {
@@ -945,17 +1001,24 @@ export default function SmartDashboardPage() {
           <div className="flex min-w-0 flex-1 items-center gap-2 overflow-visible">
 
             {/* Date filter */}
-            <div className="relative">
+            <div
+              className="relative"
+              onMouseEnter={!isMobile ? cancelDateFilterClose : undefined}
+              onMouseLeave={!isMobile && showDateFilter ? scheduleDateFilterClose : undefined}
+            >
               <button
-                onClick={() => { setShowDateFilter(!showDateFilter); setShowColorPicker(false) }}
-                className="flex h-7 items-center gap-1.5 rounded-lg border border-border px-3 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                onClick={() => { cancelDateFilterClose(); setShowDateFilter(!showDateFilter); setShowColorPicker(false) }}
+                className="flex h-7 items-center gap-1.5 rounded-lg border border-border px-3 text-xs text-muted-foreground transition-all duration-200 hover:-translate-y-0.5 hover:bg-muted hover:text-foreground"
               >
                 <Calendar className="h-3.5 w-3.5" />
                 {dateFrom && dateTo ? `${dateFrom} – ${dateTo}` : "All time"}
                 <ChevronDown className={`h-3 w-3 transition-transform ${showDateFilter ? "rotate-180" : ""}`} />
               </button>
-              {showDateFilter && (
-                <div className="absolute left-0 top-9 z-30 rounded-xl border border-border bg-card p-4 shadow-xl">
+              <div className={`absolute left-0 top-9 z-30 origin-top-left rounded-xl border border-border bg-card p-4 shadow-xl transition-all duration-200 ${
+                showDateFilter
+                  ? "pointer-events-auto translate-y-0 scale-100 opacity-100"
+                  : "pointer-events-none -translate-y-1 scale-95 opacity-0"
+              }`}>
                   <div className="space-y-1">
                     {(() => {
                       const today = new Date()
@@ -990,8 +1053,7 @@ export default function SmartDashboardPage() {
                       <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-32 rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground" />
                     </div>
                   </div>
-                </div>
-              )}
+              </div>
             </div>
 
             {/* Advanced Analytics — desktop only */}
@@ -1000,11 +1062,15 @@ export default function SmartDashboardPage() {
               const isBetaUser = betaEmail && session?.user?.email === betaEmail
               const canUseAA = isPro && isBetaUser
               return (
-                <div className="relative">
+                <div
+                  className="relative"
+                  onMouseEnter={cancelAdvancedMenuClose}
+                  onMouseLeave={showAdvancedMenu ? scheduleAdvancedMenuClose : undefined}
+                >
                   {canUseAA ? (
                     <button
-                      onClick={() => { setShowAdvancedMenu(!showAdvancedMenu); setShowColorPicker(false); setShowDateFilter(false) }}
-                      className="flex h-7 items-center gap-1.5 rounded-lg border border-border px-3 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      onClick={() => { cancelAdvancedMenuClose(); setShowAdvancedMenu(!showAdvancedMenu); setShowColorPicker(false); setShowDateFilter(false) }}
+                      className="flex h-7 items-center gap-1.5 rounded-lg border border-border px-3 text-xs text-muted-foreground transition-all duration-200 hover:-translate-y-0.5 hover:bg-muted hover:text-foreground"
                     >
                       <Sparkles className="h-3.5 w-3.5" />
                       Advanced Analytics
@@ -1029,8 +1095,12 @@ export default function SmartDashboardPage() {
                       <Lock className="h-3 w-3" />
                     </Link>
                   )}
-                  {showAdvancedMenu && canUseAA && (
-                    <div className="absolute left-0 top-9 z-30 min-w-[220px] rounded-xl border border-border bg-card p-3 shadow-xl">
+                  {canUseAA && (
+                    <div className={`absolute left-0 top-9 z-30 min-w-[220px] origin-top-left rounded-xl border border-border bg-card p-3 shadow-xl transition-all duration-200 ${
+                      showAdvancedMenu
+                        ? "pointer-events-auto translate-y-0 scale-100 opacity-100"
+                        : "pointer-events-none -translate-y-1 scale-95 opacity-0"
+                    }`}>
                       <p className="mb-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">AI Analysis</p>
                       <button
                         onClick={runAdvancedAnalytics}
@@ -1054,13 +1124,17 @@ export default function SmartDashboardPage() {
 
             {/* Color picker — desktop only, when widget selected */}
             {!isMobile && isEditingLayout && selectedWidget && (
-              <div className="relative flex items-center gap-1.5">
+              <div
+                className="relative flex items-center gap-1.5"
+                onMouseEnter={cancelColorPickerClose}
+                onMouseLeave={showColorPicker ? scheduleColorPickerClose : undefined}
+              >
                 <div className="h-4 w-px bg-border mx-1" />
                 <span className="text-xs text-muted-foreground">Color:</span>
                 <div className="relative">
                   <button
-                    onClick={() => setShowColorPicker(!showColorPicker)}
-                    className="flex items-center gap-1.5 rounded-lg border border-border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted"
+                    onClick={() => { cancelColorPickerClose(); setShowColorPicker(!showColorPicker) }}
+                    className="flex items-center gap-1.5 rounded-lg border border-border px-2 py-1 text-xs text-muted-foreground transition-all duration-200 hover:-translate-y-0.5 hover:bg-muted"
                   >
                     <div className="flex items-center gap-0.5">
                       {(["primary","secondary","tertiary","quaternary","quinary"] as const).map(k => (
@@ -1070,8 +1144,11 @@ export default function SmartDashboardPage() {
                     </div>
                     <ChevronDown className="h-3 w-3" />
                   </button>
-                  {showColorPicker && (
-                    <div className="absolute left-0 top-9 z-30 rounded-xl border border-border bg-card p-4 shadow-xl">
+                  <div className={`absolute left-0 top-9 z-30 origin-top-left rounded-xl border border-border bg-card p-4 shadow-xl transition-all duration-200 ${
+                    showColorPicker
+                      ? "pointer-events-auto translate-y-0 scale-100 opacity-100"
+                      : "pointer-events-none -translate-y-1 scale-95 opacity-0"
+                  }`}>
                       <p className="mb-3 text-xs font-medium text-muted-foreground">Widget color theme</p>
                       <div className="space-y-2">
                         {COLOR_PRESETS.map((preset, i) => {
@@ -1093,8 +1170,7 @@ export default function SmartDashboardPage() {
                           )
                         })}
                       </div>
-                    </div>
-                  )}
+                  </div>
                 </div>
                 <span className="text-xs text-muted-foreground truncate max-w-[120px]">
                   {selectedWidget.title}
@@ -1302,12 +1378,13 @@ export default function SmartDashboardPage() {
             className="hidden md:flex absolute top-1/2 right-0 z-20 h-20 w-8 -translate-y-1/2 items-center justify-center rounded-l-xl border border-r-0 border-border bg-card/95 text-primary shadow-lg transition-all hover:bg-card hover:text-primary hover:[box-shadow:0_0_26px_-4px_var(--retro-glow-red)]"
             title={showWidgetPanel ? "Hide panel" : "Show panel"}
           >
-            <PanelRight className="h-4 w-4 drop-shadow-[0_0_12px_var(--retro-glow-red)]" />
+            <PanelRight className={`h-4 w-4 drop-shadow-[0_0_12px_var(--retro-glow-red)] transition-transform duration-300 ${showWidgetPanel ? "rotate-180" : "rotate-0"}`} />
           </button>
 
           {/* VISUALIZATIONS PANEL — desktop absolute overlay */}
-          {showWidgetPanel && (
-          <aside className="hidden md:flex absolute right-0 top-0 bottom-0 z-10 w-72 flex-col overflow-hidden border-l border-border bg-card/95 backdrop-blur-sm shadow-xl">
+          <aside className={`hidden md:flex absolute right-0 top-0 bottom-0 z-10 w-72 flex-col overflow-hidden border-l border-border bg-card/95 backdrop-blur-sm shadow-xl transition-all duration-300 ease-out ${
+            showWidgetPanel ? "translate-x-0 opacity-100 pointer-events-auto" : "translate-x-full opacity-0 pointer-events-none"
+          }`}>
             <div className="border-b border-border px-4 py-3">
               <h2 className="text-sm font-semibold text-foreground">Visualizations</h2>
               <p className="text-xs text-muted-foreground mt-0.5">Add visualizations to your dashboard</p>
@@ -1448,7 +1525,6 @@ export default function SmartDashboardPage() {
               )}
             </div>
           </aside>
-          )}
         </div>
       </div>
 

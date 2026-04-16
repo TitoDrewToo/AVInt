@@ -30,7 +30,7 @@ export function Footer() {
               alt="AVINTELLIGENCE"
               width={160}
               height={160}
-              className="h-8 w-auto shrink-0 brightness-0 dark:brightness-100"
+              className="h-8 w-auto shrink-0 brightness-0 dark:brightness-200 dark:contrast-[1.75] dark:saturate-150 dark:[filter:brightness(2.15)_contrast(1.55)_saturate(1.22)_drop-shadow(0_0_14px_rgba(255,255,255,0.5))_drop-shadow(0_0_28px_rgba(255,255,255,0.34))_drop-shadow(0_0_44px_rgba(255,255,255,0.2))]"
             />
             <span className="text-xs text-foreground/50" style={geistFontStyle}>
               © 2026 AVINTPH Information Technology Solutions

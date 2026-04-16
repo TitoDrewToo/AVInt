@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
 import { useEntitlement } from "@/hooks/use-entitlement"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
+import { summarizeCurrencies } from "@/lib/report-utils"
 import type { Session } from "@supabase/supabase-js"
-import { ArrowLeft, Download, FolderOpen, Printer } from "lucide-react"
+import { AlertTriangle, ArrowLeft, FolderOpen, Printer } from "lucide-react"
 import Link from "next/link"
 
 interface FolderOption { id: string; name: string }
@@ -96,60 +97,39 @@ export default function KeyTermsPage() {
     if (!session?.user?.id) return
     setLoading(true)
     setError(null)
+    setDocs([])
     try {
-      let filesQuery = supabase
-        .from("files")
-        .select("id")
-        .eq("user_id", session.user.id)
-        .in("document_type", ["contract", "agreement"])
-      if (targetFolder) filesQuery = filesQuery.eq("folder_id", targetFolder)
-      const { data: userFiles } = await filesQuery
+      const { data: auth } = await supabase.auth.getSession()
+      const token = auth.session?.access_token
+      if (!token) throw new Error("Unauthorized")
 
-      if (!userFiles?.length) { setLoading(false); return }
+      const params = new URLSearchParams()
+      if (dateFrom) params.set("dateFrom", dateFrom)
+      if (dateTo) params.set("dateTo", dateTo)
+      if (targetFolder) params.set("targetFolder", targetFolder)
 
-      const fileIds = userFiles.map((f) => f.id)
+      const res = await fetch(`/api/reports/key-terms?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? "Failed to load key terms data.")
 
-      let query = supabase
-        .from("document_fields")
-        .select(`
-          file_id,
-          counterparty_name,
-          document_date,
-          period_start,
-          period_end,
-          invoice_number,
-          payment_method,
-          total_amount,
-          currency,
-          line_items,
-          confidence_score,
-          files!inner(filename, document_type)
-        `)
-        .in("file_id", fileIds)
-        .order("document_date", { ascending: false })
-
-      if (dateFrom) query = query.gte("document_date", dateFrom)
-      if (dateTo)   query = query.lte("document_date", dateTo)
-
-      const { data } = await query
-
-      if (data) {
-        setDocs(data.map((row: any) => ({
-          id:                row.file_id,
-          filename:          row.files?.filename ?? "unknown",
-          document_type:     row.files?.document_type ?? "unknown",
-          counterparty_name: row.counterparty_name,
-          document_date:     row.document_date,
-          period_start:      row.period_start,
-          period_end:        row.period_end,
-          invoice_number:    row.invoice_number,
-          payment_method:    row.payment_method,
-          total_amount:      row.total_amount != null ? safeNum(row.total_amount) : null,
-          currency:          row.currency,
-          line_items:        row.line_items ?? null,
-          confidence_score:  row.confidence_score,
-        })))
-      }
+      const rows = Array.isArray(json.docs) ? json.docs : []
+      setDocs(rows.map((row: any) => ({
+        id:                row.file_id,
+        filename:          row.files?.filename ?? "unknown",
+        document_type:     row.files?.document_type ?? "unknown",
+        counterparty_name: row.counterparty_name,
+        document_date:     row.document_date,
+        period_start:      row.period_start,
+        period_end:        row.period_end,
+        invoice_number:    row.invoice_number,
+        payment_method:    row.payment_method,
+        total_amount:      row.total_amount != null ? safeNum(row.total_amount) : null,
+        currency:          row.currency,
+        line_items:        row.line_items ?? null,
+        confidence_score:  row.confidence_score,
+      })))
     } catch (err) {
       console.error("loadDocs error:", err)
       setError("Failed to load key terms data. Please try again.")
@@ -172,10 +152,7 @@ export default function KeyTermsPage() {
 
   const totalContractValue = docs.reduce((sum, d) => sum + (d.total_amount ?? 0), 0)
 
-  const _cc = docs.reduce((acc: Record<string, number>, d) => {
-    const c = d.currency ?? "USD"; acc[c] = (acc[c] ?? 0) + Math.abs(d.total_amount ?? 0); return acc
-  }, {})
-  const currency = Object.entries(_cc).sort(([, a], [, b]) => b - a)[0]?.[0] ?? "USD"
+  const { primaryCurrency: currency, currencies, mixedCurrency } = summarizeCurrencies(docs)
 
   // Expiring within 90 days
   const expiringSoon = docs.filter(d => {
@@ -299,6 +276,18 @@ export default function KeyTermsPage() {
           ) : docs.length === 0 ? (
             <div className="flex items-center justify-center py-24 text-sm text-muted-foreground">
               No contract or agreement documents found.
+            </div>
+          ) : mixedCurrency ? (
+            <div className="flex items-start gap-3 rounded border border-red-500/30 bg-red-500/5 p-4">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+              <div>
+                <p className="text-sm font-medium text-foreground">
+                  Mixed currencies detected ({currencies.join(", ")})
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Key Terms currently aggregates only one currency at a time. Filter to a single currency before relying on contract-value rollups.
+                </p>
+              </div>
             </div>
           ) : (
             <div className="space-y-10">

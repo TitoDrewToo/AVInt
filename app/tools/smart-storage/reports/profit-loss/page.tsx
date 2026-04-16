@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
 import { useEntitlement } from "@/hooks/use-entitlement"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
+import { summarizeCurrencies } from "@/lib/report-utils"
 import type { Session } from "@supabase/supabase-js"
-import { ArrowLeft, Download, FolderOpen, Printer } from "lucide-react"
+import { AlertTriangle, ArrowLeft, FolderOpen, Printer } from "lucide-react"
 import Link from "next/link"
 
 interface FolderOption { id: string; name: string }
@@ -64,15 +65,6 @@ function monthLabel(ym: string) {
   })
 }
 
-function dominantCurrency(entries: { currency: string | null; total_amount?: number | null; gross_income?: number | null }[]): string {
-  const totals: Record<string, number> = {}
-  for (const e of entries) {
-    const c = e.currency ?? "USD"
-    totals[c] = (totals[c] ?? 0) + Math.abs(e.gross_income ?? e.total_amount ?? 0)
-  }
-  return Object.entries(totals).sort(([, a], [, b]) => b - a)[0]?.[0] ?? "USD"
-}
-
 // ── Component ──────────────────────────────────────────────────────────────────
 
 export default function ProfitLossPage() {
@@ -112,69 +104,43 @@ export default function ProfitLossPage() {
     if (!session?.user?.id) return
     setLoading(true)
     setError(null)
+    setIncomeRows([])
+    setExpenseRows([])
     try {
-      const userId = session.user.id
+      const { data: auth } = await supabase.auth.getSession()
+      const token = auth.session?.access_token
+      if (!token) throw new Error("Unauthorized")
 
-      let incomeQ = supabase
-        .from("files")
-        .select("id")
-        .eq("user_id", userId)
-        .in("document_type", ["payslip", "income_statement"])
-      if (targetFolder) incomeQ = incomeQ.eq("folder_id", targetFolder)
-      const { data: incomeFiles } = await incomeQ
+      const params = new URLSearchParams()
+      if (dateFrom) params.set("dateFrom", dateFrom)
+      if (dateTo) params.set("dateTo", dateTo)
+      if (targetFolder) params.set("targetFolder", targetFolder)
 
-      let incomeData: IncomeEntry[] = []
-      if (incomeFiles?.length) {
-        let q = supabase
-          .from("document_fields")
-          .select("document_date, gross_income, net_income, total_amount, currency, employer_name, files!inner(document_type)")
-          .in("file_id", incomeFiles.map(f => f.id))
-          .order("document_date", { ascending: true })
-        if (dateFrom) q = q.gte("document_date", dateFrom)
-        if (dateTo)   q = q.lte("document_date", dateTo)
-        const { data } = await q
-        if (data) {
-          incomeData = data.map((r: any) => ({
-            document_date: r.document_date,
-            gross_income:  r.gross_income  != null ? safeNum(r.gross_income)  : null,
-            net_income:    r.net_income    != null ? safeNum(r.net_income)    : null,
-            total_amount:  r.total_amount  != null ? safeNum(r.total_amount)  : null,
-            currency:      r.currency,
-            document_type: r.files?.document_type ?? "unknown",
-            employer_name: r.employer_name,
-          }))
-        }
-      }
+      const res = await fetch(`/api/reports/profit-loss?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
 
-      let expenseQ = supabase
-        .from("files")
-        .select("id")
-        .eq("user_id", userId)
-        .in("document_type", ["receipt", "invoice"])
-      if (targetFolder) expenseQ = expenseQ.eq("folder_id", targetFolder)
-      const { data: expenseFiles } = await expenseQ
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? "Failed to load financial data.")
 
-      let expenseData: ExpenseEntry[] = []
-      if (expenseFiles?.length) {
-        let q = supabase
-          .from("document_fields")
-          .select("document_date, total_amount, currency, vendor_name, expense_category, files!inner(document_type)")
-          .in("file_id", expenseFiles.map(f => f.id))
-          .order("document_date", { ascending: true })
-        if (dateFrom) q = q.gte("document_date", dateFrom)
-        if (dateTo)   q = q.lte("document_date", dateTo)
-        const { data } = await q
-        if (data) {
-          expenseData = data.map((r: any) => ({
-            document_date:    r.document_date,
-            total_amount:     r.total_amount != null ? safeNum(r.total_amount) : null,
-            currency:         r.currency,
-            document_type:    r.files?.document_type ?? "unknown",
-            vendor_name:      r.vendor_name,
-            expense_category: r.expense_category,
-          }))
-        }
-      }
+      const incomeData = Array.isArray(json.incomeRows) ? json.incomeRows.map((r: any) => ({
+        document_date: r.document_date,
+        gross_income:  r.gross_income  != null ? safeNum(r.gross_income)  : null,
+        net_income:    r.net_income    != null ? safeNum(r.net_income)    : null,
+        total_amount:  r.total_amount  != null ? safeNum(r.total_amount)  : null,
+        currency:      r.currency,
+        document_type: r.files?.document_type ?? "unknown",
+        employer_name: r.employer_name,
+      })) : []
+
+      const expenseData = Array.isArray(json.expenseRows) ? json.expenseRows.map((r: any) => ({
+        document_date:    r.document_date,
+        total_amount:     r.total_amount != null ? safeNum(r.total_amount) : null,
+        currency:         r.currency,
+        document_type:    r.files?.document_type ?? "unknown",
+        vendor_name:      r.vendor_name,
+        expense_category: r.expense_category,
+      })) : []
 
       setIncomeRows(incomeData)
       setExpenseRows(expenseData)
@@ -190,7 +156,7 @@ export default function ProfitLossPage() {
 
   // ── Aggregations ──────────────────────────────────────────────────────────────
 
-  const currency      = dominantCurrency([...incomeRows, ...expenseRows])
+  const { primaryCurrency: currency, currencies, mixedCurrency } = summarizeCurrencies([...incomeRows, ...expenseRows])
   const totalRevenue  = incomeRows.reduce((s, r) => s + (r.gross_income ?? r.total_amount ?? 0), 0)
   const totalExpenses = expenseRows.reduce((s, r) => s + (r.total_amount ?? 0), 0)
   const netPosition   = totalRevenue - totalExpenses
@@ -339,41 +305,57 @@ export default function ProfitLossPage() {
                 </div>
               </div>
 
-              {/* ── Summary Strip ── */}
-              <div className="grid grid-cols-2 divide-x divide-border border border-border rounded sm:grid-cols-4">
-                {[
-                  { label: "Total Revenue",  value: fmt(totalRevenue, currency),  sub: null, loss: false },
-                  { label: "Total Expenses", value: fmt(totalExpenses, currency), sub: null, loss: false },
-                  {
-                    label: "Net Position",
-                    value: netPosition >= 0 ? fmt(netPosition, currency) : `(${fmt(Math.abs(netPosition), currency)})`,
-                    sub: netPosition >= 0 ? "Surplus" : "Deficit",
-                    loss: netPosition < 0,
-                  },
-                  {
-                    label: "Net Margin",
-                    value: netMargin !== null ? `${netMargin.toFixed(1)}%` : "—",
-                    sub: "of revenue",
-                    loss: netMargin !== null && netMargin < 0,
-                  },
-                ].map(item => (
-                  <div key={item.label} className="px-5 py-4">
-                    <p className="text-[10px] uppercase tracking-widest text-muted-foreground">{item.label}</p>
-                    <p className={`mt-1.5 font-mono text-base font-medium tabular-nums ${item.loss ? "text-destructive" : "text-foreground"}`}>
-                      {item.value}
+              {mixedCurrency && (
+                <div className="flex items-start gap-3 rounded border border-red-500/30 bg-red-500/5 p-4">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      Mixed currencies detected ({currencies.join(", ")})
                     </p>
-                    {item.sub && (
-                      <p className={`mt-0.5 text-[10px] ${item.loss ? "text-destructive/70" : "text-muted-foreground"}`}>
-                        {item.sub}
-                      </p>
-                    )}
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Profit &amp; Loss only aggregates a single currency at a time. Filter to one currency before relying on totals, margin, or monthly breakdown.
+                    </p>
                   </div>
-                ))}
-              </div>
+                </div>
+              )}
 
-              {/* ── P&L Statement Table ── */}
-              <div>
-                <table className="w-full text-sm">
+              {!mixedCurrency && (
+                <>
+                  {/* ── Summary Strip ── */}
+                  <div className="grid grid-cols-2 divide-x divide-border border border-border rounded sm:grid-cols-4">
+                    {[
+                      { label: "Total Revenue",  value: fmt(totalRevenue, currency),  sub: null, loss: false },
+                      { label: "Total Expenses", value: fmt(totalExpenses, currency), sub: null, loss: false },
+                      {
+                        label: "Net Position",
+                        value: netPosition >= 0 ? fmt(netPosition, currency) : `(${fmt(Math.abs(netPosition), currency)})`,
+                        sub: netPosition >= 0 ? "Surplus" : "Deficit",
+                        loss: netPosition < 0,
+                      },
+                      {
+                        label: "Net Margin",
+                        value: netMargin !== null ? `${netMargin.toFixed(1)}%` : "—",
+                        sub: "of revenue",
+                        loss: netMargin !== null && netMargin < 0,
+                      },
+                    ].map(item => (
+                      <div key={item.label} className="px-5 py-4">
+                        <p className="text-[10px] uppercase tracking-widest text-muted-foreground">{item.label}</p>
+                        <p className={`mt-1.5 font-mono text-base font-medium tabular-nums ${item.loss ? "text-destructive" : "text-foreground"}`}>
+                          {item.value}
+                        </p>
+                        {item.sub && (
+                          <p className={`mt-0.5 text-[10px] ${item.loss ? "text-destructive/70" : "text-muted-foreground"}`}>
+                            {item.sub}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* ── P&L Statement Table ── */}
+                  <div>
+                    <table className="w-full text-sm">
                   <colgroup>
                     <col style={{ width: "2rem" }} />
                     <col />
@@ -461,16 +443,16 @@ export default function ProfitLossPage() {
                     )}
 
                   </tbody>
-                </table>
-              </div>
+                    </table>
+                  </div>
 
-              {/* ── Monthly Breakdown ── */}
-              {monthRows.length > 0 && (
-                <div>
-                  <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                    Monthly Breakdown
-                  </p>
-                  <table className="w-full text-xs">
+                  {/* ── Monthly Breakdown ── */}
+                  {monthRows.length > 0 && (
+                    <div>
+                      <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                        Monthly Breakdown
+                      </p>
+                      <table className="w-full text-xs">
                     <thead>
                       <tr className="border-b border-border text-left text-muted-foreground">
                         <th className="pb-2 font-medium">Month</th>
@@ -515,8 +497,10 @@ export default function ProfitLossPage() {
                         </td>
                       </tr>
                     </tfoot>
-                  </table>
-                </div>
+                      </table>
+                    </div>
+                  )}
+                </>
               )}
 
               {/* ── Supporting Documents ── */}

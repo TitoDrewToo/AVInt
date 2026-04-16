@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
 import { useEntitlement } from "@/hooks/use-entitlement"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
+import { summarizeCurrencies } from "@/lib/report-utils"
 import type { Session } from "@supabase/supabase-js"
-import { ArrowLeft, Download, ChevronDown, ChevronUp, RefreshCw, FolderOpen, Printer } from "lucide-react"
+import { AlertTriangle, ArrowLeft, Download, ChevronDown, ChevronUp, RefreshCw, FolderOpen, Printer } from "lucide-react"
 import Link from "next/link"
 
 interface FolderOption { id: string; name: string }
@@ -148,73 +149,49 @@ export default function ContractSummaryPage() {
     if (!session?.user?.id) return
     setLoading(true)
     setError(null)
+    setContracts([])
+    setObligations({})
     try {
-      let filesQuery = supabase
-        .from("files")
-        .select("id")
-        .eq("user_id", session.user.id)
-        .in("document_type", ["contract", "agreement"])
-      if (targetFolder) filesQuery = filesQuery.eq("folder_id", targetFolder)
-      const { data: userFiles } = await filesQuery
+      const { data: auth } = await supabase.auth.getSession()
+      const token = auth.session?.access_token
+      if (!token) throw new Error("Unauthorized")
 
-      if (!userFiles?.length) return
+      const params = new URLSearchParams()
+      if (dateFrom) params.set("dateFrom", dateFrom)
+      if (dateTo) params.set("dateTo", dateTo)
+      if (targetFolder) params.set("targetFolder", targetFolder)
 
-      const fileIds = userFiles.map((f: any) => f.id)
+      const res = await fetch(`/api/reports/contract-summary?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? "Failed to load contract data.")
 
-      let query = supabase
-        .from("document_fields")
-        .select(`
-          file_id,
-          counterparty_name,
-          document_date,
-          period_start,
-          period_end,
-          invoice_number,
-          total_amount,
-          currency,
-          payment_method,
-          confidence_score,
-          files!inner(filename, document_type)
-        `)
-        .in("file_id", fileIds)
-        .order("document_date", { ascending: false })
+      const contractRows = Array.isArray(json.contracts) ? json.contracts : []
+      setContracts(contractRows.map((row: any) => ({
+        file_id:           row.file_id,
+        filename:          row.files?.filename ?? "unknown",
+        document_type:     row.files?.document_type ?? "unknown",
+        counterparty_name: row.counterparty_name,
+        document_date:     row.document_date,
+        period_start:      row.period_start,
+        period_end:        row.period_end,
+        invoice_number:    row.invoice_number,
+        total_amount:      row.total_amount != null ? safeNum(row.total_amount) : null,
+        currency:          row.currency,
+        payment_method:    row.payment_method,
+        confidence_score:  row.confidence_score,
+      })))
 
-      if (dateFrom) query = query.gte("document_date", dateFrom)
-      if (dateTo)   query = query.lte("document_date", dateTo)
-
-      const { data } = await query
-
-      if (data) {
-        setContracts(data.map((row: any) => ({
-          file_id:           row.file_id,
-          filename:          row.files?.filename ?? "unknown",
-          document_type:     row.files?.document_type ?? "unknown",
-          counterparty_name: row.counterparty_name,
-          document_date:     row.document_date,
-          period_start:      row.period_start,
-          period_end:        row.period_end,
-          invoice_number:    row.invoice_number,
-          total_amount:      row.total_amount != null ? safeNum(row.total_amount) : null,
-          currency:          row.currency,
-          payment_method:    row.payment_method,
-          confidence_score:  row.confidence_score,
-        })))
-
-        const { data: obligs } = await supabase
-          .from("payment_obligations")
-          .select("*")
-          .in("file_id", fileIds)
-          .order("due_date", { ascending: true })
-
-        if (obligs) {
-          const grouped: Record<string, PaymentObligation[]> = {}
-          for (const o of obligs as PaymentObligation[]) {
-            if (!grouped[o.file_id]) grouped[o.file_id] = []
-            grouped[o.file_id].push(o)
-          }
-          setObligations(grouped)
-        }
+      const grouped: Record<string, PaymentObligation[]> = {}
+      const obligationMap = json.obligations && typeof json.obligations === "object" ? json.obligations : {}
+      for (const [fileId, rows] of Object.entries(obligationMap)) {
+        grouped[fileId] = Array.isArray(rows) ? (rows as PaymentObligation[]).map((row) => ({
+          ...row,
+          amount: row.amount != null ? safeNum(row.amount) : null,
+        })) : []
       }
+      setObligations(grouped)
     } catch (err) {
       console.error("loadContracts error:", err)
       setError("Failed to load contract data. Please try again.")
@@ -289,7 +266,10 @@ export default function ContractSummaryPage() {
     acc[cur] = (acc[cur] ?? 0) + 1
     return acc
   }, {})
-  const currency = Object.entries(currencyCount).sort(([, a], [, b]) => b - a)[0]?.[0] ?? "USD"
+  const { primaryCurrency: currency, currencies, mixedCurrency } = summarizeCurrencies([
+    ...contracts,
+    ...Object.values(obligations).flat().map((o) => ({ currency: o.currency, total_amount: o.amount })),
+  ])
 
   const byCounterparty: CounterpartySummary[] = Object.values(
     contracts.reduce((acc: Record<string, CounterpartySummary>, row) => {
@@ -416,6 +396,18 @@ export default function ContractSummaryPage() {
           ) : contracts.length === 0 ? (
             <div className="flex items-center justify-center py-24 text-sm text-muted-foreground">
               No contract or agreement documents found.
+            </div>
+          ) : mixedCurrency ? (
+            <div className="flex items-start gap-3 rounded border border-red-500/30 bg-red-500/5 p-4">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+              <div>
+                <p className="text-sm font-medium text-foreground">
+                  Mixed currencies detected ({currencies.join(", ")})
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Contract Summary currently aggregates only one currency at a time. Filter to a single currency before relying on contract values or obligation totals.
+                </p>
+              </div>
             </div>
           ) : (
             <div className="space-y-10">

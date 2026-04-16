@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
 import { useEntitlement } from "@/hooks/use-entitlement"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
+import { summarizeCurrencies } from "@/lib/report-utils"
 import type { Session } from "@supabase/supabase-js"
-import { ArrowLeft, Download, FolderOpen, Printer } from "lucide-react"
+import { AlertTriangle, ArrowLeft, FolderOpen, Printer } from "lucide-react"
 import Link from "next/link"
 
 interface FolderOption { id: string; name: string }
@@ -79,44 +80,35 @@ export default function ExpenseSummaryPage() {
     if (!session?.user?.id) return
     setLoading(true)
     setError(null)
+    setExpenses([])
     try {
-      let filesQuery = supabase
-        .from("files")
-        .select("id")
-        .eq("user_id", session.user.id)
-        .in("document_type", ["receipt", "invoice"])
-      if (targetFolder) filesQuery = filesQuery.eq("folder_id", targetFolder)
-      const { data: userFiles } = await filesQuery
+      const { data: auth } = await supabase.auth.getSession()
+      const token = auth.session?.access_token
+      if (!token) throw new Error("Unauthorized")
 
-      if (!userFiles?.length) return
+      const params = new URLSearchParams()
+      if (dateFrom) params.set("dateFrom", dateFrom)
+      if (dateTo) params.set("dateTo", dateTo)
+      if (targetFolder) params.set("targetFolder", targetFolder)
 
-      let query = supabase
-        .from("document_fields")
-        .select(`
-          file_id, vendor_name, document_date, total_amount,
-          currency, expense_category, confidence_score,
-          files!inner(filename, document_type)
-        `)
-        .in("file_id", userFiles.map(f => f.id))
-        .order("document_date", { ascending: false })
+      const res = await fetch(`/api/reports/expense-summary?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
 
-      if (dateFrom) query = query.gte("document_date", dateFrom)
-      if (dateTo)   query = query.lte("document_date", dateTo)
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? "Failed to load expense data.")
 
-      const { data } = await query
-
-      if (data) {
-        setExpenses(data.map((row: any) => ({
-          filename:         row.files?.filename ?? "unknown",
-          document_type:    row.files?.document_type ?? "unknown",
-          vendor_name:      row.vendor_name,
-          document_date:    row.document_date,
-          total_amount:     safeNum(row.total_amount),
-          currency:         row.currency,
-          expense_category: row.expense_category,
-          confidence_score: row.confidence_score,
-        })))
-      }
+      const rows = Array.isArray(json.expenses) ? json.expenses : []
+      setExpenses(rows.map((row: any) => ({
+        filename:         row.files?.filename ?? "unknown",
+        document_type:    row.files?.document_type ?? "unknown",
+        vendor_name:      row.vendor_name,
+        document_date:    row.document_date,
+        total_amount:     safeNum(row.total_amount),
+        currency:         row.currency,
+        expense_category: row.expense_category,
+        confidence_score: row.confidence_score,
+      })))
     } catch (err) {
       console.error("loadExpenses error:", err)
       setError("Failed to load expense data. Please try again.")
@@ -129,10 +121,7 @@ export default function ExpenseSummaryPage() {
 
   // ── Aggregations ──────────────────────────────────────────────────────────────
 
-  const _cc = expenses.reduce((acc: Record<string, number>, e) => {
-    const c = e.currency ?? "USD"; acc[c] = (acc[c] ?? 0) + Math.abs(e.total_amount ?? 0); return acc
-  }, {})
-  const currency = Object.entries(_cc).sort(([, a], [, b]) => b - a)[0]?.[0] ?? "USD"
+  const { primaryCurrency: currency, currencies, mixedCurrency } = summarizeCurrencies(expenses)
   const totalExpenses = expenses.reduce((s, e) => s + (e.total_amount ?? 0), 0)
 
   // Group by category (sorted by amount desc)
@@ -263,91 +252,109 @@ export default function ExpenseSummaryPage() {
                 </div>
               </div>
 
-              {/* ── Summary Strip ── */}
-              <div className="grid grid-cols-2 divide-x divide-border border border-border rounded sm:grid-cols-4">
-                {[
-                  { label: "Total Expenses",  value: fmt(totalExpenses, currency) },
-                  { label: "Documents",        value: String(expenses.length) },
-                  { label: "Categories",       value: String(byCategory.length) },
-                  { label: "Avg per Document", value: expenses.length > 0 ? fmt(totalExpenses / expenses.length, currency) : "—" },
-                ].map(item => (
-                  <div key={item.label} className="px-5 py-4">
-                    <p className="text-[10px] uppercase tracking-widest text-muted-foreground">{item.label}</p>
-                    <p className="mt-1.5 font-mono text-base font-medium tabular-nums text-foreground">{item.value}</p>
+              {mixedCurrency && (
+                <div className="flex items-start gap-3 rounded border border-red-500/30 bg-red-500/5 p-4">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      Mixed currencies detected ({currencies.join(", ")})
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Expense Summary only aggregates a single currency at a time. Filter this report to one currency bucket before relying on totals.
+                    </p>
                   </div>
-                ))}
-              </div>
-
-              {/* ── Schedule of Expenses by Category ── */}
-              <div>
-                <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                  Schedule of Expenses by Category
-                </p>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border text-left text-[10px] uppercase tracking-wider text-muted-foreground">
-                      <th className="pb-2 font-medium">Category</th>
-                      <th className="pb-2 text-right font-medium">Amount</th>
-                      <th className="pb-2 text-right font-medium">% of Total</th>
-                      <th className="pb-2 text-right font-medium">Docs</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/50">
-                    {byCategory.map(cat => (
-                      <tr key={cat.category}>
-                        <td className="py-2.5 text-foreground">{cat.category}</td>
-                        <td className="py-2.5 text-right font-mono tabular-nums text-foreground">
-                          ({fmt(cat.total, currency)})
-                        </td>
-                        <td className="py-2.5 text-right text-muted-foreground">
-                          {totalExpenses > 0 ? `${((cat.total / totalExpenses) * 100).toFixed(1)}%` : "—"}
-                        </td>
-                        <td className="py-2.5 text-right text-muted-foreground">{cat.count}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="border-t-2 border-border font-semibold">
-                      <td className="pt-2.5 text-foreground">Total</td>
-                      <td className="pt-2.5 text-right font-mono tabular-nums text-foreground">({fmt(totalExpenses, currency)})</td>
-                      <td className="pt-2.5 text-right text-muted-foreground">100%</td>
-                      <td className="pt-2.5 text-right text-muted-foreground">{expenses.length}</td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-
-              {/* ── By Vendor ── */}
-              {byVendor.length > 0 && (
-                <div>
-                  <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                    By Vendor
-                  </p>
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border text-left text-[10px] uppercase tracking-wider text-muted-foreground">
-                        <th className="pb-2 font-medium">Vendor</th>
-                        <th className="pb-2 text-right font-medium">Amount</th>
-                        <th className="pb-2 text-right font-medium">% of Total</th>
-                        <th className="pb-2 text-right font-medium">Docs</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border/50">
-                      {byVendor.map(v => (
-                        <tr key={v.category}>
-                          <td className="py-2 text-foreground">{v.category}</td>
-                          <td className="py-2 text-right font-mono tabular-nums text-foreground">
-                            ({fmt(v.total, currency)})
-                          </td>
-                          <td className="py-2 text-right text-muted-foreground">
-                            {totalExpenses > 0 ? `${((v.total / totalExpenses) * 100).toFixed(1)}%` : "—"}
-                          </td>
-                          <td className="py-2 text-right text-muted-foreground">{v.count}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
                 </div>
+              )}
+
+              {!mixedCurrency && (
+                <>
+                  {/* ── Summary Strip ── */}
+                  <div className="grid grid-cols-2 divide-x divide-border border border-border rounded sm:grid-cols-4">
+                    {[
+                      { label: "Total Expenses",  value: fmt(totalExpenses, currency) },
+                      { label: "Documents",        value: String(expenses.length) },
+                      { label: "Categories",       value: String(byCategory.length) },
+                      { label: "Avg per Document", value: expenses.length > 0 ? fmt(totalExpenses / expenses.length, currency) : "—" },
+                    ].map(item => (
+                      <div key={item.label} className="px-5 py-4">
+                        <p className="text-[10px] uppercase tracking-widest text-muted-foreground">{item.label}</p>
+                        <p className="mt-1.5 font-mono text-base font-medium tabular-nums text-foreground">{item.value}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* ── Schedule of Expenses by Category ── */}
+                  <div>
+                    <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                      Schedule of Expenses by Category
+                    </p>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-border text-left text-[10px] uppercase tracking-wider text-muted-foreground">
+                          <th className="pb-2 font-medium">Category</th>
+                          <th className="pb-2 text-right font-medium">Amount</th>
+                          <th className="pb-2 text-right font-medium">% of Total</th>
+                          <th className="pb-2 text-right font-medium">Docs</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/50">
+                        {byCategory.map(cat => (
+                          <tr key={cat.category}>
+                            <td className="py-2.5 text-foreground">{cat.category}</td>
+                            <td className="py-2.5 text-right font-mono tabular-nums text-foreground">
+                              ({fmt(cat.total, currency)})
+                            </td>
+                            <td className="py-2.5 text-right text-muted-foreground">
+                              {totalExpenses > 0 ? `${((cat.total / totalExpenses) * 100).toFixed(1)}%` : "—"}
+                            </td>
+                            <td className="py-2.5 text-right text-muted-foreground">{cat.count}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t-2 border-border font-semibold">
+                          <td className="pt-2.5 text-foreground">Total</td>
+                          <td className="pt-2.5 text-right font-mono tabular-nums text-foreground">({fmt(totalExpenses, currency)})</td>
+                          <td className="pt-2.5 text-right text-muted-foreground">100%</td>
+                          <td className="pt-2.5 text-right text-muted-foreground">{expenses.length}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+
+                  {/* ── By Vendor ── */}
+                  {byVendor.length > 0 && (
+                    <div>
+                      <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                        By Vendor
+                      </p>
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-border text-left text-[10px] uppercase tracking-wider text-muted-foreground">
+                            <th className="pb-2 font-medium">Vendor</th>
+                            <th className="pb-2 text-right font-medium">Amount</th>
+                            <th className="pb-2 text-right font-medium">% of Total</th>
+                            <th className="pb-2 text-right font-medium">Docs</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border/50">
+                          {byVendor.map(v => (
+                            <tr key={v.category}>
+                              <td className="py-2 text-foreground">{v.category}</td>
+                              <td className="py-2 text-right font-mono tabular-nums text-foreground">
+                                ({fmt(v.total, currency)})
+                              </td>
+                              <td className="py-2 text-right text-muted-foreground">
+                                {totalExpenses > 0 ? `${((v.total / totalExpenses) * 100).toFixed(1)}%` : "—"}
+                              </td>
+                              <td className="py-2 text-right text-muted-foreground">{v.count}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
               )}
 
               {/* ── Transaction Detail ── */}
@@ -381,12 +388,14 @@ export default function ExpenseSummaryPage() {
                     ))}
                   </tbody>
                   <tfoot>
-                    <tr className="border-t-2 border-border font-semibold">
-                      <td colSpan={4} className="pt-2 text-foreground">Total</td>
-                      <td className="pt-2 text-right font-mono tabular-nums text-foreground">
-                        ({fmt(totalExpenses, currency)})
-                      </td>
-                    </tr>
+                    {!mixedCurrency && (
+                      <tr className="border-t-2 border-border font-semibold">
+                        <td colSpan={4} className="pt-2 text-foreground">Total</td>
+                        <td className="pt-2 text-right font-mono tabular-nums text-foreground">
+                          ({fmt(totalExpenses, currency)})
+                        </td>
+                      </tr>
+                    )}
                   </tfoot>
                 </table>
               </div>

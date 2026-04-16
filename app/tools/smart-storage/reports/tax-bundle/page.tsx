@@ -103,112 +103,64 @@ export default function TaxBundlePage() {
       .then(({ data }) => { if (data) setFolders(data) })
   }, [session])
 
-  // One-shot probe: detect the set of years with any document coverage and
-  // auto-scope the period filter to the most recent year. Runs once per
-  // session — clearing dates later does NOT re-trigger, so user intent wins.
-  useEffect(() => {
-    if (!session?.user?.id || defaultsApplied) return
-    let cancelled = false
-    ;(async () => {
-      const { data: userFiles } = await supabase
-        .from("files").select("id").eq("user_id", session.user.id)
-      if (cancelled) return
-      const fileCount = userFiles?.length ?? 0
-      setTotalOwnedDocs(fileCount)
-      if (fileCount === 0) { setDefaultsApplied(true); return }
-
-      // Pull just the date columns we need for year detection — cheap scan.
-      const { data: dateRows } = await supabase
-        .from("document_fields")
-        .select("period_start, period_end, document_date, files!inner(user_id)")
-        .eq("files.user_id", session.user.id)
-      if (cancelled) return
-
-      const years = new Set<number>()
-      for (const r of (dateRows ?? []) as Array<{
-        period_start: string | null; period_end: string | null; document_date: string | null
-      }>) {
-        const d = r.period_end ?? r.period_start ?? r.document_date
-        if (d && d.length >= 4) years.add(parseInt(d.slice(0, 4), 10))
-      }
-      const sortedYears = Array.from(years).filter(n => !isNaN(n)).sort((a, b) => b - a)
-      setDetectedYears(sortedYears)
-
-      // Auto-scope to most recent year with data.
-      if (sortedYears.length > 0 && !dateFrom && !dateTo) {
-        const y = sortedYears[0]
-        setDateFrom(`${y}-01-01`)
-        setDateTo(`${y}-12-31`)
-      }
-      setDefaultsApplied(true)
-    })()
-    return () => { cancelled = true }
-  }, [session, defaultsApplied, dateFrom, dateTo])
-
   const safeNum = (v: unknown): number => { const n = parseFloat(String(v ?? "0")); return isNaN(n) ? 0 : n }
 
   const loadData = useCallback(async () => {
     if (!session?.user?.id) return
     setLoading(true)
     setError(null)
+    setRows([])
     try {
-      let filesQuery = supabase
-        .from("files")
-        .select("id, document_type")
-        .eq("user_id", session.user.id)
-      if (targetFolder) filesQuery = filesQuery.eq("folder_id", targetFolder)
-      const { data: userFiles } = await filesQuery
+      const { data: auth } = await supabase.auth.getSession()
+      const token = auth.session?.access_token
+      if (!token) throw new Error("Unauthorized")
 
-      if (!userFiles?.length) { setRows([]); return }
+      const params = new URLSearchParams()
+      if (dateFrom) params.set("dateFrom", dateFrom)
+      if (dateTo) params.set("dateTo", dateTo)
+      if (targetFolder) params.set("targetFolder", targetFolder)
 
-      let query = supabase
-        .from("document_fields")
-        .select(`
-          file_id, vendor_name, vendor_normalized, employer_name, document_date,
-          period_start, period_end,
-          total_amount, gross_income, net_income, expense_category, currency,
-          income_source, classification_rationale, jurisdiction,
-          confidence_score,
-          files!inner(filename, document_type, storage_path)
-        `)
-        .in("file_id", userFiles.map(f => f.id))
-        .order("document_date", { ascending: false })
+      const res = await fetch(`/api/reports/tax-bundle?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? "Failed to load tax data.")
 
-      // Period overlap: a document is "in" the selected window if its
-      // [period_start, period_end] interval intersects [dateFrom, dateTo].
-      // Interval intersection = period_end >= dateFrom AND period_start <= dateTo.
-      // The v2 normalizer populates period_start/period_end for every row
-      // (falling back to document_date at write time), so no OR fallback is
-      // needed here. Legacy pre-v2 rows without those columns surface via
-      // the "missing classification" advisory instead of silent exclusion.
-      if (dateFrom) query = query.gte("period_end",   dateFrom)
-      if (dateTo)   query = query.lte("period_start", dateTo)
+      const rows = Array.isArray(json.rows) ? json.rows : []
+      setRows(rows.map((row: any) => ({
+        file_id:                  row.file_id,
+        filename:                 row.files?.filename ?? "unknown",
+        document_type:            row.files?.document_type ?? "unknown",
+        vendor_name:              row.vendor_name,
+        vendor_normalized:        row.vendor_normalized,
+        employer_name:            row.employer_name,
+        document_date:            row.document_date,
+        period_start:             row.period_start,
+        period_end:               row.period_end,
+        total_amount:             row.total_amount != null ? safeNum(row.total_amount) : null,
+        gross_income:             row.gross_income != null ? safeNum(row.gross_income) : null,
+        net_income:               row.net_income != null ? safeNum(row.net_income) : null,
+        expense_category:         row.expense_category,
+        income_source:            row.income_source,
+        classification_rationale: row.classification_rationale,
+        jurisdiction:             row.jurisdiction,
+        currency:                 row.currency,
+        confidence_score:         row.confidence_score != null ? safeNum(row.confidence_score) : null,
+        storage_path:             row.files?.storage_path ?? null,
+      })))
+      setTotalOwnedDocs(typeof json.totalOwnedDocs === "number" ? json.totalOwnedDocs : 0)
 
-      const { data } = await query
+      const years = Array.isArray(json.detectedYears)
+        ? json.detectedYears.filter((n: unknown) => typeof n === "number" && !isNaN(n))
+        : []
+      setDetectedYears(years)
 
-      if (data) {
-        setRows(data.map((row: any) => ({
-          file_id:                  row.file_id,
-          filename:                 row.files?.filename ?? "unknown",
-          document_type:            row.files?.document_type ?? "unknown",
-          vendor_name:              row.vendor_name,
-          vendor_normalized:        row.vendor_normalized,
-          employer_name:            row.employer_name,
-          document_date:            row.document_date,
-          period_start:             row.period_start,
-          period_end:               row.period_end,
-          total_amount:             row.total_amount != null ? safeNum(row.total_amount) : null,
-          gross_income:             row.gross_income != null ? safeNum(row.gross_income) : null,
-          net_income:               row.net_income != null ? safeNum(row.net_income) : null,
-          expense_category:         row.expense_category,
-          income_source:            row.income_source,
-          classification_rationale: row.classification_rationale,
-          jurisdiction:             row.jurisdiction,
-          currency:                 row.currency,
-          confidence_score:         row.confidence_score != null ? safeNum(row.confidence_score) : null,
-          storage_path:             row.files?.storage_path ?? null,
-        })))
+      if (!defaultsApplied && years.length > 0 && !dateFrom && !dateTo) {
+        const y = years[0]
+        setDateFrom(`${y}-01-01`)
+        setDateTo(`${y}-12-31`)
       }
+      setDefaultsApplied(true)
     } catch (err) {
       console.error("loadData error:", err)
       setError("Failed to load tax data. Please try again.")

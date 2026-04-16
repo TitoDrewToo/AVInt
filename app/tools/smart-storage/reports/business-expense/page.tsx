@@ -6,66 +6,19 @@ import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
 import { useEntitlement } from "@/hooks/use-entitlement"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
+import { summarizeCurrencies } from "@/lib/report-utils"
+import { ALL_SC_CATEGORIES, getScheduleCLine } from "@/lib/tax-bundle"
 import type { Session } from "@supabase/supabase-js"
-import { ArrowLeft, Download, FolderOpen, Printer, Copy, Ban, FileWarning } from "lucide-react"
+import { AlertTriangle, ArrowLeft, Download, FolderOpen, Printer, Copy, Ban, FileWarning } from "lucide-react"
 import Link from "next/link"
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 interface FolderOption { id: string; name: string }
 
-const BUSINESS_CATEGORIES = new Set([
-  "Office", "Office Supplies", "Equipment", "Hardware", "Software", "Subscriptions",
-  "SaaS", "Cloud Services", "Internet", "Phone", "Utilities", "Rent", "Coworking",
-  "Travel", "Transport", "Fuel", "Parking", "Accommodation", "Airfare",
-  "Marketing", "Advertising", "Design", "Printing",
-  "Meals", "Entertainment", "Client Entertainment",
-  "Legal", "Accounting", "Professional Services", "Consulting",
-  "Training", "Education", "Conferences",
-  "Insurance", "Bank Fees", "Tax", "Taxes",
-  "Repairs", "Maintenance",
-])
+const BUSINESS_CATEGORIES = new Set(ALL_SC_CATEGORIES)
 
 const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
-
-// ── Schedule C Line-Item Mapping ─────────────────────────────────────────────
-
-interface ScheduleCLine {
-  line: string
-  label: string
-  categories: string[]
-}
-
-const SCHEDULE_C_LINES: ScheduleCLine[] = [
-  { line: "Line 8",  label: "Advertising",          categories: ["Marketing", "Advertising", "Design", "Printing"] },
-  { line: "Line 9",  label: "Car & Truck",           categories: ["Fuel", "Parking", "Transport"] },
-  { line: "Line 10", label: "Commissions & Fees",    categories: ["Bank Fees"] },
-  { line: "Line 11", label: "Contract Labor",        categories: ["Consulting"] },
-  { line: "Line 13", label: "Depreciation",          categories: ["Equipment", "Hardware"] },
-  { line: "Line 15", label: "Insurance",             categories: ["Insurance"] },
-  { line: "Line 17", label: "Legal & Professional",  categories: ["Legal", "Accounting", "Professional Services"] },
-  { line: "Line 18", label: "Office Expense",        categories: ["Office", "Office Supplies"] },
-  { line: "Line 20b",label: "Rent",                  categories: ["Rent", "Coworking"] },
-  { line: "Line 21", label: "Repairs",               categories: ["Repairs", "Maintenance"] },
-  { line: "Line 22", label: "Supplies",              categories: ["Subscriptions", "SaaS", "Cloud Services", "Software"] },
-  { line: "Line 23", label: "Taxes & Licenses",      categories: ["Tax", "Taxes"] },
-  { line: "Line 24a",label: "Travel",                categories: ["Travel", "Accommodation", "Airfare"] },
-  { line: "Line 24b",label: "Meals (50%)",           categories: ["Meals", "Entertainment", "Client Entertainment"] },
-  { line: "Line 25", label: "Utilities",             categories: ["Utilities", "Internet", "Phone"] },
-  { line: "Line 27a",label: "Other",                 categories: ["Training", "Education", "Conferences"] },
-]
-
-const CATEGORY_TO_LINE = new Map<string, string>()
-for (const sc of SCHEDULE_C_LINES) {
-  for (const cat of sc.categories) {
-    CATEGORY_TO_LINE.set(cat.toLowerCase(), sc.line)
-  }
-}
-
-function getScheduleCLine(category: string | null): string | null {
-  if (!category) return null
-  return CATEGORY_TO_LINE.get(category.toLowerCase()) ?? null
-}
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -151,51 +104,42 @@ export default function BusinessExpensePage() {
     if (!session?.user?.id) return
     setLoading(true)
     setError(null)
+    setExpenses([])
     try {
-      let filesQuery = supabase
-        .from("files")
-        .select("id")
-        .eq("user_id", session.user.id)
-        .in("document_type", ["receipt", "invoice"])
-      if (targetFolder) filesQuery = filesQuery.eq("folder_id", targetFolder)
-      const { data: userFiles } = await filesQuery
+      const { data: auth } = await supabase.auth.getSession()
+      const token = auth.session?.access_token
+      if (!token) throw new Error("Unauthorized")
 
-      if (!userFiles?.length) { setLoading(false); return }
+      const params = new URLSearchParams()
+      if (dateFrom) params.set("dateFrom", dateFrom)
+      if (dateTo) params.set("dateTo", dateTo)
+      if (targetFolder) params.set("targetFolder", targetFolder)
 
-      let query = supabase
-        .from("document_fields")
-        .select(`
-          file_id, vendor_name, document_date, total_amount, currency,
-          expense_category, payment_method, tax_amount, confidence_score,
-          files!inner(filename, document_type)
-        `)
-        .in("file_id", userFiles.map(f => f.id))
-        .order("document_date", { ascending: false })
+      const res = await fetch(`/api/reports/business-expense?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
 
-      if (dateFrom) query = query.gte("document_date", dateFrom)
-      if (dateTo)   query = query.lte("document_date", dateTo)
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? "Failed to load expense data.")
 
-      const { data } = await query
-
-      if (data) {
-        setExpenses(data.map((row: any, i: number) => {
-          const expense_category = row.expense_category ?? null
-          return {
-            id:               row.file_id ?? String(i),
-            filename:         row.files?.filename ?? "unknown",
-            document_type:    row.files?.document_type ?? "unknown",
-            vendor_name:      row.vendor_name,
-            document_date:    row.document_date,
-            total_amount:     safeNum(row.total_amount),
-            currency:         row.currency,
-            expense_category,
-            payment_method:   row.payment_method,
-            tax_amount:       row.tax_amount != null ? safeNum(row.tax_amount) : null,
-            confidence_score: row.confidence_score,
-            isBusiness:       BUSINESS_CATEGORIES.has(expense_category ?? ""),
-          }
-        }))
-      }
+      const rows = Array.isArray(json.expenses) ? json.expenses : []
+      setExpenses(rows.map((row: any, i: number) => {
+        const expense_category = row.expense_category ?? null
+        return {
+          id:               row.file_id ?? String(i),
+          filename:         row.files?.filename ?? "unknown",
+          document_type:    row.files?.document_type ?? "unknown",
+          vendor_name:      row.vendor_name,
+          document_date:    row.document_date,
+          total_amount:     safeNum(row.total_amount),
+          currency:         row.currency,
+          expense_category,
+          payment_method:   row.payment_method,
+          tax_amount:       row.tax_amount != null ? safeNum(row.tax_amount) : null,
+          confidence_score: row.confidence_score,
+          isBusiness:       BUSINESS_CATEGORIES.has(expense_category ?? ""),
+        }
+      }))
     } catch (err) {
       console.error("loadExpenses error:", err)
       setError("Failed to load expense data. Please try again.")
@@ -220,10 +164,7 @@ export default function BusinessExpensePage() {
 
   // ── Aggregations ──────────────────────────────────────────────────────────────
 
-  const _cc = expenses.reduce((acc: Record<string, number>, e) => {
-    const c = e.currency ?? "USD"; acc[c] = (acc[c] ?? 0) + Math.abs(e.total_amount ?? 0); return acc
-  }, {})
-  const currency = Object.entries(_cc).sort(([, a], [, b]) => b - a)[0]?.[0] ?? "USD"
+  const { primaryCurrency: currency, currencies, mixedCurrency } = summarizeCurrencies(expenses)
 
   const resolvedExpenses = expenses.map(e => ({
     ...e,
@@ -424,6 +365,20 @@ export default function BusinessExpensePage() {
             </div>
           </div>
 
+          {mixedCurrency && (
+            <div className="mb-8 flex items-start gap-3 rounded border border-red-500/30 bg-red-500/5 p-4">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+              <div>
+                <p className="text-sm font-medium text-foreground">
+                  Mixed currencies detected ({currencies.join(", ")})
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Business Expense Report only aggregates a single currency at a time. Filter to one currency before relying on totals, duplicates, or estimated tax savings.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Filters */}
           <div className="mb-8 flex items-center gap-3 border-y border-border py-3 print:hidden">
             <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">Period</span>
@@ -479,7 +434,7 @@ export default function BusinessExpensePage() {
             <div className="space-y-10">
 
               {/* ── Duplicate Warning Banner ── */}
-              {duplicates.length > 0 && (
+              {!mixedCurrency && duplicates.length > 0 && (
                 <div className="flex items-start gap-3 rounded border border-yellow-500/20 bg-yellow-500/5 p-4">
                   <Ban className="mt-0.5 h-4 w-4 shrink-0 text-yellow-500" />
                   <div>
@@ -499,7 +454,7 @@ export default function BusinessExpensePage() {
               )}
 
               {/* ── Missing Months Warning ── */}
-              {missingMonths.length > 0 && (
+              {!mixedCurrency && missingMonths.length > 0 && (
                 <div className="flex items-start gap-3 rounded border border-yellow-500/20 bg-yellow-500/5 p-4">
                   <FileWarning className="mt-0.5 h-4 w-4 shrink-0 text-yellow-500" />
                   <div>
@@ -517,6 +472,7 @@ export default function BusinessExpensePage() {
               )}
 
               {/* ── Summary Strip ── */}
+              {!mixedCurrency && (
               <div className="grid grid-cols-2 divide-x divide-border border border-border sm:grid-cols-4">
                 {[
                   { label: "Business Total",  value: fmt(totalBusiness, currency) },
@@ -530,9 +486,10 @@ export default function BusinessExpensePage() {
                   </div>
                 ))}
               </div>
+              )}
 
               {/* ── Est. Tax Savings Callout ── */}
-              {totalBusiness > 0 && (
+              {!mixedCurrency && totalBusiness > 0 && (
                 <div className="border border-border bg-muted/30 px-5 py-4">
                   <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
                     Estimated Tax Savings
@@ -548,7 +505,7 @@ export default function BusinessExpensePage() {
               )}
 
               {/* ── Business by Category ── */}
-              {businessByCategory.length > 0 && (
+              {!mixedCurrency && businessByCategory.length > 0 && (
                 <div>
                   <p className="mb-3 text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
                     Business Expenses by Category
@@ -592,7 +549,7 @@ export default function BusinessExpensePage() {
               )}
 
               {/* ── Monthly Expense Summary ── */}
-              {fullMonthRange.length > 0 && (
+              {!mixedCurrency && fullMonthRange.length > 0 && (
                 <div>
                   <p className="mb-3 text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
                     Monthly Expense Summary
@@ -656,7 +613,7 @@ export default function BusinessExpensePage() {
               )}
 
               {/* ── Top Business Vendors ── */}
-              {topVendors.length > 0 && (
+              {!mixedCurrency && topVendors.length > 0 && (
                 <div>
                   <p className="mb-3 text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
                     Top Business Vendors
@@ -746,14 +703,16 @@ export default function BusinessExpensePage() {
                   })}
                 </div>
                 {/* Totals row */}
-                <div className="flex items-center justify-between border border-t-0 border-border px-5 py-3">
-                  <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
-                    Total ({expenses.length} documents)
-                  </span>
-                  <span className="font-mono text-xs font-medium tabular-nums text-foreground">
-                    {fmt(totalAll, currency)}
-                  </span>
-                </div>
+                {!mixedCurrency && (
+                  <div className="flex items-center justify-between border border-t-0 border-border px-5 py-3">
+                    <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                      Total ({expenses.length} documents)
+                    </span>
+                    <span className="font-mono text-xs font-medium tabular-nums text-foreground">
+                      {fmt(totalAll, currency)}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* ── Disclaimer ── */}

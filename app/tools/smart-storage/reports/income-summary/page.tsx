@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
 import { useEntitlement } from "@/hooks/use-entitlement"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
+import { summarizeCurrencies } from "@/lib/report-utils"
 import type { Session } from "@supabase/supabase-js"
-import { ArrowLeft, Download, FolderOpen, Printer } from "lucide-react"
+import { AlertTriangle, ArrowLeft, FolderOpen, Printer } from "lucide-react"
 import Link from "next/link"
 
 interface FolderOption { id: string; name: string }
@@ -80,45 +81,36 @@ export default function IncomeSummaryPage() {
     if (!session?.user?.id) return
     setLoading(true)
     setError(null)
+    setIncome([])
     try {
-      let filesQuery = supabase
-        .from("files")
-        .select("id")
-        .eq("user_id", session.user.id)
-        .in("document_type", ["payslip", "income_statement"])
-      if (targetFolder) filesQuery = filesQuery.eq("folder_id", targetFolder)
-      const { data: userFiles } = await filesQuery
+      const { data: auth } = await supabase.auth.getSession()
+      const token = auth.session?.access_token
+      if (!token) throw new Error("Unauthorized")
 
-      if (!userFiles?.length) return
+      const params = new URLSearchParams()
+      if (dateFrom) params.set("dateFrom", dateFrom)
+      if (dateTo) params.set("dateTo", dateTo)
+      if (targetFolder) params.set("targetFolder", targetFolder)
 
-      let query = supabase
-        .from("document_fields")
-        .select(`
-          file_id, employer_name, document_date,
-          gross_income, net_income, total_amount, currency, confidence_score,
-          files!inner(filename, document_type)
-        `)
-        .in("file_id", userFiles.map(f => f.id))
-        .order("document_date", { ascending: false })
+      const res = await fetch(`/api/reports/income-summary?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
 
-      if (dateFrom) query = query.gte("document_date", dateFrom)
-      if (dateTo)   query = query.lte("document_date", dateTo)
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? "Failed to load income data.")
 
-      const { data } = await query
-
-      if (data) {
-        setIncome(data.map((row: any) => ({
-          filename:         row.files?.filename ?? "unknown",
-          document_type:    row.files?.document_type ?? "unknown",
-          employer_name:    row.employer_name,
-          document_date:    row.document_date,
-          gross_income:     row.gross_income != null ? safeNum(row.gross_income) : null,
-          net_income:       row.net_income != null ? safeNum(row.net_income) : null,
-          total_amount:     row.total_amount != null ? safeNum(row.total_amount) : null,
-          currency:         row.currency,
-          confidence_score: row.confidence_score,
-        })))
-      }
+      const rows = Array.isArray(json.income) ? json.income : []
+      setIncome(rows.map((row: any) => ({
+        filename:         row.files?.filename ?? "unknown",
+        document_type:    row.files?.document_type ?? "unknown",
+        employer_name:    row.employer_name,
+        document_date:    row.document_date,
+        gross_income:     row.gross_income != null ? safeNum(row.gross_income) : null,
+        net_income:       row.net_income != null ? safeNum(row.net_income) : null,
+        total_amount:     row.total_amount != null ? safeNum(row.total_amount) : null,
+        currency:         row.currency,
+        confidence_score: row.confidence_score,
+      })))
     } catch (err) {
       console.error("loadIncome error:", err)
       setError("Failed to load income data. Please try again.")
@@ -131,10 +123,7 @@ export default function IncomeSummaryPage() {
 
   // ── Aggregations ──────────────────────────────────────────────────────────────
 
-  const _cc = income.reduce((acc: Record<string, number>, r) => {
-    const c = r.currency ?? "USD"; acc[c] = (acc[c] ?? 0) + Math.abs(r.gross_income ?? r.total_amount ?? 0); return acc
-  }, {})
-  const currency = Object.entries(_cc).sort(([, a], [, b]) => b - a)[0]?.[0] ?? "USD"
+  const { primaryCurrency: currency, currencies, mixedCurrency } = summarizeCurrencies(income)
 
   const totalGross = income.reduce((s, r) => s + (r.gross_income ?? r.total_amount ?? 0), 0)
   const totalNet   = income.reduce((s, r) => s + (r.net_income ?? 0), 0)
@@ -267,73 +256,91 @@ export default function IncomeSummaryPage() {
                 </div>
               </div>
 
-              {/* ── Summary Strip ── */}
-              <div className="grid grid-cols-2 divide-x divide-border border border-border rounded sm:grid-cols-4">
-                {[
-                  { label: "Gross Income",   value: fmt(totalGross, currency) },
-                  { label: "Net Income",      value: totalNet > 0 ? fmt(totalNet, currency) : "—" },
-                  { label: "Tax Withheld",    value: totalWithholding > 0 ? fmt(totalWithholding, currency) : "—" },
-                  { label: "Avg Monthly",     value: fmt(avgMonthly, currency) },
-                ].map(item => (
-                  <div key={item.label} className="px-5 py-4">
-                    <p className="text-[10px] uppercase tracking-widest text-muted-foreground">{item.label}</p>
-                    <p className="mt-1.5 font-mono text-base font-medium tabular-nums text-foreground">{item.value}</p>
+              {mixedCurrency && (
+                <div className="flex items-start gap-3 rounded border border-red-500/30 bg-red-500/5 p-4">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      Mixed currencies detected ({currencies.join(", ")})
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Income Summary only aggregates a single currency at a time. Filter to one currency before relying on totals or employer rollups.
+                    </p>
                   </div>
-                ))}
-              </div>
+                </div>
+              )}
 
-              {/* ── Income by Employer ── */}
-              <div>
-                <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                  Income by Employer
-                </p>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border text-left text-[10px] uppercase tracking-wider text-muted-foreground">
-                      <th className="pb-2 font-medium">Employer / Source</th>
-                      <th className="pb-2 text-right font-medium">Gross Income</th>
-                      <th className="pb-2 text-right font-medium">Net Income</th>
-                      <th className="pb-2 text-right font-medium">Tax Withheld</th>
-                      <th className="pb-2 text-right font-medium">% of Total</th>
-                      <th className="pb-2 text-right font-medium">Docs</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/50">
-                    {Array.from(byEmployer.entries()).map(([employer, data]) => (
-                      <tr key={employer}>
-                        <td className="py-2.5 text-foreground">{employer}</td>
-                        <td className="py-2.5 text-right font-mono tabular-nums text-foreground">
-                          {fmt(data.gross, currency)}
-                        </td>
-                        <td className="py-2.5 text-right font-mono tabular-nums text-foreground">
-                          {data.net > 0 ? fmt(data.net, currency) : "—"}
-                        </td>
-                        <td className="py-2.5 text-right font-mono tabular-nums text-foreground">
-                          {data.withholding > 0 ? fmt(data.withholding, currency) : "—"}
-                        </td>
-                        <td className="py-2.5 text-right text-muted-foreground">
-                          {totalGross > 0 ? `${((data.gross / totalGross) * 100).toFixed(1)}%` : "—"}
-                        </td>
-                        <td className="py-2.5 text-right text-muted-foreground">{data.docs}</td>
-                      </tr>
+              {!mixedCurrency && (
+                <>
+                  {/* ── Summary Strip ── */}
+                  <div className="grid grid-cols-2 divide-x divide-border border border-border rounded sm:grid-cols-4">
+                    {[
+                      { label: "Gross Income",   value: fmt(totalGross, currency) },
+                      { label: "Net Income",      value: totalNet > 0 ? fmt(totalNet, currency) : "—" },
+                      { label: "Tax Withheld",    value: totalWithholding > 0 ? fmt(totalWithholding, currency) : "—" },
+                      { label: "Avg Monthly",     value: fmt(avgMonthly, currency) },
+                    ].map(item => (
+                      <div key={item.label} className="px-5 py-4">
+                        <p className="text-[10px] uppercase tracking-widest text-muted-foreground">{item.label}</p>
+                        <p className="mt-1.5 font-mono text-base font-medium tabular-nums text-foreground">{item.value}</p>
+                      </div>
                     ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="border-t-2 border-border font-semibold">
-                      <td className="pt-2.5 text-foreground">Total</td>
-                      <td className="pt-2.5 text-right font-mono tabular-nums text-foreground">{fmt(totalGross, currency)}</td>
-                      <td className="pt-2.5 text-right font-mono tabular-nums text-foreground">
-                        {totalNet > 0 ? fmt(totalNet, currency) : "—"}
-                      </td>
-                      <td className="pt-2.5 text-right font-mono tabular-nums text-foreground">
-                        {totalWithholding > 0 ? fmt(totalWithholding, currency) : "—"}
-                      </td>
-                      <td className="pt-2.5 text-right text-muted-foreground">100%</td>
-                      <td className="pt-2.5 text-right text-muted-foreground">{income.length}</td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
+                  </div>
+
+                  {/* ── Income by Employer ── */}
+                  <div>
+                    <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                      Income by Employer
+                    </p>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-border text-left text-[10px] uppercase tracking-wider text-muted-foreground">
+                          <th className="pb-2 font-medium">Employer / Source</th>
+                          <th className="pb-2 text-right font-medium">Gross Income</th>
+                          <th className="pb-2 text-right font-medium">Net Income</th>
+                          <th className="pb-2 text-right font-medium">Tax Withheld</th>
+                          <th className="pb-2 text-right font-medium">% of Total</th>
+                          <th className="pb-2 text-right font-medium">Docs</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/50">
+                        {Array.from(byEmployer.entries()).map(([employer, data]) => (
+                          <tr key={employer}>
+                            <td className="py-2.5 text-foreground">{employer}</td>
+                            <td className="py-2.5 text-right font-mono tabular-nums text-foreground">
+                              {fmt(data.gross, currency)}
+                            </td>
+                            <td className="py-2.5 text-right font-mono tabular-nums text-foreground">
+                              {data.net > 0 ? fmt(data.net, currency) : "—"}
+                            </td>
+                            <td className="py-2.5 text-right font-mono tabular-nums text-foreground">
+                              {data.withholding > 0 ? fmt(data.withholding, currency) : "—"}
+                            </td>
+                            <td className="py-2.5 text-right text-muted-foreground">
+                              {totalGross > 0 ? `${((data.gross / totalGross) * 100).toFixed(1)}%` : "—"}
+                            </td>
+                            <td className="py-2.5 text-right text-muted-foreground">{data.docs}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t-2 border-border font-semibold">
+                          <td className="pt-2.5 text-foreground">Total</td>
+                          <td className="pt-2.5 text-right font-mono tabular-nums text-foreground">{fmt(totalGross, currency)}</td>
+                          <td className="pt-2.5 text-right font-mono tabular-nums text-foreground">
+                            {totalNet > 0 ? fmt(totalNet, currency) : "—"}
+                          </td>
+                          <td className="pt-2.5 text-right font-mono tabular-nums text-foreground">
+                            {totalWithholding > 0 ? fmt(totalWithholding, currency) : "—"}
+                          </td>
+                          <td className="pt-2.5 text-right text-muted-foreground">100%</td>
+                          <td className="pt-2.5 text-right text-muted-foreground">{income.length}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </>
+              )}
 
               {/* ── Income Detail ── */}
               <div>
@@ -368,13 +375,15 @@ export default function IncomeSummaryPage() {
                     ))}
                   </tbody>
                   <tfoot>
-                    <tr className="border-t-2 border-border font-semibold">
-                      <td colSpan={3} className="pt-2 text-foreground">Total</td>
-                      <td className="pt-2 text-right font-mono tabular-nums text-foreground">{fmt(totalGross, currency)}</td>
-                      <td className="pt-2 text-right font-mono tabular-nums text-foreground">
-                        {totalNet > 0 ? fmt(totalNet, currency) : "—"}
-                      </td>
-                    </tr>
+                    {!mixedCurrency && (
+                      <tr className="border-t-2 border-border font-semibold">
+                        <td colSpan={3} className="pt-2 text-foreground">Total</td>
+                        <td className="pt-2 text-right font-mono tabular-nums text-foreground">{fmt(totalGross, currency)}</td>
+                        <td className="pt-2 text-right font-mono tabular-nums text-foreground">
+                          {totalNet > 0 ? fmt(totalNet, currency) : "—"}
+                        </td>
+                      </tr>
+                    )}
                   </tfoot>
                 </table>
               </div>

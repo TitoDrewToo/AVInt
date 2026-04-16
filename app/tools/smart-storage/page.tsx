@@ -761,7 +761,9 @@ export default function SmartStoragePage() {
     setIsUploading(true)
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const folderCache = new Map<string, string | null>()
+    const resolvedFolderPaths = new Map<string, string | null>()
     const currentParentId = currentFolderId === "root" ? null : currentFolderId
+    const uploadList = Array.from(uploadFiles)
 
     for (const folder of folders) {
       folderCache.set(`${folder.parentId ?? "root"}::${folder.name}`, folder.id)
@@ -798,6 +800,17 @@ export default function SmartStoragePage() {
       return parentId
     }
 
+    const uniqueFolderPaths = [...new Set(
+      uploadList
+        .map(file => file.webkitRelativePath?.split("/").filter(Boolean).slice(0, -1).join("/") ?? "")
+        .filter(path => path.length > 0)
+    )]
+
+    for (const folderPath of uniqueFolderPaths) {
+      const folderId = await ensureFolderPath(folderPath.split("/"))
+      resolvedFolderPaths.set(folderPath, folderId)
+    }
+
     const uploadOne = async (file: File) => {
       // Validate size
       if (file.size > MAX_FILE_SIZE) {
@@ -812,7 +825,10 @@ export default function SmartStoragePage() {
       }
       const relativePath = file.webkitRelativePath?.split("/").filter(Boolean) ?? []
       const folderSegments = relativePath.slice(0, -1)
-      const targetFolderId = folderSegments.length > 0 ? await ensureFolderPath(folderSegments) : currentParentId
+      const folderPath = folderSegments.join("/")
+      const targetFolderId = folderPath.length > 0
+        ? (resolvedFolderPaths.get(folderPath) ?? currentParentId)
+        : currentParentId
       const uniqueName = `${crypto.randomUUID()}.${ext}`
       // Phase B: upload into _inbox/ landing zone. Prescan moves the file to
       // the canonical path (or _quarantine/) based on scan result.
@@ -856,7 +872,7 @@ export default function SmartStoragePage() {
 
     // Upload all files, then refresh — ensures state updates happen after ALL uploads complete
     try {
-      const results = await Promise.allSettled(Array.from(uploadFiles).map(uploadOne))
+      const results = await Promise.allSettled(uploadList.map(uploadOne))
       for (const r of results) {
         if (r.status === "rejected") console.error("Upload failed:", r.reason)
       }

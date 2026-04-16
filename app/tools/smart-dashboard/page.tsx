@@ -77,7 +77,6 @@ interface KPIData {
   totalIncome: number
   totalExpenses: number
   netPosition: number
-  documentCount: number
   savingsRate: number
   taxExposure: number
   taxRatio: number
@@ -111,7 +110,6 @@ const DEFAULT_WIDGETS: Widget[] = [
   { id: "kpi-income",      type: "kpi-income",      title: "Total Income" },
   { id: "kpi-expenses",    type: "kpi-expenses",     title: "Total Expenses" },
   { id: "kpi-net",         type: "kpi-net",          title: "Net Position" },
-  { id: "kpi-docs",        type: "kpi-docs",         title: "Documents" },
   { id: "kpi-tax-exposure",type: "kpi-tax-exposure", title: "Est. Tax Exposure" },
   { id: "kpi-tax-ratio",   type: "kpi-tax-ratio",    title: "Tax Burden Rate" },
   { id: "area-chart",      type: "area-chart",       title: "Income vs Expenses" },
@@ -124,9 +122,8 @@ const DEFAULT_LAYOUT: LayoutItem[] = [
   { i: "kpi-income",       x: 0,  y: 0,  w: 2, h: 5,  minW: 2, minH: 1 },
   { i: "kpi-expenses",     x: 2,  y: 0,  w: 2, h: 5,  minW: 2, minH: 1 },
   { i: "kpi-net",          x: 4,  y: 0,  w: 2, h: 5,  minW: 2, minH: 1 },
-  { i: "kpi-docs",         x: 6,  y: 0,  w: 2, h: 5,  minW: 2, minH: 1 },
-  { i: "kpi-tax-exposure", x: 8,  y: 0,  w: 2, h: 5,  minW: 2, minH: 1 },
-  { i: "kpi-tax-ratio",    x: 10, y: 0,  w: 2, h: 5,  minW: 2, minH: 1 },
+  { i: "kpi-tax-exposure", x: 6,  y: 0,  w: 3, h: 5,  minW: 2, minH: 1 },
+  { i: "kpi-tax-ratio",    x: 9,  y: 0,  w: 3, h: 5,  minW: 2, minH: 1 },
   { i: "area-chart",       x: 0,  y: 5,  w: 12, h: 12, minW: 4, minH: 3 },
   { i: "bar-chart",        x: 0,  y: 17, w: 4, h: 11, minW: 3, minH: 3 },
   { i: "bar-deductible",   x: 4,  y: 17, w: 4, h: 11, minW: 3, minH: 3 },
@@ -174,7 +171,6 @@ const WIDGET_MIN_SIZE: Record<string, { minW: number; minH: number }> = {
   "kpi-income":      { minW: 2, minH: 2 },
   "kpi-expenses":    { minW: 2, minH: 2 },
   "kpi-net":         { minW: 2, minH: 2 },
-  "kpi-docs":        { minW: 2, minH: 2 },
   "kpi-tax-exposure":{ minW: 2, minH: 2 },
   "kpi-tax-ratio":   { minW: 2, minH: 2 },
   "kpi-savings":     { minW: 2, minH: 2 },
@@ -191,7 +187,6 @@ const WIDGET_LIBRARY = [
   { type: "kpi-income",       title: "Income KPI",          desc: "Total income detected across all documents",           isPremium: false },
   { type: "kpi-expenses",     title: "Expenses KPI",        desc: "Sum of all classified expense transactions",           isPremium: false },
   { type: "kpi-net",          title: "Net Position KPI",    desc: "Income minus expenses with savings rate",              isPremium: false },
-  { type: "kpi-docs",         title: "Document Count KPI",  desc: "Number of financial documents processed",             isPremium: false },
   { type: "kpi-tax-exposure", title: "Tax Exposure KPI",    desc: "Estimated tax liability based on net income",         isPremium: false },
   { type: "kpi-tax-ratio",    title: "Tax Burden Rate KPI", desc: "Tax as a percentage of gross income",                 isPremium: false },
   { type: "area-chart",       title: "Income vs Expenses",  desc: "Monthly trend of income and expenses over time",      isPremium: false },
@@ -312,20 +307,6 @@ function WidgetContent({
         <AnimatedNumber value={kpi.netPosition} prefix={symbol} />
       </p>
       <p className="text-xs text-muted-foreground">{kpi.totalIncome > 0 ? `${kpi.savingsRate.toFixed(1)}% ${kpi.savingsRate >= 0 ? "savings rate" : "overspend"}` : "No income data"}</p>
-    </div>
-  )
-
-  if (widget.type === "kpi-docs") return (
-    <div className="flex h-full flex-col justify-between">
-      <div className="flex items-start justify-between">
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Documents</p>
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: colors.primary + "20" }}>
-          <FileText className="h-4 w-4" style={{ color: colors.primary }} />
-        </div>
-      </div>
-      <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
-        <AnimatedNumber value={kpi.documentCount} />
-      </p>
     </div>
   )
 
@@ -584,7 +565,7 @@ export default function SmartDashboardPage() {
   const [session, setSession] = useState<Session | null>(null)
   const [sessionLoaded, setSessionLoaded] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [kpi, setKpi] = useState<KPIData>({ totalIncome: 0, totalExpenses: 0, netPosition: 0, documentCount: 0, savingsRate: 0, taxExposure: 0, taxRatio: 0, currency: "USD" })
+  const [kpi, setKpi] = useState<KPIData>({ totalIncome: 0, totalExpenses: 0, netPosition: 0, savingsRate: 0, taxExposure: 0, taxRatio: 0, currency: "USD" })
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([])
   const [categoryData, setCategoryData] = useState<CategoryData[]>([])
   const [docTypeData, setDocTypeData] = useState<CategoryData[]>([])
@@ -764,7 +745,7 @@ export default function SmartDashboardPage() {
 
     const taxExposure = Math.max(0, netPosition)
     const taxRatio = totalIncome > 0 ? (taxExposure / totalIncome) * 100 : 0
-    setKpi({ totalIncome, totalExpenses, netPosition, documentCount: userFiles.length, savingsRate: totalIncome > 0 ? (netPosition / totalIncome) * 100 : 0, taxExposure, taxRatio, currency })
+    setKpi({ totalIncome, totalExpenses, netPosition, savingsRate: totalIncome > 0 ? (netPosition / totalIncome) * 100 : 0, taxExposure, taxRatio, currency })
 
     const monthMap: Record<string, { expenses: number; income: number }> = {}
     fields.forEach((f: any) => {

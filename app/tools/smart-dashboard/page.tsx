@@ -977,6 +977,10 @@ export default function SmartDashboardPage() {
   if (!session) return <AuthGuardModal isVisible={true} />
 
   const symbol = kpi.currency === "PHP" ? "₱" : kpi.currency === "EUR" ? "€" : kpi.currency === "GBP" ? "£" : "$"
+  const resolvedLayout = (isMobile ? toMobileLayout(layout) : layout).map((item) => ({
+    ...item,
+    static: isMobile || !isEditingLayout,
+  }))
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
@@ -1255,7 +1259,7 @@ export default function SmartDashboardPage() {
             ) : (
               <GridLayout
                 className="layout"
-                layout={isMobile ? toMobileLayout(layout) : layout}
+                layout={resolvedLayout}
                 cols={12}
                 rowHeight={24}
                 width={containerWidth}

@@ -526,7 +526,8 @@ export default function SmartStoragePage() {
 
     setIsNavigatingReport(true)
     const url = options?.mode ? `${route}?mode=${options.mode}` : route
-    router.push(url)
+    window.open(url, "_blank", "noopener,noreferrer")
+    window.setTimeout(() => setIsNavigatingReport(false), 600)
   }
 
   // ── Session ────────────────────────────────────────────────────────────────
@@ -698,7 +699,7 @@ export default function SmartStoragePage() {
       }
       if (e.key === "Enter" && selectedFiles.size === 1) {
         e.preventDefault()
-        void handleDownloadFile([...selectedFiles][0])
+        void handleOpenFile([...selectedFiles][0])
         return
       }
       if (e.key === "Escape") {
@@ -723,7 +724,7 @@ export default function SmartStoragePage() {
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [displayedFiles, orderedDisplayedFiles, selectOnly, selectedFiles])
+  }, [displayedFiles, orderedDisplayedFiles, selectOnly, selectedFiles, files])
 
   // ── Auto-assign canvas positions ───────────────────────────────────────────
   useEffect(() => {
@@ -984,6 +985,14 @@ export default function SmartStoragePage() {
     setHoverPreview(null)
   }, [])
 
+  const handleOpenFile = async (fileId: string) => {
+    const file = files.find(f => f.id === fileId)
+    if (!file) return
+    const { data } = await supabase.storage.from("documents").createSignedUrl(file.storage_path, 60)
+    if (!data?.signedUrl) return
+    window.open(data.signedUrl, "_blank", "noopener,noreferrer")
+  }
+
   const handleDownloadFile = async (fileId: string) => {
     const file = files.find(f => f.id === fileId)
     if (!file) return
@@ -1105,7 +1114,7 @@ export default function SmartStoragePage() {
       const isDoubleClick = lastClickRef.current?.id === id && now - lastClickRef.current.time < 350
       if (isDoubleClick) {
         lastClickRef.current = null
-        handleDownloadFile(id)
+        void handleOpenFile(id)
       } else {
         lastClickRef.current = { id, time: now }
         handleFileClick(id, e as unknown as React.MouseEvent)

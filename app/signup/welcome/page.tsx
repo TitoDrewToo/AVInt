@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useState } from "react"
+import { Suspense, useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { BarChart3, FileText, LogIn, Sparkles, Upload } from "lucide-react"
 import { Navbar } from "@/components/navbar"
@@ -23,9 +23,9 @@ const tutorialSteps = [
     title: "Add visuals to your workspace",
     body: "Try expenses.",
   },
-] as const
+ ] as const
 
-export default function SignupWelcomePage() {
+function SignupWelcomeContent() {
   const router = useRouter()
   const params = useSearchParams()
   const email = params.get("email")
@@ -128,5 +128,13 @@ export default function SignupWelcomePage() {
       </main>
       <Footer />
     </div>
+  )
+}
+
+export default function SignupWelcomePage() {
+  return (
+    <Suspense fallback={null}>
+      <SignupWelcomeContent />
+    </Suspense>
   )
 }

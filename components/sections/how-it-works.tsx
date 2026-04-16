@@ -1,4 +1,5 @@
-// Refined dimensional icons for how-it-works section
+import type { ReactNode } from "react"
+
 function CloudIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -17,20 +18,19 @@ function CloudIcon({ className }: { className?: string }) {
         .doc-2 { animation: doc-slide 2.8s ease-in-out infinite 0.4s; }
         .doc-3 { animation: doc-slide 2.8s ease-in-out infinite 0.8s; }
       `}</style>
-      {/* Cloud shape */}
       <g className="cloud-body">
-        <path d="M8 18C5.8 18 4 16.2 4 14C4 12.1 5.3 10.5 7.1 10.1C7.5 7.8 9.5 6 12 6C14.1 6 15.8 7.3 16.5 9.1C17 8.7 17.7 8.5 18.5 8.5C20.4 8.5 22 10.1 22 12V12.1C23.7 12.5 25 14 25 15.8C25 17.9 23.3 18 22 18H8Z"
-          className="fill-card stroke-border" strokeWidth="0.75" />
+        <path
+          d="M8 18C5.8 18 4 16.2 4 14C4 12.1 5.3 10.5 7.1 10.1C7.5 7.8 9.5 6 12 6C14.1 6 15.8 7.3 16.5 9.1C17 8.7 17.7 8.5 18.5 8.5C20.4 8.5 22 10.1 22 12V12.1C23.7 12.5 25 14 25 15.8C25 17.9 23.3 18 22 18H8Z"
+          className="fill-card stroke-border"
+          strokeWidth="0.75"
+        />
       </g>
-      {/* Documents going into cloud */}
       <rect x="9" y="21" width="4" height="5" rx="0.5" className="fill-muted stroke-border doc-1" strokeWidth="0.5" />
       <rect x="14" y="21" width="4" height="5" rx="0.5" className="fill-primary/20 stroke-primary/40 doc-2" strokeWidth="0.5" />
       <rect x="19" y="21" width="4" height="5" rx="0.5" className="fill-muted stroke-border doc-3" strokeWidth="0.5" />
-      {/* Upload arrows on docs */}
       <path d="M11 24.5V22.5M11 22.5L10 23.5M11 22.5L12 23.5" className="stroke-muted-foreground/60" strokeWidth="0.5" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M16 24.5V22.5M16 22.5L15 23.5M16 22.5L17 23.5" className="stroke-primary" strokeWidth="0.5" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M21 24.5V22.5M21 22.5L20 23.5M21 22.5L22 23.5" className="stroke-muted-foreground/60" strokeWidth="0.5" strokeLinecap="round" strokeLinejoin="round" />
-      {/* Notification dot */}
       <circle cx="24" cy="7" r="2.5" fill="rgb(239 68 68)" />
     </svg>
   )
@@ -100,25 +100,19 @@ function OutputIcon({ className }: { className?: string }) {
         .out-trend { stroke-dasharray: 40; animation: trend-draw 2.4s ease-in-out infinite; }
         .out-check { animation: check-pop 3s ease-in-out infinite; transform-origin: 25px 7px; }
       `}</style>
-      {/* Report page */}
       <rect x="2" y="4" width="18" height="24" rx="1.5" className="fill-card stroke-border" strokeWidth="0.75" />
-      {/* Text lines on report */}
       <rect x="5" y="7" width="8" height="1" rx="0.5" className="fill-muted-foreground/30" />
       <rect x="5" y="10" width="12" height="1" rx="0.5" className="fill-muted-foreground/15" />
       <rect x="5" y="12.5" width="10" height="1" rx="0.5" className="fill-muted-foreground/15" />
-      {/* Mini bar chart in report */}
       <rect x="5" y="22" width="2" height="4" rx="0.3" className="fill-muted out-bar-1" />
       <rect x="9" y="19" width="2" height="7" rx="0.3" className="fill-primary/40 out-bar-2" />
       <rect x="13" y="20.5" width="2" height="5.5" rx="0.3" className="fill-muted out-bar-3" />
-      {/* Trend line */}
       <path d="M6 20L10 16.5L14 18" className="stroke-primary out-trend" strokeWidth="0.75" strokeLinecap="round" strokeLinejoin="round" />
-      {/* Dashboard card overlapping */}
       <rect x="16" y="12" width="14" height="14" rx="1.5" className="fill-card stroke-border" strokeWidth="0.75" />
       <rect x="18" y="14.5" width="5" height="1" rx="0.5" className="fill-primary/40" />
       <rect x="18" y="17" width="10" height="1" rx="0.5" className="fill-muted-foreground/20" />
       <rect x="18" y="19.5" width="8" height="1" rx="0.5" className="fill-muted-foreground/15" />
       <rect x="18" y="22" width="6" height="1" rx="0.5" className="fill-muted-foreground/15" />
-      {/* Checkmark badge */}
       <g className="out-check">
         <circle cx="25" cy="7" r="4" className="fill-primary" />
         <path d="M23 7L24.5 8.5L27 5.5" stroke="white" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
@@ -131,7 +125,7 @@ interface StepProps {
   number: number
   title: string
   subtitle: string
-  icon: React.ReactNode
+  icon: ReactNode
 }
 
 function Step({ number, title, subtitle, icon }: StepProps) {

@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { StorageIcon, DashboardIcon } from "@/components/sections/tools"
-import { LauncherSchematic } from "@/components/ui/launcher-schematic"
+import { CollapseBoxGraphic, FloatingCubeGraphic } from "@/components/sections/graphics-staging"
 
 import { useEffect, useState, useCallback, type MouseEvent } from "react"
 import { supabase } from "@/lib/supabase"
@@ -90,6 +90,8 @@ export function HeroSection() {
   const [session, setSession] = useState<Session | null>(null)
   const [authModalVisible, setAuthModalVisible] = useState(false)
   const [pendingHref, setPendingHref] = useState<string | null>(null)
+  const [storageHovered, setStorageHovered] = useState(false)
+  const [dashboardHovered, setDashboardHovered] = useState(false)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
@@ -150,9 +152,23 @@ export function HeroSection() {
 
             {/* Smart Storage */}
             <div
+              onMouseEnter={() => setStorageHovered(true)}
+              onMouseLeave={() => setStorageHovered(false)}
               onClick={(e) => handleToolClick(e, "/tools/smart-storage")}
-              className="cw-launcher-card glass-surface group flex cursor-pointer flex-col rounded-2xl p-5"
+              className="cw-launcher-card glass-surface group relative flex min-h-[28rem] cursor-pointer flex-col overflow-hidden rounded-2xl p-5 md:min-h-[30rem]"
             >
+              <div className="absolute inset-0 overflow-hidden">
+                <CollapseBoxGraphic embedded hovered={storageHovered} className="absolute inset-0" />
+              </div>
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-0"
+                style={{
+                  background:
+                    "linear-gradient(180deg, color-mix(in oklab, var(--background) 74%, transparent) 0%, color-mix(in oklab, var(--background) 34%, transparent) 24%, transparent 52%, transparent 80%, color-mix(in oklab, var(--background) 36%, transparent) 100%)",
+                }}
+              />
+              <div className="relative z-[1] flex h-full max-w-[16rem] flex-col">
               <div className="mb-2 flex items-center gap-2">
                 <div className="cw-button-flow glass-surface-sm flex h-9 w-9 items-center justify-center rounded-xl transition-all group-hover:[box-shadow:0_0_24px_-4px_var(--retro-glow-red)]">
                   <StorageIcon className="h-5 w-5" />
@@ -165,9 +181,6 @@ export function HeroSection() {
               <p className="mb-4 text-xs text-muted-foreground/70">
                 Tax-ready insights, smart flags, and exportable summaries when you need them.
               </p>
-
-              <LauncherSchematic variant="stack" />
-
               {/* Tags */}
               <div className="mt-3 flex flex-wrap gap-1.5">
                 {["Receipts", "Invoices", "Payslips", "Contracts"].map((tag) => (
@@ -176,7 +189,7 @@ export function HeroSection() {
               </div>
 
               {/* Actions */}
-              <div className="mt-4 flex items-center gap-2">
+              <div className="mt-auto flex items-center gap-2 pt-6">
                 <Link href="/products/smart-storage"
                   onClick={(e) => e.stopPropagation()}
                   className="cw-button-flow rounded-lg border border-border/60 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground">
@@ -188,13 +201,28 @@ export function HeroSection() {
                   {session ? "Launch Smart Storage →" : "Try for free"}
                 </button>
               </div>
+              </div>
             </div>
 
             {/* Smart Dashboard */}
             <div
+              onMouseEnter={() => setDashboardHovered(true)}
+              onMouseLeave={() => setDashboardHovered(false)}
               onClick={(e) => handleToolClick(e, "/tools/smart-dashboard")}
-              className="cw-launcher-card glass-surface group flex cursor-pointer flex-col rounded-2xl p-5"
+              className="cw-launcher-card glass-surface group relative flex min-h-[28rem] cursor-pointer flex-col overflow-hidden rounded-2xl p-5 md:min-h-[30rem]"
             >
+              <div className="absolute inset-0 overflow-hidden">
+                <FloatingCubeGraphic embedded hovered={dashboardHovered} className="absolute inset-0" />
+              </div>
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-0"
+                style={{
+                  background:
+                    "linear-gradient(180deg, color-mix(in oklab, var(--background) 74%, transparent) 0%, color-mix(in oklab, var(--background) 34%, transparent) 24%, transparent 54%, transparent 82%, color-mix(in oklab, var(--background) 38%, transparent) 100%)",
+                }}
+              />
+              <div className="relative z-[1] flex h-full max-w-[16rem] flex-col">
               <div className="mb-2 flex items-center gap-2">
                 <div className="cw-button-flow glass-surface-sm flex h-9 w-9 items-center justify-center rounded-xl transition-all group-hover:[box-shadow:0_0_24px_-4px_var(--retro-glow-red)]">
                   <DashboardIcon className="h-5 w-5" />
@@ -207,9 +235,6 @@ export function HeroSection() {
               <p className="mb-4 text-xs text-muted-foreground/70">
                 Interactive dashboards built from real activity data.
               </p>
-
-              <LauncherSchematic variant="cube" />
-
               {/* Tags */}
               <div className="mt-3 flex flex-wrap gap-1.5">
                 {["Analytics", "Reports", "Trends"].map((tag) => (
@@ -218,7 +243,7 @@ export function HeroSection() {
               </div>
 
               {/* Actions */}
-              <div className="mt-4 flex items-center gap-2">
+              <div className="mt-auto flex items-center gap-2 pt-6">
                 <Link href="/products/smart-dashboard"
                   onClick={(e) => e.stopPropagation()}
                   className="cw-button-flow rounded-lg border border-border/60 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground">
@@ -229,6 +254,7 @@ export function HeroSection() {
                   className="cw-button-flow rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90">
                   {session ? "Launch Smart Dashboard →" : "Try for free"}
                 </button>
+              </div>
               </div>
             </div>
 

@@ -35,7 +35,7 @@ export function HomeInteractiveTrail({ children }: HomeInteractiveTrailProps) {
   }, [])
 
   return (
-    <div ref={containerRef} className="relative overflow-hidden" style={{ ["--trail-y" as string]: "38%" }}>
+    <div ref={containerRef} className="relative overflow-x-hidden" style={{ ["--trail-y" as string]: "38%" }}>
       <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
         <div
           className="absolute inset-x-0 top-0 h-56"

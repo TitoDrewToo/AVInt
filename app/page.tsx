@@ -8,8 +8,8 @@ export const metadata: Metadata = {
 import { Footer } from "@/components/footer"
 import { HeroSection } from "@/components/sections/hero"
 import { WhatWeDoSection } from "@/components/sections/what-we-do"
-import { ProductsSection } from "@/components/sections/products"
 import { HowItWorksSection } from "@/components/sections/how-it-works"
+import { ProductsSection } from "@/components/sections/products"
 import { PricingPreviewSection } from "@/components/sections/pricing-preview"
 import { HomeInteractiveTrail } from "@/components/home-interactive-trail"
 

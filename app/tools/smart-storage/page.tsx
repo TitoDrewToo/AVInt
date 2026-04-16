@@ -332,7 +332,6 @@ export default function SmartStoragePage() {
   const [manualEntryOpen, setManualEntryOpen] = useState(false)
   const [reclassifyTarget, setReclassifyTarget] = useState<{ fileId: string; filename: string } | null>(null)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
-  const [mobileReportsOpen, setMobileReportsOpen] = useState(false)
   const isMobile = useIsMobile()
   const [renamingFileId, setRenamingFileId] = useState<string | null>(null)
   const [renameFileValue, setRenameFileValue] = useState("")
@@ -360,6 +359,7 @@ export default function SmartStoragePage() {
   const [dateRange, setDateRange] = useState<DateRange>({ preset: "this_year", ...getPresetRange("this_year") })
   const [reportAvailability, setReportAvailability] = useState<Record<string, boolean>>({})
   const router = useRouter()
+  const isTaxBundleSelected = selectedReport === "tax_bundle"
 
   const REPORT_ROUTES: Record<string, string> = {
     expense_summary:   "/tools/smart-storage/reports/expense-summary",
@@ -369,6 +369,20 @@ export default function SmartStoragePage() {
     contract_summary:  "/tools/smart-storage/reports/contract-summary",
     key_terms:         "/tools/smart-storage/reports/key-terms",
     business_expense:  "/tools/smart-storage/reports/business-expense",
+  }
+
+  function openReport(reportId: string, options?: { mode?: "schedule_c" | "employed" }) {
+    if (!isPro) {
+      router.push("/pricing")
+      return
+    }
+
+    const route = REPORT_ROUTES[reportId]
+    if (!route) return
+
+    setIsNavigatingReport(true)
+    const url = options?.mode ? `${route}?mode=${options.mode}` : route
+    router.push(url)
   }
 
   // ── Session ────────────────────────────────────────────────────────────────
@@ -1154,15 +1168,6 @@ export default function SmartStoragePage() {
                     <option value="name">Name A–Z</option>
                   </select>
                 )}
-                {/* Mobile reports trigger */}
-                <button
-                  className="flex md:hidden h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
-                  onClick={() => setMobileReportsOpen(true)}
-                  title="Reports"
-                >
-                  <BarChart2 className="h-4 w-4" />
-                </button>
-
                 {/* View toggle */}
                 <div className="flex items-center rounded border border-border">
                   <button
@@ -1640,23 +1645,50 @@ export default function SmartStoragePage() {
                 </div>
               )}
 
-              <Button
-                className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
-                disabled={isPro && (!selectedReport || !reportAvailability[selectedReport] || isNavigatingReport)}
-                size="sm"
-                onClick={() => {
-                  if (!isPro) { router.push("/pricing"); return }
-                  if (selectedReport && REPORT_ROUTES[selectedReport]) {
-                    setIsNavigatingReport(true)
-                    router.push(REPORT_ROUTES[selectedReport])
-                  }
-                }}
-                title={!isPro ? "Upgrade to Pro to generate reports" : undefined}
-              >
-                {isNavigatingReport ? (
-                  <><Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />Generating…</>
-                ) : isPro ? "Generate Report" : "Upgrade to Pro"}
-              </Button>
+              {isTaxBundleSelected && isPro ? (
+                <div className="space-y-2">
+                  <p className="px-1 text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                    Tax Bundle Mode
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      className="rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
+                      disabled={isNavigatingReport || !reportAvailability.tax_bundle}
+                      size="sm"
+                      onClick={() => openReport("tax_bundle", { mode: "schedule_c" })}
+                    >
+                      {isNavigatingReport ? <><Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />Loading…</> : "Self-Employed"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="rounded-lg border-primary/25 text-foreground hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
+                      disabled={true}
+                      size="sm"
+                      onClick={() => {}}
+                      title="Employed Tax Bundle is not built yet"
+                    >
+                      Employed
+                    </Button>
+                  </div>
+                  <p className="px-1 text-[11px] leading-relaxed text-muted-foreground/75">
+                    Self-employed is available now. Employed mode will be added next.
+                  </p>
+                </div>
+              ) : (
+                <Button
+                  className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
+                  disabled={isPro && (!selectedReport || !reportAvailability[selectedReport] || isNavigatingReport)}
+                  size="sm"
+                  onClick={() => {
+                    if (selectedReport) openReport(selectedReport)
+                  }}
+                  title={!isPro ? "Upgrade to Pro to generate reports" : undefined}
+                >
+                  {isNavigatingReport ? (
+                    <><Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />Generating…</>
+                  ) : isPro ? "Generate Report" : "Upgrade to Pro"}
+                </Button>
+              )}
             </div>
 
             {/* Flat report list */}
@@ -1776,85 +1808,6 @@ export default function SmartStoragePage() {
                       <span className="truncate">{name}</span>
                     </div>
                     <span className="text-[10px] text-muted-foreground/60 shrink-0">{count}</span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        </SheetContent>
-      </Sheet>
-
-      {/* MOBILE — Reports sheet */}
-      <Sheet open={mobileReportsOpen} onOpenChange={setMobileReportsOpen}>
-        <SheetContent side="right" className="w-72 p-0 flex flex-col gap-0">
-          <div className="border-b border-border px-4 py-3">
-            <h2 className="text-sm font-semibold text-foreground">Reports</h2>
-          </div>
-          <div className="flex flex-col gap-3 p-3">
-            <button
-              onClick={() => setShowDateRange(!showDateRange)}
-              className="flex w-full items-center justify-between rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              <span className="flex items-center gap-1.5">
-                <Calendar className="h-3.5 w-3.5" />
-                {dateRange.preset === "custom" ? `${dateRange.from} – ${dateRange.to}` : PRESET_LABELS[dateRange.preset]}
-              </span>
-              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showDateRange ? "rotate-180" : ""}`} />
-            </button>
-            {showDateRange && (
-              <div className="rounded-lg border border-border bg-muted/30 p-3">
-                <DateRangeSelector dateRange={dateRange} onChange={setDateRange} />
-              </div>
-            )}
-            <Button
-              className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
-              disabled={isPro && (!selectedReport || !reportAvailability[selectedReport] || isNavigatingReport)}
-              size="sm"
-              onClick={() => {
-                if (!isPro) {
-                  setMobileReportsOpen(false)
-                  router.push("/pricing")
-                  return
-                }
-                if (selectedReport && REPORT_ROUTES[selectedReport]) {
-                  setIsNavigatingReport(true)
-                  router.push(REPORT_ROUTES[selectedReport])
-                }
-                setMobileReportsOpen(false)
-              }}
-              title={!isPro ? "Upgrade to Pro to generate reports" : undefined}
-            >
-              {isNavigatingReport ? (
-                <><Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />Generating…</>
-              ) : isPro ? "Generate Report" : "Upgrade to Pro"}
-            </Button>
-          </div>
-          <div className="flex-1 overflow-y-auto px-3 pb-3">
-            <div className="space-y-0.5">
-              {REPORTS.map((report) => {
-                const enabled = report.coreEnabled && (reportAvailability[report.id] ?? false)
-                const locked = !isPro
-                const isSelected = selectedReport === report.id
-                const dimmed = !enabled || locked
-                return (
-                  <button
-                    key={report.id}
-                    onClick={() => {
-                      if (locked) { setMobileReportsOpen(false); router.push("/pricing"); return }
-                      if (enabled) setSelectedReport(report.id)
-                    }}
-                    disabled={!locked && !enabled}
-                    title={locked ? "Upgrade to Pro to generate reports" : undefined}
-                    className={`w-full rounded px-2 py-2 text-left transition-colors ${
-                      isSelected
-                        ? "bg-primary/10 text-primary"
-                        : dimmed
-                        ? "text-muted-foreground/35 hover:bg-muted/40"
-                        : "text-foreground hover:bg-muted"
-                    } ${locked ? "cursor-pointer" : !enabled ? "cursor-not-allowed" : ""}`}
-                  >
-                    <span className="block text-sm font-medium">{report.label}</span>
-                    <span className={`block text-xs leading-snug mt-0.5 ${isSelected ? "text-primary/70" : dimmed ? "text-muted-foreground/35" : "text-muted-foreground"}`}>{report.description}</span>
                   </button>
                 )
               })}

@@ -580,7 +580,11 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                             const { error } = await supabase.auth.signUp({ email: authEmail, password: authPassword })
                             setAuthLoading(false)
                             if (error) setAuthError(error.message)
-                            else setAuthSuccess("Account created. Check your email to confirm.")
+                            else {
+                              window.sessionStorage.setItem("avint_signup_welcome_pending", "1")
+                              const returnTo = window.location.pathname + window.location.search
+                              window.location.href = `/signup/welcome?email=${encodeURIComponent(authEmail)}&returnTo=${encodeURIComponent(returnTo)}`
+                            }
                           }}
                         >
                           {authLoading ? "Creating account…" : "Create Account"}

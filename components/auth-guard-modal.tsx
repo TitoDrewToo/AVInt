@@ -91,7 +91,6 @@ export function AuthGuardModal({ isVisible, onSuccess, onClose }: AuthGuardModal
           {error && <p className="text-xs text-destructive">{error}</p>}
           {success && <p className="text-xs text-primary">{success}</p>}
 
-          {/* Sign in */}
           {mode === "signin" && (
             <div className="space-y-3">
               <Input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} className="rounded-lg" />
@@ -123,7 +122,6 @@ export function AuthGuardModal({ isVisible, onSuccess, onClose }: AuthGuardModal
             </div>
           )}
 
-          {/* Sign up */}
           {mode === "signup" && (
             <div className="space-y-3">
               <Input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} className="rounded-lg" />
@@ -136,13 +134,15 @@ export function AuthGuardModal({ isVisible, onSuccess, onClose }: AuthGuardModal
                   setError("")
                   if (password !== confirmPassword) { setError("Passwords do not match"); return }
                   if (password.length < 6) { setError("Password must be at least 6 characters"); return }
-                  setLoading(true)
-                  const { error } = await supabase.auth.signUp({ email, password })
-                  setLoading(false)
-                  if (error) { setError(error.message); return }
-                  setSuccess("Account created. Check your email to confirm.")
-                }}
-              >
+                    setLoading(true)
+                    const { error } = await supabase.auth.signUp({ email, password })
+                    setLoading(false)
+                    if (error) { setError(error.message); return }
+                    window.sessionStorage.setItem("avint_signup_welcome_pending", "1")
+                    const returnTo = window.location.pathname + window.location.search
+                    window.location.href = `/signup/welcome?email=${encodeURIComponent(email)}&returnTo=${encodeURIComponent(returnTo)}`
+                  }}
+                >
                 {loading ? "Creating account…" : "Create Account"}
               </Button>
               <button onClick={() => reset("signin")} className="w-full text-center text-sm text-muted-foreground transition-colors hover:text-foreground">
@@ -151,7 +151,6 @@ export function AuthGuardModal({ isVisible, onSuccess, onClose }: AuthGuardModal
             </div>
           )}
 
-          {/* Forgot password */}
           {mode === "forgot" && (
             <div className="space-y-3">
               <Input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} className="rounded-lg" />

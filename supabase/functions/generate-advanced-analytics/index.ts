@@ -1,5 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import {
+  buildAdvancedAnalyticsSystemPrompt,
+  getEnabledAnalyticsWidgetTypes,
+} from "../../../lib/advanced-analytics-config.ts"
 
 const ANTHROPIC_API_KEY         = Deno.env.get("ANTHROPIC_API_KEY")!
 const OPENAI_API_KEY            = Deno.env.get("OPENAI_API_KEY")!
@@ -34,40 +38,7 @@ function hasActiveEntitlement(row: { status: string | null; current_period_end: 
   return false
 }
 
-// ── Upgrade chart prompt (all users) ──────────────────────────────────────────
-// Haiku selects which standard chart types to upgrade with AI insight.
-// Dedup is enforced against plotted_advanced_types — not existing_widget_types —
-// so Haiku CAN generate an advanced version of a chart that's already on the
-// standard dashboard (that's the upgrade). It just can't duplicate an already-
-// plotted advanced widget of the same type.
-
-const UPGRADE_SYSTEM_PROMPT = `You are a financial analytics AI generating enhanced dashboard widget configurations.
-
-Generate EXACTLY 3 widgets — one per dimension, in this exact order:
-  1. TIME        → "line-chart" OR "area-chart" (pick whichever fits better — NEVER output both)
-  2. NET MONTHLY → "bar-chart" — monthly net position (income minus expenses per month), green surplus / red deficit
-  3. COMPOSITION → "pie-chart" — expense category breakdown
-
-Return ONLY a valid JSON object — no markdown, no explanation:
-{
-  "widgets": [
-    {
-      "widget_type": "<type>",
-      "title": "<specific data-driven title>",
-      "description": "<one-line subtitle>",
-      "insight": "<1 sentence with specific numbers or percentages from the data>"
-    }
-  ]
-}
-
-Rules:
-- DEDUP RULE: skip any widget_type that appears in already_plotted. If all 3 required types are blocked, return {"widgets": []}.
-- ONE TIME WIDGET ONLY: output exactly one of line-chart or area-chart — never both. Outputting both is an error.
-- bar-chart insight must reference specific monthly surplus/deficit figures, not expense categories (pie-chart covers categories).
-- ALWAYS output all 3 dimensions unless a type is blocked by already_plotted or data is too sparse (under 3 months or under 5 transactions).
-- Title must be data-specific ("Office Dominates at ₱106k" not "Expense Breakdown").
-- Insight must reference specific numbers, percentages, or category names from the data.
-- Max 120 characters per insight.`
+const ADVANCED_SYSTEM_PROMPT = buildAdvancedAnalyticsSystemPrompt()
 
 // ── AI call ───────────────────────────────────────────────────────────────────
 
@@ -133,6 +104,12 @@ serve(async (req) => {
   const { user_id, existing_widget_types, plotted_advanced_types } = body
   if (!user_id) {
     return new Response(JSON.stringify({ error: "user_id required" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    })
+  }
+  if (!Array.isArray(plotted_advanced_types)) {
+    return new Response(JSON.stringify({ error: "plotted_advanced_types required" }), {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     })
@@ -208,9 +185,26 @@ serve(async (req) => {
     for (const file of userFiles) fileTypeMap[file.id] = file.document_type
 
     // ── 2. Fetch document fields ────────────────────────────────────────────
-    const selectFields = isRDUser
-      ? "file_id, vendor_name, employer_name, document_date, currency, total_amount, gross_income, net_income, expense_category, tax_amount, discount_amount, payment_method, period_start, period_end, counterparty_name"
-      : "file_id, vendor_name, employer_name, document_date, currency, total_amount, gross_income, net_income, expense_category, tax_amount"
+    const selectFields = [
+      "file_id",
+      "vendor_name",
+      "vendor_normalized",
+      "employer_name",
+      "counterparty_name",
+      "document_date",
+      "period_start",
+      "period_end",
+      "currency",
+      "jurisdiction",
+      "total_amount",
+      "gross_income",
+      "net_income",
+      "tax_amount",
+      "discount_amount",
+      "expense_category",
+      "income_source",
+      "payment_method",
+    ].join(", ")
 
     const { data: fields } = await supabase
       .from("document_fields")
@@ -249,6 +243,40 @@ serve(async (req) => {
     const employers   = [...new Set(incomeRows.filter((x: any) => x.employer_name).map((x: any) => x.employer_name))]
     const dateRange   = f.filter((x: any) => x.document_date).map((x: any) => x.document_date).sort()
     const months      = [...new Set(dateRange.map((d: string) => d.slice(0, 7)))].length
+    const transactionCount = f.filter((x: any) => x.total_amount != null || x.gross_income != null).length
+
+    const vendorSpend: Record<string, { total: number; count: number }> = {}
+    for (const x of expenseRows) {
+      const vendorKey = x.vendor_normalized ?? x.vendor_name
+      if (vendorKey && x.total_amount != null) {
+        if (!vendorSpend[vendorKey]) vendorSpend[vendorKey] = { total: 0, count: 0 }
+        vendorSpend[vendorKey].total += Number(x.total_amount)
+        vendorSpend[vendorKey].count += 1
+      }
+    }
+    const topVendors = Object.entries(vendorSpend)
+      .map(([name, v]) => ({ name, total: v.total, count: v.count }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 8)
+
+    const paymentMethods: Record<string, number> = {}
+    for (const x of f) {
+      if (x.payment_method) {
+        paymentMethods[x.payment_method] = (paymentMethods[x.payment_method] ?? 0) + 1
+      }
+    }
+
+    const incomeSourceTotals: Record<string, number> = {}
+    for (const x of incomeRows) {
+      const key = x.income_source ?? "unknown"
+      incomeSourceTotals[key] = (incomeSourceTotals[key] ?? 0) + Number(x.gross_income ?? x.total_amount ?? 0)
+    }
+
+    const jurisdictionTotals: Record<string, number> = {}
+    for (const x of f) {
+      if (!x.jurisdiction) continue
+      jurisdictionTotals[x.jurisdiction] = (jurisdictionTotals[x.jurisdiction] ?? 0) + Number(x.total_amount ?? x.gross_income ?? 0)
+    }
 
     const monthlyExpenses: Record<string, number> = {}
     const monthlyIncomeMap: Record<string, number> = {}
@@ -261,6 +289,32 @@ serve(async (req) => {
         monthlyExpenses[mo] = (monthlyExpenses[mo] ?? 0) + Number(x.total_amount ?? 0)
     }
     const sortedMonths = Object.keys({ ...monthlyExpenses, ...monthlyIncomeMap }).sort()
+    const monthlyNet = sortedMonths.map((mo: string) => ({
+      month: mo,
+      income: monthlyIncomeMap[mo] ?? 0,
+      expenses: monthlyExpenses[mo] ?? 0,
+      net: (monthlyIncomeMap[mo] ?? 0) - (monthlyExpenses[mo] ?? 0),
+    }))
+
+    const documentTypeBreakdown = Object.entries(
+      userFiles.reduce((acc: Record<string, number>, file: any) => {
+        acc[file.document_type] = (acc[file.document_type] ?? 0) + 1
+        return acc
+      }, {}),
+    )
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+
+    const taxByPeriod: Record<string, number> = {}
+    for (const x of f) {
+      if (x.tax_amount != null && Number(x.tax_amount) > 0) {
+        const period = x.period_start?.slice(0, 7) ?? x.document_date?.slice(0, 7) ?? "unknown"
+        taxByPeriod[period] = (taxByPeriod[period] ?? 0) + Number(x.tax_amount)
+      }
+    }
+    const taxTimeline = Object.entries(taxByPeriod)
+      .map(([period, tax_amount]) => ({ period, tax_amount }))
+      .sort((a, b) => a.period.localeCompare(b.period))
 
     // ── 4. R&D enrichment aggregations (admin only) ─────────────────────────
     // Computed here as the data foundation for future Sonnet R&D visuals.
@@ -268,26 +322,6 @@ serve(async (req) => {
     let profilePayload: any = null
 
     if (isRDUser) {
-      const vendorSpend: Record<string, { total: number; count: number }> = {}
-      for (const x of expenseRows) {
-        if (x.vendor_name && x.total_amount != null) {
-          if (!vendorSpend[x.vendor_name]) vendorSpend[x.vendor_name] = { total: 0, count: 0 }
-          vendorSpend[x.vendor_name].total += Number(x.total_amount)
-          vendorSpend[x.vendor_name].count += 1
-        }
-      }
-      const topVendors = Object.entries(vendorSpend)
-        .map(([name, v]) => ({ name, total: v.total, count: v.count }))
-        .sort((a, b) => b.total - a.total)
-        .slice(0, 8)
-
-      const paymentMethods: Record<string, number> = {}
-      for (const x of f) {
-        if (x.payment_method) {
-          paymentMethods[x.payment_method] = (paymentMethods[x.payment_method] ?? 0) + 1
-        }
-      }
-
       const monthlyDeltas = sortedMonths.map((mo: string, i: number) => {
         const prevMo = sortedMonths[i - 1]
         return {
@@ -311,17 +345,6 @@ serve(async (req) => {
             return acc
           }, {})
       ).map(([employer, total]) => ({ employer, total })).sort((a: any, b: any) => b.total - a.total)
-
-      const taxByPeriod: Record<string, number> = {}
-      for (const x of f) {
-        if (x.tax_amount != null && Number(x.tax_amount) > 0) {
-          const period = x.period_start?.slice(0, 7) ?? x.document_date?.slice(0, 7) ?? "unknown"
-          taxByPeriod[period] = (taxByPeriod[period] ?? 0) + Number(x.tax_amount)
-        }
-      }
-      const taxTimeline = Object.entries(taxByPeriod)
-        .map(([period, tax_amount]) => ({ period, tax_amount }))
-        .sort((a, b) => a.period.localeCompare(b.period))
 
       const avgMonthlyIncome   = months > 0 ? totalIncome / months   : 0
       const avgMonthlyExpenses = months > 0 ? totalExpenses / months : 0
@@ -354,7 +377,7 @@ serve(async (req) => {
     // ── 6. Build Haiku prompt ────────────────────────────────────────────────
     // Dedup against plotted_advanced_types only — not existing_widget_types.
     // Standard dashboard chart types can still be upgraded with AI insight.
-    const alreadyPlotted: string[] = plotted_advanced_types ?? []
+    const alreadyPlotted: string[] = plotted_advanced_types.filter(Boolean)
 
     const categoryBreakdown = Object.entries(categories)
       .sort((a, b) => (b[1] as number) - (a[1] as number))
@@ -365,28 +388,88 @@ serve(async (req) => {
       .map((mo: string) => `${mo}: income ${symbol}${(monthlyIncomeMap[mo] ?? 0).toLocaleString()} / expenses ${symbol}${(monthlyExpenses[mo] ?? 0).toLocaleString()}`)
       .join(" | ")
 
-    const prompt = `Generate enhanced widget configurations for this user's financial data.
+    const vendorBreakdown = topVendors
+      .map((vendor) => `${vendor.name}: ${symbol}${vendor.total.toLocaleString()} across ${vendor.count} docs`)
+      .join(", ")
 
-already_plotted (DO NOT use these types): [${alreadyPlotted.join(", ")}]
+    const incomeSourceBreakdown = Object.entries(incomeSourceTotals)
+      .sort((a, b) => b[1] - a[1])
+      .map(([source, total]) => `${source}: ${symbol}${total.toLocaleString()}`)
+      .join(", ")
+
+    const paymentMethodBreakdown = Object.entries(paymentMethods)
+      .sort((a, b) => b[1] - a[1])
+      .map(([method, count]) => `${method}: ${count}`)
+      .join(", ")
+
+    const jurisdictionBreakdown = Object.entries(jurisdictionTotals)
+      .sort((a, b) => b[1] - a[1])
+      .map(([jurisdiction, total]) => `${jurisdiction}: ${symbol}${total.toLocaleString()}`)
+      .join(", ")
+
+    const documentTypeSummary = documentTypeBreakdown
+      .map((item) => `${item.name}: ${item.value}`)
+      .join(", ")
+
+    const monthlyNetSummary = monthlyNet
+      .map((item) => `${item.month}: net ${symbol}${item.net.toLocaleString()}`)
+      .join(" | ")
+
+    const taxTimelineSummary = taxTimeline
+      .map((item) => `${item.period}: ${symbol}${item.tax_amount.toLocaleString()}`)
+      .join(" | ")
+
+    const prompt = `Generate advanced widget configurations for this user's financial data.
+
+Allowed widget types: [${getEnabledAnalyticsWidgetTypes().join(", ")}]
+already_plotted (DO NOT use these widget types): [${alreadyPlotted.join(", ")}]
+standard_dashboard_widget_types: [${(existing_widget_types ?? []).join(", ")}]
+
+Data sufficiency:
+- months_tracked: ${months}
+- transaction_count: ${transactionCount}
+- distinct_categories: ${Object.keys(categories).length}
+- distinct_vendors: ${topVendors.length}
 
 Financial summary:
-- Total income: ${symbol}${totalIncome.toLocaleString()} across ${months} month${months !== 1 ? "s" : ""}
-- Total expenses: ${symbol}${totalExpenses.toLocaleString()}
-- Net position: ${symbol}${netPosition.toLocaleString()}
-- Savings rate: ${savingsRate}%
-- Tax paid: ${symbol}${totalTax.toLocaleString()}
-- Top expense category: ${topCategory ? `${topCategory[0]} at ${symbol}${Math.round(topCategory[1]).toLocaleString()}` : "N/A"}
-- Employers / income sources: ${employers.length ? employers.join(", ") : "none detected"}
-- Total documents: ${userFiles.length}
+- total_income: ${symbol}${totalIncome.toLocaleString()}
+- total_expenses: ${symbol}${totalExpenses.toLocaleString()}
+- net_position: ${symbol}${netPosition.toLocaleString()}
+- savings_rate: ${savingsRate}%
+- tax_paid: ${symbol}${totalTax.toLocaleString()}
+- top_expense_category: ${topCategory ? `${topCategory[0]} at ${symbol}${Math.round(topCategory[1]).toLocaleString()}` : "N/A"}
+- employers_or_income_sources: ${employers.length ? employers.join(", ") : "none detected"}
+- total_documents: ${userFiles.length}
 
-Category breakdown: ${categoryBreakdown || "no category data"}
+Category breakdown:
+${categoryBreakdown || "no category data"}
 
-Monthly income vs expenses: ${monthlyBreakdown || "no monthly data"}
+Vendor concentration:
+${vendorBreakdown || "no vendor concentration data"}
 
-Standard dashboard already shows: ${(existing_widget_types ?? []).join(", ")}`
+Income source breakdown:
+${incomeSourceBreakdown || "no income source data"}
+
+Payment methods:
+${paymentMethodBreakdown || "no payment method data"}
+
+Jurisdiction mix:
+${jurisdictionBreakdown || "no jurisdiction data"}
+
+Document type distribution:
+${documentTypeSummary || "no document type data"}
+
+Monthly income vs expenses:
+${monthlyBreakdown || "no monthly data"}
+
+Monthly net position:
+${monthlyNetSummary || "no monthly net data"}
+
+Tax timeline:
+${taxTimelineSummary || "no tax timeline data"}`
 
     // ── 7. Call Haiku ────────────────────────────────────────────────────────
-    const rawText = await callAI(prompt, UPGRADE_SYSTEM_PROMPT)
+    const rawText = await callAI(prompt, ADVANCED_SYSTEM_PROMPT)
     if (!rawText) throw new Error("Empty response from AI")
 
     let parsed: any
@@ -398,7 +481,16 @@ Standard dashboard already shows: ${(existing_widget_types ?? []).join(", ")}`
       throw new Error(`Failed to parse AI output: ${rawText}`)
     }
 
-    const generatedWidgets = parsed.widgets ?? []
+    const allowedWidgetTypes = new Set(getEnabledAnalyticsWidgetTypes())
+    const generatedWidgets = (parsed.widgets ?? [])
+      .filter((widget: any) => allowedWidgetTypes.has(widget.widget_type))
+      .filter((widget: any, index: number, arr: any[]) =>
+        index === arr.findIndex((other) =>
+          other.widget_type === widget.widget_type ||
+          (other.chart_family === widget.chart_family && other.title === widget.title),
+        ),
+      )
+      .slice(0, 3)
     if (!generatedWidgets.length) {
       return new Response(
         JSON.stringify({ success: true, count: 0, widgets: [], message: "All upgrade chart types already plotted" }),

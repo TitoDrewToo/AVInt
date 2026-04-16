@@ -848,6 +848,9 @@ export default function SmartDashboardPage() {
     setIsRunningAnalytics(true)
     try {
       const { data: { session: cur } } = await supabase.auth.getSession()
+      const plottedAdvancedTypes = advancedWidgetsList
+        .filter((widget) => widget.is_plotted)
+        .map((widget) => widget.widget_type)
       const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-advanced-analytics`, {
         method: "POST",
         headers: {
@@ -855,7 +858,11 @@ export default function SmartDashboardPage() {
           "Authorization": `Bearer ${cur?.access_token}`,
           "apikey": process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
         },
-        body: JSON.stringify({ user_id: session.user.id, existing_widget_types: widgets.map(w => w.type) }),
+        body: JSON.stringify({
+          user_id: session.user.id,
+          existing_widget_types: widgets.map(w => w.type),
+          plotted_advanced_types: plottedAdvancedTypes,
+        }),
       })
       if (res.ok) {
         const data = await res.json()

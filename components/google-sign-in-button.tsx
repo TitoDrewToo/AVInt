@@ -54,7 +54,7 @@ export function GoogleSignInButton({ onClick, className }: GoogleSignInButtonPro
       variant="outline"
       size="lg"
       onClick={handleClick}
-      className={`w-full rounded-lg border-border bg-background hover:bg-muted ${className}`}
+      className={`cw-button-flow w-full rounded-lg border-border bg-background text-foreground/80 hover:bg-background hover:text-primary ${className}`}
     >
       <GoogleIcon className="mr-3 h-5 w-5" />
       <span>Continue with Google</span>

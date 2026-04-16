@@ -591,13 +591,14 @@ export default function SmartDashboardPage() {
   const [widgets, setWidgets] = useState<Widget[]>(DEFAULT_WIDGETS)
   const [layout, setLayout] = useState<LayoutItem[]>(DEFAULT_LAYOUT)
   const [selectedWidgetId, setSelectedWidgetId] = useState<string | null>(null)
+  const [isEditingLayout, setIsEditingLayout] = useState(false)
   const [isDirty, setIsDirty] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [savedConfirm, setSavedConfirm] = useState(false)
   const [showDateFilter, setShowDateFilter] = useState(false)
   const [showColorPicker, setShowColorPicker] = useState(false)
   const [showAdvancedMenu, setShowAdvancedMenu] = useState(false)
-  const [showWidgetPanel, setShowWidgetPanel] = useState(true)
+  const [showWidgetPanel, setShowWidgetPanel] = useState(false)
   const [mobileWidgetPanelOpen, setMobileWidgetPanelOpen] = useState(false)
   const isMobile = useIsMobile()
   const [dateFrom, setDateFrom] = useState("")
@@ -785,6 +786,7 @@ export default function SmartDashboardPage() {
   }
 
   const plotAdvancedWidget = async (aw: AdvancedWidget) => {
+    if (!isEditingLayout) return
     if (widgets.some(w => w.advancedId === aw.id)) return
     await supabase.from("advanced_widgets").update({ is_plotted: true, expires_at: null }).eq("id", aw.id)
     setAdvancedWidgetsList(prev => prev.map(w => w.id === aw.id ? { ...w, is_plotted: true, expires_at: null } : w))
@@ -867,12 +869,16 @@ export default function SmartDashboardPage() {
     }, { onConflict: "user_id" })
     setIsSaving(false)
     setIsDirty(false)
+    setIsEditingLayout(false)
+    setSelectedWidgetId(null)
+    setShowColorPicker(false)
     setSavedConfirm(true)
     setTimeout(() => setSavedConfirm(false), 2000)
   }
 
   // ── Widget management ──────────────────────────────────────────────────────
   const addWidget = (type: string, title: string, isPremium: boolean) => {
+    if (!isEditingLayout) return
     if (isPremium && !isPro) return
     if (widgets.some(w => w.type === type)) return
     const id = `${type}-${Date.now()}`
@@ -885,6 +891,7 @@ export default function SmartDashboardPage() {
   }
 
   const removeWidget = (id: string) => {
+    if (!isEditingLayout) return
     const widget = widgets.find(w => w.id === id)
     if (widget?.advancedId) {
       const aw = advancedWidgetsList.find(a => a.id === widget.advancedId)
@@ -899,18 +906,25 @@ export default function SmartDashboardPage() {
   }
 
   const updateWidgetColor = (widgetId: string, colors: WidgetColor) => {
+    if (!isEditingLayout) return
     setWidgets(prev => prev.map(w => w.id === widgetId ? { ...w, colors } : w))
     setIsDirty(true)
   }
 
   const updateWidgetChartVariant = (widgetId: string, variant: string) => {
+    if (!isEditingLayout) return
     setWidgets(prev => prev.map(w => w.id === widgetId ? { ...w, chartVariant: variant } : w))
     setIsDirty(true)
   }
 
   const handleLayoutChange = (newLayout: RGLLayout) => {
+    if (isMobile || !isEditingLayout) return
     // RGLLayout items are readonly — spread into our mutable LayoutItem shape
-    setLayout((newLayout as any[]).map((l: any) => ({ i: l.i, x: l.x, y: l.y, w: l.w, h: l.h, minW: l.minW, minH: l.minH })))
+    const nextLayout = (newLayout as any[]).map((l: any) => ({ i: l.i, x: l.x, y: l.y, w: l.w, h: l.h, minW: l.minW, minH: l.minH }))
+    const currentKey = JSON.stringify(layout.map(({ i, x, y, w, h }) => ({ i, x, y, w, h })))
+    const nextKey = JSON.stringify(nextLayout.map(({ i, x, y, w, h }) => ({ i, x, y, w, h })))
+    if (currentKey === nextKey) return
+    setLayout(nextLayout)
     setIsDirty(true)
   }
 
@@ -1039,7 +1053,7 @@ export default function SmartDashboardPage() {
             })()}
 
             {/* Color picker — desktop only, when widget selected */}
-            {!isMobile && selectedWidget && (
+            {!isMobile && isEditingLayout && selectedWidget && (
               <div className="relative flex items-center gap-1.5">
                 <div className="h-4 w-px bg-border mx-1" />
                 <span className="text-xs text-muted-foreground">Color:</span>
@@ -1089,7 +1103,7 @@ export default function SmartDashboardPage() {
             )}
 
             {/* Chart type picker — desktop only */}
-            {!isMobile && selectedWidget && CHART_TYPE_OPTIONS[selectedWidget.type] && (
+            {!isMobile && isEditingLayout && selectedWidget && CHART_TYPE_OPTIONS[selectedWidget.type] && (
               <div className="flex items-center gap-1">
                 <div className="h-4 w-px bg-border mx-1" />
                 <span className="text-xs text-muted-foreground">Chart:</span>
@@ -1114,17 +1128,40 @@ export default function SmartDashboardPage() {
           <div className="flex items-center gap-2">
             {/* Desktop only — save layout controls */}
             {!isMobile && <>
-              {isDirty && <span className="text-xs text-muted-foreground">Unsaved changes</span>}
+              <span className={`text-xs font-medium ${isEditingLayout ? "text-primary" : "text-muted-foreground"}`}>
+                {savedConfirm ? "Saved / Locked" : isEditingLayout ? (isDirty ? "Editing · Unsaved" : "Editing") : "Saved / Locked"}
+              </span>
               <button
-                onClick={saveLayout}
-                disabled={!isDirty || isSaving}
+                onClick={() => {
+                  if (!isEditingLayout) {
+                    setIsEditingLayout(true)
+                    setShowWidgetPanel(true)
+                    return
+                  }
+                  if (isDirty) {
+                    void saveLayout()
+                    return
+                  }
+                  setIsEditingLayout(false)
+                  setSelectedWidgetId(null)
+                  setShowColorPicker(false)
+                  setShowAdvancedMenu(false)
+                  setShowDateFilter(false)
+                }}
+                disabled={isSaving}
                 className={`flex h-7 items-center gap-1.5 rounded-lg px-3 text-xs transition-all ${
-                  isDirty ? "bg-primary text-primary-foreground hover:bg-primary/90" : "border border-border text-muted-foreground opacity-50 cursor-not-allowed"
+                  !isEditingLayout
+                    ? "border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                    : isDirty
+                      ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                      : "border border-border text-primary hover:bg-primary/5"
                 }`}
               >
                 {savedConfirm ? <><Check className="h-3.5 w-3.5" /> Saved</>
                   : isSaving ? <><div className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" /> Saving…</>
-                  : <><Save className="h-3.5 w-3.5" /> Save Layout</>}
+                  : !isEditingLayout ? <><LayoutGrid className="h-3.5 w-3.5" /> Edit Layout</>
+                  : isDirty ? <><Save className="h-3.5 w-3.5" /> Save Layout</>
+                  : <><Lock className="h-3.5 w-3.5" /> Lock Layout</>}
               </button>
             </>}
           </div>
@@ -1160,8 +1197,8 @@ export default function SmartDashboardPage() {
                 width={containerWidth}
                 onLayoutChange={handleLayoutChange}
                 draggableHandle={isMobile ? ".no-drag" : ".drag-handle"}
-                isDraggable={!isMobile}
-                isResizable={!isMobile}
+                isDraggable={!isMobile && isEditingLayout}
+                isResizable={!isMobile && isEditingLayout}
                 margin={[10, 10]}
                 containerPadding={[0, 0]}
                 resizeHandles={isMobile ? [] : ["se", "sw", "ne", "nw", "e", "w", "s"]}
@@ -1169,18 +1206,20 @@ export default function SmartDashboardPage() {
                 {widgets.map((widget) => (
                   <div
                     key={widget.id}
-                    onClick={isMobile ? undefined : (e) => { e.stopPropagation(); setSelectedWidgetId(widget.id); setShowColorPicker(false); setShowDateFilter(false); setContextMenu(null) }}
-                    onContextMenu={isMobile ? undefined : (e) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ x: e.clientX, y: e.clientY, widgetId: widget.id }) }}
+                    onClick={isMobile || !isEditingLayout ? undefined : (e) => { e.stopPropagation(); setSelectedWidgetId(widget.id); setShowColorPicker(false); setShowDateFilter(false); setContextMenu(null) }}
+                    onContextMenu={isMobile || !isEditingLayout ? undefined : (e) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ x: e.clientX, y: e.clientY, widgetId: widget.id }) }}
                     className={`group relative flex flex-col rounded-2xl border bg-card shadow-sm transition-all ${
                       isMobile
                         ? "border-border"
-                        : selectedWidgetId === widget.id
+                        : isEditingLayout && selectedWidgetId === widget.id
                           ? "border-primary ring-2 ring-primary/20 cursor-pointer"
-                          : "border-border hover:border-border/60 hover:shadow-md cursor-pointer"
+                          : isEditingLayout
+                            ? "cursor-pointer border-border hover:border-border/60 hover:shadow-md"
+                            : "border-border"
                     }`}
                   >
                     {/* Corner grid markers — desktop selected state only */}
-                    {!isMobile && selectedWidgetId === widget.id && (<>
+                    {!isMobile && isEditingLayout && selectedWidgetId === widget.id && (<>
                       <span className="pointer-events-none absolute -top-1 -left-1 h-2 w-2 rounded-full bg-primary" />
                       <span className="pointer-events-none absolute -top-1 -right-1 h-2 w-2 rounded-full bg-primary" />
                       <span className="pointer-events-none absolute -bottom-1 -left-1 h-2 w-2 rounded-full bg-primary" />
@@ -1188,7 +1227,7 @@ export default function SmartDashboardPage() {
                     </>)}
 
                     {/* Drag handle — desktop only */}
-                    {!isMobile && <div className="drag-handle absolute left-0 right-0 top-0 h-8 cursor-grab rounded-t-2xl opacity-0 group-hover:opacity-100 transition-opacity" />}
+                    {!isMobile && isEditingLayout && <div className="drag-handle absolute left-0 right-0 top-0 h-8 cursor-grab rounded-t-2xl opacity-0 transition-opacity group-hover:opacity-100" />}
 
                     {/* Widget header */}
                     <div className="flex items-center px-4 pt-3 pb-1 shrink-0">
@@ -1260,10 +1299,10 @@ export default function SmartDashboardPage() {
           {/* PANEL TOGGLE TAB — desktop only */}
           <button
             onClick={() => setShowWidgetPanel(v => !v)}
-            className="hidden md:flex absolute top-1/2 right-0 -translate-y-1/2 z-20 h-14 w-5 items-center justify-center rounded-l-lg border border-r-0 border-border bg-card text-muted-foreground shadow-md hover:text-foreground transition-colors"
+            className="hidden md:flex absolute top-1/2 right-0 z-20 h-20 w-8 -translate-y-1/2 items-center justify-center rounded-l-xl border border-r-0 border-border bg-card/95 text-primary shadow-lg transition-all hover:bg-card hover:text-primary hover:[box-shadow:0_0_26px_-4px_var(--retro-glow-red)]"
             title={showWidgetPanel ? "Hide panel" : "Show panel"}
           >
-            <PanelRight className="h-3 w-3" />
+            <PanelRight className="h-4 w-4 drop-shadow-[0_0_12px_var(--retro-glow-red)]" />
           </button>
 
           {/* VISUALIZATIONS PANEL — desktop absolute overlay */}
@@ -1292,8 +1331,8 @@ export default function SmartDashboardPage() {
                       <button
                         key={item.type}
                         onClick={() => addWidget(item.type, item.title, false)}
-                        disabled={added}
-                        className={`flex w-full items-start justify-between rounded-lg px-3 py-2.5 text-left transition-colors ${added ? "opacity-40 cursor-not-allowed" : "hover:bg-muted"}`}
+                        disabled={added || !isEditingLayout}
+                        className={`flex w-full items-start justify-between rounded-lg px-3 py-2.5 text-left transition-colors ${added || !isEditingLayout ? "opacity-40 cursor-not-allowed" : "hover:bg-muted"}`}
                       >
                         <div className="flex-1 min-w-0 pr-2">
                           <p className={`text-sm font-medium leading-tight ${added ? "text-muted-foreground" : "text-foreground"}`}>{item.title}</p>
@@ -1342,8 +1381,8 @@ export default function SmartDashboardPage() {
                           <button
                             key={item.type}
                             onClick={() => addWidget(item.type, item.title, true)}
-                            disabled={added}
-                            className={`flex w-full items-start justify-between rounded-lg px-3 py-2.5 text-left transition-colors ${added ? "opacity-40 cursor-not-allowed" : "hover:bg-muted"}`}
+                            disabled={added || !isEditingLayout}
+                            className={`flex w-full items-start justify-between rounded-lg px-3 py-2.5 text-left transition-colors ${added || !isEditingLayout ? "opacity-40 cursor-not-allowed" : "hover:bg-muted"}`}
                           >
                             <div className="flex-1 min-w-0 pr-2">
                               <p className={`text-sm font-medium leading-tight ${added ? "text-muted-foreground" : "text-foreground"}`}>{item.title}</p>
@@ -1367,15 +1406,16 @@ export default function SmartDashboardPage() {
                             <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
                               <button
                                 onClick={() => toggleStarAdvancedWidget(aw)}
-                                className={`flex h-5 w-5 items-center justify-center rounded transition-colors hover:text-yellow-400 ${aw.is_starred ? "text-yellow-400" : "text-muted-foreground opacity-0 group-hover:opacity-100"}`}
+                                disabled={!isEditingLayout}
+                                className={`flex h-5 w-5 items-center justify-center rounded transition-colors hover:text-yellow-400 disabled:cursor-not-allowed disabled:opacity-40 ${aw.is_starred ? "text-yellow-400" : "text-muted-foreground opacity-0 group-hover:opacity-100"}`}
                                 title={aw.is_starred ? "Unpin" : "Pin"}
                               >
                                 <Star className={`h-3 w-3 ${aw.is_starred ? "fill-current" : ""}`} />
                               </button>
                               <button
                                 onClick={() => plotAdvancedWidget(aw)}
-                                disabled={plotted}
-                                className={`flex h-5 w-5 items-center justify-center rounded transition-colors ${plotted ? "text-primary" : "text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground"}`}
+                                disabled={plotted || !isEditingLayout}
+                                className={`flex h-5 w-5 items-center justify-center rounded transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${plotted ? "text-primary" : "text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground"}`}
                                 title={plotted ? "On canvas" : "Add to canvas"}
                               >
                                 {plotted ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />}

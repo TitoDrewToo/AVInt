@@ -101,20 +101,20 @@ const LS_CSS = `
   transition: opacity 260ms ease, filter 260ms ease;
 }
 .cw-launcher-card:hover .ls-stage {
-  transform: scale(1.035);
+  transform: scale(1.055);
 }
 .cw-launcher-card:hover .ls-redwash {
-  opacity: 0.26 !important;
+  opacity: 0.3 !important;
 }
 .cw-launcher-card:hover .ls-trace {
-  animation-duration: 1.9s;
-  opacity: 0.92;
+  animation-duration: 1.55s;
+  opacity: 1;
 }
 .cw-launcher-card:hover .ls-pulse {
-  animation-duration: 1.15s;
+  animation-duration: 0.95s;
 }
 .cw-launcher-card:hover .ls-bar {
-  animation-duration: 1.45s;
+  animation-duration: 1.2s;
 }
 @keyframes ls-trace {
   0%   { stroke-dashoffset: 220; opacity: 0.25; }

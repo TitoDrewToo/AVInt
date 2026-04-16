@@ -112,7 +112,7 @@ export function Navbar() {
               priority
             />
             <Image
-              src="/avintelligence-stacked.png"
+              src="/avintelligence-stacked.svg"
               alt="AVINT"
               width={32}
               height={40}

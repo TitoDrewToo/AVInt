@@ -151,10 +151,10 @@ export function HeroSection() {
             {/* Smart Storage */}
             <div
               onClick={(e) => handleToolClick(e, "/tools/smart-storage")}
-              className="glass-surface hover-bloom group flex cursor-pointer flex-col rounded-2xl p-5"
+              className="cw-launcher-card glass-surface group flex cursor-pointer flex-col rounded-2xl p-5"
             >
               <div className="mb-2 flex items-center gap-2">
-                <div className="glass-surface-sm flex h-9 w-9 items-center justify-center rounded-xl transition-all group-hover:[box-shadow:0_0_24px_-4px_var(--retro-glow-red)]">
+                <div className="cw-button-flow glass-surface-sm flex h-9 w-9 items-center justify-center rounded-xl transition-all group-hover:[box-shadow:0_0_24px_-4px_var(--retro-glow-red)]">
                   <StorageIcon className="h-5 w-5" />
                 </div>
                 <h3 className="text-base font-semibold text-foreground">Smart Storage</h3>
@@ -179,12 +179,12 @@ export function HeroSection() {
               <div className="mt-4 flex items-center gap-2">
                 <Link href="/products/smart-storage"
                   onClick={(e) => e.stopPropagation()}
-                  className="rounded-lg border border-border/60 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground">
+                  className="cw-button-flow rounded-lg border border-border/60 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground">
                   Learn more
                 </Link>
                 <button
                   onClick={(e) => handleToolClick(e, "/tools/smart-storage")}
-                  className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90">
+                  className="cw-button-flow rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90">
                   {session ? "Launch Smart Storage →" : "Try for free"}
                 </button>
               </div>
@@ -193,10 +193,10 @@ export function HeroSection() {
             {/* Smart Dashboard */}
             <div
               onClick={(e) => handleToolClick(e, "/tools/smart-dashboard")}
-              className="glass-surface hover-bloom group flex cursor-pointer flex-col rounded-2xl p-5"
+              className="cw-launcher-card glass-surface group flex cursor-pointer flex-col rounded-2xl p-5"
             >
               <div className="mb-2 flex items-center gap-2">
-                <div className="glass-surface-sm flex h-9 w-9 items-center justify-center rounded-xl transition-all group-hover:[box-shadow:0_0_24px_-4px_var(--retro-glow-red)]">
+                <div className="cw-button-flow glass-surface-sm flex h-9 w-9 items-center justify-center rounded-xl transition-all group-hover:[box-shadow:0_0_24px_-4px_var(--retro-glow-red)]">
                   <DashboardIcon className="h-5 w-5" />
                 </div>
                 <h3 className="text-base font-semibold text-foreground">Smart Dashboard</h3>
@@ -221,12 +221,12 @@ export function HeroSection() {
               <div className="mt-4 flex items-center gap-2">
                 <Link href="/products/smart-dashboard"
                   onClick={(e) => e.stopPropagation()}
-                  className="rounded-lg border border-border/60 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground">
+                  className="cw-button-flow rounded-lg border border-border/60 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground">
                   Learn more
                 </Link>
                 <button
                   onClick={(e) => handleToolClick(e, "/tools/smart-dashboard")}
-                  className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90">
+                  className="cw-button-flow rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90">
                   {session ? "Launch Smart Dashboard →" : "Try for free"}
                 </button>
               </div>

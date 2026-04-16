@@ -56,23 +56,20 @@ export function LauncherSchematic({
       ref={hostRef}
       aria-hidden
       className={cn(
-        "relative h-52 w-full overflow-hidden rounded-xl border border-border/40",
+        "ls-host relative h-52 w-full overflow-hidden rounded-xl border border-border/40",
         className,
       )}
       style={{ ["--sp" as string]: "0" }}
     >
       {/* Red radial wash — ambient lighting behind the schematic. */}
       <div
-        className="absolute inset-0"
+        className="ls-redwash absolute inset-0"
         style={{
           background:
             "radial-gradient(ellipse at 50% 55%, var(--retro-glow-red) 0%, transparent 62%)",
-          opacity: 0.55,
+          opacity: 0.18,
         }}
       />
-      {/* Retro grid backdrop — faint, masked at the edges via utility. */}
-      <div className="retro-grid-bg absolute inset-0 opacity-50" />
-
       <style>{LS_CSS}</style>
 
       <div
@@ -96,6 +93,28 @@ const LS_CSS = `
   will-change: transform;
   max-width: 86%;
   max-height: 86%;
+}
+.ls-stage {
+  transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ls-redwash {
+  transition: opacity 260ms ease, filter 260ms ease;
+}
+.cw-launcher-card:hover .ls-stage {
+  transform: scale(1.035);
+}
+.cw-launcher-card:hover .ls-redwash {
+  opacity: 0.26 !important;
+}
+.cw-launcher-card:hover .ls-trace {
+  animation-duration: 1.9s;
+  opacity: 0.92;
+}
+.cw-launcher-card:hover .ls-pulse {
+  animation-duration: 1.15s;
+}
+.cw-launcher-card:hover .ls-bar {
+  animation-duration: 1.45s;
 }
 @keyframes ls-trace {
   0%   { stroke-dashoffset: 220; opacity: 0.25; }
@@ -148,7 +167,7 @@ function StackSchematic() {
       strokeLinejoin="round"
       style={{
         color: "var(--primary)",
-        filter: "drop-shadow(0 0 20px var(--retro-glow-red))",
+        filter: "none",
       }}
     >
       {/* Four perspective sheets, back → front. */}
@@ -211,7 +230,7 @@ function CubeSchematic() {
       strokeLinejoin="round"
       style={{
         color: "var(--primary)",
-        filter: "drop-shadow(0 0 22px var(--retro-glow-red))",
+        filter: "none",
       }}
     >
       {/* Cube frame (isometric) */}

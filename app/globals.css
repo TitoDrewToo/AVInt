@@ -238,8 +238,184 @@
   mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
   -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
 }
+@property --cw-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+@keyframes cw-angle-spin {
+  to { --cw-angle: 360deg; }
+}
+@keyframes cw-outline-spin {
+  to { transform: rotate(1turn); }
+}
+@keyframes cw-ring-travel {
+  0% { transform: rotate(0deg); opacity: 0.48; }
+  50% { opacity: 0.9; }
+  100% { transform: rotate(360deg); opacity: 0.48; }
+}
+@keyframes cw-ring-breathe {
+  0%, 100% { transform: scale(1); opacity: 0.18; }
+  50% { transform: scale(1.04); opacity: 0.42; }
+}
+.cw-border-flow {
+  position: relative;
+  isolation: isolate;
+}
+.cw-border-flow::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background:
+    conic-gradient(
+      from 0deg,
+      transparent 0deg,
+      transparent 248deg,
+      color-mix(in oklab, var(--retro-glow-red) 88%, transparent) 294deg,
+      color-mix(in oklab, var(--retro-glow-red) 58%, transparent) 326deg,
+      transparent 360deg
+    );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0.38;
+  pointer-events: none;
+  animation: cw-outline-spin 9s linear infinite;
+}
+.cw-border-flow::after {
+  content: "";
+  position: absolute;
+  inset: -16%;
+  border-radius: inherit;
+  background:
+    radial-gradient(circle at 50% 50%, color-mix(in oklab, var(--retro-glow-red) 40%, transparent) 0%, transparent 64%);
+  filter: blur(24px);
+  opacity: 0;
+  pointer-events: none;
+  z-index: -1;
+  transition: opacity 260ms ease;
+}
+.cw-border-flow:hover::after,
+.cw-border-flow:focus-within::after {
+  opacity: 0.72;
+}
+.cw-button-flow,
+.cw-input-flow {
+  position: relative;
+  isolation: isolate;
+}
+.cw-button-flow::before,
+.cw-input-flow::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  border: 1px solid color-mix(in oklab, var(--retro-glow-red) 24%, var(--border));
+  pointer-events: none;
+  opacity: 0.82;
+}
+.cw-button-flow::after,
+.cw-input-flow::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background:
+    conic-gradient(
+      from var(--cw-angle),
+      transparent 0deg,
+      transparent 56deg,
+      color-mix(in oklab, var(--retro-glow-red) 98%, transparent) 82deg,
+      color-mix(in oklab, var(--retro-glow-red) 82%, transparent) 100deg,
+      transparent 122deg,
+      transparent 236deg,
+      color-mix(in oklab, var(--retro-glow-red) 72%, transparent) 266deg,
+      transparent 288deg,
+      transparent 360deg
+    );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0.96;
+  animation: cw-angle-spin 3.4s linear infinite;
+}
+.cw-button-flow:hover,
+.cw-button-flow:focus-visible,
+.cw-input-flow:hover,
+.cw-input-flow:focus-visible {
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--retro-glow-red) 72%, transparent),
+    0 0 22px -8px var(--retro-glow-red);
+}
+.cw-button-flow {
+  transition:
+    box-shadow 220ms ease,
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 220ms ease,
+    color 220ms ease,
+    border-color 220ms ease;
+}
+.cw-button-flow:hover {
+  transform: translateY(-1px);
+}
+.cw-button-flow.bg-primary,
+.cw-button-flow[class*="bg-primary"] {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+}
+.cw-button-flow.bg-primary:hover,
+.cw-button-flow[class*="bg-primary"]:hover,
+.cw-button-flow.bg-primary:focus-visible,
+.cw-button-flow[class*="bg-primary"]:focus-visible {
+  background-color: var(--background);
+  color: var(--primary);
+}
+.cw-input-flow {
+  border-color: color-mix(in oklab, var(--border) 82%, transparent);
+}
+.cw-ring-accent {
+  position: relative;
+  isolation: isolate;
+}
+.cw-ring-accent::before,
+.cw-ring-accent::after {
+  content: "";
+  position: absolute;
+  inset: 50%;
+  border-radius: 9999px;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+.cw-ring-accent::before {
+  width: calc(100% + 18px);
+  height: calc(100% + 18px);
+  border: 1px solid color-mix(in oklab, var(--retro-glow-red) 48%, transparent);
+  opacity: 0.32;
+  animation: cw-ring-breathe 5.6s ease-in-out infinite;
+}
+.cw-ring-accent::after {
+  width: calc(100% + 38px);
+  height: calc(100% + 38px);
+  border: 1px dashed color-mix(in oklab, var(--retro-glow-red) 30%, transparent);
+  opacity: 0.18;
+  animation: cw-outline-spin 14s linear infinite;
+}
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .glass-surface, .glass-surface-sm { background: var(--card); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cw-border-flow::before,
+  .cw-ring-accent::before,
+  .cw-ring-accent::after,
+  .cw-button-flow,
+  .cw-input-flow {
+    animation: none !important;
+  }
 }
 
 /* Smart Dashboard module keyframes — kept in globals (not inline in page) to

@@ -262,7 +262,7 @@ function DeleteAccountModal({
           <p className="mt-2 text-sm text-muted-foreground">
             Your account and all associated data have been permanently deleted.
           </p>
-          <Button className="mt-6 w-full rounded-lg" onClick={onClose}>Close</Button>
+          <Button className="cw-button-flow mt-6 w-full rounded-lg" onClick={onClose}>Close</Button>
         </div>
       </div>
     )
@@ -496,7 +496,7 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
               {panelView !== "menu" && (
                 <button
                   onClick={() => setPanelView("menu")}
-                  className="glass-surface-sm flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-all hover:text-primary hover:[box-shadow:0_0_20px_-4px_var(--retro-glow-red)]"
+                  className="cw-button-flow glass-surface-sm flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-all hover:text-primary hover:[box-shadow:0_0_20px_-4px_var(--retro-glow-red)]"
                 >
                   <ChevronLeft className="h-5 w-5" />
                 </button>
@@ -513,7 +513,7 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
             </div>
             <button
               onClick={onClose}
-              className="glass-surface-sm flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-all hover:text-primary hover:[box-shadow:0_0_20px_-4px_var(--retro-glow-red)]"
+              className="cw-button-flow glass-surface-sm flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-all hover:text-primary hover:[box-shadow:0_0_20px_-4px_var(--retro-glow-red)]"
             >
               <X className="h-5 w-5" />
             </button>
@@ -545,7 +545,7 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                         <Input type="email" placeholder="Email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} className="rounded-lg" />
                         <Input type="password" placeholder="Password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} className="rounded-lg" />
                         <Button
-                          className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
+                          className="cw-button-flow w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
                           disabled={authLoading}
                           onClick={async () => {
                             setAuthError(""); setAuthLoading(true)
@@ -570,7 +570,7 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                         <Input type="password" placeholder="Password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} className="rounded-lg" />
                         <Input type="password" placeholder="Confirm password" value={authConfirmPassword} onChange={(e) => setAuthConfirmPassword(e.target.value)} className="rounded-lg" />
                         <Button
-                          className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
+                          className="cw-button-flow w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
                           disabled={authLoading}
                           onClick={async () => {
                             setAuthError("")
@@ -596,7 +596,7 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                       <div className="space-y-3">
                         <Input type="email" placeholder="Email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} className="rounded-lg" />
                         <Button
-                          className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
+                          className="cw-button-flow w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
                           disabled={authLoading}
                           onClick={async () => {
                             setAuthError(""); setAuthLoading(true)
@@ -666,7 +666,7 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                               />
                               <Button
                                 size="sm"
-                                className="rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
+                                className="cw-button-flow rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
                                 disabled={!giftCode.trim() || giftCodeLoading || giftCodeApplied}
                                 onClick={async () => {
                                   if (!session?.user) return
@@ -746,7 +746,7 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                         <div className="space-y-3">
                           <Input type="email" placeholder="New email" className="rounded-lg" />
                           <Input type="password" placeholder="Password confirmation" className="rounded-lg" />
-                          <Button size="sm" className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90">
+                          <Button size="sm" className="cw-button-flow w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90">
                             Save email
                           </Button>
                           <p className="text-xs text-muted-foreground">Email change requires password confirmation for security.</p>
@@ -762,7 +762,7 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                           <Input type="password" placeholder="Current password" className="rounded-lg" />
                           <Input type="password" placeholder="New password" className="rounded-lg" />
                           <Input type="password" placeholder="Confirm new password" className="rounded-lg" />
-                          <Button size="sm" className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90">
+                          <Button size="sm" className="cw-button-flow w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90">
                             Update password
                           </Button>
                           <p className="text-xs text-muted-foreground">Use a strong password.</p>
@@ -833,7 +833,7 @@ export function AccountMenuButton({ onClick }: { onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      className="cw-button-flow flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
       aria-label="Open account menu"
     >
       <User className="h-4 w-4" />

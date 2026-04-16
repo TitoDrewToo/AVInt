@@ -37,17 +37,17 @@ export function AuthGuardModal({ isVisible, onSuccess, onClose }: AuthGuardModal
   if (!isVisible) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center font-sans">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4 font-sans">
       <div
         className={`absolute inset-0 bg-background/40 backdrop-blur-sm ${onClose ? "cursor-pointer" : ""}`}
         onClick={onClose}
       />
-      <div className="glass-surface relative z-10 w-full max-w-sm overflow-hidden rounded-2xl p-8 shadow-xl">
+      <div className="glass-surface relative z-10 my-auto w-full max-w-sm overflow-hidden rounded-2xl p-8 shadow-xl">
         {onClose && (
           <button
             onClick={onClose}
             aria-label="Close"
-            className="glass-surface-sm absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-all hover:text-primary hover:[box-shadow:0_0_20px_-4px_var(--retro-glow-red)]"
+            className="cw-button-flow glass-surface-sm absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-all hover:text-primary hover:[box-shadow:0_0_20px_-4px_var(--retro-glow-red)]"
           >
             <X className="h-4 w-4" />
           </button>
@@ -97,7 +97,7 @@ export function AuthGuardModal({ isVisible, onSuccess, onClose }: AuthGuardModal
               <Input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} className="rounded-lg" />
               <Input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="rounded-lg" />
               <Button
-                className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
+                className="cw-button-flow w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
                 disabled={loading}
                 onClick={async () => {
                   setError(""); setLoading(true)
@@ -130,7 +130,7 @@ export function AuthGuardModal({ isVisible, onSuccess, onClose }: AuthGuardModal
               <Input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="rounded-lg" />
               <Input type="password" placeholder="Confirm password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="rounded-lg" />
               <Button
-                className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
+                className="cw-button-flow w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
                 disabled={loading}
                 onClick={async () => {
                   setError("")
@@ -156,7 +156,7 @@ export function AuthGuardModal({ isVisible, onSuccess, onClose }: AuthGuardModal
             <div className="space-y-3">
               <Input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} className="rounded-lg" />
               <Button
-                className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
+                className="cw-button-flow w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
                 disabled={loading}
                 onClick={async () => {
                   setError(""); setLoading(true)

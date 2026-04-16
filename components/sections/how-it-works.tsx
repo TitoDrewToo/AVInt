@@ -160,8 +160,8 @@ const steps: StepProps[] = [
   },
   {
     number: 3,
-    title: "Tax-ready reports & dashboards",
-    subtitle: "Schedule C mapped expenses, P&L, CSV export — ready for filing.",
+    title: "Generate reports & dashboards",
+    subtitle: "Turn structured records into instant reports, summaries, and visuals.",
     icon: <OutputIcon className="h-8 w-8" />,
   },
 ]

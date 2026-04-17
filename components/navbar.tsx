@@ -67,8 +67,8 @@ export function Navbar() {
   // Product assistant rollout plan:
   // 1. Keep the navbar assistant implementation in the codebase.
   // 2. Keep it hidden for all users until the wiki-backed knowledge source is ready.
-  // 3. When the real wiki mapping is ready, enable this only for active subscribers.
-  // 4. At that point, remove the local preview override and rely on entitlement gating only.
+  // 3. When the real wiki mapping is ready, replace the hard `false` below with
+  //    `session && hasActiveSubscription` to enable it only for active subscribers.
   const showAssistantPreview = false
 
   useEffect(() => {
@@ -169,7 +169,7 @@ export function Navbar() {
 
           {/* Desktop Navigation */}
           <div className="hidden flex-1 items-center gap-6 md:ml-6 md:flex">
-            {showAssistantPreview || (session && hasActiveSubscription) ? <ProductAssistantPreview /> : null}
+            {showAssistantPreview ? <ProductAssistantPreview /> : null}
             <div className="ml-auto flex items-center gap-6">
             {/* Products Dropdown */}
             <div

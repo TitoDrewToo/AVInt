@@ -2,6 +2,7 @@
 
 import Image from "next/image"
 import Link from "next/link"
+import { Github, Youtube } from "lucide-react"
 
 const geistFontStyle = {
   fontFamily: 'var(--font-aldrich), "Aldrich", var(--font-geist), "Geist", "Geist Fallback", sans-serif',
@@ -23,8 +24,28 @@ export function Footer() {
         }}
       />
       <div className="glass-surface-sm relative w-full border-0 !rounded-none" style={geistFontStyle}>
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 py-6 md:flex-row">
-          <div className="flex items-center gap-3">
+        <div className="mx-auto grid max-w-6xl gap-5 px-6 py-6 md:grid-cols-[0.9fr_auto_1.35fr] md:items-center">
+          <div className="flex items-center justify-center gap-6 md:justify-start">
+            <Link
+              href="https://github.com/TitoDrewToo/AVInt"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="AVIntelligence on GitHub"
+              className="text-foreground/55 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+            >
+              <Github className="h-6 w-6" />
+            </Link>
+            <Link
+              href="https://www.youtube.com/channel/UCYF8-6-c58m0NskmcK8CGWg"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="AVIntelligence on YouTube"
+              className="text-foreground/55 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+            >
+              <Youtube className="h-6 w-6" />
+            </Link>
+          </div>
+          <div className="flex items-center justify-center gap-3">
             <Image
               src="/avintelligence-stacked.svg"
               alt="AVINTELLIGENCE"
@@ -36,31 +57,31 @@ export function Footer() {
               © 2026 AVINTPH Information Technology Solutions
             </span>
           </div>
-          <nav className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
+          <nav className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 md:flex-nowrap md:justify-end md:gap-x-4 md:pl-8">
             <Link
               href="/blog"
-              className="text-xs text-foreground/55 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+              className="whitespace-nowrap text-xs text-foreground/55 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
               style={geistFontStyle}
             >
               Blog
             </Link>
             <Link
               href="/privacy"
-              className="text-xs text-foreground/55 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+              className="whitespace-nowrap text-xs text-foreground/55 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
               style={geistFontStyle}
             >
               Privacy
             </Link>
             <Link
               href="/terms"
-              className="text-xs text-foreground/55 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+              className="whitespace-nowrap text-xs text-foreground/55 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
               style={geistFontStyle}
             >
               Terms
             </Link>
             <a
               href="mailto:support@avintph.com"
-              className="text-xs text-foreground/55 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+              className="whitespace-nowrap text-xs text-foreground/55 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
               style={geistFontStyle}
             >
               support@avintph.com
@@ -69,7 +90,7 @@ export function Footer() {
               href="https://forms.gle/E24gjqAnv6xmF31H8"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-xs text-foreground/55 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+              className="whitespace-nowrap text-xs text-foreground/55 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
               style={geistFontStyle}
             >
               Support

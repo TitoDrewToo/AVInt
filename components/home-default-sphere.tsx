@@ -238,13 +238,13 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
         const radius = Math.hypot(localX, localY)
         const angle = Math.atan2(localY, localX)
 
-        if (radius < 0.08) return true
-        if (radius > 0.22 && radius < 0.58) {
-          const divider1 = Math.abs(angle - 0.15) < 0.05
-          const divider2 = Math.abs(angle + 1.72) < 0.05
-          const divider3 = Math.abs(angle - 2.65) < 0.05
-          if (divider1 || divider2 || divider3) return true
-        }
+        if (radius > 0.54) return false
+
+        const divider1 = Math.abs(angle - 0.15) < 0.055
+        const divider2 = Math.abs(angle + 1.72) < 0.055
+        const divider3 = Math.abs(angle - 2.65) < 0.055
+        const centerHub = radius < 0.028
+        if (divider1 || divider2 || divider3 || centerHub) return true
 
         return false
       }
@@ -452,7 +452,9 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
           lineTarget += sin(lineT * 6.28318) * 0.03;
           float lineMaskViz = (1.0 - smoothstep(0.1, 0.24, abs(pos.y - lineTarget))) * smoothstep(-0.32, -0.12, pos.x) * (1.0 - smoothstep(0.92, 1.08, pos.x));
           float barsMask = (1.0 - smoothstep(0.0, 0.24, abs(mod(pos.x + 1.5, 0.38) - 0.19))) * smoothstep(-1.28, -0.56, pos.y) * (1.0 - smoothstep(-0.02, 0.14, pos.y));
-          float pieMask = (1.0 - smoothstep(0.24, 0.6, abs(length(vec2(pos.x - 1.18, pos.y - 0.36)) - 0.26)));
+          vec2 pieLocalMask = vec2(pos.x - 1.18, pos.y - 0.36);
+          float pieRadiusMask = length(pieLocalMask);
+          float pieMask = 1.0 - smoothstep(0.44, 0.58, pieRadiusMask);
           float areaMask = smoothstep(-0.2, 0.0, pos.x) * (1.0 - smoothstep(1.6, 1.78, pos.x)) * smoothstep(-1.22, -1.0, pos.y) * (1.0 - smoothstep(-0.12, 0.1, pos.y));
 
           float cardReveal = smoothstep(0.0, 0.12, uVisualizationStage);
@@ -489,12 +491,15 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
           vec2 pieLocal = vec2(pos.x - 1.18, pos.y - 0.36);
           float pieAngle = atan(pieLocal.y, pieLocal.x);
           float pieRadius = length(pieLocal);
-          float pieInner = smoothstep(0.1, 0.18, pieRadius);
-          float pieOuter = 1.0 - smoothstep(0.46, 0.58, pieRadius);
+          float pieInner = smoothstep(0.04, 0.1, pieRadius);
+          float pieOuter = 1.0 - smoothstep(0.42, 0.54, pieRadius);
           float pieDivider1 = (1.0 - smoothstep(0.02, 0.06, abs(pieAngle - 0.15))) * pieInner * pieOuter;
           float pieDivider2 = (1.0 - smoothstep(0.02, 0.06, abs(pieAngle + 1.72))) * pieInner * pieOuter;
           float pieDivider3 = (1.0 - smoothstep(0.02, 0.06, abs(pieAngle - 2.65))) * pieInner * pieOuter;
-          float pieCenter = 1.0 - smoothstep(0.0, 0.08, pieRadius);
+          float pieCenter = 1.0 - smoothstep(0.0, 0.028, pieRadius);
+          float pieSlice1 = smoothstep(-0.1, 0.06, pieAngle) * (1.0 - smoothstep(0.98, 1.14, pieAngle));
+          float pieSlice2 = smoothstep(-2.0, -1.86, pieAngle) * (1.0 - smoothstep(-1.16, -1.02, pieAngle));
+          float pieSliceAccent = max(pieSlice1, pieSlice2) * smoothstep(0.08, 0.18, pieRadius) * (1.0 - smoothstep(0.34, 0.48, pieRadius));
           float pieDetail = max(pieDivider1, max(pieDivider2, max(pieDivider3, pieCenter))) * pieReveal * pieMask * uVisualizationSignal;
 
           // Area chart detail: baseline, trend edge, and internal grid.
@@ -509,7 +514,7 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
 
           vVizDetail = min(cardDetail + pieDetail + areaDetail, 1.0);
           float vizAccentPattern = step(0.74, sin(pos.x * 22.0 - pos.y * 11.0 + aRandom * 20.0 + uTime * 2.7));
-          float vizAccentSource = max(lineMaskViz * lineReveal, max(cardDetail, max(pieDetail, areaDetail)));
+          float vizAccentSource = max(lineMaskViz * lineReveal, max(cardDetail, max(max(pieDetail, pieSliceAccent * pieReveal * pieMask * uVisualizationSignal), areaDetail)));
           vVizAccent = min(vizAccentSource * vizAccentPattern * uVisualizationSignal, 1.0);
 
           vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);

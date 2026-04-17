@@ -2,7 +2,6 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { Button } from "@/components/ui/button"
 import { Check } from "lucide-react"
 import { FadeUp, StaggerContainer, StaggerItem } from "@/components/fade-up"
 
@@ -18,42 +17,44 @@ function PricingCard({ name, price, annualPrice, features, isAnnual }: PricingCa
   const displayPrice = isAnnual && annualPrice ? annualPrice : price
 
   return (
-    <div className="glass-surface hover-bloom flex h-full flex-col rounded-2xl p-6">
-      <h3 className="text-lg font-semibold text-foreground">{name}</h3>
-      {displayPrice && (
-        <div className="mt-4 flex items-center">
-          <span className="text-3xl font-semibold text-foreground">
-            {displayPrice}
-          </span>
-          {name === "Gift Codes" && (
-            <span className="ml-1 text-muted-foreground">/ code</span>
-          )}
-          {name === "Day Pass" && (
-            <span className="ml-1 text-muted-foreground">/ day</span>
-          )}
-          {name === "Pro" && (
-            <>
-              <span className="ml-1 text-muted-foreground">
-                /{isAnnual ? "year" : "month"}
-              </span>
-              {isAnnual && (
-                <span className="ml-2 text-sm font-medium text-primary">
-                  30% off
+    <Link href="/pricing" className="group block h-full">
+      <div className="glass-surface hover-bloom flex h-full flex-col rounded-2xl p-6 transition-all group-hover:border-primary/20 group-hover:[box-shadow:0_0_30px_-14px_var(--retro-glow-red)]">
+        <h3 className="text-lg font-semibold text-foreground">{name}</h3>
+        {displayPrice && (
+          <div className="mt-4 flex items-center">
+            <span className="text-3xl font-semibold text-foreground">
+              {displayPrice}
+            </span>
+            {name === "Gift Codes" && (
+              <span className="ml-1 text-muted-foreground">/ code</span>
+            )}
+            {name === "Day Pass" && (
+              <span className="ml-1 text-muted-foreground">/ day</span>
+            )}
+            {name === "Pro" && (
+              <>
+                <span className="ml-1 text-muted-foreground">
+                  /{isAnnual ? "year" : "month"}
                 </span>
-              )}
-            </>
-          )}
-        </div>
-      )}
-      <ul className="mt-6 flex-1 space-y-3">
-        {features.map((feature) => (
-          <li key={feature} className="flex items-start gap-2">
-            <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-            <span className="text-sm text-muted-foreground">{feature}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
+                {isAnnual && (
+                  <span className="ml-2 text-sm font-medium text-primary">
+                    30% off
+                  </span>
+                )}
+              </>
+            )}
+          </div>
+        )}
+        <ul className="mt-6 flex-1 space-y-3">
+          {features.map((feature) => (
+            <li key={feature} className="flex items-start gap-2">
+              <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <span className="text-sm text-muted-foreground">{feature}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </Link>
   )
 }
 
@@ -138,14 +139,6 @@ export function PricingPreviewSection() {
             </StaggerItem>
           ))}
         </StaggerContainer>
-
-        <FadeUp delay={0.1} className="mt-12 text-center">
-          <Link href="/pricing">
-            <Button variant="outline" className="rounded-xl">
-              View Pricing
-            </Button>
-          </Link>
-        </FadeUp>
       </div>
     </section>
   )

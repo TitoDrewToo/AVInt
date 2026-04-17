@@ -125,6 +125,19 @@ function PricingCard({
   const canUpgradeToPro = (isDayPass || isGiftCode) && name === "Pro"
   // Pro users shouldn't see a Day Pass button — they already have more
   const supersededByPro = isPro && name === "Day Pass"
+  const animateAnnualButton = isAnnual && name === "Pro"
+  const animateAnnualCard = isAnnual && name === "Pro" && !active
+
+  const buttonClassName = (variant: "primary" | "secondary" = "primary") =>
+    [
+      "cw-button-flow mt-8 w-full rounded-xl",
+      variant === "primary"
+        ? "bg-primary text-primary-foreground hover:bg-primary/90"
+        : "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+      animateAnnualButton ? "annual-trigger-button" : "",
+    ]
+      .filter(Boolean)
+      .join(" ")
 
   const handlePaidClick = () => {
     if (!isSignedIn) {
@@ -139,7 +152,7 @@ function PricingCard({
     if (name === "Free") {
       return isSignedIn ? null : (
         <Link href="/tools/smart-storage">
-          <Button className="mt-8 w-full rounded-xl bg-secondary text-secondary-foreground hover:bg-secondary/80" size="lg">
+          <Button className={buttonClassName("secondary")} size="lg">
             Get Started
           </Button>
         </Link>
@@ -150,7 +163,7 @@ function PricingCard({
     if (name === "Gift Codes") {
       return (
         <Button
-          className="mt-8 w-full rounded-xl bg-secondary text-secondary-foreground hover:bg-secondary/80"
+          className={buttonClassName("secondary")}
           size="lg"
           onClick={handlePaidClick}
         >
@@ -163,7 +176,7 @@ function PricingCard({
     if (active) {
       return (
         <Link href="/tools/smart-storage">
-          <Button className="mt-8 w-full rounded-xl" size="lg">
+          <Button className={buttonClassName()} size="lg">
             Go to Smart Storage
           </Button>
         </Link>
@@ -174,7 +187,7 @@ function PricingCard({
     if (canUpgradeToPro) {
       return (
         <Button
-          className="mt-8 w-full rounded-xl"
+          className={buttonClassName()}
           size="lg"
           onClick={handlePaidClick}
         >
@@ -195,7 +208,7 @@ function PricingCard({
     // Default — not signed in or no active sub
     return (
       <Button
-        className={`mt-8 w-full rounded-xl ${highlighted ? "" : "bg-secondary text-secondary-foreground hover:bg-secondary/80"}`}
+        className={buttonClassName(highlighted ? "primary" : "secondary")}
         size="lg"
         onClick={handlePaidClick}
       >
@@ -205,13 +218,53 @@ function PricingCard({
   }
 
   return (
-    <div className={`relative flex flex-col rounded-2xl border p-8 transition-all ${
+    <div className={`group relative flex flex-col overflow-hidden rounded-2xl border p-8 transition-all duration-300 ease-out hover:-translate-y-1.5 hover:[box-shadow:0_26px_80px_-42px_var(--retro-glow-red)] ${
       active
         ? "border-primary bg-card shadow-lg ring-1 ring-primary/30"
         : highlighted
-        ? "border-primary bg-card shadow-lg"
+        ? "border-border bg-card shadow-lg"
         : "border-border bg-card"
     }`}>
+      {animateAnnualCard ? (
+        <>
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl"
+          >
+            <div
+              className="absolute left-1/2 top-1/2 h-[170%] w-24 -translate-x-1/2 -translate-y-1/2"
+              style={{
+                background:
+                  "linear-gradient(180deg, transparent 0%, color-mix(in oklab, var(--retro-glow-red) 82%, transparent) 48%, transparent 100%)",
+                animation: "annual-card-orbit 3.2s linear infinite",
+                transformOrigin: "center center",
+              }}
+            />
+          </div>
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-px rounded-[calc(1rem-1px)] bg-card"
+          />
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 rounded-2xl border border-primary/25"
+          />
+        </>
+      ) : null}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-[-15%] bottom-[-20%] h-32 opacity-0 blur-3xl transition-opacity duration-300 group-hover:opacity-100"
+        style={{
+          background: "radial-gradient(circle at center, color-mix(in oklab, var(--retro-glow-red) 42%, transparent) 0%, transparent 72%)",
+        }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+        style={{
+          background: "linear-gradient(180deg, transparent 0%, color-mix(in oklab, var(--retro-glow-red) 6%, transparent) 100%)",
+        }}
+      />
       {/* Active badge */}
       {active && (
         <div className="absolute -top-3 left-1/2 -translate-x-1/2">
@@ -222,10 +275,25 @@ function PricingCard({
         </div>
       )}
 
-      <h3 className="text-xl font-semibold text-foreground">{name}</h3>
-      <p className="mt-2 text-sm text-muted-foreground">{description}</p>
+      <style>{`
+        @keyframes annual-card-orbit {
+          0% { transform: translate(-50%, -50%) rotate(0deg); }
+          100% { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+        @keyframes annual-button-ring {
+          0% { box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--retro-glow-red) 12%, transparent), 0 0 0 0 color-mix(in oklab, var(--retro-glow-red) 0%, transparent); }
+          50% { box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--retro-glow-red) 44%, transparent), 0 0 0 4px color-mix(in oklab, var(--retro-glow-red) 12%, transparent); }
+          100% { box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--retro-glow-red) 12%, transparent), 0 0 0 0 color-mix(in oklab, var(--retro-glow-red) 0%, transparent); }
+        }
+        .annual-trigger-button {
+          animation: annual-button-ring 2.1s linear infinite;
+        }
+      `}</style>
+
+      <h3 className="relative text-xl font-semibold text-foreground">{name}</h3>
+      <p className="relative mt-2 text-sm text-muted-foreground">{description}</p>
       {displayPrice !== null && (
-        <div className="mt-6 flex items-center">
+        <div className="relative mt-6 flex items-center">
           <span className="text-4xl font-semibold text-foreground">{displayPrice}</span>
           {name === "Gift Codes" && <span className="ml-1 text-muted-foreground">/ code</span>}
           {name === "Day Pass" && <span className="ml-1 text-muted-foreground">/ day</span>}
@@ -238,11 +306,9 @@ function PricingCard({
         </div>
       )}
       {displayPrice === null && (
-        <div className="mt-6">
-          <span className="text-4xl font-semibold text-foreground">Free</span>
-        </div>
+        <div className="relative mt-6 h-12" aria-hidden="true" />
       )}
-      <ul className="mt-8 flex-1 space-y-4">
+      <ul className="relative mt-8 flex-1 space-y-4">
         {features.map((feature) => (
           <li key={feature} className="flex items-start gap-3">
             <Check className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
@@ -251,7 +317,7 @@ function PricingCard({
         ))}
       </ul>
 
-      {renderButton()}
+      <div className="relative">{renderButton()}</div>
     </div>
   )
 }

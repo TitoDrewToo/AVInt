@@ -10,9 +10,16 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
     const container = containerRef.current
     if (!container) return
 
+    const getViewportSize = () => ({
+      width: window.innerWidth || 1,
+      height: window.innerHeight || 1,
+    })
+
+    const { width: initialWidth, height: initialHeight } = getViewportSize()
+
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-    renderer.setSize(container.clientWidth || 1, container.clientHeight || 1)
+    renderer.setSize(initialWidth, initialHeight)
     renderer.setClearAlpha(0)
     container.appendChild(renderer.domElement)
 
@@ -21,7 +28,7 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
 
     const camera = new THREE.PerspectiveCamera(
       40,
-      (container.clientWidth || 1) / (container.clientHeight || 1),
+      initialWidth / initialHeight,
       0.1,
       100
     )
@@ -131,8 +138,7 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
     let frameId = 0
 
     const onResize = () => {
-      const width = container.clientWidth || 1
-      const height = container.clientHeight || 1
+      const { width, height } = getViewportSize()
       camera.aspect = width / height
       camera.updateProjectionMatrix()
       renderer.setSize(width, height)

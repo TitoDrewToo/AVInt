@@ -35,9 +35,11 @@ interface PricingCardProps {
 function CheckoutRedirectModal({
   isVisible,
   onClose,
+  progress,
 }: {
   isVisible: boolean
   onClose: () => void
+  progress: number
 }) {
   useEffect(() => {
     if (!isVisible) return
@@ -73,8 +75,12 @@ function CheckoutRedirectModal({
         />
 
         <div className="relative text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
-            <ProcessingIndicator active={true} />
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary shadow-[0_0_30px_-10px_var(--retro-glow-red)]">
+            <span className="relative flex h-4 w-4 items-center justify-center">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-55" />
+              <span className="absolute inline-flex h-3.5 w-3.5 animate-pulse rounded-full bg-primary/35 blur-[1px]" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-primary shadow-[0_0_14px_var(--retro-glow-red)]" />
+            </span>
           </div>
           <h2 className="mt-6 text-xl font-semibold text-foreground">Redirecting to creem.io</h2>
           <p className="mt-2 text-sm text-muted-foreground">
@@ -84,7 +90,10 @@ function CheckoutRedirectModal({
 
         <div className="relative mt-8 rounded-xl border border-border bg-muted/25 p-5">
           <div className="overflow-hidden rounded-full border border-border/70 bg-muted/40">
-            <div className="h-2 w-full origin-left animate-pulse bg-primary/70" />
+            <div
+              className="h-2 origin-left rounded-full bg-primary/80 transition-[width] duration-150 ease-out"
+              style={{ width: `${progress}%` }}
+            />
           </div>
           <div className="mt-4 flex items-center justify-center gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground/85">
             <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-primary" />
@@ -352,11 +361,13 @@ const plans = [
 ]
 
 export default function PricingPage() {
+  const REDIRECT_DURATION_MS = 1150
   const [isAnnual, setIsAnnual] = useState(false)
   const [isSignedIn, setIsSignedIn] = useState(false)
   const [activeStatus, setActiveStatus] = useState<string | null>(null)
   const [pendingCheckoutUrl, setPendingCheckoutUrl] = useState<string | null>(null)
   const [redirectingCheckoutUrl, setRedirectingCheckoutUrl] = useState<string | null>(null)
+  const [redirectProgress, setRedirectProgress] = useState(0)
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data }) => {
@@ -389,15 +400,32 @@ export default function PricingPage() {
   const handleRequireAuth = (checkoutUrl: string) => setPendingCheckoutUrl(checkoutUrl)
 
   const handleRedirect = (checkoutUrl: string) => {
+    setRedirectProgress(0)
     setRedirectingCheckoutUrl(checkoutUrl)
   }
 
   useEffect(() => {
     if (!redirectingCheckoutUrl) return
+    const startedAt = performance.now()
+    const updateProgress = () => {
+      const elapsed = performance.now() - startedAt
+      const ratio = Math.min(elapsed / REDIRECT_DURATION_MS, 1)
+      const eased = 1 - Math.pow(1 - ratio, 3)
+      setRedirectProgress(Math.min(100, Math.max(10, eased * 100)))
+      if (ratio < 1) {
+        frameId = window.requestAnimationFrame(updateProgress)
+      }
+    }
+
+    let frameId = window.requestAnimationFrame(updateProgress)
     const timeoutId = window.setTimeout(() => {
+      setRedirectProgress(100)
       window.location.href = redirectingCheckoutUrl
-    }, 950)
-    return () => window.clearTimeout(timeoutId)
+    }, REDIRECT_DURATION_MS)
+    return () => {
+      window.clearTimeout(timeoutId)
+      window.cancelAnimationFrame(frameId)
+    }
   }, [redirectingCheckoutUrl])
 
   const handleAuthSuccess = () => {
@@ -419,6 +447,7 @@ export default function PricingPage() {
       <CheckoutRedirectModal
         isVisible={!!redirectingCheckoutUrl}
         onClose={() => setRedirectingCheckoutUrl(null)}
+        progress={redirectProgress}
       />
       <main className="flex-1 px-6 py-24">
         <div className="mx-auto max-w-6xl">

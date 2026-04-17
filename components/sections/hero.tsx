@@ -128,27 +128,30 @@ export function HeroSection() {
       />
       <section className="relative overflow-hidden px-6 py-20 md:py-28">
         {/* Retro-futurism backdrop — grid + radial red glow, decorative only */}
-        <div aria-hidden className="pointer-events-none absolute inset-0 retro-grid-bg" />
         <div
           aria-hidden
-          className="pointer-events-none absolute left-1/2 top-[-10%] h-[600px] w-[900px] -translate-x-1/2 rounded-full"
+          className="pointer-events-none absolute inset-0"
           style={{
-            background:
-              "radial-gradient(ellipse at center, var(--retro-glow-red) 0%, transparent 60%)",
-            filter: "blur(40px)",
+            backgroundImage: `
+              linear-gradient(color-mix(in oklab, var(--retro-glow-red) 22%, transparent) 1px, transparent 1px),
+              linear-gradient(90deg, color-mix(in oklab, var(--retro-glow-red) 22%, transparent) 1px, transparent 1px)
+            `,
+            backgroundSize: "44px 44px",
+            maskImage: "radial-gradient(ellipse at center, black 42%, transparent 82%)",
+            WebkitMaskImage: "radial-gradient(ellipse at center, black 42%, transparent 82%)",
+            opacity: 0.9,
           }}
         />
-
         <div className="relative mx-auto max-w-6xl">
           {/* Trusted counter */}
-          <div className="mb-8">
+          <div className="relative z-[1] mb-8">
             <span className="text-sm text-muted-foreground">
               Trusted by <TrustedCounter /> users worldwide
             </span>
           </div>
 
           {/* Two combined cards — equal columns */}
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="relative z-[1] grid gap-4 md:grid-cols-2">
 
             {/* Smart Storage */}
             <div

@@ -38,14 +38,6 @@ export function HomeInteractiveTrail({ children }: HomeInteractiveTrailProps) {
     <div ref={containerRef} className="relative overflow-x-hidden" style={{ ["--trail-y" as string]: "38%" }}>
       <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
         <div
-          className="absolute inset-x-0 top-0 h-56"
-          style={{
-            background:
-              "linear-gradient(180deg, color-mix(in oklab, var(--retro-glow-red) 12%, transparent) 0%, transparent 100%)",
-            opacity: 0.85,
-          }}
-        />
-        <div
           className="absolute inset-y-16 left-1/2 w-px -translate-x-1/2"
           style={{
             background: "linear-gradient(180deg, transparent 0%, color-mix(in oklab, var(--retro-glow-red) 44%, transparent) 16%, color-mix(in oklab, var(--retro-glow-red) 36%, transparent) 84%, transparent 100%)",

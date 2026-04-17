@@ -5,8 +5,12 @@ import Image from "next/image"
 import { useEffect, useRef, useState } from "react"
 import { useTheme } from "next-themes"
 import { ChevronDown, Menu, X, Sun, Moon, User } from "lucide-react"
+import type { Session } from "@supabase/supabase-js"
 import { AccountPanel } from "@/components/account-panel"
 import { SystemStatusIndicator } from "@/components/ui/system-status-indicator"
+import { ProductAssistantPreview } from "@/components/product-assistant-preview"
+import { supabase } from "@/lib/supabase"
+import { computeEntitlement } from "@/lib/subscription"
 
 const geistFontStyle = {
   fontFamily: 'var(--font-aldrich), "Aldrich", var(--font-geist), "Geist", "Geist Fallback", sans-serif',
@@ -56,8 +60,16 @@ export function Navbar() {
   const [productsOpen, setProductsOpen] = useState(false)
   const [toolsOpen, setToolsOpen] = useState(false)
   const [accountPanelOpen, setAccountPanelOpen] = useState(false)
+  const [session, setSession] = useState<Session | null>(null)
+  const [hasActiveSubscription, setHasActiveSubscription] = useState(false)
   const productsCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const toolsCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Product assistant rollout plan:
+  // 1. Keep the navbar assistant implementation in the codebase.
+  // 2. Keep it hidden for all users until the wiki-backed knowledge source is ready.
+  // 3. When the real wiki mapping is ready, enable this only for active subscribers.
+  // 4. At that point, remove the local preview override and rely on entitlement gating only.
+  const showAssistantPreview = false
 
   useEffect(() => {
     return () => {
@@ -65,6 +77,39 @@ export function Navbar() {
       if (toolsCloseTimerRef.current) clearTimeout(toolsCloseTimerRef.current)
     }
   }, [])
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session)
+      if (data.session?.user?.email) {
+        void fetchSubscription(data.session.user.email)
+      } else {
+        setHasActiveSubscription(false)
+      }
+    })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession)
+      if (nextSession?.user?.email) {
+        void fetchSubscription(nextSession.user.email)
+      } else {
+        setHasActiveSubscription(false)
+      }
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+  async function fetchSubscription(email: string) {
+    const { data } = await supabase
+      .from("subscriptions")
+      .select("status, current_period_end")
+      .eq("email", email)
+      .maybeSingle()
+
+    const ent = computeEntitlement(data)
+    setHasActiveSubscription(ent.isActive)
+  }
 
   function cancelProductsClose() {
     if (productsCloseTimerRef.current) {
@@ -123,7 +168,9 @@ export function Navbar() {
           </Link>
 
           {/* Desktop Navigation */}
-          <div className="hidden items-center gap-6 md:flex">
+          <div className="hidden flex-1 items-center gap-6 md:ml-6 md:flex">
+            {showAssistantPreview || (session && hasActiveSubscription) ? <ProductAssistantPreview /> : null}
+            <div className="ml-auto flex items-center gap-6">
             {/* Products Dropdown */}
             <div
               className="relative"
@@ -237,6 +284,7 @@ export function Navbar() {
             <SystemStatusIndicator />
 
             <AccountMenuButton onClick={() => setAccountPanelOpen(true)} />
+            </div>
           </div>
 
           {/* Mobile Right Side */}

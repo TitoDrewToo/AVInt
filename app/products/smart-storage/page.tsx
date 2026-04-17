@@ -5,6 +5,7 @@ import Link from "next/link"
 import { StartFreeButton } from "@/components/start-free-button"
 import { FadeUp, StaggerContainer, StaggerItem } from "@/components/fade-up"
 import { PomelliClip } from "@/components/ui/pomelli-clip"
+import { HomeDefaultSphere } from "@/components/home-default-sphere"
 
 export const metadata = {
   title: "Smart Storage — AI Document Storage & Analysis | AVIntelligence",
@@ -205,7 +206,8 @@ const workflowSteps = [
 
 export default function SmartStorageProductPage() {
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="relative flex min-h-screen flex-col">
+      <HomeDefaultSphere className="pointer-events-none fixed inset-0 z-0 hidden md:block" />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify({
@@ -225,7 +227,7 @@ export default function SmartStorageProductPage() {
         })}}
       />
       <Navbar />
-      <main className="flex-1">
+      <main className="relative z-[1] flex-1">
         {/* Hero */}
         <section className="relative px-6 py-24 md:py-32">
           <div aria-hidden className="pointer-events-none absolute inset-0 retro-grid-bg opacity-40" />

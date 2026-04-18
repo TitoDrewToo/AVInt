@@ -44,6 +44,10 @@ function SharedGraphicsStyles() {
         0% { --browser-angle: 0deg; }
         100% { --browser-angle: 360deg; }
       }
+      @keyframes graphics-collapse-idle {
+        0%, 100% { transform: translateY(0px) rotateZ(0deg); }
+        50% { transform: translateY(var(--collapse-idle-y, -7px)) rotateZ(var(--collapse-idle-rotate, -0.7deg)); }
+      }
       @keyframes graphics-carousel {
         from { --carousel-angle: 0deg; }
         to { --carousel-angle: 360deg; }
@@ -193,6 +197,11 @@ function SharedGraphicsStyles() {
         opacity: 0.96;
         animation: graphics-browser-run 5.2s linear infinite;
         filter: drop-shadow(0 0 8px color-mix(in oklab, var(--retro-glow-red) 18%, transparent));
+      }
+      .graphics-collapse-idle {
+        animation: graphics-collapse-idle 5.8s ease-in-out infinite;
+        transform-origin: 50% 50%;
+        will-change: transform;
       }
     `}</style>
   )
@@ -403,7 +412,7 @@ export function CollapseBoxGraphic({
           {panels.map((panel) => (
             <div
               key={panel.key}
-              className="absolute left-1/2 top-1/2 h-44 w-44 rounded-none border border-primary/40 bg-background/55 backdrop-blur-sm"
+              className="absolute left-1/2 top-1/2 h-44 w-44"
               style={{
                 transform: `
                   translate3d(calc(-50% + ${lerp(panel.from.x, panel.to.x)}px), calc(-50% + ${lerp(panel.from.y, panel.to.y)}px), ${lerp(panel.from.z, panel.to.z)}px)
@@ -411,21 +420,39 @@ export function CollapseBoxGraphic({
                   scale(${lerp(panel.from.scale, panel.to.scale)})
                 `,
                 opacity: lerp(panel.from.opacity, panel.to.opacity),
-                boxShadow: "inset 0 1px 0 color-mix(in oklab, var(--retro-glow-red) 14%, transparent)",
                 transition:
                   "transform 560ms cubic-bezier(0.22, 1, 0.36, 1), opacity 420ms ease",
               }}
             >
               <div
-                className="absolute inset-0"
+                className="graphics-collapse-idle relative h-full w-full rounded-none border border-primary/40 bg-background/55 backdrop-blur-sm"
                 style={{
-                  background: "radial-gradient(circle at 50% 50%, color-mix(in oklab, var(--retro-glow-red) 18%, transparent) 0%, transparent 76%)",
+                  boxShadow: "inset 0 1px 0 color-mix(in oklab, var(--retro-glow-red) 14%, transparent)",
+                  animationPlayState: collapse > 0 ? "paused" : "running",
+                  animationDelay:
+                    panel.key === "receipt" ? "-0.2s" :
+                    panel.key === "invoice" ? "-2.1s" :
+                    "-3.5s",
+                  ["--collapse-idle-y" as string]:
+                    panel.key === "receipt" ? "-9px" :
+                    panel.key === "invoice" ? "-5px" :
+                    "-7px",
+                  ["--collapse-idle-rotate" as string]:
+                    panel.key === "receipt" ? "-1deg" :
+                    panel.key === "invoice" ? "0.8deg" :
+                    "-0.45deg",
                 }}
-              />
-              {panel.face}
+              >
+                <div
+                  className="absolute inset-0"
+                  style={{
+                    background: "radial-gradient(circle at 50% 50%, color-mix(in oklab, var(--retro-glow-red) 18%, transparent) 0%, transparent 76%)",
+                  }}
+                />
+                {panel.face}
+              </div>
             </div>
           ))}
-
         </div>
       </div>
     </div>

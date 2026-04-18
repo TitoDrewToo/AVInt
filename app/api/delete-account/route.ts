@@ -37,6 +37,11 @@ export async function POST(req: NextRequest) {
       await supabaseAdmin.from("processing_jobs").delete().in("file_id", fileIds)
     }
 
+    // 3b. Delete payment obligations derived from contract files
+    if (fileIds.length) {
+      await supabaseAdmin.from("payment_obligations").delete().in("file_id", fileIds)
+    }
+
     // 4. Delete storage objects under ${user_id}/ (canonical, _inbox/, _quarantine/)
     //    Must happen before deleting the files table rows so we can still look up paths.
     const storagePaths = (await supabaseAdmin
@@ -72,6 +77,7 @@ export async function POST(req: NextRequest) {
     await supabaseAdmin.from("advanced_widgets").delete().eq("user_id", user_id)
     await supabaseAdmin.from("dashboard_layouts").delete().eq("user_id", user_id)
     await supabaseAdmin.from("context_summaries").delete().eq("user_id", user_id)
+    await supabaseAdmin.from("payment_obligations").delete().eq("user_id", user_id)
     await supabaseAdmin.from("subscriptions").delete().eq("user_id", user_id)
 
     // 7. Finally delete the auth user

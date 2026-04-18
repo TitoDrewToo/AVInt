@@ -1009,12 +1009,30 @@ export default function SmartStoragePage() {
   const handleDeleteFile = async (fileId: string) => {
     const file = files.find(f => f.id === fileId)
     if (!file) return
-    await supabase.storage.from("documents").remove([file.storage_path])
-    await supabase.from("files").delete().eq("id", fileId)
+    const userToken = (await supabase.auth.getSession()).data.session?.access_token
+    const res = await fetch("/api/delete-file", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${userToken ?? ""}`,
+      },
+      body: JSON.stringify({ file_id: fileId }),
+    })
+
+    if (!res.ok) {
+      const payload = await res.json().catch(() => ({}))
+      throw new Error(payload.error ?? "Failed to delete file")
+    }
+
     setFiles(prev => prev.filter(f => f.id !== fileId))
     setSelectedFiles(prev => {
       const next = new Set(prev)
       next.delete(fileId)
+      return next
+    })
+    setReportAvailability(prev => {
+      const next: Record<string, boolean> = {}
+      for (const report of REPORTS) next[report.id] = false
       return next
     })
   }
@@ -1833,7 +1851,7 @@ export default function SmartStoragePage() {
                 >
                   <div
                     onClick={(e) => { e.stopPropagation(); handleFileClick(file.id, e as unknown as React.MouseEvent) }}
-                    onDoubleClick={() => handleDownloadFile(file.id)}
+                    onDoubleClick={() => handleOpenFile(file.id)}
                     onMouseEnter={(e) => handleFileHoverEnter(file.id, e.clientX, e.clientY)}
                     onMouseLeave={handleFileHoverLeave}
                     className={`grid grid-cols-[1fr_120px_140px_80px] items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition-colors cursor-pointer select-none ${

@@ -129,6 +129,24 @@ Safe wording:
 - more complete uploads improve dashboard usefulness
 - consistent usage leads to more valuable outputs over time
 
+## Data Retention and Deletion Guidance
+
+The assistant should explain retention and deletion in practical product terms.
+
+Current guidance:
+
+- uploaded files and related structured records stay in the workspace while the user keeps them there
+- users can delete individual files from Smart Storage
+- users can delete their account
+- deleting a file removes the file and its related primary records from active application systems
+- deleting an account removes active application data associated with that account from primary systems
+
+The assistant should also clarify that:
+
+- limited historical records may remain temporarily in backups or logs
+- backup and log retention depends in part on infrastructure-provider retention windows
+- the assistant should not promise instant erasure from every backup or log source
+
 ## Supported Question Types
 
 The placeholder assistant should answer questions such as:

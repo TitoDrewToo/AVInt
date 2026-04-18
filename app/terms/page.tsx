@@ -95,6 +95,21 @@ export default function TermsPage() {
             </section>
 
             <section className="space-y-3">
+              <h2 className="text-base font-semibold text-foreground">Data Retention and Deletion</h2>
+              <p className="text-muted-foreground">
+                AVIntelligence retains uploaded files and related structured workspace records while they are needed to
+                provide storage, processing, reports, dashboards, security, and account functionality. You may delete
+                files from your workspace and may request full account deletion.
+              </p>
+              <p className="text-muted-foreground">
+                Deletion removes active application data from our primary systems, but limited historical records may
+                remain temporarily in backups or logs. Deleted database records may remain in provider-managed backups
+                for up to 7 days. Deleted data or related metadata may remain in provider-managed logs for the duration
+                of Supabase&apos;s applicable retention periods.
+              </p>
+            </section>
+
+            <section className="space-y-3">
               <h2 className="text-base font-semibold text-foreground">Infrastructure &amp; Security</h2>
               <p className="text-muted-foreground">AVIntelligence is built on enterprise-grade infrastructure:</p>
               <ul className="ml-4 list-disc space-y-1 text-muted-foreground">

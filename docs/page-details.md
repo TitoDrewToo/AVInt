@@ -39,6 +39,7 @@ Purpose:
 
 Purpose:
 - provide policy and legal information for public users
+- explain retention, deletion, billing, and service-use boundaries at a public-facing level
 
 ## Account and Onboarding
 

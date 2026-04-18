@@ -56,6 +56,25 @@ interface FormState {
   notes: string
 }
 
+interface DocumentFieldsFormRow {
+  document_date: string | null
+  currency: string | null
+  vendor_name: string | null
+  total_amount: number | string | null
+  expense_category: string | null
+  payment_method: string | null
+  tax_amount: number | string | null
+  discount_amount: number | string | null
+  invoice_number: string | null
+  employer_name: string | null
+  gross_income: number | string | null
+  net_income: number | string | null
+  period_start: string | null
+  period_end: string | null
+  counterparty_name: string | null
+  notes: string | null
+}
+
 const EMPTY_FORM: FormState = {
   document_type: "receipt",
   document_name: "",
@@ -75,6 +94,48 @@ const EMPTY_FORM: FormState = {
   period_end: "",
   counterparty_name: "",
   notes: "",
+}
+
+const DOCUMENT_FIELDS_FORM_SELECT = `
+  document_date,
+  currency,
+  vendor_name,
+  total_amount,
+  expense_category,
+  payment_method,
+  tax_amount,
+  discount_amount,
+  invoice_number,
+  employer_name,
+  gross_income,
+  net_income,
+  period_start,
+  period_end,
+  counterparty_name,
+  notes
+`
+
+function toFormState(data: DocumentFieldsFormRow): FormState {
+  return {
+    document_type: "receipt",
+    document_name: "",
+    document_date: data.document_date ?? "",
+    currency: data.currency ?? "PHP",
+    vendor_name: data.vendor_name ?? "",
+    total_amount: String(data.total_amount ?? ""),
+    expense_category: data.expense_category ?? "",
+    payment_method: data.payment_method ?? "",
+    tax_amount: String(data.tax_amount ?? ""),
+    discount_amount: String(data.discount_amount ?? ""),
+    invoice_number: data.invoice_number ?? "",
+    employer_name: data.employer_name ?? "",
+    gross_income: String(data.gross_income ?? ""),
+    net_income: String(data.net_income ?? ""),
+    period_start: data.period_start ?? "",
+    period_end: data.period_end ?? "",
+    counterparty_name: data.counterparty_name ?? "",
+    notes: data.notes ?? "",
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -551,7 +612,7 @@ export function ManualEntryModal({ isOpen, userId, onClose, onCreated }: ManualE
           counterparty_name: form.counterparty_name || null,
           normalization_status: "manual",
           confidence_score: 1.0,
-          raw_json: { notes: form.notes || null },
+          notes: form.notes || null,
         })
 
       if (fieldsErr) {
@@ -651,7 +712,7 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
       try {
         const { data, error: fetchErr } = await supabase
           .from("document_fields")
-          .select("*")
+          .select(DOCUMENT_FIELDS_FORM_SELECT)
           .eq("file_id", fileId)
           .single()
 
@@ -661,26 +722,7 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
         }
 
         if (data) {
-          setForm({
-            document_type: data.document_type ?? "receipt",
-            document_name: "",
-            document_date: data.document_date ?? "",
-            currency: data.currency ?? "PHP",
-            vendor_name: data.vendor_name ?? "",
-            total_amount: String(data.total_amount ?? ""),
-            expense_category: data.expense_category ?? "",
-            payment_method: data.payment_method ?? "",
-            tax_amount: String(data.tax_amount ?? ""),
-            discount_amount: String(data.discount_amount ?? ""),
-            invoice_number: data.invoice_number ?? "",
-            employer_name: data.employer_name ?? "",
-            gross_income: String(data.gross_income ?? ""),
-            net_income: String(data.net_income ?? ""),
-            period_start: data.period_start ?? "",
-            period_end: data.period_end ?? "",
-            counterparty_name: data.counterparty_name ?? "",
-            notes: data.raw_json?.notes ?? "",
-          })
+          setForm(toFormState(data))
         } else {
           setForm({ ...EMPTY_FORM })
         }
@@ -743,7 +785,7 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
           period_start: form.period_start || null,
           period_end: form.period_end || null,
           counterparty_name: form.counterparty_name || null,
-          raw_json: { notes: form.notes || null },
+          notes: form.notes || null,
         })
         .eq("file_id", fileId)
 

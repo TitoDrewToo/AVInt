@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { X, User, ChevronDown, ChevronLeft, AlertTriangle, LogOut } from "lucide-react"
+import { X, User, ChevronDown, AlertTriangle, LogOut, ExternalLink } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { GoogleSignInButton } from "@/components/google-sign-in-button"
@@ -19,8 +19,7 @@ interface AccountPanelProps {
   focusGiftCode?: boolean
 }
 
-type ExpandedSection = "subscription" | "email" | "password" | null
-type PanelView = "menu" | "privacy" | "terms"
+type ExpandedSection = "email" | "password" | null
 
 function AccordionItem({
   label,
@@ -60,115 +59,6 @@ function AccordionItem({
       >
         <div className="px-3 pb-3 pt-2">{children}</div>
       </div>
-    </div>
-  )
-}
-
-function PrivacyPolicyContent() {
-  return (
-    <div className="space-y-6 text-sm">
-      <p className="text-muted-foreground">
-        AVIntelligence respects your privacy. We design our systems to process documents automatically and securely.
-      </p>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">Information We Collect</h3>
-        <p className="text-muted-foreground">We collect only the information necessary to provide our services:</p>
-        <ul className="ml-4 list-disc space-y-1 text-muted-foreground">
-          <li>Uploaded files and documents</li>
-          <li>Extracted structured data</li>
-          <li>Account email address</li>
-          <li>Usage activity related to reports and dashboards</li>
-        </ul>
-        <p className="text-muted-foreground">We do not manually review documents. Processing is automated.</p>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">How Data Is Used</h3>
-        <p className="text-muted-foreground">Your data is used to:</p>
-        <ul className="ml-4 list-disc space-y-1 text-muted-foreground">
-          <li>Structure document information</li>
-          <li>Generate reports</li>
-          <li>Power dashboards</li>
-          <li>Improve system performance</li>
-        </ul>
-        <p className="text-muted-foreground">We do not sell personal data. We do not use documents for advertising purposes.</p>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">Data Storage</h3>
-        <p className="text-muted-foreground">Files and structured data are securely stored using modern cloud infrastructure. We implement access controls to prevent unauthorized access. Only you can access your uploaded documents and generated outputs.</p>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">AI Processing</h3>
-        <p className="text-muted-foreground">Documents may be processed by automated systems to extract structured information such as dates, amounts, document types, and vendors. Processing is performed programmatically. No human review is required.</p>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">Data Retention</h3>
-        <p className="text-muted-foreground">Documents remain stored until you delete files or delete your account. You may request deletion at any time.</p>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">Security</h3>
-        <p className="text-muted-foreground">We apply industry standard practices for data storage, access control, and encrypted connections. No system can guarantee absolute security, but we prioritize protection of user data.</p>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">User Control</h3>
-        <p className="text-muted-foreground">You may:</p>
-        <ul className="ml-4 list-disc space-y-1 text-muted-foreground">
-          <li>Delete documents</li>
-          <li>Update account email</li>
-          <li>Change password</li>
-          <li>Delete your account</li>
-        </ul>
-        <p className="text-muted-foreground">Account deletion permanently removes stored data.</p>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">Contact</h3>
-        <p className="text-muted-foreground">support@avintph.com</p>
-      </section>
-    </div>
-  )
-}
-
-function TermsOfServiceContent() {
-  return (
-    <div className="space-y-6 text-sm">
-      <p className="text-muted-foreground">By using AVIntelligence, you agree to the following terms.</p>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">Use of Service</h3>
-        <p className="text-muted-foreground">AVIntelligence provides tools that help structure and analyze documents. You are responsible for how you use generated outputs. We do not provide financial, legal, or tax advice. Reports are provided as reference tools.</p>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">Account Responsibility</h3>
-        <p className="text-muted-foreground">You are responsible for maintaining the confidentiality of your account credentials. You agree not to share unauthorized access to your account.</p>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">Acceptable Use</h3>
-        <p className="text-muted-foreground">You agree not to upload:</p>
-        <ul className="ml-4 list-disc space-y-1 text-muted-foreground">
-          <li>Malicious files</li>
-          <li>Illegal content</li>
-          <li>Content that violates applicable laws</li>
-        </ul>
-        <p className="text-muted-foreground">We reserve the right to suspend accounts that misuse the platform.</p>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">Service Availability</h3>
-        <p className="text-muted-foreground">We aim to provide reliable service but do not guarantee uninterrupted availability. Features may change or improve over time.</p>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">Payments</h3>
-        <p className="text-muted-foreground">Paid features provide access to advanced reports and analytics. Billing is handled securely through third-party providers. Access duration depends on selected plan.</p>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">Limitation of Liability</h3>
-        <p className="text-muted-foreground">AVIntelligence is provided as-is. We are not liable for decisions made using generated reports or insights. Users are responsible for verifying outputs before external use.</p>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">Updates to Terms</h3>
-        <p className="text-muted-foreground">We may update these terms as the service evolves. Continued use of the platform indicates acceptance of updated terms.</p>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium text-foreground">Contact</h3>
-        <p className="text-muted-foreground">support@avintph.com</p>
-      </section>
     </div>
   )
 }
@@ -382,7 +272,6 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
   const [subRecord, setSubRecord] = useState<SubRecord | null>(null)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [expandedSection, setExpandedSection] = useState<ExpandedSection>(null)
-  const [panelView, setPanelView] = useState<PanelView>("menu")
   const [giftCode, setGiftCode] = useState("")
   const [giftCodeLoading, setGiftCodeLoading] = useState(false)
   const [giftCodeError, setGiftCodeError] = useState("")
@@ -421,7 +310,6 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
 
   useEffect(() => {
     if (isOpen && focusGiftCode) {
-      setExpandedSection("subscription")
       setTimeout(() => {
         subscriptionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
       }, 300)
@@ -431,7 +319,6 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
   useEffect(() => {
     if (!isOpen) {
       setExpandedSection(null)
-      setPanelView("menu")
       setAuthMode("signin")
       setAuthEmail("")
       setAuthPassword("")
@@ -443,14 +330,6 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
 
   const toggleSection = (section: ExpandedSection) => {
     setExpandedSection(expandedSection === section ? null : section)
-  }
-
-  const getPanelTitle = () => {
-    switch (panelView) {
-      case "privacy": return "Privacy Policy"
-      case "terms": return "Terms of Service"
-      default: return "Account"
-    }
   }
 
   return (
@@ -493,17 +372,9 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
           <div className="relative flex items-center justify-between px-6 py-4">
             <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-px" style={{ background: "linear-gradient(90deg, transparent, var(--retro-glow-red), transparent)" }} />
             <div className="flex items-center gap-3">
-              {panelView !== "menu" && (
-                <button
-                  onClick={() => setPanelView("menu")}
-                  className="cw-button-flow glass-surface-sm flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-all hover:text-primary hover:[box-shadow:0_0_20px_-4px_var(--retro-glow-red)]"
-                >
-                  <ChevronLeft className="h-5 w-5" />
-                </button>
-              )}
               <div>
-                <h2 className="text-lg font-semibold text-foreground">{getPanelTitle()}</h2>
-                {panelView === "menu" && isSignedIn && (
+                <h2 className="text-lg font-semibold text-foreground">Account</h2>
+                {isSignedIn && (
                   <p className="mt-0.5 text-sm text-muted-foreground">
                     Signed in as<br />
                     <span className="text-foreground">{session?.user?.email ?? "email@example.com"}</span>
@@ -521,10 +392,6 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto p-6">
-            {panelView === "privacy" && <PrivacyPolicyContent />}
-            {panelView === "terms" && <TermsOfServiceContent />}
-
-            {panelView === "menu" && (
               <div className="space-y-6">
                 {/* Authentication Section */}
                 {!isSignedIn && (
@@ -626,117 +493,99 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                 {isSignedIn && (
                   <>
                     {/* Subscription — includes gift code redemption */}
-                    <div ref={subscriptionRef} className="space-y-1">
-                      <AccordionItem
-                        label="Subscription"
-                        isExpanded={expandedSection === "subscription"}
-                        onToggle={() => toggleSection("subscription")}
-                      >
-                        <div className="space-y-4">
-                          {/* Current plan */}
-                          {(() => {
-                            const plan = resolveDisplayPlan(subRecord)
-                            return (
-                              <div className={`rounded-lg p-3 ${plan.isActive ? "bg-primary/5 border border-primary/20" : "bg-muted/50"}`}>
-                                <p className="text-xs text-muted-foreground">Current plan</p>
-                                <p className={`mt-1 text-sm font-medium ${plan.isActive ? "text-primary" : "text-foreground"}`}>
-                                  {plan.label}
-                                </p>
-                                <p className="mt-0.5 text-xs text-muted-foreground">{plan.note}</p>
-                              </div>
-                            )
-                          })()}
-
-                          <Button variant="outline" size="sm" className="w-full rounded-lg" disabled>
-                            Manage subscription
-                          </Button>
-
-                          {/* Divider */}
-                          <div className="retro-divider h-px" />
-
-                          {/* Gift code redemption */}
-                          <div>
-                            <p className="mb-2 text-xs text-muted-foreground">
-                              Redeem a gift code to activate access.
+                    <div ref={subscriptionRef} className="space-y-3">
+                      {(() => {
+                        const plan = resolveDisplayPlan(subRecord)
+                        return (
+                          <div className={`rounded-lg p-3 ${plan.isActive ? "bg-primary/5 border border-primary/20" : "bg-muted/50"}`}>
+                            <p className="text-xs text-muted-foreground">Subscription</p>
+                            <p className={`mt-1 text-sm font-medium ${plan.isActive ? "text-primary" : "text-foreground"}`}>
+                              {plan.label}
                             </p>
-                            <div className="flex gap-2">
-                              <Input
-                                type="text"
-                                placeholder="Enter gift code"
-                                value={giftCode}
-                                onChange={(e) => { setGiftCode(e.target.value); setGiftCodeError("") }}
-                                className="flex-1 rounded-lg"
-                                disabled={giftCodeApplied}
-                              />
-                              <Button
-                                size="sm"
-                                className="cw-button-flow rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
-                                disabled={!giftCode.trim() || giftCodeLoading || giftCodeApplied}
-                                onClick={async () => {
-                                  if (!session?.user) return
-                                  setGiftCodeLoading(true)
-                                  setGiftCodeError("")
-                                  try {
-                                    const { data: { session: fresh } } = await supabase.auth.getSession()
-                                    if (!fresh?.access_token) {
-                                      setGiftCodeError("Please sign in again and retry.")
-                                      return
-                                    }
-                                    const res = await fetch("/api/redeem-gift", {
-                                      method: "POST",
-                                      headers: {
-                                        "Content-Type": "application/json",
-                                        "Authorization": `Bearer ${fresh.access_token}`,
-                                      },
-                                      body: JSON.stringify({
-                                        code: giftCode.trim(),
-                                      }),
-                                    })
-                                    const data = await res.json()
-                                    if (!res.ok) {
-                                      setGiftCodeError(data.error ?? "Failed to redeem code")
-                                    } else {
-                                      setGiftCodeApplied(true)
-                                      // Refresh subscription display immediately
-                                      if (session?.user?.id) {
-                                        supabase
-                                          .from("subscriptions")
-                                          .select("status, plan, current_period_end")
-                                          .eq("user_id", session.user.id)
-                                          .single()
-                                          .then(({ data: sub }) => setSubRecord(sub ?? null))
-                                      }
-                                    }
-                                  } catch {
-                                    setGiftCodeError("Something went wrong. Please try again.")
-                                  } finally {
-                                    setGiftCodeLoading(false)
-                                  }
-                                }}
-                              >
-                                {giftCodeLoading ? "Applying…" : "Apply"}
-                              </Button>
-                            </div>
-                            {giftCodeError && (
-                              <p className="mt-2 text-xs text-destructive">{giftCodeError}</p>
-                            )}
-                            {giftCodeApplied && (
-                              <p className="mt-2 text-xs text-primary">
-                                Gift code applied — access is now active.
-                              </p>
-                            )}
+                            <p className="mt-0.5 text-xs text-muted-foreground">{plan.note}</p>
                           </div>
-                        </div>
-                      </AccordionItem>
+                        )
+                      })()}
 
-                      <button
-                        className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground/60 transition-all"
-                        style={chromeFontStyle}
-                        disabled
-                      >
-                        Billing
-                        <span className="text-xs text-muted-foreground">Coming soon</span>
-                      </button>
+                      <div className="rounded-lg border border-border/80 bg-card/60 p-3">
+                        <p className="text-xs text-muted-foreground">
+                          Manage subscription is reserved for billing-area controls such as subscription changes and future billing actions. It is not wired to a live billing portal yet.
+                        </p>
+                        <Button variant="outline" size="sm" className="mt-3 w-full rounded-lg" disabled>
+                          Manage subscription
+                        </Button>
+                      </div>
+
+                      <div className="rounded-lg border border-border/80 bg-card/60 p-3">
+                        <p className="mb-2 text-xs text-muted-foreground">
+                          Redeem a gift code to activate access.
+                        </p>
+                        <div className="flex gap-2">
+                          <Input
+                            type="text"
+                            placeholder="Enter gift code"
+                            value={giftCode}
+                            onChange={(e) => { setGiftCode(e.target.value); setGiftCodeError("") }}
+                            className="flex-1 rounded-lg"
+                            disabled={giftCodeApplied}
+                          />
+                          <Button
+                            size="sm"
+                            className="cw-button-flow rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
+                            disabled={!giftCode.trim() || giftCodeLoading || giftCodeApplied}
+                            onClick={async () => {
+                              if (!session?.user) return
+                              setGiftCodeLoading(true)
+                              setGiftCodeError("")
+                              try {
+                                const { data: { session: fresh } } = await supabase.auth.getSession()
+                                if (!fresh?.access_token) {
+                                  setGiftCodeError("Please sign in again and retry.")
+                                  return
+                                }
+                                const res = await fetch("/api/redeem-gift", {
+                                  method: "POST",
+                                  headers: {
+                                    "Content-Type": "application/json",
+                                    "Authorization": `Bearer ${fresh.access_token}`,
+                                  },
+                                  body: JSON.stringify({
+                                    code: giftCode.trim(),
+                                  }),
+                                })
+                                const data = await res.json()
+                                if (!res.ok) {
+                                  setGiftCodeError(data.error ?? "Failed to redeem code")
+                                } else {
+                                  setGiftCodeApplied(true)
+                                  if (session?.user?.id) {
+                                    supabase
+                                      .from("subscriptions")
+                                      .select("status, plan, current_period_end")
+                                      .eq("user_id", session.user.id)
+                                      .single()
+                                      .then(({ data: sub }) => setSubRecord(sub ?? null))
+                                  }
+                                }
+                              } catch {
+                                setGiftCodeError("Something went wrong. Please try again.")
+                              } finally {
+                                setGiftCodeLoading(false)
+                              }
+                            }}
+                          >
+                            {giftCodeLoading ? "Applying…" : "Apply"}
+                          </Button>
+                        </div>
+                        {giftCodeError && (
+                          <p className="mt-2 text-xs text-destructive">{giftCodeError}</p>
+                        )}
+                        {giftCodeApplied && (
+                          <p className="mt-2 text-xs text-primary">
+                            Gift code applied — access is now active.
+                          </p>
+                        )}
+                      </div>
                     </div>
 
                     {/* Email & Password */}
@@ -777,22 +626,26 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                     {/* Legal */}
                     <div className="retro-divider h-px" />
                     <div className="space-y-1">
-                      <button
-                        onClick={() => setPanelView("privacy")}
+                      <a
+                        href="/privacy"
+                        target="_blank"
+                        rel="noopener noreferrer"
                         className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground/85 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
                         style={chromeFontStyle}
                       >
                         Privacy
-                        <ChevronDown className="h-4 w-4 -rotate-90 text-muted-foreground" />
-                      </button>
-                      <button
-                        onClick={() => setPanelView("terms")}
+                        <ExternalLink className="h-4 w-4 text-muted-foreground" />
+                      </a>
+                      <a
+                        href="/terms"
+                        target="_blank"
+                        rel="noopener noreferrer"
                         className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground/85 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
                         style={chromeFontStyle}
                       >
                         Terms
-                        <ChevronDown className="h-4 w-4 -rotate-90 text-muted-foreground" />
-                      </button>
+                        <ExternalLink className="h-4 w-4 text-muted-foreground" />
+                      </a>
                     </div>
 
                     {/* Delete Account */}
@@ -823,7 +676,6 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                   </>
                 )}
               </div>
-            )}
           </div>
         </div>
       </div>

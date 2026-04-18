@@ -42,7 +42,7 @@ export default function PrivacyPage() {
                 <li>To classify, structure, and store your uploaded documents</li>
                 <li>To generate financial reports and power dashboard visualizations</li>
                 <li>To manage your account, subscription, and access level</li>
-                <li>To improve system accuracy and performance</li>
+                <li>To operate, secure, and support the service</li>
               </ul>
               <p className="text-muted-foreground">We do not sell your personal data. We do not use your documents for advertising.</p>
             </section>
@@ -53,6 +53,10 @@ export default function PrivacyPage() {
                 Document classification and data extraction are performed by automated AI systems powered by OpenAI,
                 Anthropic (Claude), and Google Gemini. Processing is programmatic — no human reviews your documents.
                 AVIntelligence is an independent product and is not affiliated with or endorsed by these providers.
+              </p>
+              <p className="text-muted-foreground">
+                To provide document processing, structured records, reports, and dashboard views, we may retain uploaded
+                files, extracted fields, and AI-enriched outputs while they remain part of your workspace.
               </p>
             </section>
 
@@ -72,7 +76,7 @@ export default function PrivacyPage() {
               <h2 className="text-base font-semibold text-foreground">Payments</h2>
               <p className="text-muted-foreground">
                 Billing is handled by PCI-DSS compliant third-party payment processors. We receive confirmation of
-                payment but do not store credit card or banking information. Their respective privacy policies govern
+                payment but do not store credit card or banking information on our systems. Their respective privacy policies govern
                 how payment data is handled.
               </p>
             </section>
@@ -80,9 +84,19 @@ export default function PrivacyPage() {
             <section className="space-y-3">
               <h2 className="text-base font-semibold text-foreground">Data Retention</h2>
               <p className="text-muted-foreground">
-                Documents and structured records remain stored until you delete them or request account deletion.
-                You may delete individual files at any time from Smart Storage. Account deletion permanently removes
-                all stored data associated with your account.
+                Documents, extracted fields, AI-enriched outputs, and related workspace records remain stored while you
+                keep them in AVIntelligence so the service can provide storage, processing, reports, and dashboard views.
+                You may delete individual files at any time from Smart Storage.
+              </p>
+              <p className="text-muted-foreground">
+                When a file is deleted, the file and its related primary records are removed from our active application
+                systems. When an account is deleted, active application data associated with that account is removed from
+                our primary systems.
+              </p>
+              <p className="text-muted-foreground">
+                Limited historical records may persist temporarily in backups or logs. Deleted database records may
+                remain in provider-managed backups for up to 7 days. Deleted data or related metadata may remain in
+                provider-managed logs for the duration of Supabase&apos;s applicable retention periods.
               </p>
             </section>
 

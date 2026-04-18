@@ -66,18 +66,18 @@ export function Footer() {
               Blog
             </Link>
             <Link
-              href="/privacy"
-              className="whitespace-nowrap text-xs text-foreground/55 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
-              style={geistFontStyle}
-            >
-              Privacy
-            </Link>
-            <Link
               href="/terms"
               className="whitespace-nowrap text-xs text-foreground/55 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
               style={geistFontStyle}
             >
               Terms
+            </Link>
+            <Link
+              href="/privacy"
+              className="whitespace-nowrap text-xs text-foreground/55 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+              style={geistFontStyle}
+            >
+              Privacy
             </Link>
             <a
               href="mailto:support@avintph.com"

@@ -1,0 +1,55 @@
+import { createClient } from "@supabase/supabase-js"
+import { NextRequest, NextResponse } from "next/server"
+
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+)
+
+export async function POST(req: NextRequest) {
+  try {
+    const { file_id } = await req.json()
+    if (!file_id) {
+      return NextResponse.json({ error: "file_id required" }, { status: 400 })
+    }
+
+    const authHeader = req.headers.get("authorization")
+    if (!authHeader) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const token = authHeader.replace("Bearer ", "")
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token)
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const { data: fileRow, error: fileError } = await supabaseAdmin
+      .from("files")
+      .select("id, user_id, storage_path")
+      .eq("id", file_id)
+      .single()
+
+    if (fileError || !fileRow || fileRow.user_id !== user.id) {
+      return NextResponse.json({ error: "File not found" }, { status: 404 })
+    }
+
+    if (fileRow.storage_path) {
+      await supabaseAdmin.storage.from("documents").remove([fileRow.storage_path])
+    }
+
+    await supabaseAdmin.from("payment_obligations").delete().eq("file_id", file_id)
+    await supabaseAdmin.from("document_fields").delete().eq("file_id", file_id)
+    await supabaseAdmin.from("processing_jobs").delete().eq("file_id", file_id)
+    await supabaseAdmin.from("files").delete().eq("id", file_id)
+
+    // These are user-level derived views over the document set. Clearing them
+    // ensures the UI does not continue showing stale summaries after a file is removed.
+    await supabaseAdmin.from("context_summaries").delete().eq("user_id", user.id)
+    await supabaseAdmin.from("advanced_widgets").delete().eq("user_id", user.id)
+
+    return NextResponse.json({ success: true })
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 })
+  }
+}

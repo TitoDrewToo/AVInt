@@ -31,9 +31,30 @@ function getSupabaseAdmin() {
   )
 }
 
+function parseHexSignature(signature: string): Buffer | null {
+  const trimmed = signature.trim()
+  if (!trimmed || trimmed.length % 2 !== 0 || !/^[a-f0-9]+$/i.test(trimmed)) {
+    return null
+  }
+  try {
+    return Buffer.from(trimmed, "hex")
+  } catch {
+    return null
+  }
+}
+
 function verifySignature(payload: string, secret: string, signature: string): boolean {
-  const computed = crypto.createHmac("sha256", secret).update(payload).digest("hex")
-  return crypto.timingSafeEqual(Buffer.from(computed), Buffer.from(signature))
+  if (!secret) return false
+
+  const expected = crypto.createHmac("sha256", secret).update(payload).digest()
+  const provided = parseHexSignature(signature)
+  if (!provided || provided.length !== expected.length) return false
+
+  try {
+    return crypto.timingSafeEqual(expected, provided)
+  } catch {
+    return false
+  }
 }
 
 export async function POST(req: NextRequest) {

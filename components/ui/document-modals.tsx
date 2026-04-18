@@ -26,7 +26,30 @@ const EXPENSE_CATEGORIES = [
 ]
 
 const PAYMENT_METHODS = [
-  "Cash", "Credit Card", "Debit Card", "Bank Transfer", "GCash", "PayMaya", "Check", "Other",
+  "Cash",
+  "Credit Card",
+  "Debit Card",
+  "Bank Transfer",
+  "ACH",
+  "Check",
+  "Apple Pay",
+  "Google Pay",
+  "PayPal",
+  "Venmo",
+  "Cash App",
+  "Zelle",
+  "GCash",
+  "Maya",
+  "GrabPay",
+  "PayPay",
+  "LINE Pay",
+  "Rakuten Pay",
+  "Interac e-Transfer",
+  "Revolut",
+  "Wise",
+  "PayID / Osko",
+  "Afterpay",
+  "Other",
 ]
 
 const CURRENCIES = ["PHP", "USD", "EUR", "GBP", "SGD", "JPY", "AUD"]
@@ -179,21 +202,33 @@ function DocumentFormBody({ form, onChange, isManual }: DocumentFormBodyProps) {
 
   return (
     <div className="space-y-4">
-      {/* Document Type */}
-      <div>
-        <p className={sectionLabelCls}>Document Type</p>
-        <select
-          className={inputCls}
-          value={form.document_type}
-          onChange={(e) => onChange("document_type", e.target.value)}
-          required
-        >
-          {DOCUMENT_TYPES.map((dt) => (
-            <option key={dt.value} value={dt.value}>
-              {dt.label}
-            </option>
-          ))}
-        </select>
+      {/* Document Type + Date */}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <p className={sectionLabelCls}>Document Type</p>
+          <select
+            className={inputCls}
+            value={form.document_type}
+            onChange={(e) => onChange("document_type", e.target.value)}
+            required
+          >
+            {DOCUMENT_TYPES.map((dt) => (
+              <option key={dt.value} value={dt.value}>
+                {dt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <p className={sectionLabelCls}>Date *</p>
+          <input
+            className={inputCls}
+            type="date"
+            required
+            value={form.document_date}
+            onChange={(e) => onChange("document_date", e.target.value)}
+          />
+        </div>
       </div>
 
       {/* Document Name — manual entry only */}
@@ -210,18 +245,8 @@ function DocumentFormBody({ form, onChange, isManual }: DocumentFormBodyProps) {
         </div>
       )}
 
-      {/* Date + Currency */}
+      {/* Currency + Amount */}
       <div className="grid grid-cols-2 gap-3">
-        <div>
-          <p className={sectionLabelCls}>Date *</p>
-          <input
-            className={inputCls}
-            type="date"
-            required
-            value={form.document_date}
-            onChange={(e) => onChange("document_date", e.target.value)}
-          />
-        </div>
         <div>
           <p className={sectionLabelCls}>Currency</p>
           <select
@@ -234,6 +259,22 @@ function DocumentFormBody({ form, onChange, isManual }: DocumentFormBodyProps) {
             ))}
           </select>
         </div>
+        {expense ? (
+          <div>
+            <p className={sectionLabelCls}>Total Amount *</p>
+            <input
+              className={inputCls}
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="Total Amount *"
+              value={form.total_amount}
+              onChange={(e) => onChange("total_amount", e.target.value)}
+            />
+          </div>
+        ) : (
+          <div />
+        )}
       </div>
 
       {/* ------------------------------------------------------------------ */}
@@ -254,17 +295,8 @@ function DocumentFormBody({ form, onChange, isManual }: DocumentFormBodyProps) {
             />
           </div>
 
-          {/* Total Amount + Category */}
+          {/* Category + Payment Method */}
           <div className="grid grid-cols-2 gap-3">
-            <input
-              className={inputCls}
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="Total Amount *"
-              value={form.total_amount}
-              onChange={(e) => onChange("total_amount", e.target.value)}
-            />
             <select
               className={inputCls}
               value={form.expense_category}
@@ -275,10 +307,6 @@ function DocumentFormBody({ form, onChange, isManual }: DocumentFormBodyProps) {
                 <option key={c} value={c}>{c}</option>
               ))}
             </select>
-          </div>
-
-          {/* Payment Method + Tax */}
-          <div className="grid grid-cols-2 gap-3">
             <select
               className={inputCls}
               value={form.payment_method}
@@ -289,6 +317,10 @@ function DocumentFormBody({ form, onChange, isManual }: DocumentFormBodyProps) {
                 <option key={m} value={m}>{m}</option>
               ))}
             </select>
+          </div>
+
+          {/* Tax + Discount */}
+          <div className="grid grid-cols-2 gap-3">
             <input
               className={inputCls}
               type="number"
@@ -298,10 +330,6 @@ function DocumentFormBody({ form, onChange, isManual }: DocumentFormBodyProps) {
               value={form.tax_amount}
               onChange={(e) => onChange("tax_amount", e.target.value)}
             />
-          </div>
-
-          {/* Discount */}
-          <div className="grid grid-cols-2 gap-3">
             <input
               className={inputCls}
               type="number"
@@ -311,7 +339,6 @@ function DocumentFormBody({ form, onChange, isManual }: DocumentFormBodyProps) {
               value={form.discount_amount}
               onChange={(e) => onChange("discount_amount", e.target.value)}
             />
-            <div /> {/* spacer */}
           </div>
 
           {/* Invoice / Ref */}

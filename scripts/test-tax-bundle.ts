@@ -5,7 +5,7 @@
 // called for in the Tax Bundle fix plan: clean baseline, meals-heavy,
 // uncategorized-only, review-heavy, mixed-currency.
 
-import { computeTaxBundle, generateTaxBundleCSV, type TaxRow } from "../lib/tax-bundle"
+import { computeTaxBundle, generateEmployedTaxBundleCSV, generateTaxBundleCSV, type TaxRow } from "../lib/tax-bundle"
 
 // ── Assertion helpers ────────────────────────────────────────────────────────
 
@@ -386,6 +386,29 @@ function csvLacks(csv: string, needle: string, label: string) {
   csvHas(csv, `,"Estimated Net (Schedule C, before adjustments)",-500.00,`,
     "csv-wage-only: estimated net = -500 (not clamped)")
   csvLacks(csv, "ASSUMPTION: income_statement", "csv-wage-only: no SE assumption note (no SE rows)")
+}
+
+// CSV: employee report -> wage-only worksheet, no Schedule C netting language
+{
+  const rows: TaxRow[] = [
+    payslip({ gross: 50000, net: 38000, employer: "BigCo" }),
+    payslip({ gross: 52000, net: 40560, employer: "BigCo" }),
+    businessIncome({ gross: 12000, source: "Side Client" }),
+  ]
+  const s = computeTaxBundle(rows)
+  const csv = generateEmployedTaxBundleCSV(s)
+
+  csvHas(csv, "EMPLOYEE INCOME SUMMARY", "csv-employee: summary header")
+  csvHas(csv, `,"Gross Wage Income",102000.00`, "csv-employee: wage gross only")
+  csvHas(csv, `,"Net Pay Documented",78560.00`, "csv-employee: net pay")
+  csvHas(csv, `,"Payroll Deductions (Gross − Net, informational only)",23440.00`,
+    "csv-employee: deductions")
+  csvHas(csv, `"BigCo",102000.00,78560.00,23440.00,2`, "csv-employee: employer rollup")
+  csvHas(csv, "NOTE: This employee report summarizes wage/payslip records only",
+    "csv-employee: non-wage exclusion note")
+  csvLacks(csv, "Estimated Net (Schedule C", "csv-employee: no Schedule C estimated net")
+  csvLacks(csv, "Side Client", "csv-employee: business source excluded from wage audit trail")
+  csvLacks(csv, "income-statement", "csv-employee: business document excluded from wage audit trail")
 }
 
 // ── Empty input sanity ───────────────────────────────────────────────────────

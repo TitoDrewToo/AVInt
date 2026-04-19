@@ -506,3 +506,96 @@ export function generateTaxBundleCSV(summary: TaxBundleSummary): string {
 
   return lines.join("\n")
 }
+
+export function generateEmployedTaxBundleCSV(summary: TaxBundleSummary): string {
+  const {
+    primaryCurrency: currency,
+    currencies,
+    mixedCurrency,
+    wageRows,
+    wageGross,
+    wageNet,
+    wagePayrollDeductions,
+    selfEmploymentGross,
+    otherIncomeGross,
+  } = summary
+
+  const lines: string[] = []
+
+  if (mixedCurrency) {
+    lines.push(`"WARNING: Mixed currencies detected (${currencies.join(", ")}). Amounts are NOT aggregated — convert to a single currency before filing."`)
+    lines.push("")
+  }
+
+  if (selfEmploymentGross > 0 || otherIncomeGross > 0) {
+    lines.push(`"NOTE: This employee report summarizes wage/payslip records only. Business, investment, rental, interest, and other income are excluded from the wage totals."`)
+    lines.push("")
+  }
+
+  lines.push(`"Currency",${currency}`)
+  lines.push("")
+  lines.push("EMPLOYEE INCOME SUMMARY")
+  lines.push(`,"Gross Wage Income",${wageGross.toFixed(2)}`)
+  lines.push(`,"Net Pay Documented",${wageNet.toFixed(2)}`)
+  lines.push(`,"Payroll Deductions (Gross − Net, informational only)",${wagePayrollDeductions.toFixed(2)}`)
+  if (wageGross > 0) {
+    lines.push(`,"Documented Net Pay Rate",${(wageNet / wageGross * 100).toFixed(2)}%`)
+    lines.push(`,"Documented Deduction Rate",${(wagePayrollDeductions / wageGross * 100).toFixed(2)}%`)
+  }
+  lines.push("")
+  lines.push("EMPLOYER SUMMARY")
+  lines.push("Employer,Gross Wage,Net Pay,Payroll Deductions,Documents")
+
+  const employers = new Map<string, { gross: number; net: number; deductions: number; docs: number }>()
+  for (const row of wageRows) {
+    const employer = row.employer_name ?? row.vendor_name ?? "Unknown Employer"
+    const gross = row.gross_income ?? row.total_amount ?? 0
+    const net = row.net_income ?? 0
+    const deductions = row.gross_income != null && row.net_income != null
+      ? Math.max(0, gross - net)
+      : 0
+    const current = employers.get(employer) ?? { gross: 0, net: 0, deductions: 0, docs: 0 }
+    employers.set(employer, {
+      gross: current.gross + gross,
+      net: current.net + net,
+      deductions: current.deductions + deductions,
+      docs: current.docs + 1,
+    })
+  }
+
+  for (const [employer, data] of Array.from(employers.entries()).sort((a, b) => b[1].gross - a[1].gross)) {
+    lines.push([
+      csvEscape(employer),
+      data.gross.toFixed(2),
+      data.net.toFixed(2),
+      data.deductions.toFixed(2),
+      String(data.docs),
+    ].join(","))
+  }
+
+  lines.push("")
+  lines.push("PAYSLIP AUDIT TRAIL")
+  lines.push("Employer,Period Start,Period End,Document Date,Gross Wage,Net Pay,Payroll Deductions,Source File")
+  for (const row of [...wageRows].sort((a, b) => (a.period_end ?? a.document_date ?? "").localeCompare(b.period_end ?? b.document_date ?? ""))) {
+    const gross = row.gross_income ?? row.total_amount ?? 0
+    const net = row.net_income ?? 0
+    const deductions = row.gross_income != null && row.net_income != null
+      ? Math.max(0, gross - net)
+      : 0
+    lines.push([
+      csvEscape(row.employer_name ?? row.vendor_name ?? "Unknown Employer"),
+      row.period_start ?? "",
+      row.period_end ?? "",
+      row.document_date ?? "",
+      gross.toFixed(2),
+      net.toFixed(2),
+      deductions.toFixed(2),
+      csvEscape(row.filename),
+    ].join(","))
+  }
+
+  lines.push("")
+  lines.push(`"DISCLAIMER: This is an employee income worksheet, not a W-2 substitute, tax return, or withholding verification. Use official W-2/1099 forms and consult a licensed preparer before filing."`)
+
+  return lines.join("\n")
+}

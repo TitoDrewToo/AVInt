@@ -521,11 +521,13 @@ export default function SmartStoragePage() {
       return
     }
 
-    const route = REPORT_ROUTES[reportId]
+    const route = reportId === "tax_bundle" && options?.mode === "employed"
+      ? "/tools/smart-storage/reports/tax-bundle/employed"
+      : REPORT_ROUTES[reportId]
     if (!route) return
 
     setIsNavigatingReport(true)
-    const url = options?.mode ? `${route}?mode=${options.mode}` : route
+    const url = options?.mode && options.mode !== "employed" ? `${route}?mode=${options.mode}` : route
     window.open(url, "_blank", "noopener,noreferrer")
     window.setTimeout(() => setIsNavigatingReport(false), 600)
   }
@@ -1966,16 +1968,15 @@ export default function SmartStoragePage() {
                     <Button
                       variant="outline"
                       className="rounded-lg border-primary/25 text-foreground hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
-                      disabled={true}
+                      disabled={isNavigatingReport || !reportAvailability.tax_bundle}
                       size="sm"
-                      onClick={() => {}}
-                      title="Employed Tax Bundle is not built yet"
+                      onClick={() => openReport("tax_bundle", { mode: "employed" })}
                     >
                       Employed
                     </Button>
                   </div>
                   <p className="px-1 text-[11px] leading-relaxed text-muted-foreground/75">
-                    Self-employed is available now. Employed mode will be added next.
+                    Choose the report path that matches the income documents you want to review.
                   </p>
                 </div>
               ) : (

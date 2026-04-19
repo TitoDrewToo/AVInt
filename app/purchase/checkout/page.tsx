@@ -44,7 +44,7 @@ export default function CheckoutPage() {
             {/* Secure payment note */}
             <div className="mt-6 flex items-center justify-center gap-2 text-xs text-muted-foreground">
               <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
-              <span>Secure payment powered by LemonSqueezy.</span>
+              <span>Secure payment powered by Creem.</span>
             </div>
           </div>
         </div>

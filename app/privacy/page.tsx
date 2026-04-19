@@ -31,7 +31,7 @@ export default function PrivacyPage() {
                 <li>Uploaded files and documents (receipts, invoices, payslips, contracts, etc.)</li>
                 <li>Structured data extracted from those documents</li>
                 <li>Usage activity — reports generated, dashboards accessed, tools used</li>
-                <li>Payment and billing information (processed by Creem or Lemon Squeezy — we do not store card details)</li>
+                <li>Payment and billing information (processed by Creem — we do not store card details)</li>
               </ul>
               <p className="text-muted-foreground">We collect only what is necessary to deliver the service. We do not manually review your documents.</p>
             </section>

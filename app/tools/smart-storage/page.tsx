@@ -1278,11 +1278,11 @@ export default function SmartStoragePage() {
     <div className="flex min-h-screen flex-col">
       <Navbar />
 
-      <main className="flex flex-1 overflow-hidden">
-        <div className="flex flex-1 overflow-hidden">
+      <main className="flex min-h-0 flex-1 overflow-hidden">
+        <div className="flex min-h-0 flex-1 overflow-hidden">
 
           {/* LEFT PANE ─────────────────────────────────────────────────────── */}
-          <aside className="hidden md:flex w-[15%] min-w-[180px] flex-col border-r border-border bg-card overflow-hidden">
+          <aside className="hidden min-h-0 md:flex w-[15%] min-w-[180px] flex-col border-r border-border bg-card overflow-hidden">
             {/* Documents section — user folder tree */}
             <div className="flex-[0.6] overflow-y-auto border-b border-border p-2">
               {/* Processing indicator */}
@@ -1387,7 +1387,7 @@ export default function SmartStoragePage() {
 
           {/* CENTER PANE ────────────────────────────────────────────────────── */}
           <div
-            className={`relative flex w-full md:w-[65%] flex-col overflow-hidden bg-background transition-colors ${isDragOver ? "bg-primary/5" : ""}`}
+            className={`relative flex min-h-0 w-full md:w-[65%] flex-col overflow-hidden bg-background transition-colors ${isDragOver ? "bg-primary/5" : ""}`}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
@@ -1927,7 +1927,7 @@ export default function SmartStoragePage() {
           </div>
 
           {/* RIGHT PANE ─────────────────────────────────────────────────────── */}
-          <aside className="hidden md:flex w-[20%] min-w-[180px] flex-col border-l border-border bg-card overflow-hidden">
+          <aside className="hidden min-h-0 md:flex w-[20%] min-w-[180px] flex-col border-l border-border bg-card overflow-hidden">
             <div className="border-b border-border px-4 py-3">
               <h2 className="text-sm font-semibold text-foreground">Reports</h2>
             </div>

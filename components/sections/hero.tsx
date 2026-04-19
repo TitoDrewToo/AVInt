@@ -171,18 +171,16 @@ export function HeroSection() {
                     "linear-gradient(180deg, color-mix(in oklab, var(--background) 74%, transparent) 0%, color-mix(in oklab, var(--background) 34%, transparent) 24%, transparent 52%, transparent 80%, color-mix(in oklab, var(--background) 36%, transparent) 100%)",
                 }}
               />
-              <div className="relative z-[1] flex h-full max-w-[18.5rem] flex-col">
+              <div className="relative z-[1] flex h-full max-w-[24rem] flex-col">
               <div className="mb-2 flex items-center gap-2">
                 <div className="cw-button-flow glass-surface-sm flex h-9 w-9 items-center justify-center rounded-xl transition-all group-hover:[box-shadow:0_0_24px_-4px_var(--retro-glow-red)]">
                   <StorageIcon className="h-5 w-5" />
                 </div>
                 <h3 className="text-base font-semibold text-foreground">Smart Storage</h3>
               </div>
-              <p className="mb-1 text-sm leading-relaxed text-muted-foreground">
-                Secure cloud storage. AI-structured data. Reports ready.
-              </p>
-              <p className="mb-4 text-xs text-muted-foreground/70">
-                Tax-ready insights, smart flags, and exportable summaries when you need them.
+              <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
+                <span className="block whitespace-nowrap">Secure cloud storage. AI-structured data. Reports ready.</span>
+                <span className="block whitespace-nowrap text-xs text-muted-foreground/70">Tax-ready insights, smart flags, and exportable summaries when you need them.</span>
               </p>
               {/* Tags */}
               <div className="mt-3 flex flex-wrap gap-1.5">

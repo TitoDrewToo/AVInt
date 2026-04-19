@@ -2,9 +2,49 @@
 
 import { useEffect, useRef, useState } from "react"
 
+type OrbitPanelKey = "back" | "front" | "side"
+
+const SAFARI_ORBIT_BASE: Record<OrbitPanelKey, { transform: string; opacity: string }> = {
+  back: {
+    transform: "translate(-50%, -50%) rotate(0deg) translateX(104px) rotate(0deg) rotateZ(-6deg) scale(0.92)",
+    opacity: "0.56",
+  },
+  front: {
+    transform: "translate(-50%, -50%) rotate(120deg) translateX(104px) rotate(-120deg) rotateZ(0deg) scale(1.06)",
+    opacity: "0.96",
+  },
+  side: {
+    transform: "translate(-50%, -50%) rotate(240deg) translateX(104px) rotate(-240deg) rotateZ(6deg) scale(0.92)",
+    opacity: "0.56",
+  },
+}
+
+const SAFARI_ORBIT_HOVER: Record<OrbitPanelKey, { transform: string; opacity: string }> = {
+  back: {
+    transform: "translate(-50%, -50%) translate3d(-94px, 4px, -18px) rotateZ(-8deg) scale(0.92)",
+    opacity: "0.52",
+  },
+  front: {
+    transform: "translate(-50%, -50%) translate3d(0px, -16px, 12px) rotateZ(0deg) scale(1.08)",
+    opacity: "0.98",
+  },
+  side: {
+    transform: "translate(-50%, -50%) translate3d(94px, 4px, -18px) rotateZ(8deg) scale(0.92)",
+    opacity: "0.52",
+  },
+}
+
+const SAFARI_ORBIT_MOVE_MS = 520
+const ORBIT_TRANSITION = `transform ${SAFARI_ORBIT_MOVE_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 260ms ease`
+
 function SharedGraphicsStyles() {
   return (
     <style>{`
+      @property --carousel-angle {
+        syntax: "<angle>";
+        inherits: false;
+        initial-value: 0deg;
+      }
       @keyframes graphics-code-slide {
         0% { transform: translateX(-12%); opacity: 0.08; }
         45% { opacity: 0.55; }
@@ -42,6 +82,10 @@ function SharedGraphicsStyles() {
       @keyframes graphics-collapse-idle {
         0%, 100% { transform: translateY(0px) rotateZ(0deg); }
         50% { transform: translateY(var(--collapse-idle-y, -7px)) rotateZ(var(--collapse-idle-rotate, -0.7deg)); }
+      }
+      @keyframes graphics-carousel {
+        from { --carousel-angle: 0deg; }
+        to { --carousel-angle: 360deg; }
       }
       @keyframes graphics-orbit-back-spin {
         from {
@@ -86,21 +130,46 @@ function SharedGraphicsStyles() {
         transition:
           transform 520ms cubic-bezier(0.22, 1, 0.36, 1),
           opacity 320ms ease;
+        transform-style: preserve-3d;
+        backface-visibility: hidden;
+        will-change: transform, opacity;
+        contain: layout paint style;
       }
       .graphics-orbit-back {
-        transform: translate(-50%, -50%) rotate(0deg) translateX(104px) rotate(0deg) rotateZ(-6deg) scale(0.92);
+        --carousel-offset: 0deg;
+        transform:
+          translate(-50%, -50%)
+          rotate(calc(var(--carousel-angle, 0deg) + var(--carousel-offset)))
+          translateX(104px)
+          rotate(calc((var(--carousel-angle, 0deg) + var(--carousel-offset)) * -1))
+          rotateZ(-6deg)
+          scale(0.92);
         opacity: 0.56;
-        animation: graphics-orbit-back-spin var(--graphics-carousel-duration, 9.2s) linear infinite;
+        animation: graphics-carousel var(--graphics-carousel-duration, 9.2s) linear infinite;
       }
       .graphics-orbit-front {
-        transform: translate(-50%, -50%) rotate(120deg) translateX(104px) rotate(-120deg) rotateZ(0deg) scale(1.06);
+        --carousel-offset: 120deg;
+        transform:
+          translate(-50%, -50%)
+          rotate(calc(var(--carousel-angle, 0deg) + var(--carousel-offset)))
+          translateX(104px)
+          rotate(calc((var(--carousel-angle, 0deg) + var(--carousel-offset)) * -1))
+          rotateZ(0deg)
+          scale(1.06);
         opacity: 0.96;
-        animation: graphics-orbit-front-spin var(--graphics-carousel-duration, 9.2s) linear infinite;
+        animation: graphics-carousel var(--graphics-carousel-duration, 9.2s) linear infinite;
       }
       .graphics-orbit-side {
-        transform: translate(-50%, -50%) rotate(240deg) translateX(104px) rotate(-240deg) rotateZ(6deg) scale(0.92);
+        --carousel-offset: 240deg;
+        transform:
+          translate(-50%, -50%)
+          rotate(calc(var(--carousel-angle, 0deg) + var(--carousel-offset)))
+          translateX(104px)
+          rotate(calc((var(--carousel-angle, 0deg) + var(--carousel-offset)) * -1))
+          rotateZ(6deg)
+          scale(0.92);
         opacity: 0.56;
-        animation: graphics-orbit-side-spin var(--graphics-carousel-duration, 9.2s) linear infinite;
+        animation: graphics-carousel var(--graphics-carousel-duration, 9.2s) linear infinite;
       }
       .graphics-float-hover .graphics-orbit-back,
       .graphics-float-hover .graphics-orbit-front,
@@ -135,17 +204,39 @@ function SharedGraphicsStyles() {
         transform: translate(-50%, -50%) translate3d(94px, 4px, -18px) rotateZ(8deg) scale(0.92) !important;
         opacity: 0.52 !important;
       }
-      .graphics-float-group:hover .graphics-orbit-back {
+      .graphics-float-group:not([data-card-hovered]):hover .graphics-orbit-back {
         transform: translate(-50%, -50%) translate3d(-94px, 4px, -18px) rotateZ(-8deg) scale(0.92) !important;
         opacity: 0.52 !important;
       }
-      .graphics-float-group:hover .graphics-orbit-front {
+      .graphics-float-group:not([data-card-hovered]):hover .graphics-orbit-front {
         transform: translate(-50%, -50%) translate3d(0px, -16px, 12px) rotateZ(0deg) scale(1.08) !important;
         opacity: 0.98 !important;
       }
-      .graphics-float-group:hover .graphics-orbit-side {
+      .graphics-float-group:not([data-card-hovered]):hover .graphics-orbit-side {
         transform: translate(-50%, -50%) translate3d(94px, 4px, -18px) rotateZ(8deg) scale(0.92) !important;
         opacity: 0.52 !important;
+      }
+      @supports (-webkit-hyphens: none) and (not (-moz-appearance: none)) {
+        .graphics-float-group[data-safari-orbit-moving="true"] .graphics-orbit * {
+          animation-play-state: paused !important;
+        }
+        .graphics-float-group[data-safari-orbit-moving="true"] .graphics-orbit {
+          transition:
+            transform 520ms cubic-bezier(0.2, 0.8, 0.2, 1),
+            opacity 260ms ease !important;
+        }
+        .graphics-float-group[data-card-hovered="false"] .graphics-orbit-back {
+          transform: translate(-50%, -50%) rotate(0deg) translateX(104px) rotate(0deg) rotateZ(-6deg) scale(0.92);
+          animation-name: graphics-orbit-back-spin;
+        }
+        .graphics-float-group[data-card-hovered="false"] .graphics-orbit-front {
+          transform: translate(-50%, -50%) rotate(120deg) translateX(104px) rotate(-120deg) rotateZ(0deg) scale(1.06);
+          animation-name: graphics-orbit-front-spin;
+        }
+        .graphics-float-group[data-card-hovered="false"] .graphics-orbit-side {
+          transform: translate(-50%, -50%) rotate(240deg) translateX(104px) rotate(-240deg) rotateZ(6deg) scale(0.92);
+          animation-name: graphics-orbit-side-spin;
+        }
       }
       .graphics-browser-flow {
         position: absolute;
@@ -465,6 +556,15 @@ export function FloatingCubeGraphic({
   const { ref, progress } = useScrollProgress<HTMLDivElement>()
   const [orbitCycle, setOrbitCycle] = useState(0)
   const [orbitRunning, setOrbitRunning] = useState(true)
+  const [renderedHovered, setRenderedHovered] = useState(hovered ?? false)
+  const [safariOrbitMoving, setSafariOrbitMoving] = useState(false)
+  const isSafariRef = useRef(false)
+  const orbitRefs = useRef<Record<OrbitPanelKey, HTMLDivElement | null>>({
+    back: null,
+    front: null,
+    side: null,
+  })
+  const safariOrbitTimeoutRef = useRef<number | null>(null)
   const previousHoveredRef = useRef<boolean | undefined>(hovered)
   const lift = 18 - progress * 26
   const rotateX = 6 + progress * 8
@@ -473,17 +573,103 @@ export function FloatingCubeGraphic({
   const chartOpacity = 0.72 + progress * 0.22
 
   useEffect(() => {
+    const ua = window.navigator.userAgent
+    isSafariRef.current = /^((?!chrome|android|crios|fxios).)*safari/i.test(ua)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (safariOrbitTimeoutRef.current != null) {
+        window.clearTimeout(safariOrbitTimeoutRef.current)
+        safariOrbitTimeoutRef.current = null
+      }
+    }
+  }, [])
+
+  useEffect(() => {
     if (hovered == null) return
 
     const wasHovered = previousHoveredRef.current
     previousHoveredRef.current = hovered
 
+    const clearSafariTimer = () => {
+      if (safariOrbitTimeoutRef.current != null) {
+        window.clearTimeout(safariOrbitTimeoutRef.current)
+        safariOrbitTimeoutRef.current = null
+      }
+    }
+
+    const animateSafariOrbit = (target: Record<OrbitPanelKey, { transform: string; opacity: string }>) => {
+      clearSafariTimer()
+      setSafariOrbitMoving(true)
+      ;(Object.keys(orbitRefs.current) as OrbitPanelKey[]).forEach((key) => {
+        const el = orbitRefs.current[key]
+        if (!el) return
+        const computed = window.getComputedStyle(el)
+        el.style.animation = "none"
+        el.style.transition = "none"
+        el.style.transform = computed.transform === "none" ? SAFARI_ORBIT_BASE[key].transform : computed.transform
+        el.style.opacity = computed.opacity
+      })
+
+      orbitRefs.current.front?.offsetWidth
+
+      window.requestAnimationFrame(() => {
+        ;(Object.keys(orbitRefs.current) as OrbitPanelKey[]).forEach((key) => {
+          const el = orbitRefs.current[key]
+          if (!el) return
+          el.style.transition = ORBIT_TRANSITION
+          el.style.transform = target[key].transform
+          el.style.opacity = target[key].opacity
+        })
+      })
+
+      safariOrbitTimeoutRef.current = window.setTimeout(() => {
+        setSafariOrbitMoving(false)
+        safariOrbitTimeoutRef.current = null
+      }, SAFARI_ORBIT_MOVE_MS + 40)
+    }
+
+    const resetSafariOrbitStyles = () => {
+      setSafariOrbitMoving(false)
+      ;(Object.keys(orbitRefs.current) as OrbitPanelKey[]).forEach((key) => {
+        const el = orbitRefs.current[key]
+        if (!el) return
+        el.style.animation = ""
+        el.style.transition = ""
+        el.style.transform = ""
+        el.style.opacity = ""
+      })
+    }
+
     if (hovered) {
+      if (isSafariRef.current) {
+        setRenderedHovered(false)
+        setOrbitRunning(false)
+        animateSafariOrbit(SAFARI_ORBIT_HOVER)
+        return
+      }
+
+      setRenderedHovered(true)
       setOrbitRunning(false)
       return
     }
 
+    setRenderedHovered(false)
+
     if (wasHovered) {
+      if (isSafariRef.current) {
+        animateSafariOrbit(SAFARI_ORBIT_BASE)
+        safariOrbitTimeoutRef.current = window.setTimeout(() => {
+          resetSafariOrbitStyles()
+          setOrbitCycle((value) => value + 1)
+          setOrbitRunning(true)
+          safariOrbitTimeoutRef.current = null
+        }, SAFARI_ORBIT_MOVE_MS + 80)
+
+        return
+      }
+
       const timeoutId = window.setTimeout(() => {
         setOrbitCycle((value) => value + 1)
         setOrbitRunning(true)
@@ -516,7 +702,8 @@ export function FloatingCubeGraphic({
   return (
     <div
       ref={ref}
-      data-card-hovered={hovered == null ? undefined : hovered ? "true" : "false"}
+      data-card-hovered={hovered == null ? undefined : renderedHovered ? "true" : "false"}
+      data-safari-orbit-moving={safariOrbitMoving ? "true" : undefined}
       className={`graphics-float-group graphics-float-hover relative mx-auto overflow-hidden ${embedded ? "h-full w-full max-w-none rounded-none" : "h-[25rem] max-w-4xl rounded-[1.5rem]"} ${className}`}
       style={{ ["--graphics-carousel-duration" as string]: embedded ? "18s" : "22s" }}
     >
@@ -587,6 +774,7 @@ export function FloatingCubeGraphic({
         >
           <div
             key={`orbit-back-${orbitCycle}`}
+            ref={(el) => { orbitRefs.current.back = el }}
             className="graphics-orbit graphics-orbit-back absolute left-1/2 top-1/2"
             style={orbitRunning ? undefined : { animation: "none" }}
           >
@@ -631,6 +819,7 @@ export function FloatingCubeGraphic({
           </div>
           <div
             key={`orbit-front-${orbitCycle}`}
+            ref={(el) => { orbitRefs.current.front = el }}
             className="graphics-orbit graphics-orbit-front absolute left-1/2 top-1/2"
             style={orbitRunning ? undefined : { animation: "none" }}
           >
@@ -687,6 +876,7 @@ export function FloatingCubeGraphic({
           </div>
           <div
             key={`orbit-side-${orbitCycle}`}
+            ref={(el) => { orbitRefs.current.side = el }}
             className="graphics-orbit graphics-orbit-side absolute left-1/2 top-1/2"
             style={orbitRunning ? undefined : { animation: "none" }}
           >

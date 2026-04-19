@@ -72,6 +72,19 @@ const DOCUMENT_TYPE_ALIASES: Record<string, DocumentType> = {
 }
 
 const CONFIDENCE_THRESHOLD = 0.7
+const HOVER_PREVIEW_WIDTH = 208
+const HOVER_PREVIEW_ESTIMATED_HEIGHT = 248
+const HOVER_PREVIEW_CURSOR_GAP = 28
+const HOVER_PREVIEW_VIEWPORT_PAD = 8
+
+type HoverPreviewState = {
+  fileId: string
+  url: string | null
+  x: number
+  y: number
+}
+
+type DocumentVirtualView = "unclassified"
 
 function normalizeDocumentType(raw: string, confidence: number): DocumentType {
   if (confidence < CONFIDENCE_THRESHOLD) return "general_document"
@@ -82,6 +95,10 @@ function normalizeDocumentType(raw: string, confidence: number): DocumentType {
     if (lower.includes(alias) || alias.includes(lower)) return type
   }
   return "general_document"
+}
+
+function isUnclassifiedDocument(file: Pick<UploadedFile, "document_type">) {
+  return !file.document_type || file.document_type === "unknown"
 }
 
 // ── Classification folder mapping ─────────────────────────────────────────────
@@ -438,6 +455,7 @@ export default function SmartStoragePage() {
   const [currentFolderId, setCurrentFolderId] = useState<string>("root")
   const [breadcrumb, setBreadcrumb] = useState<{ id: string; name: string }[]>([{ id: "root", name: "Documents" }])
   const [selectedLeftFolder, setSelectedLeftFolder] = useState<string>("Documents")
+  const [documentVirtualView, setDocumentVirtualView] = useState<DocumentVirtualView | null>(null)
   const [docsOpen, setDocsOpen] = useState(true)
   // Classification view — null = normal folder view, string = active classification name
   const [classificationView, setClassificationView] = useState<string | null>(null)
@@ -467,9 +485,10 @@ export default function SmartStoragePage() {
   const canvasBoxSelectStart = useRef<{ x: number; y: number } | null>(null)
 
   // Preview (hover + double-click)
-  const [hoverPreview, setHoverPreview] = useState<{ fileId: string; url: string | null; x: number; y: number } | null>(null)
+  const [hoverPreview, setHoverPreview] = useState<HoverPreviewState | null>(null)
   const hoverPreviewCache = useRef<Map<string, string>>(new Map())
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const hoverRequestRef = useRef(0)
   const lastClickRef = useRef<{ id: string; time: number } | null>(null)
   const [manualEntryOpen, setManualEntryOpen] = useState(false)
   const [reclassifyTarget, setReclassifyTarget] = useState<{ fileId: string; filename: string } | null>(null)
@@ -638,6 +657,14 @@ export default function SmartStoragePage() {
   // Files — classification view shows all matching types across all folders, sorted by date
   // Declared here (before keyboard shortcut useEffect) to avoid TS2448 forward-reference error.
   const displayedFiles = (() => {
+    const sortFiles = (matched: UploadedFile[]) => {
+      if (classificationSort === "date-desc") return [...matched].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      if (classificationSort === "date-asc")  return [...matched].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+      return [...matched].sort((a, b) => a.filename.localeCompare(b.filename))
+    }
+    if (documentVirtualView === "unclassified") {
+      return sortFiles(files.filter(isUnclassifiedDocument))
+    }
     if (classificationView) {
       const matched = classificationView === "Manual Entries"
         ? files.filter(f => f.file_type === "manual")
@@ -645,9 +672,7 @@ export default function SmartStoragePage() {
             const types = CLASSIFICATION_FOLDER_MAP[classificationView] ?? []
             return files.filter(f => types.some(t => f.document_type?.includes(t) || t === f.document_type))
           })()
-      if (classificationSort === "date-desc") return [...matched].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-      if (classificationSort === "date-asc")  return [...matched].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-      return [...matched].sort((a, b) => a.filename.localeCompare(b.filename))
+      return sortFiles(matched)
     }
     return files.filter(f =>
       (f.folder_id ?? null) === (currentFolderId === "root" ? null : currentFolderId)
@@ -655,14 +680,14 @@ export default function SmartStoragePage() {
   })()
 
   const orderedDisplayedFiles = useMemo(() => {
-    if (viewMode !== "grid" || classificationView) return displayedFiles
+    if (viewMode !== "grid" || classificationView || documentVirtualView) return displayedFiles
     return [...displayedFiles].sort((a, b) => {
       const posA = itemPositions[a.id] ?? { row: Number.MAX_SAFE_INTEGER, col: Number.MAX_SAFE_INTEGER }
       const posB = itemPositions[b.id] ?? { row: Number.MAX_SAFE_INTEGER, col: Number.MAX_SAFE_INTEGER }
       if (posA.row !== posB.row) return posA.row - posB.row
       return posA.col - posB.col
     })
-  }, [classificationView, displayedFiles, itemPositions, viewMode])
+  }, [classificationView, displayedFiles, documentVirtualView, itemPositions, viewMode])
 
   useEffect(() => {
     if (!directoryInputRef.current) return
@@ -731,10 +756,16 @@ export default function SmartStoragePage() {
   // ── Auto-assign canvas positions ───────────────────────────────────────────
   useEffect(() => {
     const subfolderIds = folders
-      .filter(f => currentFolderId === "root" ? f.parentId === null : f.parentId === currentFolderId)
+      .filter(f => {
+        if (documentVirtualView) return false
+        return currentFolderId === "root" ? f.parentId === null : f.parentId === currentFolderId
+      })
       .map(f => f.id)
     const visibleFileIds = files
-      .filter(f => (f.folder_id ?? null) === (currentFolderId === "root" ? null : currentFolderId))
+      .filter(f => {
+        if (documentVirtualView === "unclassified") return isUnclassifiedDocument(f)
+        return (f.folder_id ?? null) === (currentFolderId === "root" ? null : currentFolderId)
+      })
       .map(f => f.id)
     const allIds = [...subfolderIds, ...visibleFileIds]
     setItemPositions(prev => {
@@ -752,7 +783,7 @@ export default function SmartStoragePage() {
       }
       return next
     })
-  }, [folders, files, currentFolderId])
+  }, [folders, files, currentFolderId, documentVirtualView])
 
   // ── Upload ─────────────────────────────────────────────────────────────────
   const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50 MB
@@ -959,14 +990,29 @@ export default function SmartStoragePage() {
   }
 
   const handleFileContextIntent = (fileId: string) => {
+    hideHoverPreview()
     if (!selectedFiles.has(fileId) || selectedFiles.size === 0) {
       selectOnly([fileId])
     }
   }
 
   // ── Hover preview ─────────────────────────────────────────────────────────
+  const hideHoverPreview = useCallback(() => {
+    hoverRequestRef.current += 1
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current)
+      hoverTimerRef.current = null
+    }
+    setHoverPreview(null)
+  }, [])
+
   const handleFileHoverEnter = useCallback(async (fileId: string, clientX: number, clientY: number) => {
-    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
+    hoverRequestRef.current += 1
+    const requestId = hoverRequestRef.current
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current)
+      hoverTimerRef.current = null
+    }
     hoverTimerRef.current = setTimeout(async () => {
       const file = files.find(f => f.id === fileId)
       if (!file) return
@@ -978,14 +1024,18 @@ export default function SmartStoragePage() {
           hoverPreviewCache.current.set(fileId, url)
         }
       }
+      if (requestId !== hoverRequestRef.current) return
       setHoverPreview({ fileId, url, x: clientX, y: clientY })
     }, 450)
   }, [files])
 
-  const handleFileHoverLeave = useCallback(() => {
-    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
-    setHoverPreview(null)
+  const handleFileHoverMove = useCallback((fileId: string, clientX: number, clientY: number) => {
+    setHoverPreview(prev => prev?.fileId === fileId ? { ...prev, x: clientX, y: clientY } : prev)
   }, [])
+
+  const handleFileHoverLeave = useCallback(() => {
+    hideHoverPreview()
+  }, [hideHoverPreview])
 
   const handleOpenFile = async (fileId: string) => {
     const file = files.find(f => f.id === fileId)
@@ -1228,6 +1278,7 @@ export default function SmartStoragePage() {
   }
 
   const openFolder = (folder: VirtualFolder) => {
+    setDocumentVirtualView(null)
     setCurrentFolderId(folder.id)
     setBreadcrumb((prev) => {
       const existing = prev.findIndex((b) => b.id === folder.id)
@@ -1237,6 +1288,7 @@ export default function SmartStoragePage() {
   }
 
   const navigateBreadcrumb = (id: string, name: string, index: number) => {
+    setDocumentVirtualView(null)
     setCurrentFolderId(id)
     setBreadcrumb((prev) => prev.slice(0, index + 1))
   }
@@ -1248,7 +1300,7 @@ export default function SmartStoragePage() {
     .filter(([, types]) => types.some((t) => detectedTypes.includes(t)))
     .map(([name]) => name)
 
-  const currentSubfolders = classificationView ? [] : folders.filter((f) =>
+  const currentSubfolders = classificationView || documentVirtualView ? [] : folders.filter((f) =>
     currentFolderId === "root" ? f.parentId === null : f.parentId === currentFolderId
   )
 
@@ -1295,14 +1347,14 @@ export default function SmartStoragePage() {
                 name="Documents"
                 isOpen={docsOpen}
                 isSelected={selectedLeftFolder === "Documents"}
-                onSelect={() => { setSelectedLeftFolder("Documents"); setCurrentFolderId("root"); setBreadcrumb([{ id: "root", name: "Documents" }]); setClassificationView(null) }}
+                onSelect={() => { setSelectedLeftFolder("Documents"); setDocumentVirtualView(null); setCurrentFolderId("root"); setBreadcrumb([{ id: "root", name: "Documents" }]); setClassificationView(null) }}
                 onToggle={() => setDocsOpen(!docsOpen)}
                 level={0}
               >
                 <LeftFolderItem
                   name="Unclassified"
                   isSelected={selectedLeftFolder === "Unclassified"}
-                  onSelect={() => setSelectedLeftFolder("Unclassified")}
+                  onSelect={() => { setSelectedLeftFolder("Unclassified"); setDocumentVirtualView("unclassified"); setClassificationView(null); setCurrentFolderId("root"); setBreadcrumb([{ id: "root", name: "Documents" }]); setSelectedFiles(new Set()) }}
                   level={1}
                 />
                 {folders.filter((f) => f.parentId === null).map((folder) => (
@@ -1316,6 +1368,7 @@ export default function SmartStoragePage() {
                       isSelected={selectedLeftFolder === folder.name}
                       onSelect={() => {
                         setSelectedLeftFolder(folder.name)
+                        setDocumentVirtualView(null)
                         setClassificationView(null)
                         openFolder(folder)
                       }}
@@ -1346,7 +1399,7 @@ export default function SmartStoragePage() {
               <div className="space-y-0.5">
                 {/* Manual Entries — always shown */}
                 <button
-                  onClick={() => { setSelectedLeftFolder("Manual Entries"); setClassificationView("Manual Entries") }}
+                  onClick={() => { setSelectedLeftFolder("Manual Entries"); setDocumentVirtualView(null); setClassificationView("Manual Entries") }}
                   className={`flex w-full items-center justify-between gap-2 rounded px-2 py-1 text-left text-sm transition-colors hover:bg-muted ${
                     classificationView === "Manual Entries" ? "bg-muted text-foreground" : "text-muted-foreground"
                   }`}
@@ -1365,7 +1418,7 @@ export default function SmartStoragePage() {
                   return (
                     <button
                       key={name}
-                      onClick={() => { setSelectedLeftFolder(name); setClassificationView(name) }}
+                      onClick={() => { setSelectedLeftFolder(name); setDocumentVirtualView(null); setClassificationView(name) }}
                       className={`flex w-full items-center justify-between gap-2 rounded px-2 py-1 text-left text-sm transition-colors hover:bg-muted ${
                         classificationView === name ? "bg-muted text-foreground" : "text-muted-foreground"
                       }`}
@@ -1407,12 +1460,21 @@ export default function SmartStoragePage() {
                 {classificationView ? (
                   <>
                     <button
-                      onClick={() => { setClassificationView(null); setSelectedLeftFolder("Documents") }}
+                      onClick={() => { setClassificationView(null); setDocumentVirtualView(null); setSelectedLeftFolder("Documents") }}
                       className="text-muted-foreground hover:text-foreground transition-colors px-1 py-0.5 rounded hover:bg-muted"
                     >Classification</button>
                     <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
                     <span className="font-medium text-foreground px-1">{classificationView}</span>
                     <span className="hidden sm:inline ml-2 text-[10px] text-muted-foreground/60 italic">read-only view · files not moved</span>
+                  </>
+                ) : documentVirtualView === "unclassified" ? (
+                  <>
+                    <button
+                      onClick={() => { setDocumentVirtualView(null); setSelectedLeftFolder("Documents") }}
+                      className="text-muted-foreground hover:text-foreground transition-colors px-1 py-0.5 rounded hover:bg-muted"
+                    >Documents</button>
+                    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="font-medium text-foreground px-1">Unclassified</span>
                   </>
                 ) : (
                   breadcrumb.map((crumb, index) => (
@@ -1467,7 +1529,7 @@ export default function SmartStoragePage() {
                     <ArrowLeft className="h-3.5 w-3.5" />
                   </button>
                 )}
-                {!classificationView && (<>
+                {!classificationView && !documentVirtualView && (<>
                   <button
                     onClick={() => setIsCreatingFolder(true)}
                     className="flex h-7 items-center gap-1.5 rounded px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -1504,7 +1566,7 @@ export default function SmartStoragePage() {
                     Add Entry
                   </button>
                 </>)}
-                {classificationView && (
+                {(classificationView || documentVirtualView) && (
                   <select
                     value={classificationSort}
                     onChange={(e) => setClassificationSort(e.target.value as typeof classificationSort)}
@@ -1704,12 +1766,16 @@ export default function SmartStoragePage() {
                           <ImageIcon className="h-8 w-8 text-muted-foreground" />
                         </div>
                       </div>
-                      <p className="text-sm text-muted-foreground/40">Drop files or folders here, or use Upload</p>
-                      <div className="flex flex-wrap items-center justify-center gap-2">
-                        {["PDF", "JPG", "PNG", "WEBP", "HEIC"].map((ext) => (
-                          <span key={ext} className="text-xs text-muted-foreground/25">{ext}</span>
-                        ))}
-                      </div>
+                      <p className="text-sm text-muted-foreground/40">
+                        {documentVirtualView === "unclassified" ? "No unclassified documents" : "Drop files or folders here, or use Upload"}
+                      </p>
+                      {!documentVirtualView && (
+                        <div className="flex flex-wrap items-center justify-center gap-2">
+                          {["PDF", "JPG", "PNG", "WEBP", "HEIC"].map((ext) => (
+                            <span key={ext} className="text-xs text-muted-foreground/25">{ext}</span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -1768,11 +1834,12 @@ export default function SmartStoragePage() {
                               ? "bg-primary/10 ring-1 ring-primary/30 cursor-grab"
                               : "hover:bg-muted cursor-grab"
                           }`}
-                          onPointerDown={(e) => { if (renamingFileId === file.id) return; handleCanvasPointerDown(e, file.id) }}
+                          onPointerDown={(e) => { hideHoverPreview(); if (renamingFileId === file.id) return; handleCanvasPointerDown(e, file.id) }}
                           onPointerMove={(e) => handleCanvasPointerMove(e, file.id)}
                           onPointerUp={(e) => handleCanvasPointerUp(e, file.id, hoveredFolderId)}
                           onClick={(e) => { e.stopPropagation(); handleFileClick(file.id, e as unknown as React.MouseEvent) }}
                           onMouseEnter={(e) => handleFileHoverEnter(file.id, e.clientX, e.clientY)}
+                          onMouseMove={(e) => handleFileHoverMove(file.id, e.clientX, e.clientY)}
                           onMouseLeave={handleFileHoverLeave}
                         >
                           {/* Checkbox — visible on hover or when any file is selected */}
@@ -1852,9 +1919,11 @@ export default function SmartStoragePage() {
                   onContextIntent={() => handleFileContextIntent(file.id)}
                 >
                   <div
+                    onPointerDown={() => hideHoverPreview()}
                     onClick={(e) => { e.stopPropagation(); handleFileClick(file.id, e as unknown as React.MouseEvent) }}
                     onDoubleClick={() => handleOpenFile(file.id)}
                     onMouseEnter={(e) => handleFileHoverEnter(file.id, e.clientX, e.clientY)}
+                    onMouseMove={(e) => handleFileHoverMove(file.id, e.clientX, e.clientY)}
                     onMouseLeave={handleFileHoverLeave}
                     className={`grid grid-cols-[1fr_120px_140px_80px] items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition-colors cursor-pointer select-none ${
                       selectedFiles.has(file.id) ? "bg-primary/10 text-foreground" : "hover:bg-muted"
@@ -1915,7 +1984,9 @@ export default function SmartStoragePage() {
                       <ImageIcon className="h-8 w-8 text-muted-foreground" />
                     </div>
                   </div>
-                  <p className="text-sm text-muted-foreground">Drop files or folders here, or use Upload</p>
+                  <p className="text-sm text-muted-foreground">
+                    {documentVirtualView === "unclassified" ? "No unclassified documents" : "Drop files or folders here, or use Upload"}
+                  </p>
                   <div className="flex flex-wrap items-center justify-center gap-2">
                     {["PDF", "JPG", "JPEG", "PNG", "WEBP", "HEIC"].map((ext) => (
                       <span key={ext} className="text-xs text-muted-foreground/50">{ext}</span>
@@ -2045,14 +2116,14 @@ export default function SmartStoragePage() {
               name="Documents"
               isOpen={docsOpen}
               isSelected={selectedLeftFolder === "Documents"}
-              onSelect={() => { setSelectedLeftFolder("Documents"); setCurrentFolderId("root"); setBreadcrumb([{ id: "root", name: "Documents" }]); setClassificationView(null); setMobileNavOpen(false) }}
+              onSelect={() => { setSelectedLeftFolder("Documents"); setDocumentVirtualView(null); setCurrentFolderId("root"); setBreadcrumb([{ id: "root", name: "Documents" }]); setClassificationView(null); setMobileNavOpen(false) }}
               onToggle={() => setDocsOpen(!docsOpen)}
               level={0}
             >
               <LeftFolderItem
                 name="Unclassified"
                 isSelected={selectedLeftFolder === "Unclassified"}
-                onSelect={() => { setSelectedLeftFolder("Unclassified"); setMobileNavOpen(false) }}
+                onSelect={() => { setSelectedLeftFolder("Unclassified"); setDocumentVirtualView("unclassified"); setClassificationView(null); setCurrentFolderId("root"); setBreadcrumb([{ id: "root", name: "Documents" }]); setSelectedFiles(new Set()); setMobileNavOpen(false) }}
                 level={1}
               />
               {folders.filter((f) => f.parentId === null).map((folder) => (
@@ -2063,7 +2134,7 @@ export default function SmartStoragePage() {
                   <LeftFolderItem
                     name={folder.name}
                     isSelected={selectedLeftFolder === folder.name}
-                    onSelect={() => { setSelectedLeftFolder(folder.name); setClassificationView(null); openFolder(folder); setMobileNavOpen(false) }}
+                    onSelect={() => { setSelectedLeftFolder(folder.name); setDocumentVirtualView(null); setClassificationView(null); openFolder(folder); setMobileNavOpen(false) }}
                     level={1}
                     onRename={() => { startRename(folder); setMobileNavOpen(false) }}
                     onDelete={async () => {
@@ -2089,7 +2160,7 @@ export default function SmartStoragePage() {
             </div>
             <div className="space-y-0.5">
               <button
-                onClick={() => { setSelectedLeftFolder("Manual Entries"); setClassificationView("Manual Entries"); setMobileNavOpen(false) }}
+                onClick={() => { setSelectedLeftFolder("Manual Entries"); setDocumentVirtualView(null); setClassificationView("Manual Entries"); setMobileNavOpen(false) }}
                 className={`flex w-full items-center justify-between gap-2 rounded px-2 py-1 text-left text-sm transition-colors hover:bg-muted ${classificationView === "Manual Entries" ? "bg-muted text-foreground" : "text-muted-foreground"}`}
               >
                 <div className="flex items-center gap-2 min-w-0">
@@ -2105,7 +2176,7 @@ export default function SmartStoragePage() {
                 return (
                   <button
                     key={name}
-                    onClick={() => { setSelectedLeftFolder(name); setClassificationView(name); setMobileNavOpen(false) }}
+                    onClick={() => { setSelectedLeftFolder(name); setDocumentVirtualView(null); setClassificationView(name); setMobileNavOpen(false) }}
                     className={`flex w-full items-center justify-between gap-2 rounded px-2 py-1 text-left text-sm transition-colors hover:bg-muted ${classificationView === name ? "bg-muted text-foreground" : "text-muted-foreground"}`}
                   >
                     <div className="flex items-center gap-2 min-w-0">
@@ -2149,13 +2220,29 @@ export default function SmartStoragePage() {
         const file = files.find(f => f.id === hoverPreview.fileId)
         if (!file) return null
         const isImage = file.file_type.startsWith("image/")
-        // Position: prefer right of cursor, flip left near right edge
-        const px = hoverPreview.x + 16
-        const py = Math.max(8, hoverPreview.y - 60)
+        const viewportWidth = typeof window === "undefined" ? 0 : window.innerWidth
+        const viewportHeight = typeof window === "undefined" ? 0 : window.innerHeight
+        const hasViewport = viewportWidth > 0 && viewportHeight > 0
+        const rightX = hoverPreview.x + HOVER_PREVIEW_CURSOR_GAP
+        const leftX = hoverPreview.x - HOVER_PREVIEW_WIDTH - HOVER_PREVIEW_CURSOR_GAP
+        const bottomY = hoverPreview.y + HOVER_PREVIEW_CURSOR_GAP
+        const topY = hoverPreview.y - HOVER_PREVIEW_ESTIMATED_HEIGHT - HOVER_PREVIEW_CURSOR_GAP
+        const px = hasViewport && rightX + HOVER_PREVIEW_WIDTH > viewportWidth - HOVER_PREVIEW_VIEWPORT_PAD
+          ? leftX
+          : rightX
+        const py = hasViewport && bottomY + HOVER_PREVIEW_ESTIMATED_HEIGHT > viewportHeight - HOVER_PREVIEW_VIEWPORT_PAD
+          ? topY
+          : bottomY
+        const left = hasViewport
+          ? Math.max(HOVER_PREVIEW_VIEWPORT_PAD, Math.min(px, viewportWidth - HOVER_PREVIEW_WIDTH - HOVER_PREVIEW_VIEWPORT_PAD))
+          : rightX
+        const top = hasViewport
+          ? Math.max(HOVER_PREVIEW_VIEWPORT_PAD, Math.min(py, viewportHeight - HOVER_PREVIEW_ESTIMATED_HEIGHT - HOVER_PREVIEW_VIEWPORT_PAD))
+          : bottomY
         return (
           <div
-            className="pointer-events-none fixed z-[9999] w-52 rounded-xl border border-border bg-card shadow-xl overflow-hidden"
-            style={{ left: Math.min(px, window.innerWidth - 220), top: Math.min(py, window.innerHeight - 260) }}
+            className="pointer-events-none fixed z-40 w-52 rounded-xl border border-border bg-card shadow-xl overflow-hidden"
+            style={{ left, top }}
           >
             {isImage && hoverPreview.url ? (
               <img

@@ -570,7 +570,7 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
     let isMouseDown = false
     let lastMouseX = 0
     const morphDuration = 2.6
-    const holdDuration = 2.4
+    const holdDuration = 6
     const visualizationHoldDuration = 3.8
 
     const onResize = () => {

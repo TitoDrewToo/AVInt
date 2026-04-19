@@ -5,11 +5,6 @@ import { useEffect, useRef, useState } from "react"
 function SharedGraphicsStyles() {
   return (
     <style>{`
-      @property --carousel-angle {
-        syntax: "<angle>";
-        inherits: false;
-        initial-value: 0deg;
-      }
       @keyframes graphics-code-slide {
         0% { transform: translateX(-12%); opacity: 0.08; }
         45% { opacity: 0.55; }
@@ -48,9 +43,29 @@ function SharedGraphicsStyles() {
         0%, 100% { transform: translateY(0px) rotateZ(0deg); }
         50% { transform: translateY(var(--collapse-idle-y, -7px)) rotateZ(var(--collapse-idle-rotate, -0.7deg)); }
       }
-      @keyframes graphics-carousel {
-        from { --carousel-angle: 0deg; }
-        to { --carousel-angle: 360deg; }
+      @keyframes graphics-orbit-back-spin {
+        from {
+          transform: translate(-50%, -50%) rotate(0deg) translateX(104px) rotate(0deg) rotateZ(-6deg) scale(0.92);
+        }
+        to {
+          transform: translate(-50%, -50%) rotate(360deg) translateX(104px) rotate(-360deg) rotateZ(-6deg) scale(0.92);
+        }
+      }
+      @keyframes graphics-orbit-front-spin {
+        from {
+          transform: translate(-50%, -50%) rotate(120deg) translateX(104px) rotate(-120deg) rotateZ(0deg) scale(1.06);
+        }
+        to {
+          transform: translate(-50%, -50%) rotate(480deg) translateX(104px) rotate(-480deg) rotateZ(0deg) scale(1.06);
+        }
+      }
+      @keyframes graphics-orbit-side-spin {
+        from {
+          transform: translate(-50%, -50%) rotate(240deg) translateX(104px) rotate(-240deg) rotateZ(6deg) scale(0.92);
+        }
+        to {
+          transform: translate(-50%, -50%) rotate(600deg) translateX(104px) rotate(-600deg) rotateZ(6deg) scale(0.92);
+        }
       }
       .graphics-code-line {
         animation: graphics-code-slide 4.6s linear infinite;
@@ -73,40 +88,19 @@ function SharedGraphicsStyles() {
           opacity 320ms ease;
       }
       .graphics-orbit-back {
-        --carousel-offset: 0deg;
-        transform:
-          translate(-50%, -50%)
-          rotate(calc(var(--carousel-angle, 0deg) + var(--carousel-offset)))
-          translateX(104px)
-          rotate(calc((var(--carousel-angle, 0deg) + var(--carousel-offset)) * -1))
-          rotateZ(-6deg)
-          scale(0.92);
+        transform: translate(-50%, -50%) rotate(0deg) translateX(104px) rotate(0deg) rotateZ(-6deg) scale(0.92);
         opacity: 0.56;
-        animation: graphics-carousel 9.2s linear infinite;
+        animation: graphics-orbit-back-spin var(--graphics-carousel-duration, 9.2s) linear infinite;
       }
       .graphics-orbit-front {
-        --carousel-offset: 120deg;
-        transform:
-          translate(-50%, -50%)
-          rotate(calc(var(--carousel-angle, 0deg) + var(--carousel-offset)))
-          translateX(104px)
-          rotate(calc((var(--carousel-angle, 0deg) + var(--carousel-offset)) * -1))
-          rotateZ(0deg)
-          scale(1.06);
+        transform: translate(-50%, -50%) rotate(120deg) translateX(104px) rotate(-120deg) rotateZ(0deg) scale(1.06);
         opacity: 0.96;
-        animation: graphics-carousel 9.2s linear infinite;
+        animation: graphics-orbit-front-spin var(--graphics-carousel-duration, 9.2s) linear infinite;
       }
       .graphics-orbit-side {
-        --carousel-offset: 240deg;
-        transform:
-          translate(-50%, -50%)
-          rotate(calc(var(--carousel-angle, 0deg) + var(--carousel-offset)))
-          translateX(104px)
-          rotate(calc((var(--carousel-angle, 0deg) + var(--carousel-offset)) * -1))
-          rotateZ(6deg)
-          scale(0.92);
+        transform: translate(-50%, -50%) rotate(240deg) translateX(104px) rotate(-240deg) rotateZ(6deg) scale(0.92);
         opacity: 0.56;
-        animation: graphics-carousel 9.2s linear infinite;
+        animation: graphics-orbit-side-spin var(--graphics-carousel-duration, 9.2s) linear infinite;
       }
       .graphics-float-hover .graphics-orbit-back,
       .graphics-float-hover .graphics-orbit-front,
@@ -524,6 +518,7 @@ export function FloatingCubeGraphic({
       ref={ref}
       data-card-hovered={hovered == null ? undefined : hovered ? "true" : "false"}
       className={`graphics-float-group graphics-float-hover relative mx-auto overflow-hidden ${embedded ? "h-full w-full max-w-none rounded-none" : "h-[25rem] max-w-4xl rounded-[1.5rem]"} ${className}`}
+      style={{ ["--graphics-carousel-duration" as string]: embedded ? "18s" : "22s" }}
     >
       <SharedGraphicsStyles />
       <div

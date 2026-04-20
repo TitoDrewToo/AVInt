@@ -111,13 +111,12 @@ serve(async (req) => {
     let uint8Array = new Uint8Array(arrayBuffer)
 
     // 4b. Spreadsheet → CSV conversion.
-    // xlsx/xls are ZIP/OLE binaries Gemini cannot read directly. Convert to CSV
+    // XLSX files are ZIP binaries Gemini cannot read directly. Convert to CSV
     // text using SheetJS, then feed as text/csv inline_data. Downstream multi-row
     // array handler already covers CSV exports.
     let mimeType = file.file_type || "application/pdf"
     const isXlsx = mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
-                   mimeType === "application/vnd.ms-excel" ||
-                   /\.xlsx?$/i.test(file.filename ?? "")
+                   /\.xlsx$/i.test(file.filename ?? "")
     if (isXlsx) {
       try {
         const XLSX = await import("https://esm.sh/xlsx@0.18.5")

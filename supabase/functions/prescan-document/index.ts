@@ -28,9 +28,18 @@ const ALLOWED_MIME_PREFIXES = [
   "image/webp",
   "image/heic",
   "text/csv",
-  "application/vnd.ms-excel",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 ]
+
+const ALLOWED_EXTENSIONS_BY_MIME: Record<string, string[]> = {
+  "application/pdf": ["pdf"],
+  "image/jpeg": ["jpg", "jpeg"],
+  "image/png": ["png"],
+  "image/webp": ["webp"],
+  "image/heic": ["heic"],
+  "text/csv": ["csv"],
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ["xlsx"],
+}
 
 const SUSPICIOUS_PDF_MARKERS = [
   "/JavaScript",
@@ -39,6 +48,19 @@ const SUSPICIOUS_PDF_MARKERS = [
   "/EmbeddedFile",
   "/OpenAction",
   "/AA",
+  "/RichMedia",
+  "/SubmitForm",
+  "/ImportData",
+]
+
+const SUSPICIOUS_XLSX_MARKERS = [
+  "vbaProject.bin",
+  "xl/vbaProject.bin",
+  "xl/activeX/",
+  "xl/embeddings/",
+  "xl/externalLinks/",
+  "xl/ctrlProps/",
+  "oleObject",
 ]
 
 function hasAsciiSequence(bytes: Uint8Array, needle: string): boolean {
@@ -52,9 +74,14 @@ function hasAsciiSequence(bytes: Uint8Array, needle: string): boolean {
   return false
 }
 
+function hasAsciiSequenceCaseInsensitive(bytes: Uint8Array, needle: string): boolean {
+  const haystack = new TextDecoder("latin1").decode(bytes).toLowerCase()
+  return haystack.includes(needle.toLowerCase())
+}
+
 function validateSpreadsheetContainer(bytes: Uint8Array, detected: string): { ok: boolean; reason?: string } {
   if (detected === "application/vnd.ms-excel") {
-    return { ok: true }
+    return { ok: false, reason: "Legacy XLS files are not supported because they can contain opaque macro content." }
   }
   if (detected !== "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") {
     return { ok: true }
@@ -67,6 +94,10 @@ function validateSpreadsheetContainer(bytes: Uint8Array, detected: string): { ok
   const hasAllMarkers = requiredMarkers.every((marker) => hasAsciiSequence(bytes, marker))
   if (!hasAllMarkers) {
     return { ok: false, reason: "Spreadsheet container is malformed or not a valid workbook." }
+  }
+  const suspiciousMarker = SUSPICIOUS_XLSX_MARKERS.find((marker) => hasAsciiSequenceCaseInsensitive(bytes, marker))
+  if (suspiciousMarker) {
+    return { ok: false, reason: `Spreadsheet contains unsupported active or embedded content (${suspiciousMarker}).` }
   }
   return { ok: true }
 }
@@ -96,7 +127,7 @@ function detectMagicMime(bytes: Uint8Array): string | null {
   if (bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04) {
     return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" // assume xlsx here; legacy xls is OLE
   }
-  // Legacy xls (OLE compound file)
+  // Legacy xls (OLE compound file). Detect it so prescan can reject explicitly.
   if (bytes.length >= 8 && bytes[0] === 0xd0 && bytes[1] === 0xcf && bytes[2] === 0x11 && bytes[3] === 0xe0 &&
       bytes[4] === 0xa1 && bytes[5] === 0xb1 && bytes[6] === 0x1a && bytes[7] === 0xe1) {
     return "application/vnd.ms-excel"
@@ -115,13 +146,20 @@ function detectMagicMime(bytes: Uint8Array): string | null {
   return null
 }
 
+function normalizePdfNames(text: string): string {
+  return text
+    .replace(/#([0-9a-fA-F]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .toLowerCase()
+}
+
 // PDF quick parse: confirm not encrypted + extract rough page count from /Count tokens
 async function analyzePdf(bytes: Uint8Array): Promise<{ ok: boolean; reason?: string; pages?: number }> {
   const head = new TextDecoder("latin1").decode(bytes.slice(0, Math.min(bytes.length, 16384)))
   if (!head.startsWith("%PDF-")) return { ok: false, reason: "Not a valid PDF header" }
   const fullText = new TextDecoder("latin1").decode(bytes)
   if (/\/Encrypt\s/.test(fullText)) return { ok: false, reason: "Encrypted PDFs are not supported" }
-  if (SUSPICIOUS_PDF_MARKERS.some((marker) => fullText.includes(marker))) {
+  const normalizedText = normalizePdfNames(fullText)
+  if (SUSPICIOUS_PDF_MARKERS.some((marker) => normalizedText.includes(marker.toLowerCase()))) {
     return { ok: false, reason: "PDF contains active or embedded content that is not supported." }
   }
   // /Count N inside a /Type /Pages dict. Multiple may exist; take the largest non-leaf.
@@ -131,6 +169,21 @@ async function analyzePdf(bytes: Uint8Array): Promise<{ ok: boolean; reason?: st
     return { ok: false, reason: `PDF exceeds page limit (${pages} > ${MAX_PDF_PAGES})` }
   }
   return { ok: true, pages }
+}
+
+function analyzeCsv(bytes: Uint8Array): { ok: boolean; reason?: string } {
+  const text = new TextDecoder("utf-8").decode(bytes)
+  const rows = text.split(/\r?\n/).slice(0, 500)
+  for (const row of rows) {
+    const cells = row.split(",")
+    for (const cell of cells) {
+      const value = cell.trim().replace(/^"+|"+$/g, "").trim()
+      if (/^[=@+]/.test(value) || /^-(?!\d+(\.\d+)?$)/.test(value)) {
+        return { ok: false, reason: "CSV contains spreadsheet formulas or command-like cells." }
+      }
+    }
+  }
+  return { ok: true }
 }
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
@@ -334,9 +387,16 @@ serve(async (req) => {
     if (!detected || !ALLOWED_MIME_PREFIXES.includes(detected)) {
       throw new PrescanReject("mime_mismatch", "File signature does not match an accepted document type.")
     }
+    const extension = String(file.filename ?? "").split(".").pop()?.toLowerCase() ?? ""
+    const allowedExtensions = ALLOWED_EXTENSIONS_BY_MIME[detected] ?? []
+    if (!extension || !allowedExtensions.includes(extension)) {
+      throw new PrescanReject("extension_mismatch", "File extension does not match the detected document type.")
+    }
     // Soft-check declared vs detected (declared MIME can legitimately be more specific)
     const declared = (file.file_type || "").toLowerCase()
-    if (declared && !declared.startsWith("text/") && declared !== detected &&
+    const genericDeclared = declared === "application/octet-stream" || declared === "binary/octet-stream"
+    const csvDeclaredAsExcel = detected === "text/csv" && declared === "application/vnd.ms-excel" && extension === "csv"
+    if (declared && !genericDeclared && !csvDeclaredAsExcel && !declared.startsWith("text/") && declared !== detected &&
         !(declared.startsWith("image/") && detected.startsWith("image/"))) {
       throw new PrescanReject("mime_mismatch", "Declared file type does not match the actual file contents.")
     }
@@ -345,6 +405,10 @@ serve(async (req) => {
     if (detected === "application/pdf") {
       const pdf = await analyzePdf(bytes)
       if (!pdf.ok) throw new PrescanReject("pdf_invalid", pdf.reason ?? "Invalid PDF structure.")
+    }
+    if (detected === "text/csv") {
+      const csv = analyzeCsv(bytes)
+      if (!csv.ok) throw new PrescanReject("csv_invalid", csv.reason ?? "Invalid CSV content.")
     }
     const workbookCheck = validateSpreadsheetContainer(bytes, detected)
     if (!workbookCheck.ok) {
@@ -366,7 +430,7 @@ serve(async (req) => {
 
     // Tier 2 — Gemini Safety Pass
     // Spreadsheets skip safety (Gemini can't see them); Tier 1 magic byte is the gate.
-    const isSpreadsheet = detected === "application/vnd.ms-excel" ||
+    const isSpreadsheet =
       detected === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
       detected === "text/csv"
 

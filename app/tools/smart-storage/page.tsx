@@ -787,8 +787,8 @@ export default function SmartStoragePage() {
 
   // ── Upload ─────────────────────────────────────────────────────────────────
   const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50 MB
-  const ALLOWED_TYPES = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp", "image/heic", "text/csv", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"])
-  const ALLOWED_EXTS = new Set(["pdf", "jpg", "jpeg", "png", "webp", "heic", "csv", "xls", "xlsx"])
+  const ALLOWED_TYPES = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp", "image/heic", "text/csv", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"])
+  const ALLOWED_EXTS = new Set(["pdf", "jpg", "jpeg", "png", "webp", "heic", "csv", "xlsx"])
 
   const handleUpload = async (uploadFiles: FileList | File[]) => {
     if (!session?.user?.id) return

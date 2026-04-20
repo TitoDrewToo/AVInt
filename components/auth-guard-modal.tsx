@@ -14,6 +14,19 @@ interface AuthGuardModalProps {
   onClose?: () => void
 }
 
+function currentPath() {
+  return window.location.pathname + window.location.search
+}
+
+function authProcessUrl(action: "login" | "signup", params?: { email?: string; next?: string }) {
+  const search = new URLSearchParams({
+    action,
+    next: params?.next ?? currentPath(),
+  })
+  if (params?.email) search.set("email", params.email)
+  return `/auth/process?${search.toString()}`
+}
+
 export function AuthGuardModal({ isVisible, onSuccess, onClose }: AuthGuardModalProps) {
   const [mode, setMode] = useState<"signin" | "signup" | "forgot">("signin")
   const [email, setEmail] = useState("")
@@ -110,7 +123,11 @@ export function AuthGuardModal({ isVisible, onSuccess, onClose }: AuthGuardModal
                     }
                     return
                   }
-                  onSuccess?.()
+                  if (onSuccess) {
+                    onSuccess()
+                    return
+                  }
+                  window.location.href = authProcessUrl("login")
                 }}
               >
                 {loading ? "Signing in…" : "Sign in with Email"}
@@ -139,8 +156,7 @@ export function AuthGuardModal({ isVisible, onSuccess, onClose }: AuthGuardModal
                     setLoading(false)
                     if (error) { setError(error.message); return }
                     window.sessionStorage.setItem("avint_signup_welcome_pending", "1")
-                    const returnTo = window.location.pathname + window.location.search
-                    window.location.href = `/signup/welcome?email=${encodeURIComponent(email)}&returnTo=${encodeURIComponent(returnTo)}`
+                    window.location.href = authProcessUrl("signup", { email })
                   }}
                 >
                 {loading ? "Creating account…" : "Create Account"}

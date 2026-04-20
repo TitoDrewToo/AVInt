@@ -34,16 +34,21 @@ function GoogleIcon({ className }: { className?: string }) {
 interface GoogleSignInButtonProps {
   onClick?: () => void
   className?: string
+  next?: string
 }
 
-export function GoogleSignInButton({ onClick, className }: GoogleSignInButtonProps) {
+function oauthRedirectTo(next?: string) {
+  const origin = typeof window !== "undefined" ? window.location.origin : "https://www.avintph.com"
+  const returnTo = next ?? (typeof window !== "undefined" ? window.location.pathname + window.location.search : "/")
+  return `${origin}/auth/callback?next=${encodeURIComponent(returnTo)}`
+}
+
+export function GoogleSignInButton({ onClick, className, next }: GoogleSignInButtonProps) {
   const handleClick = async () => {
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: typeof window !== "undefined"
-          ? `${window.location.origin}/auth/callback`
-          : "https://www.avintph.com/auth/callback",
+        redirectTo: oauthRedirectTo(next),
       },
     })
     onClick?.()

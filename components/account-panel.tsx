@@ -19,6 +19,19 @@ interface AccountPanelProps {
   focusGiftCode?: boolean
 }
 
+function currentPath() {
+  return window.location.pathname + window.location.search
+}
+
+function authProcessUrl(action: "login" | "signup" | "logout", params?: { email?: string; next?: string }) {
+  const search = new URLSearchParams({
+    action,
+    next: params?.next ?? currentPath(),
+  })
+  if (params?.email) search.set("email", params.email)
+  return `/auth/process?${search.toString()}`
+}
+
 type ExpandedSection = "email" | "password" | null
 
 function AccordionItem({
@@ -419,6 +432,7 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                             const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword })
                             setAuthLoading(false)
                             if (error) setAuthError(error.message)
+                            else window.location.href = authProcessUrl("login")
                           }}
                         >
                           {authLoading ? "Signing in…" : "Sign In"}
@@ -449,8 +463,7 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                             if (error) setAuthError(error.message)
                             else {
                               window.sessionStorage.setItem("avint_signup_welcome_pending", "1")
-                              const returnTo = window.location.pathname + window.location.search
-                              window.location.href = `/signup/welcome?email=${encodeURIComponent(authEmail)}&returnTo=${encodeURIComponent(returnTo)}`
+                              window.location.href = authProcessUrl("signup", { email: authEmail })
                             }
                           }}
                         >
@@ -665,7 +678,9 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                     <div className="retro-divider h-px" />
                     <div className="space-y-1">
                       <button
-                        onClick={() => supabase.auth.signOut()}
+                        onClick={() => {
+                          window.location.href = authProcessUrl("logout", { next: "/" })
+                        }}
                         className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground/85 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
                         style={chromeFontStyle}
                       >

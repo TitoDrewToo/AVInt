@@ -21,5 +21,9 @@ export async function GET(req: NextRequest) {
     await supabase.auth.exchangeCodeForSession(code)
   }
 
-  return NextResponse.redirect(new URL(next, req.url))
+  const processUrl = new URL("/auth/process", req.url)
+  processUrl.searchParams.set("action", "login")
+  processUrl.searchParams.set("next", next)
+
+  return NextResponse.redirect(processUrl)
 }

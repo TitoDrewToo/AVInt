@@ -23,7 +23,7 @@ const GridLayout = GridLayoutBase as any
 import "react-grid-layout/css/styles.css"
 import "react-resizable/css/styles.css"
 import {
-  AreaChart, Area, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
+  AreaChart, Area, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, Sector,
   ComposedChart, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from "recharts"
 import {
@@ -119,6 +119,254 @@ interface BandedRow { month: string; actual: number; mean: number; upper: number
 
 // One composed row carries income (line), expenses (bar), net (area).
 interface ComposedRow { month: string; income: number; expenses: number; net: number }
+
+// ── Multi-currency model ──────────────────────────────────────────────────────
+//
+// Money totals must never cross currencies. Documents are bucketed by their
+// own `currency` column and every monetary aggregation is computed per bucket.
+// Count-based views (document distribution) stay global — they don't sum money.
+
+interface DashboardCurrencyBucket {
+  currency: string
+  totalIncome: number
+  totalExpenses: number
+  netPosition: number
+  savingsRate: number
+  taxExposure: number
+  taxRatio: number
+  monthlyData: MonthlyData[]
+  categoryData: CategoryData[]
+  stackedComposition: { rows: StackedRow[]; seriesKeys: string[]; groupBy: "merchant_domain" | "expense_category" }
+  composedData: ComposedRow[]
+  bandedData: BandedRow[]
+}
+
+interface DashboardCurrencyModel {
+  currencies: string[]
+  primaryCurrency: string
+  buckets: Record<string, DashboardCurrencyBucket>
+  hasMultipleCurrencies: boolean
+}
+
+// Money widgets that must be suffixed with the primary currency label when
+// multiple currencies exist. Count-based views (pie-chart = Document
+// Distribution) are absent by design — they don't aggregate money.
+const MONEY_WIDGET_TYPES = new Set([
+  "kpi-net",
+  "kpi-tax-exposure",
+  "kpi-tax-ratio",
+  "area-chart",
+  "line-chart",
+  "bar-chart",
+  "bar-deductible",
+  "stacked-bar",
+  "composed-chart",
+  "banded-area",
+])
+
+function currencyToSymbol(code: string | null | undefined): string {
+  const c = (code ?? "").toUpperCase()
+  if (c === "PHP") return "₱"
+  if (c === "EUR") return "€"
+  if (c === "GBP") return "£"
+  return "$"
+}
+
+const EMPTY_CURRENCY_MODEL: DashboardCurrencyModel = {
+  currencies: [],
+  primaryCurrency: "USD",
+  buckets: {},
+  hasMultipleCurrencies: false,
+}
+
+function computeBucket(cur: string, rows: any[], safeNum: (v: unknown) => number): DashboardCurrencyBucket {
+  const incomeRows = rows.filter((f) => f.files && ["payslip", "income_statement"].includes(f.files.document_type))
+  const expenseRows = rows.filter((f) => f.files && ["receipt", "invoice"].includes(f.files.document_type))
+  const totalIncome = incomeRows.reduce((s, f) => s + safeNum(f.gross_income ?? f.total_amount), 0)
+  const totalExpenses = expenseRows.reduce((s, f) => s + safeNum(f.total_amount), 0)
+  const netPosition = totalIncome - totalExpenses
+  const savingsRate = totalIncome > 0 ? (netPosition / totalIncome) * 100 : 0
+  const taxExposure = Math.max(0, netPosition)
+  const taxRatio = totalIncome > 0 ? (taxExposure / totalIncome) * 100 : 0
+
+  const monthMap: Record<string, { expenses: number; income: number }> = {}
+  rows.forEach((f) => {
+    if (!f.document_date || !f.files) return
+    const month = f.document_date.slice(0, 7)
+    if (!monthMap[month]) monthMap[month] = { expenses: 0, income: 0 }
+    if (["payslip", "income_statement"].includes(f.files.document_type))
+      monthMap[month].income += safeNum(f.gross_income ?? f.total_amount)
+    else monthMap[month].expenses += safeNum(f.total_amount)
+  })
+  const monthlyData: MonthlyData[] = Object.entries(monthMap)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([m, d]) => ({
+      month: new Date(m + "-01").toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
+      ...d,
+    }))
+
+  const catMap: Record<string, number> = {}
+  expenseRows.forEach((f) => {
+    const cat = f.expense_category ?? "Other"
+    catMap[cat] = (catMap[cat] ?? 0) + safeNum(f.total_amount)
+  })
+  const categoryData: CategoryData[] = Object.entries(catMap)
+    .sort(([, a], [, b]) => b - a)
+    .map(([name, value]) => ({ name, value }))
+
+  const composedData: ComposedRow[] = Object.entries(monthMap)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([m, d]) => ({
+      month: new Date(m + "-01").toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
+      income: d.income,
+      expenses: d.expenses,
+      net: d.income - d.expenses,
+    }))
+
+  // Stacked composition — merchant_domain preferred when well-populated.
+  const expenseWithDomain = expenseRows.filter((f) => f.merchant_domain).length
+  const groupBy: "merchant_domain" | "expense_category" =
+    expenseRows.length > 0 && expenseWithDomain / expenseRows.length >= 0.5
+      ? "merchant_domain"
+      : "expense_category"
+  const stackedMap: Record<string, Record<string, number>> = {}
+  const seriesTotals: Record<string, number> = {}
+  expenseRows.forEach((f) => {
+    if (!f.document_date) return
+    const month = f.document_date.slice(0, 7)
+    const series = String(f[groupBy] ?? "Other")
+    if (!stackedMap[month]) stackedMap[month] = {}
+    const amt = safeNum(f.total_amount)
+    stackedMap[month][series] = (stackedMap[month][series] ?? 0) + amt
+    seriesTotals[series] = (seriesTotals[series] ?? 0) + amt
+  })
+  const topSeries = Object.entries(seriesTotals).sort(([, a], [, b]) => b - a).slice(0, 5).map(([name]) => name)
+  const topSet = new Set(topSeries)
+  const hasTail = Object.keys(seriesTotals).some((s) => !topSet.has(s))
+  const finalSeries = hasTail ? [...topSeries, "Other"] : topSeries
+  const stackedRows: StackedRow[] = Object.entries(stackedMap)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, perSeries]) => {
+      const row: StackedRow = {
+        month: new Date(month + "-01").toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
+      }
+      for (const s of finalSeries) row[s] = 0
+      for (const [s, v] of Object.entries(perSeries)) {
+        const bucket = topSet.has(s) ? s : "Other"
+        row[bucket] = Number(row[bucket] ?? 0) + v
+      }
+      return row
+    })
+
+  // Banded — monthly spend vs 3-month trailing mean ± 1σ.
+  const monthlySpendSeries = Object.entries(monthMap)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([m, d]) => ({ month: m, actual: d.expenses }))
+  const bandedData: BandedRow[] = monthlySpendSeries.map((row, i) => {
+    const windowStart = Math.max(0, i - 2)
+    const window = monthlySpendSeries.slice(windowStart, i + 1).map((r) => r.actual)
+    const mean = window.reduce((s, v) => s + v, 0) / window.length
+    const variance = window.reduce((s, v) => s + (v - mean) ** 2, 0) / window.length
+    const sigma = Math.sqrt(variance)
+    const upper = mean + sigma
+    const lower = Math.max(0, mean - sigma)
+    return {
+      month: new Date(row.month + "-01").toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
+      actual: row.actual,
+      mean,
+      upper,
+      lower,
+      bandWidth: Math.max(0, upper - lower),
+    }
+  })
+
+  return {
+    currency: cur,
+    totalIncome,
+    totalExpenses,
+    netPosition,
+    savingsRate,
+    taxExposure,
+    taxRatio,
+    monthlyData,
+    categoryData,
+    stackedComposition: { rows: stackedRows, seriesKeys: finalSeries, groupBy },
+    composedData,
+    bandedData,
+  }
+}
+
+// Bucket fields by currency. Rows without a currency label are folded into the
+// labeled bucket with the highest absolute activity — never materialize a
+// spurious "USD" bucket just because legacy rows lack the column. USD is only
+// the fallback when no row in the corpus carries any currency signal at all.
+function buildCurrencyModel(fields: any[], safeNum: (v: unknown) => number): DashboardCurrencyModel {
+  if (!fields?.length) return EMPTY_CURRENCY_MODEL
+
+  const labeled: Record<string, any[]> = {}
+  const unlabeled: any[] = []
+  for (const f of fields) {
+    const raw = typeof f?.currency === "string" ? f.currency.trim().toUpperCase() : ""
+    if (raw) (labeled[raw] ??= []).push(f)
+    else unlabeled.push(f)
+  }
+
+  const haveLabels = Object.keys(labeled).length > 0
+  if (!haveLabels) {
+    labeled["USD"] = unlabeled
+  } else if (unlabeled.length) {
+    const activity: Record<string, number> = {}
+    for (const [cur, rows] of Object.entries(labeled)) {
+      let a = 0
+      for (const r of rows) {
+        const dt = r?.files?.document_type
+        if (dt === "payslip" || dt === "income_statement") a += safeNum(r.gross_income ?? r.total_amount)
+        else a += safeNum(r.total_amount)
+      }
+      activity[cur] = a
+    }
+    const dest = Object.entries(activity).sort(([, a], [, b]) => b - a)[0]?.[0] ?? Object.keys(labeled)[0]
+    labeled[dest].push(...unlabeled)
+  }
+
+  const buckets: Record<string, DashboardCurrencyBucket> = {}
+  for (const [cur, rows] of Object.entries(labeled)) {
+    buckets[cur] = computeBucket(cur, rows, safeNum)
+  }
+  const currencies = Object.keys(buckets)
+
+  // Primary currency: income volume → expense volume → total activity → USD.
+  let primary = currencies[0] ?? "USD"
+  if (currencies.length > 1) {
+    const byIncome = [...currencies].sort((a, b) => buckets[b].totalIncome - buckets[a].totalIncome)
+    if (buckets[byIncome[0]].totalIncome > 0) {
+      primary = byIncome[0]
+    } else {
+      const byExpense = [...currencies].sort((a, b) => buckets[b].totalExpenses - buckets[a].totalExpenses)
+      if (buckets[byExpense[0]].totalExpenses > 0) {
+        primary = byExpense[0]
+      } else {
+        const byActivity = [...currencies].sort(
+          (a, b) => (buckets[b].totalIncome + buckets[b].totalExpenses) - (buckets[a].totalIncome + buckets[a].totalExpenses),
+        )
+        primary = byActivity[0]
+      }
+    }
+  }
+
+  return {
+    currencies,
+    primaryCurrency: primary,
+    buckets,
+    hasMultipleCurrencies: currencies.length > 1,
+  }
+}
+
+function displayWidgetTitle(widget: Widget, model: DashboardCurrencyModel): string {
+  if (!model.hasMultipleCurrencies) return widget.title
+  if (MONEY_WIDGET_TYPES.has(widget.type)) return `${widget.title} · ${model.primaryCurrency}`
+  return widget.title
+}
 
 // ── Default layout ────────────────────────────────────────────────────────────
 
@@ -246,18 +494,91 @@ function AnimatedNumber({ value, prefix = "" }: { value: number; prefix?: string
   return <span>{prefix}{display.toLocaleString()}</span>
 }
 
+// ── Categorical patterns ──────────────────────────────────────────────────────
+// For pie/stacked-bar with >5 series, overlay SVG patterns on the base color
+// so neighboring slices stay distinct even when palette colors are similar.
+// Also helps colorblind users. First 5 cells stay solid (palette carries the
+// identity); cells 5+ get dots / diag stripes / crosshatch / checker cycling.
+
+function renderCategoricalDefs(widgetId: string, palette: string[], theme: ThemeMode, count: number) {
+  const overlay = theme === "dark" ? "rgba(255,255,255,0.38)" : "rgba(0,0,0,0.24)"
+  return (
+    <>
+      {Array.from({ length: count }).map((_, i) => {
+        if (i < 5) return null
+        const color = palette[i % palette.length]
+        const patternId = `pat-${widgetId}-${i}`
+        const kind = (i - 5) % 4
+        return (
+          <pattern key={patternId} id={patternId} patternUnits="userSpaceOnUse" width={8} height={8}>
+            <rect width={8} height={8} fill={color} />
+            {kind === 0 && <circle cx={4} cy={4} r={1.3} fill={overlay} />}
+            {kind === 1 && <path d="M-2,2 l4,-4 M0,8 l8,-8 M6,10 l4,-4" stroke={overlay} strokeWidth={1.2} fill="none" />}
+            {kind === 2 && (
+              <g stroke={overlay} strokeWidth={1.1} fill="none">
+                <path d="M-2,2 l4,-4 M0,8 l8,-8 M6,10 l4,-4" />
+                <path d="M-2,6 l4,4 M0,0 l8,8 M6,-2 l4,4" />
+              </g>
+            )}
+            {kind === 3 && (
+              <g fill={overlay}>
+                <rect x={0} y={0} width={4} height={4} />
+                <rect x={4} y={4} width={4} height={4} />
+              </g>
+            )}
+          </pattern>
+        )
+      })}
+    </>
+  )
+}
+
+function categoricalFillFor(widgetId: string, palette: string[], i: number): string {
+  if (i < 5) return palette[i % palette.length]
+  return `url(#pat-${widgetId}-${i})`
+}
+
 // ── Custom tooltip ────────────────────────────────────────────────────────────
 
 function CustomTooltip({ active, payload, label, symbol }: any) {
   if (!active || !payload?.length) return null
+  // Filter band helpers (unnamed series like "lower" from banded-area) so
+  // they don't surface as rows with no label.
+  const visible = payload.filter((e: any) =>
+    (e.name || e.dataKey) && typeof e.value === "number" && !Number.isNaN(e.value),
+  )
+  if (!visible.length) return null
+  // Row total for % share when the chart passes multiple numeric series
+  // (stacked, grouped, multi-metric). Pie slices use entry.percent instead.
+  const rowTotal = visible.reduce((s: number, e: any) => s + Math.abs(Number(e.value)), 0)
+  const showStackShare = visible.length > 1 && rowTotal > 0
   return (
-    <div className="rounded-xl border border-border bg-card px-4 py-3 shadow-lg">
-      <p className="mb-2 text-xs font-medium text-muted-foreground">{label}</p>
-      {payload.map((entry: any) => (
-        <p key={entry.name} className="text-sm font-medium" style={{ color: entry.color }}>
-          {entry.name}: {symbol}{entry.value.toLocaleString()}
-        </p>
-      ))}
+    <div className="rounded-xl border border-border bg-card/95 px-3 py-2.5 shadow-xl backdrop-blur-md">
+      {label != null && label !== "" && (
+        <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
+      )}
+      <div className="min-w-[160px] space-y-1">
+        {visible.map((entry: any, idx: number) => {
+          const name = entry.name ?? entry.dataKey
+          const color = entry.color ?? entry.stroke ?? entry.fill
+          const value = Number(entry.value)
+          const pieShare = typeof entry.percent === "number" ? entry.percent * 100 : null
+          const stackShare = showStackShare && pieShare == null ? (Math.abs(value) / rowTotal) * 100 : null
+          const share = pieShare ?? stackShare
+          return (
+            <div key={`${name}-${idx}`} className="flex items-center gap-2 text-sm">
+              <span className="h-2.5 w-2.5 flex-shrink-0 rounded-full" style={{ background: color }} />
+              <span className="truncate text-foreground/80">{name}</span>
+              <span className="ml-auto flex items-baseline gap-1.5 font-medium text-foreground">
+                <span>{symbol ?? ""}{value.toLocaleString()}</span>
+                {share != null && (
+                  <span className="text-[10px] font-normal text-muted-foreground">{share.toFixed(1)}%</span>
+                )}
+              </span>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -267,6 +588,7 @@ function CustomTooltip({ active, payload, label, symbol }: any) {
 function WidgetContent({
   widget, kpi, monthlyData, categoryData, docTypeData,
   stackedCompositionData, composedData, bandedSpendData,
+  currencyModel,
   dashboardAccent,
   contextSummary, contextSummaryDate, isGeneratingSummary, isPro, onGenerateSummary,
 }: {
@@ -278,6 +600,7 @@ function WidgetContent({
   stackedCompositionData: { rows: StackedRow[]; seriesKeys: string[]; groupBy: "merchant_domain" | "expense_category" }
   composedData: ComposedRow[]
   bandedSpendData: BandedRow[]
+  currencyModel: DashboardCurrencyModel
   dashboardAccent: string
   contextSummary: string | null
   contextSummaryDate: string | null
@@ -285,7 +608,7 @@ function WidgetContent({
   isPro: boolean
   onGenerateSummary: () => void
 }) {
-  const symbol = kpi.currency === "PHP" ? "₱" : kpi.currency === "EUR" ? "€" : kpi.currency === "GBP" ? "£" : "$"
+  const symbol = currencyToSymbol(kpi.currency)
   const { resolvedTheme } = useTheme()
   const themeMode: ThemeMode = resolvedTheme === "dark" ? "dark" : "light"
   // Per-widget override: widget.colors.primary if set, else dashboard accent.
@@ -296,9 +619,50 @@ function WidgetContent({
   // Pre-sized for up to 16 categorical slices so pie/stacked charts don't
   // repeat colors at 8+ series. extendPalette continues the HSL rotation.
   const MULTI_COLORS = extendPalette(effectiveAccent, 16, themeMode)
+  const [activePieIndex, setActivePieIndex] = useState<number | null>(null)
+  // Active-shape renderer factory. Currency symbol is optional — doc-count
+  // pies (Document Distribution) have no symbol; value-driven pies pass one.
+  const makeActiveSlice = (opts: { symbol?: string } = {}) => (props: any) => {
+    const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill, payload, percent, value } = props
+    const valueLabel = opts.symbol
+      ? `${opts.symbol}${Number(value).toLocaleString()}`
+      : Number(value).toLocaleString()
+    return (
+      <g>
+        <text x={cx} y={cy - 10} textAnchor="middle" fill={fill} style={{ fontSize: 13, fontWeight: 600 }}>
+          {payload.name ?? payload[payload.nameKey ?? "name"]}
+        </text>
+        <text x={cx} y={cy + 8} textAnchor="middle" fill="currentColor" style={{ fontSize: 12, fontWeight: 600 }}>
+          {valueLabel}
+        </text>
+        <text x={cx} y={cy + 24} textAnchor="middle" fill="currentColor" opacity={0.55} style={{ fontSize: 11 }}>
+          {(percent * 100).toFixed(1)}%
+        </text>
+        <Sector cx={cx} cy={cy} innerRadius={innerRadius} outerRadius={outerRadius + 6} startAngle={startAngle} endAngle={endAngle} fill={fill} />
+        <Sector cx={cx} cy={cy} innerRadius={outerRadius + 9} outerRadius={outerRadius + 11} startAngle={startAngle} endAngle={endAngle} fill={fill} opacity={0.4} />
+      </g>
+    )
+  }
   const axisTickColor = themeMode === "dark" ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.5)"
   const gridStroke    = themeMode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)"
   const legendColor   = themeMode === "dark" ? "rgba(255,255,255,0.8)"  : "rgba(0,0,0,0.8)"
+
+  // Multi-currency bucket order for stacked rows: primary first, then the rest
+  // sorted by activity. Keeps the user's dominant currency anchored at the top.
+  const orderedCurrencies = currencyModel.hasMultipleCurrencies
+    ? [
+        currencyModel.primaryCurrency,
+        ...currencyModel.currencies
+          .filter((c) => c !== currencyModel.primaryCurrency)
+          .sort((a, b) => {
+            const ba = currencyModel.buckets[a]
+            const bb = currencyModel.buckets[b]
+            const aAct = (ba?.totalIncome ?? 0) + (ba?.totalExpenses ?? 0)
+            const bAct = (bb?.totalIncome ?? 0) + (bb?.totalExpenses ?? 0)
+            return bAct - aAct
+          }),
+      ]
+    : []
 
   if (widget.type === "kpi-income") return (
     <div className="flex h-full flex-col justify-between">
@@ -308,9 +672,26 @@ function WidgetContent({
           <TrendingUp className="h-4 w-4" style={{ color: colors.primary }} />
         </div>
       </div>
-      <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
-        <AnimatedNumber value={kpi.totalIncome} prefix={symbol} />
-      </p>
+      {currencyModel.hasMultipleCurrencies ? (
+        <div className="mt-3 space-y-1.5">
+          {orderedCurrencies.map((cur) => {
+            const b = currencyModel.buckets[cur]
+            if (!b) return null
+            return (
+              <div key={cur} className="flex items-baseline justify-between gap-3">
+                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{cur}</span>
+                <span className="text-xl font-semibold tracking-tight text-foreground">
+                  {currencyToSymbol(cur)}{Math.round(b.totalIncome).toLocaleString()}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
+          <AnimatedNumber value={kpi.totalIncome} prefix={symbol} />
+        </p>
+      )}
     </div>
   )
 
@@ -322,9 +703,26 @@ function WidgetContent({
           <Receipt className="h-4 w-4" style={{ color: colors.secondary }} />
         </div>
       </div>
-      <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
-        <AnimatedNumber value={kpi.totalExpenses} prefix={symbol} />
-      </p>
+      {currencyModel.hasMultipleCurrencies ? (
+        <div className="mt-3 space-y-1.5">
+          {orderedCurrencies.map((cur) => {
+            const b = currencyModel.buckets[cur]
+            if (!b) return null
+            return (
+              <div key={cur} className="flex items-baseline justify-between gap-3">
+                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{cur}</span>
+                <span className="text-xl font-semibold tracking-tight text-foreground">
+                  {currencyToSymbol(cur)}{Math.round(b.totalExpenses).toLocaleString()}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
+          <AnimatedNumber value={kpi.totalExpenses} prefix={symbol} />
+        </p>
+      )}
     </div>
   )
 
@@ -378,7 +776,7 @@ function WidgetContent({
   // styling matches the rest of the chart library.
   if (widget.rdConfig) {
     const rd = widget.rdConfig
-    const rdSymbol = rd.currency === "PHP" ? "₱" : rd.currency === "EUR" ? "€" : rd.currency === "GBP" ? "£" : "$"
+    const rdSymbol = currencyToSymbol(rd.currency)
     const axisProps = {
       xAxis: <XAxis dataKey={rd.x_key} tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} />,
       yAxis: <YAxis tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} tickFormatter={(v: number) => Math.abs(v) >= 1000 ? `${rdSymbol}${(v/1000).toFixed(1)}k` : `${rdSymbol}${v}`} />,
@@ -407,8 +805,20 @@ function WidgetContent({
               </AreaChart>
             ) : rd.chart_type === "pie-chart" ? (
               <PieChart>
-                <Pie data={rd.data as any[]} cx="50%" cy="50%" innerRadius="30%" outerRadius="60%" paddingAngle={3} dataKey={rd.data_key} nameKey={rd.x_key}>
-                  {rd.data.map((_, i) => <Cell key={i} fill={MULTI_COLORS[i % MULTI_COLORS.length]} strokeWidth={0} />)}
+                <defs>{renderCategoricalDefs(widget.id, MULTI_COLORS, themeMode, rd.data.length)}</defs>
+                <Pie
+                  data={rd.data as any[]}
+                  cx="50%" cy="50%"
+                  innerRadius="38%" outerRadius="62%"
+                  paddingAngle={3}
+                  dataKey={rd.data_key}
+                  nameKey={rd.x_key}
+                  activeIndex={activePieIndex ?? undefined}
+                  activeShape={makeActiveSlice({ symbol: rdSymbol })}
+                  onMouseEnter={(_: any, idx: number) => setActivePieIndex(idx)}
+                  onMouseLeave={() => setActivePieIndex(null)}
+                >
+                  {rd.data.map((_, i) => <Cell key={i} fill={categoricalFillFor(widget.id, MULTI_COLORS, i)} strokeWidth={0} />)}
                 </Pie>
                 <Tooltip content={<CustomTooltip symbol={rdSymbol} />} />
                 <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, color: legendColor }} />
@@ -504,20 +914,32 @@ function WidgetContent({
           <ResponsiveContainer width="100%" height="100%">
             {variant === "pie" ? (
               <PieChart>
-                <Pie data={data} cx="50%" cy="50%" innerRadius="30%" outerRadius="60%" paddingAngle={3} dataKey="value">
-                  {data.map((_, i) => <Cell key={i} fill={MULTI_COLORS[i % MULTI_COLORS.length]} strokeWidth={0} />)}
+                <defs>{renderCategoricalDefs(widget.id, MULTI_COLORS, themeMode, data.length)}</defs>
+                <Pie
+                  data={data}
+                  cx="50%" cy="50%"
+                  innerRadius="38%" outerRadius="62%"
+                  paddingAngle={3}
+                  dataKey="value"
+                  activeIndex={activePieIndex ?? undefined}
+                  activeShape={makeActiveSlice({ symbol })}
+                  onMouseEnter={(_: any, idx: number) => setActivePieIndex(idx)}
+                  onMouseLeave={() => setActivePieIndex(null)}
+                >
+                  {data.map((_, i) => <Cell key={i} fill={categoricalFillFor(widget.id, MULTI_COLORS, i)} strokeWidth={0} />)}
                 </Pie>
-                <Tooltip content={<CustomTooltip />} />
+                <Tooltip content={<CustomTooltip symbol={symbol} />} />
                 <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, color: legendColor }} />
               </PieChart>
             ) : (
               <BarChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 0 }} barSize={28}>
+                <defs>{renderCategoricalDefs(widget.id, MULTI_COLORS, themeMode, data.length)}</defs>
                 <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
                 <XAxis dataKey="name" tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${symbol}${(v/1000).toFixed(0)}k`} />
                 <Tooltip content={<CustomTooltip symbol={symbol} />} />
                 <Bar dataKey="value" name={widget.type === "bar-deductible" ? "Deductible" : "Amount"} radius={[6, 6, 0, 0]}>
-                  {data.map((_, i) => <Cell key={i} fill={MULTI_COLORS[i % MULTI_COLORS.length]} />)}
+                  {data.map((_, i) => <Cell key={i} fill={categoricalFillFor(widget.id, MULTI_COLORS, i)} />)}
                 </Bar>
               </BarChart>
             )}
@@ -536,19 +958,31 @@ function WidgetContent({
         <ResponsiveContainer width="100%" height="100%">
           {variant === "bar" ? (
             <BarChart data={docTypeData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }} barSize={28}>
+              <defs>{renderCategoricalDefs(widget.id, MULTI_COLORS, themeMode, docTypeData.length)}</defs>
               <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
               <XAxis dataKey="name" tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} />
               <Tooltip content={<CustomTooltip />} />
               <Bar dataKey="value" name="Count" radius={[6, 6, 0, 0]}>
-                {docTypeData.map((_, i) => <Cell key={i} fill={MULTI_COLORS[i % MULTI_COLORS.length]} />)}
+                {docTypeData.map((_, i) => <Cell key={i} fill={categoricalFillFor(widget.id, MULTI_COLORS, i)} />)}
               </Bar>
             </BarChart>
           ) : (
           <PieChart>
-            <Pie data={docTypeData} cx="50%" cy="50%" innerRadius="35%" outerRadius="60%" paddingAngle={3} dataKey="value">
+            <defs>{renderCategoricalDefs(widget.id, MULTI_COLORS, themeMode, docTypeData.length)}</defs>
+            <Pie
+              data={docTypeData}
+              cx="50%" cy="50%"
+              innerRadius="40%" outerRadius="62%"
+              paddingAngle={3}
+              dataKey="value"
+              activeIndex={activePieIndex ?? undefined}
+              activeShape={makeActiveSlice()}
+              onMouseEnter={(_: any, idx: number) => setActivePieIndex(idx)}
+              onMouseLeave={() => setActivePieIndex(null)}
+            >
               {docTypeData.map((_, i) => (
-                <Cell key={i} fill={MULTI_COLORS[i % MULTI_COLORS.length]} strokeWidth={0} />
+                <Cell key={i} fill={categoricalFillFor(widget.id, MULTI_COLORS, i)} strokeWidth={0} />
               ))}
             </Pie>
             <Tooltip content={<CustomTooltip />} />
@@ -569,13 +1003,14 @@ function WidgetContent({
         <div className="flex-1 min-h-0">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={stackedCompositionData.rows} margin={{ top: 5, right: 10, left: 0, bottom: 0 }} barSize={24}>
+              <defs>{renderCategoricalDefs(widget.id, MULTI_COLORS, themeMode, stackedCompositionData.seriesKeys.length)}</defs>
               <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
               <XAxis dataKey="month" tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${symbol}${(v/1000).toFixed(0)}k`} />
               <Tooltip content={<CustomTooltip symbol={symbol} />} />
               <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, color: legendColor }} />
               {stackedCompositionData.seriesKeys.map((key, i) => (
-                <Bar key={key} dataKey={key} name={key} stackId="spend" fill={MULTI_COLORS[i % MULTI_COLORS.length]} radius={i === stackedCompositionData.seriesKeys.length - 1 ? [4,4,0,0] : [0,0,0,0]} />
+                <Bar key={key} dataKey={key} name={key} stackId="spend" fill={categoricalFillFor(widget.id, MULTI_COLORS, i)} radius={i === stackedCompositionData.seriesKeys.length - 1 ? [4,4,0,0] : [0,0,0,0]} />
               ))}
             </BarChart>
           </ResponsiveContainer>
@@ -785,6 +1220,7 @@ export default function SmartDashboardPage() {
   const [stackedCompositionData, setStackedCompositionData] = useState<{ rows: StackedRow[]; seriesKeys: string[]; groupBy: "merchant_domain" | "expense_category" }>({ rows: [], seriesKeys: [], groupBy: "expense_category" })
   const [composedData, setComposedData] = useState<ComposedRow[]>([])
   const [bandedSpendData, setBandedSpendData] = useState<BandedRow[]>([])
+  const [currencyModel, setCurrencyModel] = useState<DashboardCurrencyModel>(EMPTY_CURRENCY_MODEL)
   const [widgets, setWidgets] = useState<Widget[]>(DEFAULT_WIDGETS)
   const [layout, setLayout] = useState<LayoutItem[]>(DEFAULT_LAYOUT)
   const [dashboardAccent, setDashboardAccent] = useState<string>(DEFAULT_ACCENT)
@@ -954,122 +1390,34 @@ export default function SmartDashboardPage() {
 
     const safeNum = (v: unknown): number => { const n = parseFloat(String(v ?? "0")); return isNaN(n) ? 0 : n }
 
-    const currency = (fields[0] as any)?.currency ?? "USD"
-    const incomeFields = fields.filter((f: any) => f.files && ["payslip", "income_statement"].includes(f.files.document_type))
-    const expenseFields = fields.filter((f: any) => f.files && ["receipt", "invoice"].includes(f.files.document_type))
+    // Currency-bucketed model. Primary bucket drives KPI/chart states so the
+    // single-currency render path stays identical. Income/Expenses tiles read
+    // the full model to stack per-currency rows when more than one exists.
+    const model = buildCurrencyModel(fields as any[], safeNum)
+    setCurrencyModel(model)
+    const primary = model.buckets[model.primaryCurrency]
 
-    const totalIncome = incomeFields.reduce((s: number, f: any) => s + safeNum(f.gross_income ?? f.total_amount), 0)
-    const totalExpenses = expenseFields.reduce((s: number, f: any) => s + safeNum(f.total_amount), 0)
-    const netPosition = totalIncome - totalExpenses
+    if (primary) {
+      setKpi({
+        totalIncome:   primary.totalIncome,
+        totalExpenses: primary.totalExpenses,
+        netPosition:   primary.netPosition,
+        savingsRate:   primary.savingsRate,
+        taxExposure:   primary.taxExposure,
+        taxRatio:      primary.taxRatio,
+        currency:      primary.currency,
+      })
+      setMonthlyData(primary.monthlyData)
+      setCategoryData(primary.categoryData)
+      setStackedCompositionData(primary.stackedComposition)
+      setComposedData(primary.composedData)
+      setBandedSpendData(primary.bandedData)
+    }
 
-    const taxExposure = Math.max(0, netPosition)
-    const taxRatio = totalIncome > 0 ? (taxExposure / totalIncome) * 100 : 0
-    setKpi({ totalIncome, totalExpenses, netPosition, savingsRate: totalIncome > 0 ? (netPosition / totalIncome) * 100 : 0, taxExposure, taxRatio, currency })
-
-    const monthMap: Record<string, { expenses: number; income: number }> = {}
-    fields.forEach((f: any) => {
-      if (!f.document_date || !f.files) return
-      const month = f.document_date.slice(0, 7)
-      if (!monthMap[month]) monthMap[month] = { expenses: 0, income: 0 }
-      if (["payslip", "income_statement"].includes(f.files.document_type))
-        monthMap[month].income += safeNum(f.gross_income ?? f.total_amount)
-      else monthMap[month].expenses += safeNum(f.total_amount)
-    })
-    setMonthlyData(Object.entries(monthMap).sort(([a],[b]) => a.localeCompare(b)).map(([m, d]) => ({
-      month: new Date(m + "-01").toLocaleDateString("en-US", { month: "short", year: "2-digit" }), ...d
-    })))
-
-    const catMap: Record<string, number> = {}
-    expenseFields.forEach((f: any) => { const cat = f.expense_category ?? "Other"; catMap[cat] = (catMap[cat] ?? 0) + safeNum(f.total_amount) })
-    setCategoryData(Object.entries(catMap).sort(([,a],[,b]) => b - a).map(([name, value]) => ({ name, value })))
-
+    // Document Distribution is count-based and stays cross-currency global.
     const typeMap: Record<string, number> = {}
     userFiles.forEach((f) => { typeMap[f.document_type] = (typeMap[f.document_type] ?? 0) + 1 })
     setDocTypeData(Object.entries(typeMap).map(([name, value]) => ({ name: name.charAt(0).toUpperCase() + name.slice(1), value })))
-
-    // ── Phase 3 derivations ──────────────────────────────────────────────────
-
-    // Composed time-series: income line + expense bars + net area.
-    const composedRows = Object.entries(monthMap)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([m, d]) => ({
-        month: new Date(m + "-01").toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
-        income:   d.income,
-        expenses: d.expenses,
-        net:      d.income - d.expenses,
-      }))
-    setComposedData(composedRows)
-
-    // Stacked composition: month × (merchant_domain | expense_category) matrix.
-    // Spending-first default — prefer merchant_domain when at least half of
-    // expense rows carry it. Otherwise fall back to expense_category.
-    const expenseWithDomain = expenseFields.filter((f: any) => f.merchant_domain).length
-    const groupBy: "merchant_domain" | "expense_category" =
-      expenseFields.length > 0 && expenseWithDomain / expenseFields.length >= 0.5
-        ? "merchant_domain"
-        : "expense_category"
-
-    // Aggregate totals per (month, series) for the chosen grouping key.
-    const stackedMap: Record<string, Record<string, number>> = {}
-    const seriesTotals: Record<string, number> = {}
-    expenseFields.forEach((f: any) => {
-      if (!f.document_date) return
-      const month = f.document_date.slice(0, 7)
-      const series = String(f[groupBy] ?? "Other")
-      if (!stackedMap[month]) stackedMap[month] = {}
-      const amt = safeNum(f.total_amount)
-      stackedMap[month][series] = (stackedMap[month][series] ?? 0) + amt
-      seriesTotals[series] = (seriesTotals[series] ?? 0) + amt
-    })
-    // Keep top 5 series; fold the long tail into "Other" to avoid chart noise.
-    const topSeries = Object.entries(seriesTotals)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 5)
-      .map(([name]) => name)
-    const topSet = new Set(topSeries)
-    const hasTail = Object.keys(seriesTotals).some((s) => !topSet.has(s))
-    const finalSeries = hasTail ? [...topSeries, "Other"] : topSeries
-
-    const stackedRows: StackedRow[] = Object.entries(stackedMap)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([month, perSeries]) => {
-        const row: StackedRow = {
-          month: new Date(month + "-01").toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
-        }
-        for (const s of finalSeries) row[s] = 0
-        for (const [s, v] of Object.entries(perSeries)) {
-          const bucket = topSet.has(s) ? s : "Other"
-          row[bucket] = Number(row[bucket] ?? 0) + v
-        }
-        return row
-      })
-    setStackedCompositionData({ rows: stackedRows, seriesKeys: finalSeries, groupBy })
-
-    // Banded time-series: monthly spend vs 3-month trailing mean ± 1σ.
-    // Uses a rolling window ending at the current month so the band reflects
-    // what the user "expected" given prior history — anomaly windows show up
-    // as actual values outside upper/lower bounds.
-    const monthlySpendSeries = Object.entries(monthMap)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([m, d]) => ({ month: m, actual: d.expenses }))
-    const banded: BandedRow[] = monthlySpendSeries.map((row, i) => {
-      const windowStart = Math.max(0, i - 2)
-      const window = monthlySpendSeries.slice(windowStart, i + 1).map((r) => r.actual)
-      const mean = window.reduce((s, v) => s + v, 0) / window.length
-      const variance = window.reduce((s, v) => s + (v - mean) ** 2, 0) / window.length
-      const sigma = Math.sqrt(variance)
-      const upper = mean + sigma
-      const lower = Math.max(0, mean - sigma)
-      return {
-        month: new Date(row.month + "-01").toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
-        actual: row.actual,
-        mean,
-        upper,
-        lower,
-        bandWidth: Math.max(0, upper - lower),
-      }
-    })
-    setBandedSpendData(banded)
 
     setLoading(false)
   }, [session, dateFrom, dateTo])
@@ -1383,7 +1731,7 @@ export default function SmartDashboardPage() {
   if (!sessionLoaded) return null
   if (!session) return <AuthGuardModal isVisible={true} />
 
-  const symbol = kpi.currency === "PHP" ? "₱" : kpi.currency === "EUR" ? "€" : kpi.currency === "GBP" ? "£" : "$"
+  const symbol = currencyToSymbol(kpi.currency)
   const resolvedLayout = (isMobile ? toMobileLayout(layout) : layout).map((item) => ({
     ...item,
     static: isMobile || !isEditingLayout,
@@ -1705,6 +2053,12 @@ export default function SmartDashboardPage() {
                 </div>
               </div>
             ) : (
+              <>
+              {currencyModel.hasMultipleCurrencies && (
+                <div className="mb-3 rounded-lg border border-border bg-muted/40 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+                  Multiple currencies detected. Income and expenses are shown per currency; net, tax, and charts use your primary currency ({currencyModel.primaryCurrency}). No FX conversion is applied.
+                </div>
+              )}
               <GridLayout
                 className="layout"
                 layout={resolvedLayout}
@@ -1747,7 +2101,7 @@ export default function SmartDashboardPage() {
 
                     {/* Widget header */}
                     <div className="flex items-center px-4 pt-3 pb-1 shrink-0">
-                      <h3 className="text-xs font-semibold text-foreground">{widget.title}</h3>
+                      <h3 className="text-xs font-semibold text-foreground">{displayWidgetTitle(widget, currencyModel)}</h3>
                     </div>
 
                     {/* Widget content */}
@@ -1761,6 +2115,7 @@ export default function SmartDashboardPage() {
                         stackedCompositionData={stackedCompositionData}
                         composedData={composedData}
                         bandedSpendData={bandedSpendData}
+                        currencyModel={currencyModel}
                         dashboardAccent={dashboardAccent}
                         contextSummary={contextSummary}
                         contextSummaryDate={contextSummaryDate}
@@ -1780,6 +2135,7 @@ export default function SmartDashboardPage() {
                   </div>
                 ))}
               </GridLayout>
+              </>
             )}
 
             {/* Right-click context menu — desktop only */}

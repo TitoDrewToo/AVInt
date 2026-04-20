@@ -36,15 +36,16 @@ import Link from "next/link"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { useIsMobile } from "@/hooks/use-mobile"
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+import {
+  CURATED_ACCENTS,
+  DEFAULT_ACCENT,
+  derivePalette,
+  extendPalette,
+  type ThemeMode,
+  type WidgetColor,
+} from "@/lib/palette"
 
-interface WidgetColor {
-  primary: string
-  secondary: string
-  tertiary: string
-  quaternary: string
-  quinary: string
-}
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface Widget {
   id: string
@@ -118,24 +119,6 @@ interface BandedRow { month: string; actual: number; mean: number; upper: number
 
 // One composed row carries income (line), expenses (bar), net (area).
 interface ComposedRow { month: string; income: number; expenses: number; net: number }
-
-// ── Default colors ────────────────────────────────────────────────────────────
-
-const DEFAULT_WIDGET_COLORS: WidgetColor = {
-  primary: "#6366f1",
-  secondary: "#ef4444",
-  tertiary: "#f59e0b",
-  quaternary: "#10b981",
-  quinary: "#8b5cf6",
-}
-
-const COLOR_PRESETS: WidgetColor[] = [
-  { primary: "#6366f1", secondary: "#ef4444", tertiary: "#f59e0b", quaternary: "#10b981", quinary: "#8b5cf6" },
-  { primary: "#10b981", secondary: "#f59e0b", tertiary: "#3b82f6", quaternary: "#ec4899", quinary: "#06b6d4" },
-  { primary: "#3b82f6", secondary: "#ec4899", tertiary: "#f97316", quaternary: "#84cc16", quinary: "#8b5cf6" },
-  { primary: "#8b5cf6", secondary: "#06b6d4", tertiary: "#f59e0b", quaternary: "#ef4444", quinary: "#10b981" },
-  { primary: "#f97316", secondary: "#84cc16", tertiary: "#3b82f6", quaternary: "#ec4899", quinary: "#6366f1" },
-]
 
 // ── Default layout ────────────────────────────────────────────────────────────
 
@@ -284,6 +267,7 @@ function CustomTooltip({ active, payload, label, symbol }: any) {
 function WidgetContent({
   widget, kpi, monthlyData, categoryData, docTypeData,
   stackedCompositionData, composedData, bandedSpendData,
+  dashboardAccent,
   contextSummary, contextSummaryDate, isGeneratingSummary, isPro, onGenerateSummary,
 }: {
   widget: Widget
@@ -294,6 +278,7 @@ function WidgetContent({
   stackedCompositionData: { rows: StackedRow[]; seriesKeys: string[]; groupBy: "merchant_domain" | "expense_category" }
   composedData: ComposedRow[]
   bandedSpendData: BandedRow[]
+  dashboardAccent: string
   contextSummary: string | null
   contextSummaryDate: string | null
   isGeneratingSummary: boolean
@@ -301,12 +286,19 @@ function WidgetContent({
   onGenerateSummary: () => void
 }) {
   const symbol = kpi.currency === "PHP" ? "₱" : kpi.currency === "EUR" ? "€" : kpi.currency === "GBP" ? "£" : "$"
-  const colors = widget.colors ?? DEFAULT_WIDGET_COLORS
-  const MULTI_COLORS = [colors.primary, colors.secondary, colors.tertiary, colors.quaternary, colors.quinary]
   const { resolvedTheme } = useTheme()
-  const axisTickColor = resolvedTheme === "dark" ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.5)"
-  const gridStroke    = resolvedTheme === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)"
-  const legendColor   = resolvedTheme === "dark" ? "rgba(255,255,255,0.8)"  : "rgba(0,0,0,0.8)"
+  const themeMode: ThemeMode = resolvedTheme === "dark" ? "dark" : "light"
+  // Per-widget override: widget.colors.primary if set, else dashboard accent.
+  // Palette always derived so derived slots stay harmonious with the accent,
+  // and extendPalette can grow the palette for categorical charts > 5 series.
+  const effectiveAccent = widget.colors?.primary ?? dashboardAccent
+  const colors = widget.colors ?? derivePalette(effectiveAccent, themeMode)
+  // Pre-sized for up to 16 categorical slices so pie/stacked charts don't
+  // repeat colors at 8+ series. extendPalette continues the HSL rotation.
+  const MULTI_COLORS = extendPalette(effectiveAccent, 16, themeMode)
+  const axisTickColor = themeMode === "dark" ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.5)"
+  const gridStroke    = themeMode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)"
+  const legendColor   = themeMode === "dark" ? "rgba(255,255,255,0.8)"  : "rgba(0,0,0,0.8)"
 
   if (widget.type === "kpi-income") return (
     <div className="flex h-full flex-col justify-between">
@@ -795,6 +787,7 @@ export default function SmartDashboardPage() {
   const [bandedSpendData, setBandedSpendData] = useState<BandedRow[]>([])
   const [widgets, setWidgets] = useState<Widget[]>(DEFAULT_WIDGETS)
   const [layout, setLayout] = useState<LayoutItem[]>(DEFAULT_LAYOUT)
+  const [dashboardAccent, setDashboardAccent] = useState<string>(DEFAULT_ACCENT)
   const [selectedWidgetId, setSelectedWidgetId] = useState<string | null>(null)
   const [isEditingLayout, setIsEditingLayout] = useState(false)
   const [isDirty, setIsDirty] = useState(false)
@@ -919,6 +912,7 @@ export default function SmartDashboardPage() {
     if (data?.layout) {
       const saved = data.layout
       if (saved.widgets?.length) setWidgets(saved.widgets)
+      if (saved.palette?.accent) setDashboardAccent(saved.palette.accent)
       if (saved.gridLayout?.length) {
         // Always apply current minH/minW — never restore stale saved constraints
         const constraints: Record<string, { minW: number; minH: number }> = {}
@@ -1177,7 +1171,6 @@ export default function SmartDashboardPage() {
       type:       rdConfig ? rdConfig.chart_type : aw.widget_type,
       title:      aw.title,
       isPremium:  true,
-      colors:     DEFAULT_WIDGET_COLORS,
       advancedId: aw.id,
       insight:    aw.insight ?? undefined,
       rdConfig,
@@ -1306,7 +1299,7 @@ export default function SmartDashboardPage() {
     setIsSaving(true)
     await supabase.from("dashboard_layouts").upsert({
       user_id: session.user.id,
-      layout: { widgets, gridLayout: layout },
+      layout: { widgets, gridLayout: layout, palette: { accent: dashboardAccent } },
       updated_at: new Date().toISOString(),
     }, { onConflict: "user_id" })
     setIsSaving(false)
@@ -1347,9 +1340,25 @@ export default function SmartDashboardPage() {
     setIsDirty(true)
   }
 
-  const updateWidgetColor = (widgetId: string, colors: WidgetColor) => {
+  // Accent-only palette wiring. Roles are derived at render time from
+  // widget.colors.primary (if set) else dashboardAccent, so the stored slots
+  // are populated for backward compatibility but the render ignores them.
+  const updateDashboardAccent = (accent: string) => {
     if (!isEditingLayout) return
-    setWidgets(prev => prev.map(w => w.id === widgetId ? { ...w, colors } : w))
+    setDashboardAccent(accent)
+    setIsDirty(true)
+  }
+
+  const updateWidgetAccent = (widgetId: string, accent: string) => {
+    if (!isEditingLayout) return
+    const palette = derivePalette(accent, "light")
+    setWidgets(prev => prev.map(w => w.id === widgetId ? { ...w, colors: palette } : w))
+    setIsDirty(true)
+  }
+
+  const clearWidgetColors = (widgetId: string) => {
+    if (!isEditingLayout) return
+    setWidgets(prev => prev.map(w => w.id === widgetId ? { ...w, colors: undefined } : w))
     setIsDirty(true)
   }
 
@@ -1526,61 +1535,88 @@ export default function SmartDashboardPage() {
               )
             })()}
 
-            {/* Color picker — desktop only, when widget selected */}
-            {!isMobile && isEditingLayout && selectedWidget && (
-              <div
-                className="relative flex items-center gap-1.5"
-                onMouseEnter={cancelColorPickerClose}
-                onMouseLeave={showColorPicker ? scheduleColorPickerClose : undefined}
-              >
-                <div className="h-4 w-px bg-border mx-1" />
-                <span className="text-xs text-muted-foreground">Color:</span>
-                <div className="relative">
-                  <button
-                    onClick={() => { cancelColorPickerClose(); setShowColorPicker(!showColorPicker) }}
-                    className="flex items-center gap-1.5 rounded-lg border border-border px-2 py-1 text-xs text-muted-foreground transition-all duration-200 hover:-translate-y-0.5 hover:bg-muted"
-                  >
-                    <div className="flex items-center gap-0.5">
-                      {(["primary","secondary","tertiary","quaternary","quinary"] as const).map(k => (
-                        <span key={k} className="h-3.5 w-3.5 rounded-full border border-white/10"
-                          style={{ background: (selectedWidget.colors ?? DEFAULT_WIDGET_COLORS)[k] }} />
-                      ))}
-                    </div>
-                    <ChevronDown className="h-3 w-3" />
-                  </button>
-                  <div className={`absolute left-0 top-9 z-30 origin-top-left rounded-xl border border-border bg-card p-4 shadow-xl transition-all duration-200 ${
-                    showColorPicker
-                      ? "pointer-events-auto translate-y-0 scale-100 opacity-100"
-                      : "pointer-events-none -translate-y-1 scale-95 opacity-0"
-                  }`}>
-                      <p className="mb-3 text-xs font-medium text-muted-foreground">Widget color theme</p>
-                      <div className="space-y-2">
-                        {COLOR_PRESETS.map((preset, i) => {
-                          const isActive = selectedWidget.colors?.primary === preset.primary
+            {/* Color picker — desktop only. Widget selected → widget accent
+                override; otherwise → dashboard-wide accent. */}
+            {!isMobile && isEditingLayout && (() => {
+              const pickerScope: "widget" | "dashboard" = selectedWidget ? "widget" : "dashboard"
+              const currentAccent = pickerScope === "widget"
+                ? (selectedWidget!.colors?.primary ?? dashboardAccent)
+                : dashboardAccent
+              const hasOverride = pickerScope === "widget" && !!selectedWidget!.colors?.primary
+              const setAccent = (hex: string) => {
+                if (pickerScope === "widget") updateWidgetAccent(selectedWidget!.id, hex)
+                else updateDashboardAccent(hex)
+              }
+              return (
+                <div
+                  className="relative flex items-center gap-1.5"
+                  onMouseEnter={cancelColorPickerClose}
+                  onMouseLeave={showColorPicker ? scheduleColorPickerClose : undefined}
+                >
+                  <div className="h-4 w-px bg-border mx-1" />
+                  <span className="text-xs text-muted-foreground">
+                    {pickerScope === "widget" ? "Widget color:" : "Dashboard color:"}
+                  </span>
+                  <div className="relative">
+                    <button
+                      onClick={() => { cancelColorPickerClose(); setShowColorPicker(!showColorPicker) }}
+                      className="flex items-center gap-1.5 rounded-lg border border-border px-2 py-1 text-xs text-muted-foreground transition-all duration-200 hover:-translate-y-0.5 hover:bg-muted"
+                    >
+                      <span className="h-4 w-4 rounded-full border border-white/10" style={{ background: currentAccent }} />
+                      <ChevronDown className="h-3 w-3" />
+                    </button>
+                    <div className={`absolute left-0 top-9 z-30 w-64 origin-top-left rounded-xl border border-border bg-card p-4 shadow-xl transition-all duration-200 ${
+                      showColorPicker
+                        ? "pointer-events-auto translate-y-0 scale-100 opacity-100"
+                        : "pointer-events-none -translate-y-1 scale-95 opacity-0"
+                    }`}>
+                      <p className="mb-3 text-xs font-medium text-muted-foreground">
+                        {pickerScope === "widget" ? "Widget accent" : "Dashboard accent"}
+                      </p>
+                      <div className="grid grid-cols-8 gap-1.5">
+                        {CURATED_ACCENTS.map((hex) => {
+                          const isActive = currentAccent.toLowerCase() === hex.toLowerCase()
                           return (
                             <button
-                              key={i}
-                              onClick={() => { updateWidgetColor(selectedWidget.id, preset); setShowColorPicker(false) }}
-                              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-muted ${isActive ? "bg-muted" : ""}`}
-                            >
-                              <div className="flex items-center gap-1">
-                                {(["primary","secondary","tertiary","quaternary","quinary"] as const).map(k => (
-                                  <span key={k} className="h-4 w-4 rounded-full" style={{ background: preset[k] }} />
-                                ))}
-                              </div>
-                              <span className="text-xs text-foreground">Theme {i + 1}</span>
-                              {isActive && <Check className="ml-auto h-3.5 w-3.5 text-primary" />}
-                            </button>
+                              key={hex}
+                              onClick={() => setAccent(hex)}
+                              className={`h-6 w-6 rounded-full border transition-transform hover:scale-110 ${isActive ? "border-foreground ring-2 ring-foreground/20" : "border-white/10"}`}
+                              style={{ background: hex }}
+                              title={hex}
+                            />
                           )
                         })}
                       </div>
+                      <div className="mt-3 flex items-center gap-2">
+                        <label className="flex flex-1 items-center gap-2 rounded-lg border border-border px-2 py-1.5 text-xs text-muted-foreground">
+                          <span>Custom</span>
+                          <input
+                            type="color"
+                            value={currentAccent}
+                            onChange={(e) => setAccent(e.target.value)}
+                            className="h-5 w-8 cursor-pointer border-0 bg-transparent p-0"
+                          />
+                          <span className="ml-auto font-mono text-[10px] uppercase">{currentAccent}</span>
+                        </label>
+                      </div>
+                      {hasOverride && (
+                        <button
+                          onClick={() => { clearWidgetColors(selectedWidget!.id); setShowColorPicker(false) }}
+                          className="mt-3 w-full rounded-lg border border-border px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted"
+                        >
+                          Reset to dashboard accent
+                        </button>
+                      )}
+                    </div>
                   </div>
+                  {selectedWidget && (
+                    <span className="text-xs text-muted-foreground truncate max-w-[120px]">
+                      {selectedWidget.title}
+                    </span>
+                  )}
                 </div>
-                <span className="text-xs text-muted-foreground truncate max-w-[120px]">
-                  {selectedWidget.title}
-                </span>
-              </div>
-            )}
+              )
+            })()}
 
             {/* Chart type picker — desktop only */}
             {!isMobile && isEditingLayout && selectedWidget && CHART_TYPE_OPTIONS[selectedWidget.type] && (
@@ -1725,6 +1761,7 @@ export default function SmartDashboardPage() {
                         stackedCompositionData={stackedCompositionData}
                         composedData={composedData}
                         bandedSpendData={bandedSpendData}
+                        dashboardAccent={dashboardAccent}
                         contextSummary={contextSummary}
                         contextSummaryDate={contextSummaryDate}
                         isGeneratingSummary={isGeneratingSummary}

@@ -21,7 +21,7 @@ function buildCorsHeaders(req: Request) {
 // ── OpenAI system prompt ──────────────────────────────────────────────────────
 // Version bumped when this prompt changes. Rows stamped with a lower
 // normalization_version can be lazily re-normalized by scripts/renormalize.ts.
-const NORMALIZATION_VERSION = 2
+const NORMALIZATION_VERSION = 3
 
 const SYSTEM_PROMPT = `You are a financial document normalization AI.
 
@@ -82,7 +82,36 @@ Fields to return:
   "period_start":           string or null  — period the document COVERS (YYYY-MM-DD). For a payslip this is the pay period start. For a receipt this is the transaction date (same as document_date). For an income statement this is the fiscal period start.
   "period_end":             string or null  — period end date (YYYY-MM-DD). Same semantics as period_start. If unknown, fall back to document_date.
   "counterparty_name":      string or null  — other named party in contracts/agreements
-  "line_items":             array or null   — preserve all entries from Gemini exactly. For contracts/agreements each entry may contain: {"description": string, "amount": number, "quantity": number or null, "due_date": "YYYY-MM-DD or null", "check_number": "string or null", "bank_name": "string or null"}. For receipts/invoices the standard {"description", "amount", "quantity"} format is used. Never discard or flatten entries.
+  "merchant_domain":        string or null  — classify the merchant (not the expense category) into exactly one of:
+      "food_service"          — restaurants, cafes, bars, fast food
+      "grocery"               — supermarkets, convenience stores, food markets
+      "fuel"                  — gas stations, petrol stations
+      "transit"               — ride-share (Grab, Uber, Lyft), taxi, public transit, parking, tolls
+      "travel"                — airlines, hotels, lodging, car rental, travel agencies
+      "retail"                — department stores, apparel, general retail, e-commerce
+      "software_saas"         — SaaS, cloud services, app subscriptions, developer tools
+      "telecom"               — phone, internet, mobile carriers
+      "utilities"              — electricity, water, gas (utility), sewage
+      "professional_services" — legal, accounting, consulting, freelance, contractors
+      "healthcare"            — medical, pharmacy, clinics, hospitals, insurance claims
+      "financial_services"    — banks, credit cards, insurance premiums, bank/card fees
+      "government"            — taxes paid, permits, licenses, fines, BIR/SSS/PhilHealth
+      "education"             — training, courses, conferences, dues, tuition
+      "entertainment"         — streaming, events, media, theaters (note: non-deductible post-TCJA)
+      "home_office"           — home-office-specific spend (rent portion, furniture for WFH)
+      "other"                 — anything that doesn't clearly fit above
+      merchant_domain is ABOUT THE MERCHANT, not the Schedule C line. A Starbucks receipt is "food_service"
+      even though it may be booked to "Meals". Return null only for income/contract docs with no merchant party.
+  "merchant_address_city":    string or null — city from the merchant's address, title case (e.g., "Makati", "Seattle")
+  "merchant_address_region":  string or null — state/province/region from the merchant's address (e.g., "CA", "Metro Manila", "NCR")
+  "merchant_address_country": string or null — ISO-3166-1 alpha-2 country code from merchant's address ("US", "PH", "SG")
+  "is_recurring":           boolean         — true if this document represents a recurring charge (subscription, monthly bill,
+      auto-pay utility, SaaS billing cycle). Evidence: "subscription", "monthly plan", "recurring", "auto-renewal" in raw_json,
+      OR explicit period_start/period_end spanning a typical billing cycle for a known recurring-domain merchant
+      (software_saas, telecom, utilities, streaming/entertainment). Default to false when evidence is ambiguous — false is safe.
+  "recurrence_cadence":     string or null — when is_recurring is true, the cadence: "weekly", "biweekly", "monthly",
+      "quarterly", "annual", or "irregular". Null when is_recurring is false or cadence is unknown.
+  "line_items":             array or null   — preserve all entries from Gemini exactly. For contracts/agreements each entry may contain: {"description": string, "amount": number, "quantity": number or null, "unit_quantity": number or null, "due_date": "YYYY-MM-DD or null", "check_number": "string or null", "bank_name": "string or null"}. For receipts/invoices the standard {"description", "amount", "quantity", "unit_quantity"} format is used. unit_quantity captures the explicit unit count when distinct from quantity (e.g., a receipt line "2 x 500ml bottles" → quantity: 2, unit_quantity: 500; a receipt line "3 items" → quantity: 3, unit_quantity: null). Never discard or flatten entries.
   "confidence_score":       number          — your confidence 0.0–1.0 in the overall extraction
 }
 
@@ -98,7 +127,11 @@ Rules:
   downstream. If in doubt between business and investment, cite the strongest signal
   in classification_rationale and pick the most likely.
 - For Philippine documents: PHP currency, jurisdiction "PH", common vendors include Jollibee, SM, Grab, etc.
-- For contracts/agreements: if raw_json contains a payment schedule table (PDC or installment entries with due_date fields), ensure all entries are preserved in line_items — do not summarize or drop rows.`
+- For contracts/agreements: if raw_json contains a payment schedule table (PDC or installment entries with due_date fields), ensure all entries are preserved in line_items — do not summarize or drop rows.
+- merchant_domain vs expense_category: these are orthogonal. merchant_domain describes WHAT KIND OF MERCHANT issued the document; expense_category describes WHICH SCHEDULE C LINE it maps to. A Grab ride receipt → merchant_domain "transit", expense_category "Transport". An Uber Eats receipt → merchant_domain "food_service", expense_category "Meals". Fill both independently.
+- merchant address fields: extract from the merchant's printed address on the document (not the customer's billing address). If only a branch name hints at a city ("SM Makati", "Starbucks Bonifacio Global City"), populate merchant_address_city with the inferred city. Always return ISO-3166-1 alpha-2 for merchant_address_country.
+- is_recurring: be conservative. A one-off receipt at a SaaS vendor is not recurring just because the vendor is in a recurring domain — require explicit recurrence evidence (invoice text, subscription language, period spanning a known billing cycle). Payslips are NOT recurring for this field — they are periodic income, not a recurring expense.
+- unit_quantity inside line_items: return it only when the document clearly states a per-unit measure distinct from line quantity (e.g., "2 x 500ml", "5kg rice", "12 pack"). Do NOT invent unit_quantity when the line is just "3 items" or "1 service".`
 
 // ── Main handler ──────────────────────────────────────────────────────────────
 serve(async (req) => {
@@ -254,6 +287,13 @@ serve(async (req) => {
         period_start:             effectivePeriodStart,
         period_end:               effectivePeriodEnd,
         counterparty_name:        normalized.counterparty_name        ?? null,
+        // Merchant enrichment (v3) — powers spending-first analytics families
+        merchant_domain:          normalized.merchant_domain          ?? null,
+        merchant_address_city:    normalized.merchant_address_city    ?? null,
+        merchant_address_region:  normalized.merchant_address_region  ?? null,
+        merchant_address_country: normalized.merchant_address_country ?? null,
+        is_recurring:             normalized.is_recurring === true,
+        recurrence_cadence:       normalized.is_recurring === true ? (normalized.recurrence_cadence ?? null) : null,
         line_items:               normalized.line_items               ?? fields.raw_json?.line_items ?? null,
         // Preserve full AI outputs in raw_json — gemini_raw from extraction, openai_enriched from normalization
         raw_json: {

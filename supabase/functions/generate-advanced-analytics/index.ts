@@ -367,12 +367,16 @@ serve(async (req) => {
       }
     }
 
-    // ── 5. Clear all previous suggestions (non-starred) ─────────────────────
+    // ── 5. Clear previous spec-level suggestions (non-starred, non-rd) ──────
+    //     R&D widgets (widget_type = 'rd-insight') are managed by the Sonnet
+    //     function and must not be wiped here, or a parallel R&D run would
+    //     race with this delete.
     await supabase
       .from("advanced_widgets")
       .delete()
       .eq("user_id", user_id)
       .eq("is_starred", false)
+      .neq("widget_type", "rd-insight")
 
     // ── 6. Build Haiku prompt ────────────────────────────────────────────────
     // Dedup against plotted_advanced_types only — not existing_widget_types.

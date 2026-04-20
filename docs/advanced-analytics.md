@@ -1,5 +1,61 @@
 # Advanced Analytics
 
+## Current Directive
+
+Advanced Analytics is now at a baseline state.
+
+That baseline is considered established.
+
+The current objective is not to revisit failed early implementations or to re-argue whether Advanced Analytics should exist.
+The current objective is to enrich and upgrade the quality of Advanced Analytics outputs from this baseline.
+
+This means future work should focus on:
+- stronger analytic novelty
+- richer chart families when justified
+- better use of normalized document history
+- merchant-domain and spend-pattern intelligence
+- concentration, drift, anomaly, and composition shifts
+- clearer user-facing usefulness instead of chart volume
+
+This document should be read with the following priority:
+1. baseline is established
+2. output enrichment is the active roadmap
+3. obsolete or abandoned early directions should not be revived unless explicitly re-approved
+
+## Relationship to Smart Dashboard
+
+Smart Dashboard and Advanced Analytics are intentionally complementary, not duplicative.
+
+Strategic framing:
+- financial visuals are the interface
+- AI-derived context is the differentiator
+- Advanced Analytics is the pipeline that feeds that context
+
+Smart Dashboard is positioned as an AI-contextualized financial workspace. It surfaces the interpretation: what numbers mean, why patterns matter, what risks or opportunities are emerging, and what actions might be worth considering. Advanced Analytics supplies the deeper analytic substrate behind that interpretation — stronger merchant-domain intelligence, composition and concentration views, drift and anomaly detection, tax-readiness lenses, and AI-generated summaries grounded in the user's normalized document history.
+
+Implications:
+- Advanced Analytics should not be built as a second dashboard with renamed charts
+- Smart Dashboard should not be built as a decorative visuals page detached from this analytic substrate
+- the pipeline becomes more valuable as stored documents deepen, and the dashboard surface should reflect that progression
+
+See also:
+- `advanced-analytics-drilldowns.md` for the approved hero drill-down surfaces, renderer split (Recharts-pushed vs Three.js), activation thresholds, and the UI-refresh-before-build constraint.
+- `advanced-analytics-correlations.md` for the full inventory of analytic correlations (vendor, domain, payment, discount, geography, income, time-shape, cross-doc, anomaly, consumer-excitement) with signals, excitement scores, and renderer targets per entry.
+
+## Do Not Revive
+
+The following patterns are considered obsolete or failed directions unless explicitly re-approved:
+
+- derivative charts that only rename existing standard dashboard views
+- multiple widgets that answer the same question with different visual skins
+- filler analytics produced only to increase chart count
+- weak outputs on sparse data when the correct answer is to produce fewer widgets
+- generic chart duplication without materially new business meaning
+- map or geography work that drifts into movement behavior, route inference, or location tracking
+- AI-generated captions or labels presented as if they were substantive analytics
+
+The upgraded roadmap should build from the existing baseline, not fall back into these patterns.
+
 ## Purpose
 
 Advanced Analytics is not supposed to be a renamed version of the standard dashboard.
@@ -27,6 +83,9 @@ The initial implementation of Advanced Analytics was functional but too constrai
 - too small a chart vocabulary
 - too close to the standard charts
 - tendency to produce derivative outputs with new titles rather than new insight
+
+That earlier constrained implementation is useful only as baseline context.
+It should not define the direction of future work.
 
 The goal of this system is not to maximize chart count.
 The goal is to maximize analytic novelty and usefulness while staying grounded in the actual normalized data AVInt stores.
@@ -223,3 +282,135 @@ It should:
 - choose the right analytic angle
 - use a distinct chart family when warranted
 - remain disciplined about novelty and truthfulness
+
+## Future Merchant-Domain Lenses
+
+This is an explicit exploration directive for future Advanced Analytics work.
+
+The system should not stop at generic categories like "expenses" or "vendors" when richer merchant-domain patterns can be inferred.
+
+Examples of merchant-domain lenses worth exploring:
+- Food / Restaurants
+- Fashion / Apparel
+- Gadgets / Equipment
+- Travel / Lodging
+- Software / SaaS
+- Utilities / Telecom
+
+Examples of questions these domain lenses should eventually support:
+- spend per merchant domain over time
+- which merchant domain is growing fastest
+- which vendors within a domain dominate spend
+- which domain carries the largest discounts
+- which vendors offer the largest discounts over time
+- whether discount-heavy vendors correlate with higher total spend
+- whether a domain behaves like recurring operational spend or discretionary spend
+
+These are not yet a separate chart family.
+They are a directive to push the analytics layer beyond generic totals and into domain-aware pattern detection when the normalized data supports it.
+
+This matters because earlier testing focused heavily on general chart generation and missed more specific merchant-story angles that users may care about directly.
+
+## Regional App and Brand Flexibility
+
+Merchant, brand, and app-based analytics must remain region-flexible.
+
+The concept is consistent:
+- identify where spending happens
+- identify which brands or merchants dominate inside a given app or payment ecosystem
+- identify the purpose of spending within that app context
+
+But the concrete app ecosystem will vary by market.
+
+Example:
+- in the Philippines, a user may expect app-specific breakdowns for GCash spending, including brand splits and spending-purpose patterns within the GCash ecosystem
+- in the United States, similar analysis may need to center different consumer apps, wallets, or merchant ecosystems instead
+
+The directive is:
+- do not hardcode one country's app ecosystem as the universal model
+- do not assume US merchant/app patterns are globally representative
+- do not assume Philippine wallet/app behavior is globally representative
+- preserve the analytic concept while allowing the concrete merchant/app layer to adapt by region
+
+This should guide future analytics such as:
+- app-specific merchant concentration
+- brand share within a payment or wallet ecosystem
+- spending-purpose clustering within a given app context
+- cross-brand comparisons inside one consumer platform
+
+The analytic goal is not "GCash charts" or "US wallet charts" as fixed features.
+The analytic goal is a region-aware merchant/app lens that can adapt to the dominant platforms in the user's market.
+
+## Example vs Detection Logic
+
+App-specific examples in this document are illustrative only.
+
+They are not meant to hardcode a fixed feature list such as:
+- GCash analytics only
+- PayPal analytics only
+- Venmo analytics only
+- region-specific wallet charts as permanent product categories
+
+The actual logic should be:
+- if the uploaded data contains strong enough merchant, brand, payment-method, or app-platform signals
+- then the analytics layer should be able to detect and elevate those correlations
+
+This means the analytics layer (current and future) should be looking for evidence such as:
+- recurring merchant clusters within a platform
+- brand concentration inside a payment ecosystem
+- spending-purpose patterns associated with one app or merchant layer
+- cross-merchant or cross-brand correlations that become visible only after enough uploads accumulate
+
+This should remain data-dependent.
+
+Rules:
+- do not force app/platform narratives when user uploads do not support them
+- do not treat examples in this doc as mandatory output categories
+- do treat them as examples of the broader correlation logic we want the analytics layer to learn
+
+The system should generalize the pattern, not memorize the example.
+
+## Spending Geography Guardrail
+
+Geography-aware analytics are approved for spending analysis only.
+
+This means the map layer may answer questions like:
+- where money is spent
+- which areas show higher average ticket size
+- which areas are more expensive for a given merchant domain
+- where spending spikes happen
+- where a user's travel-related spending clusters
+
+This means the map layer must not answer questions like:
+- where the user moved
+- what path a user traveled
+- rideshare route behavior
+- commute behavior
+- personal location tracing
+
+Hard product rule:
+- map input = merchant or transaction location tied to spend
+- map output = spending intensity, distribution, averages, and domain-specific comparisons
+- map exclusion = movement behavior, route reconstruction, or user tracking
+
+Even if a transaction comes from a rideshare or travel merchant, it must still be treated as spending at a merchant/location rather than evidence of movement behavior.
+
+## Map Analytics Scope
+
+The long-term geography roadmap should emphasize spending context, not static map decoration.
+
+Preferred scope:
+- local neighborhood / district spending
+- crosstown and intra-city spending concentration
+- inter-city spend shifts during travel
+- occasional regional or international spending
+- currency-aware dashboard views for mixed-currency consumer behavior
+
+Recommended progression:
+1. merchant/location spend points or clusters
+2. neighborhood / district concentration and average spend
+3. domain-specific location views
+4. later, currency-aware travel spend overlays when the normalized location and currency signals are strong enough
+
+Tax reports should remain strict and should not use mixed-currency aggregation.
+Dashboards may become more flexible, preserving original currency in raw/location views and using normalized display currency only where comparative analytics require it.

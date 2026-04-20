@@ -10,6 +10,9 @@ export type AdvancedWidgetType =
   | "area-chart"
   | "bar-chart"
   | "pie-chart"
+  | "stacked-bar"
+  | "composed-chart"
+  | "banded-area"
 
 export interface AdvancedAnalyticsFamily {
   id: string
@@ -124,9 +127,9 @@ export const ADVANCED_ANALYTICS_FAMILIES: AdvancedAnalyticsFamily[] = [
     id: "time_series_composed",
     label: "Composed Time Series",
     kind: "core_family",
-    status: "planned",
+    status: "enabled",
     purpose: "Combine line, bar, and area signals in one historical visual.",
-    allowedWidgetTypes: ["area-chart", "line-chart", "bar-chart"],
+    allowedWidgetTypes: ["composed-chart"],
     useCases: [
       "income line + expense bars + net area",
       "tax amount overlaid on net trend",
@@ -142,18 +145,18 @@ export const ADVANCED_ANALYTICS_FAMILIES: AdvancedAnalyticsFamily[] = [
     ],
     minMonths: 4,
     minTransactions: 8,
-    notes: "Intended future renderer upgrade using composed chart families.",
+    notes: "Uses composed-chart renderer: income line + expense bars + net area overlay.",
   },
   {
     id: "time_series_banded",
     label: "Banded Time Series",
     kind: "core_family",
-    status: "planned",
+    status: "enabled",
     purpose: "Show expected range vs actual values to highlight anomalies and variance.",
-    allowedWidgetTypes: ["area-chart"],
+    allowedWidgetTypes: ["banded-area"],
     useCases: [
       "monthly spend normal range vs actual",
-      "income volatility bands",
+      "spending volatility bands",
       "expense anomaly windows",
     ],
     requiredSignals: [
@@ -161,35 +164,33 @@ export const ADVANCED_ANALYTICS_FAMILIES: AdvancedAnalyticsFamily[] = [
       "period_start",
       "period_end",
       "total_amount",
-      "gross_income",
     ],
     minMonths: 6,
     minTransactions: 12,
-    notes: "Needs longer history to be meaningful.",
+    notes: "Spending-first default: monthly spend vs 3-month trailing mean ± 1σ band.",
   },
   {
     id: "composition_stacked",
     label: "Stacked Composition",
     kind: "core_family",
-    status: "planned",
-    purpose: "Show how a composition changes over time or across grouped entities.",
-    allowedWidgetTypes: ["bar-chart"],
+    status: "enabled",
+    purpose: "Show how a composition changes over time across grouped entities.",
+    allowedWidgetTypes: ["stacked-bar"],
     useCases: [
-      "category share by month",
+      "merchant domain share by month",
+      "expense category share by month",
       "income source mix by month",
-      "jurisdiction mix by period",
-      "deductible split by period",
     ],
     requiredSignals: [
       "document_date",
       "period_start",
       "period_end",
+      "merchant_domain",
       "expense_category",
-      "income_source",
-      "jurisdiction",
     ],
     minMonths: 3,
     minTransactions: 8,
+    notes: "Spending-first default: stack by merchant_domain when populated; fall back to expense_category otherwise.",
   },
   {
     id: "timeline_events",
@@ -288,6 +289,8 @@ export const ADVANCED_ANALYTICS_GENERATION_RULES = [
   "Descriptions should explain the analytic angle, not restate the chart type.",
   "Insights must cite a specific number, percentage, category, vendor, or period from the data.",
   "If data is too sparse, return fewer widgets instead of filler output.",
+  "For composition_stacked: when merchant_domain is well-populated across months, prefer grouping by merchant_domain over expense_category — merchant-domain stories are higher-priority spending intelligence.",
+  "For time_series_banded: prefer spending volatility as the banded metric over income volatility. Income-volatility bands are only preferred when the user has visibly variable income (multiple employers or business revenue with spikes).",
 ]
 
 export function getEnabledAnalyticsFamilies(): AdvancedAnalyticsFamily[] {

@@ -7,6 +7,14 @@ import { Footer } from "@/components/footer"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 import { supabase } from "@/lib/supabase"
 import { useEntitlement } from "@/hooks/use-entitlement"
+import {
+  computeCorpusSignature,
+  evaluateReadiness,
+  normalizeSignature,
+  describeUnlockHint,
+  type CorpusSignature,
+  type ReadinessState,
+} from "@/lib/analytics-readiness"
 import type { Session } from "@supabase/supabase-js"
 import GridLayoutBase, { Layout as RGLLayout } from "react-grid-layout"
 // react-grid-layout v2 changed its TS prop types — cast to any to keep v1-style props working at runtime
@@ -16,7 +24,7 @@ import "react-grid-layout/css/styles.css"
 import "react-resizable/css/styles.css"
 import {
   AreaChart, Area, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
+  ComposedChart, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from "recharts"
 import {
   TrendingUp, Receipt, Wallet, FileText,
@@ -47,6 +55,19 @@ interface Widget {
   chartVariant?: string
   advancedId?: string   // references advanced_widgets.id
   insight?: string      // AI-generated insight text
+  rdConfig?: RdWidgetConfig
+}
+
+// Sonnet-produced widget payload. When present, the renderer uses config.data
+// directly instead of re-deriving from the dashboard's monthly/category series.
+interface RdWidgetConfig {
+  source: "rd"
+  angle: "cross_doc_correlation" | "raw_json_intelligence" | "anomaly_detection"
+  chart_type: "line-chart" | "area-chart" | "bar-chart" | "pie-chart"
+  data: Array<Record<string, unknown>>
+  x_key: string
+  data_key: string
+  currency: string
 }
 
 interface AdvancedWidget {
@@ -56,6 +77,7 @@ interface AdvancedWidget {
   title: string
   description: string | null
   insight: string | null
+  config: Record<string, unknown> | null
   is_starred: boolean
   is_plotted: boolean
   created_at: string
@@ -85,6 +107,17 @@ interface KPIData {
 
 interface MonthlyData { month: string; expenses: number; income: number }
 interface CategoryData { name: string; value: number }
+
+// Row in the stacked-bar data set: one entry per month, one numeric key per
+// series (merchant_domain or expense_category) plus "Other" for the long tail.
+interface StackedRow { month: string; [series: string]: string | number }
+
+// Monthly actual spend against a 3-month trailing mean ± 1σ band. `upper` and
+// `lower` are absolute values used by Recharts' Area layers to draw the band.
+interface BandedRow { month: string; actual: number; mean: number; upper: number; lower: number; bandWidth: number }
+
+// One composed row carries income (line), expenses (bar), net (area).
+interface ComposedRow { month: string; income: number; expenses: number; net: number }
 
 // ── Default colors ────────────────────────────────────────────────────────────
 
@@ -181,6 +214,10 @@ const WIDGET_MIN_SIZE: Record<string, { minW: number; minH: number }> = {
   "area-chart":      { minW: 3, minH: 3 },
   "pie-chart":       { minW: 2, minH: 3 },
   "context-summary": { minW: 3, minH: 3 },
+  "rd-insight":      { minW: 3, minH: 3 },
+  "stacked-bar":     { minW: 3, minH: 3 },
+  "composed-chart":  { minW: 3, minH: 3 },
+  "banded-area":     { minW: 3, minH: 3 },
 }
 
 const WIDGET_LIBRARY = [
@@ -246,6 +283,7 @@ function CustomTooltip({ active, payload, label, symbol }: any) {
 
 function WidgetContent({
   widget, kpi, monthlyData, categoryData, docTypeData,
+  stackedCompositionData, composedData, bandedSpendData,
   contextSummary, contextSummaryDate, isGeneratingSummary, isPro, onGenerateSummary,
 }: {
   widget: Widget
@@ -253,6 +291,9 @@ function WidgetContent({
   monthlyData: MonthlyData[]
   categoryData: CategoryData[]
   docTypeData: CategoryData[]
+  stackedCompositionData: { rows: StackedRow[]; seriesKeys: string[]; groupBy: "merchant_domain" | "expense_category" }
+  composedData: ComposedRow[]
+  bandedSpendData: BandedRow[]
   contextSummary: string | null
   contextSummaryDate: string | null
   isGeneratingSummary: boolean
@@ -339,6 +380,58 @@ function WidgetContent({
       <p className="text-xs text-muted-foreground">Of gross income</p>
     </div>
   )
+
+  // Sonnet R&D widgets — render the transformed data[] Sonnet returned,
+  // not the dashboard's generic monthly/category series. Shared tick/grid
+  // styling matches the rest of the chart library.
+  if (widget.rdConfig) {
+    const rd = widget.rdConfig
+    const rdSymbol = rd.currency === "PHP" ? "₱" : rd.currency === "EUR" ? "€" : rd.currency === "GBP" ? "£" : "$"
+    const axisProps = {
+      xAxis: <XAxis dataKey={rd.x_key} tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} />,
+      yAxis: <YAxis tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} tickFormatter={(v: number) => Math.abs(v) >= 1000 ? `${rdSymbol}${(v/1000).toFixed(1)}k` : `${rdSymbol}${v}`} />,
+      grid: <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />,
+      tooltip: <Tooltip content={<CustomTooltip symbol={rdSymbol} />} />,
+    }
+    return (
+      <div className="flex h-full flex-col">
+        <p className="mb-3 text-xs text-muted-foreground">{widget.title}</p>
+        <div className="flex-1 min-h-0">
+          <ResponsiveContainer width="100%" height="100%">
+            {rd.chart_type === "line-chart" ? (
+              <LineChart data={rd.data as any[]} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                {axisProps.grid}{axisProps.xAxis}{axisProps.yAxis}{axisProps.tooltip}
+                <Line type="monotone" dataKey={rd.data_key} stroke={colors.primary} strokeWidth={2.5} dot={{ fill: colors.primary, r: 3, strokeWidth: 0 }} activeDot={{ r: 5 }} />
+              </LineChart>
+            ) : rd.chart_type === "area-chart" ? (
+              <AreaChart data={rd.data as any[]} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id={`rdGrad-${widget.id}`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={colors.primary} stopOpacity={0.25} /><stop offset="95%" stopColor={colors.primary} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                {axisProps.grid}{axisProps.xAxis}{axisProps.yAxis}{axisProps.tooltip}
+                <Area type="monotone" dataKey={rd.data_key} stroke={colors.primary} strokeWidth={2.5} fill={`url(#rdGrad-${widget.id})`} dot={{ fill: colors.primary, r: 3, strokeWidth: 0 }} activeDot={{ r: 5, strokeWidth: 0 }} />
+              </AreaChart>
+            ) : rd.chart_type === "pie-chart" ? (
+              <PieChart>
+                <Pie data={rd.data as any[]} cx="50%" cy="50%" innerRadius="30%" outerRadius="60%" paddingAngle={3} dataKey={rd.data_key} nameKey={rd.x_key}>
+                  {rd.data.map((_, i) => <Cell key={i} fill={MULTI_COLORS[i % MULTI_COLORS.length]} strokeWidth={0} />)}
+                </Pie>
+                <Tooltip content={<CustomTooltip symbol={rdSymbol} />} />
+                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, color: legendColor }} />
+              </PieChart>
+            ) : (
+              <BarChart data={rd.data as any[]} margin={{ top: 5, right: 10, left: 0, bottom: 0 }} barSize={24}>
+                {axisProps.grid}{axisProps.xAxis}{axisProps.yAxis}{axisProps.tooltip}
+                <Bar dataKey={rd.data_key} fill={colors.primary} radius={[4,4,0,0]} />
+              </BarChart>
+            )}
+          </ResponsiveContainer>
+        </div>
+      </div>
+    )
+  }
 
   if (widget.type === "area-chart") {
     const variant = widget.chartVariant ?? "area"
@@ -476,6 +569,84 @@ function WidgetContent({
   )
   }
 
+  if (widget.type === "stacked-bar") {
+    const groupLabel = stackedCompositionData.groupBy === "merchant_domain" ? "merchant domain" : "expense category"
+    return (
+      <div className="flex h-full flex-col">
+        <p className="mb-3 text-xs text-muted-foreground">Monthly spend share by {groupLabel}</p>
+        <div className="flex-1 min-h-0">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={stackedCompositionData.rows} margin={{ top: 5, right: 10, left: 0, bottom: 0 }} barSize={24}>
+              <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
+              <XAxis dataKey="month" tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${symbol}${(v/1000).toFixed(0)}k`} />
+              <Tooltip content={<CustomTooltip symbol={symbol} />} />
+              <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, color: legendColor }} />
+              {stackedCompositionData.seriesKeys.map((key, i) => (
+                <Bar key={key} dataKey={key} name={key} stackId="spend" fill={MULTI_COLORS[i % MULTI_COLORS.length]} radius={i === stackedCompositionData.seriesKeys.length - 1 ? [4,4,0,0] : [0,0,0,0]} />
+              ))}
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    )
+  }
+
+  if (widget.type === "composed-chart") {
+    return (
+      <div className="flex h-full flex-col">
+        <p className="mb-3 text-xs text-muted-foreground">Income, expenses, and net position per month</p>
+        <div className="flex-1 min-h-0">
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={composedData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id={`netGrad-${widget.id}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={colors.tertiary} stopOpacity={0.25} /><stop offset="95%" stopColor={colors.tertiary} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
+              <XAxis dataKey="month" tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${symbol}${(v/1000).toFixed(0)}k`} />
+              <Tooltip content={<CustomTooltip symbol={symbol} />} />
+              <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, color: legendColor }} />
+              <Area type="monotone" dataKey="net" name="Net" stroke={colors.tertiary} strokeWidth={2} fill={`url(#netGrad-${widget.id})`} />
+              <Bar dataKey="expenses" name="Expenses" fill={colors.secondary} radius={[4,4,0,0]} barSize={18} />
+              <Line type="monotone" dataKey="income" name="Income" stroke={colors.primary} strokeWidth={2.5} dot={{ fill: colors.primary, r: 3, strokeWidth: 0 }} activeDot={{ r: 5 }} />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    )
+  }
+
+  if (widget.type === "banded-area") {
+    return (
+      <div className="flex h-full flex-col">
+        <p className="mb-3 text-xs text-muted-foreground">Monthly spend vs trailing normal range (mean ± 1σ)</p>
+        <div className="flex-1 min-h-0">
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={bandedSpendData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id={`bandGrad-${widget.id}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={colors.primary} stopOpacity={0.18} /><stop offset="95%" stopColor={colors.primary} stopOpacity={0.04} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
+              <XAxis dataKey="month" tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${symbol}${(v/1000).toFixed(0)}k`} />
+              <Tooltip content={<CustomTooltip symbol={symbol} />} />
+              <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, color: legendColor }} />
+              <Area type="monotone" dataKey="lower" stackId="band" stroke="none" fill="transparent" legendType="none" />
+              <Area type="monotone" dataKey="bandWidth" name="Normal range" stackId="band" stroke="none" fill={`url(#bandGrad-${widget.id})`} />
+              <Line type="monotone" dataKey="mean" name="Trailing mean" stroke={colors.quaternary} strokeWidth={1.5} strokeDasharray="4 4" dot={false} />
+              <Line type="monotone" dataKey="actual" name="Actual spend" stroke={colors.primary} strokeWidth={2.5} dot={{ fill: colors.primary, r: 3, strokeWidth: 0 }} activeDot={{ r: 5 }} />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    )
+  }
+
   if (widget.type === "context-summary") {
     if (!isPro) {
       return (
@@ -559,6 +730,56 @@ function ColorSwatch({ color, onClick, isActive }: { color: string; onClick: () 
   )
 }
 
+// ── Readiness hint (Advanced Analytics dropdown footer) ───────────────────────
+// Renders the state-aware copy that tells the user what their next run will do
+// or why the output will not change. Driven entirely by evaluateReadiness().
+
+function ReadinessHint({ state }: { state: ReadinessState }) {
+  if (state.kind === "empty") {
+    return (
+      <p className="mt-2 rounded-md bg-muted/50 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+        Upload receipts, invoices, or payslips to unlock advanced analytics.
+      </p>
+    )
+  }
+
+  if (state.kind === "sparse") {
+    const hint = state.nextUnlocks[0]
+    return (
+      <p className="mt-2 rounded-md bg-muted/50 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+        {hint ? `${describeUnlockHint(hint)}.` : "A little more data unlocks your first advanced analytic."}
+      </p>
+    )
+  }
+
+  if (state.kind === "unlock_moment") {
+    return (
+      <div className="mt-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-[11px] leading-relaxed text-foreground">
+        <span className="font-medium text-primary">New angle available:</span>{" "}
+        {state.unlocked.join(", ").toLowerCase()}.
+      </div>
+    )
+  }
+
+  if (state.kind === "new_signal") {
+    return (
+      <p className="mt-2 rounded-md bg-muted/50 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+        New {state.changedAxes.slice(0, 2).join(" and ")} since your last run — visualizations may shift.
+      </p>
+    )
+  }
+
+  // stable
+  const hint = state.nextUnlocks[0]
+  return (
+    <p className="mt-2 rounded-md bg-muted/50 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+      {hint
+        ? `No new signal since your last run. ${describeUnlockHint(hint).charAt(0).toUpperCase() + describeUnlockHint(hint).slice(1)}.`
+        : "No new signal since your last run — upload more documents to see richer analytics."}
+    </p>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function SmartDashboardPage() {
@@ -569,6 +790,9 @@ export default function SmartDashboardPage() {
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([])
   const [categoryData, setCategoryData] = useState<CategoryData[]>([])
   const [docTypeData, setDocTypeData] = useState<CategoryData[]>([])
+  const [stackedCompositionData, setStackedCompositionData] = useState<{ rows: StackedRow[]; seriesKeys: string[]; groupBy: "merchant_domain" | "expense_category" }>({ rows: [], seriesKeys: [], groupBy: "expense_category" })
+  const [composedData, setComposedData] = useState<ComposedRow[]>([])
+  const [bandedSpendData, setBandedSpendData] = useState<BandedRow[]>([])
   const [widgets, setWidgets] = useState<Widget[]>(DEFAULT_WIDGETS)
   const [layout, setLayout] = useState<LayoutItem[]>(DEFAULT_LAYOUT)
   const [selectedWidgetId, setSelectedWidgetId] = useState<string | null>(null)
@@ -584,7 +808,8 @@ export default function SmartDashboardPage() {
   const isMobile = useIsMobile()
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
-  const [hasNewData, setHasNewData] = useState(false)
+  const [readinessState, setReadinessState] = useState<ReadinessState>({ kind: "empty" })
+  const [currentSignature, setCurrentSignature] = useState<CorpusSignature | null>(null)
   const { isActive: isPro } = useEntitlement(session)
   const [containerWidth, setContainerWidth] = useState(1200)
   const [contextSummary, setContextSummary] = useState<string | null>(null)
@@ -723,7 +948,7 @@ export default function SmartDashboardPage() {
 
     let query = supabase
       .from("document_fields")
-      .select("file_id, document_date, total_amount, gross_income, net_income, expense_category, currency, files!inner(document_type, filename)")
+      .select("file_id, document_date, total_amount, gross_income, net_income, expense_category, merchant_domain, currency, files!inner(document_type, filename)")
       .in("file_id", fileIds)
       .order("document_date", { ascending: true })
 
@@ -768,13 +993,130 @@ export default function SmartDashboardPage() {
     userFiles.forEach((f) => { typeMap[f.document_type] = (typeMap[f.document_type] ?? 0) + 1 })
     setDocTypeData(Object.entries(typeMap).map(([name, value]) => ({ name: name.charAt(0).toUpperCase() + name.slice(1), value })))
 
-    // Show "New data" on first visit (never run) OR when new docs arrived since last run
-    const lastCountRaw = typeof window !== "undefined" ? localStorage.getItem("aa_last_field_count") : null
-    const lastCount = lastCountRaw != null ? parseInt(lastCountRaw, 10) : NaN
-    setHasNewData(isNaN(lastCount) || fields.length > lastCount)
+    // ── Phase 3 derivations ──────────────────────────────────────────────────
+
+    // Composed time-series: income line + expense bars + net area.
+    const composedRows = Object.entries(monthMap)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([m, d]) => ({
+        month: new Date(m + "-01").toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
+        income:   d.income,
+        expenses: d.expenses,
+        net:      d.income - d.expenses,
+      }))
+    setComposedData(composedRows)
+
+    // Stacked composition: month × (merchant_domain | expense_category) matrix.
+    // Spending-first default — prefer merchant_domain when at least half of
+    // expense rows carry it. Otherwise fall back to expense_category.
+    const expenseWithDomain = expenseFields.filter((f: any) => f.merchant_domain).length
+    const groupBy: "merchant_domain" | "expense_category" =
+      expenseFields.length > 0 && expenseWithDomain / expenseFields.length >= 0.5
+        ? "merchant_domain"
+        : "expense_category"
+
+    // Aggregate totals per (month, series) for the chosen grouping key.
+    const stackedMap: Record<string, Record<string, number>> = {}
+    const seriesTotals: Record<string, number> = {}
+    expenseFields.forEach((f: any) => {
+      if (!f.document_date) return
+      const month = f.document_date.slice(0, 7)
+      const series = String(f[groupBy] ?? "Other")
+      if (!stackedMap[month]) stackedMap[month] = {}
+      const amt = safeNum(f.total_amount)
+      stackedMap[month][series] = (stackedMap[month][series] ?? 0) + amt
+      seriesTotals[series] = (seriesTotals[series] ?? 0) + amt
+    })
+    // Keep top 5 series; fold the long tail into "Other" to avoid chart noise.
+    const topSeries = Object.entries(seriesTotals)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 5)
+      .map(([name]) => name)
+    const topSet = new Set(topSeries)
+    const hasTail = Object.keys(seriesTotals).some((s) => !topSet.has(s))
+    const finalSeries = hasTail ? [...topSeries, "Other"] : topSeries
+
+    const stackedRows: StackedRow[] = Object.entries(stackedMap)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([month, perSeries]) => {
+        const row: StackedRow = {
+          month: new Date(month + "-01").toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
+        }
+        for (const s of finalSeries) row[s] = 0
+        for (const [s, v] of Object.entries(perSeries)) {
+          const bucket = topSet.has(s) ? s : "Other"
+          row[bucket] = Number(row[bucket] ?? 0) + v
+        }
+        return row
+      })
+    setStackedCompositionData({ rows: stackedRows, seriesKeys: finalSeries, groupBy })
+
+    // Banded time-series: monthly spend vs 3-month trailing mean ± 1σ.
+    // Uses a rolling window ending at the current month so the band reflects
+    // what the user "expected" given prior history — anomaly windows show up
+    // as actual values outside upper/lower bounds.
+    const monthlySpendSeries = Object.entries(monthMap)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([m, d]) => ({ month: m, actual: d.expenses }))
+    const banded: BandedRow[] = monthlySpendSeries.map((row, i) => {
+      const windowStart = Math.max(0, i - 2)
+      const window = monthlySpendSeries.slice(windowStart, i + 1).map((r) => r.actual)
+      const mean = window.reduce((s, v) => s + v, 0) / window.length
+      const variance = window.reduce((s, v) => s + (v - mean) ** 2, 0) / window.length
+      const sigma = Math.sqrt(variance)
+      const upper = mean + sigma
+      const lower = Math.max(0, mean - sigma)
+      return {
+        month: new Date(row.month + "-01").toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
+        actual: row.actual,
+        mean,
+        upper,
+        lower,
+        bandWidth: Math.max(0, upper - lower),
+      }
+    })
+    setBandedSpendData(banded)
 
     setLoading(false)
   }, [session, dateFrom, dateTo])
+
+  // Readiness evaluation: computed from the full corpus (no date filter) so the
+  // Advanced Analytics trigger state is stable across filter changes. Compared
+  // against the signature persisted at the last successful run.
+  const loadReadinessState = useCallback(async () => {
+    if (!session?.user?.id) return
+
+    const { data: userFiles } = await supabase
+      .from("files")
+      .select("id")
+      .eq("user_id", session.user.id)
+
+    if (!userFiles?.length) {
+      setCurrentSignature(computeCorpusSignature([]))
+      setReadinessState({ kind: "empty" })
+      return
+    }
+
+    const fileIds = userFiles.map((f) => f.id)
+    const { data: fieldRows } = await supabase
+      .from("document_fields")
+      .select("document_date, vendor_normalized, expense_category, merchant_domain, merchant_address_region, is_recurring, line_items")
+      .in("file_id", fileIds)
+
+    const signature = computeCorpusSignature(fieldRows ?? [])
+    setCurrentSignature(signature)
+
+    const { data: profile } = await supabase
+      .from("user_analytics_profile")
+      .select("last_run_signature")
+      .eq("user_id", session.user.id)
+      .maybeSingle()
+
+    const lastSignature = normalizeSignature(profile?.last_run_signature)
+    setReadinessState(evaluateReadiness(signature, lastSignature))
+  }, [session])
+
+  useEffect(() => { loadReadinessState() }, [loadReadinessState])
 
   useEffect(() => { loadLayout() }, [loadLayout])
   useEffect(() => { loadData() }, [loadData])
@@ -827,17 +1169,21 @@ export default function SmartDashboardPage() {
     if (widgets.some(w => w.advancedId === aw.id)) return
     await supabase.from("advanced_widgets").update({ is_plotted: true, expires_at: null }).eq("id", aw.id)
     setAdvancedWidgetsList(prev => prev.map(w => w.id === aw.id ? { ...w, is_plotted: true, expires_at: null } : w))
+    const rdConfig = aw.widget_type === "rd-insight" && aw.config && (aw.config as any).source === "rd"
+      ? (aw.config as unknown as RdWidgetConfig)
+      : undefined
     const newWidget: Widget = {
       id:         `adv-${aw.id}`,
-      type:       aw.widget_type,
+      type:       rdConfig ? rdConfig.chart_type : aw.widget_type,
       title:      aw.title,
       isPremium:  true,
       colors:     DEFAULT_WIDGET_COLORS,
       advancedId: aw.id,
       insight:    aw.insight ?? undefined,
+      rdConfig,
     }
     const lastY = layout.length ? Math.max(...layout.map(l => l.y + l.h)) : 0
-    const minSize = WIDGET_MIN_SIZE[aw.widget_type] ?? { minW: 2, minH: 2 }
+    const minSize = WIDGET_MIN_SIZE[aw.widget_type] ?? WIDGET_MIN_SIZE[newWidget.type] ?? { minW: 2, minH: 2 }
     setWidgets(prev => [...prev, newWidget])
     setLayout(prev => [...prev, { i: newWidget.id, x: 0, y: lastY, w: minSize.minW + 2, h: minSize.minH + 2, minW: minSize.minW, minH: minSize.minH }])
     setIsDirty(true)
@@ -851,26 +1197,78 @@ export default function SmartDashboardPage() {
       const plottedAdvancedTypes = advancedWidgetsList
         .filter((widget) => widget.is_plotted)
         .map((widget) => widget.widget_type)
-      const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-advanced-analytics`, {
+
+      const authHeaders = {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${cur?.access_token}`,
+        "apikey": process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
+      }
+
+      // Corpus signature gate for the Sonnet R&D path. Mirrors the server-side
+      // threshold in generate-rd-analytics — kept in sync deliberately so the
+      // client can short-circuit before paying the round-trip.
+      const rdEligible = !!currentSignature
+        && currentSignature.monthSpan    >= 6
+        && currentSignature.fieldsCount >= 12
+
+      // Standard Haiku path — always runs.
+      const haikuReq = fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-advanced-analytics`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${cur?.access_token}`,
-          "apikey": process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
-        },
+        headers: authHeaders,
         body: JSON.stringify({
           user_id: session.user.id,
           existing_widget_types: widgets.map(w => w.type),
           plotted_advanced_types: plottedAdvancedTypes,
         }),
       })
-      if (res.ok) {
-        const data = await res.json()
+
+      // Sonnet R&D path — only when corpus is past the threshold. Failure here
+      // must not block the Haiku result from reaching the user.
+      const rdReq = rdEligible
+        ? fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-rd-analytics`, {
+            method: "POST",
+            headers: authHeaders,
+            body: JSON.stringify({
+              user_id: session.user.id,
+              haiku_chart_families: plottedAdvancedTypes,
+            }),
+          }).catch(() => null)
+        : Promise.resolve(null)
+
+      const [haikuRes, rdRes] = await Promise.all([haikuReq, rdReq])
+
+      let haikuCount = 0
+      let rdCount    = 0
+      if (haikuRes?.ok) {
+        const data = await haikuRes.json()
+        haikuCount = data.count ?? 0
+      }
+      if (rdRes?.ok) {
+        const data = await rdRes.json()
+        rdCount = data.count ?? 0
+      }
+
+      if (haikuRes?.ok || (rdRes && rdRes.ok)) {
         await loadAdvancedWidgets()
-        localStorage.setItem("aa_last_field_count", String(999999))
-        setHasNewData(false)
+        // Persist the corpus signature at the moment of this successful run so
+        // the next readiness evaluation can tell whether new signal has arrived.
+        if (currentSignature) {
+          await supabase
+            .from("user_analytics_profile")
+            .upsert(
+              {
+                user_id: session.user.id,
+                last_run_signature: currentSignature,
+                last_run_at: new Date().toISOString(),
+              },
+              { onConflict: "user_id" },
+            )
+        }
+        await loadReadinessState()
         setShowAdvancedMenu(false)
-        setAnalyticsToast(`${data.count} new visualization${data.count !== 1 ? "s" : ""} available. Check the Advanced section of your Visualizations panel.`)
+        const total = haikuCount + rdCount
+        const suffix = rdCount > 0 ? ` (${rdCount} deep-insight)` : ""
+        setAnalyticsToast(`${total} new visualization${total !== 1 ? "s" : ""} available${suffix}. Check the Advanced section of your Visualizations panel.`)
         setTimeout(() => setAnalyticsToast(null), 7000)
       }
     } finally {
@@ -1062,11 +1460,24 @@ export default function SmartDashboardPage() {
                   {canUseAA ? (
                     <button
                       onClick={() => { cancelAdvancedMenuClose(); setShowAdvancedMenu(!showAdvancedMenu); setShowColorPicker(false); setShowDateFilter(false) }}
-                      className="flex h-7 items-center gap-1.5 rounded-lg border border-border px-3 text-xs text-muted-foreground transition-all duration-200 hover:-translate-y-0.5 hover:bg-muted hover:text-foreground"
+                      className={`flex h-7 items-center gap-1.5 rounded-lg border px-3 text-xs transition-all duration-200 hover:-translate-y-0.5 hover:bg-muted hover:text-foreground ${
+                        readinessState.kind === "unlock_moment"
+                          ? "border-primary/60 text-foreground [box-shadow:0_0_20px_-4px_var(--retro-glow-red)]"
+                          : "border-border text-muted-foreground"
+                      }`}
                     >
                       <Sparkles className="h-3.5 w-3.5" />
                       Advanced Analytics
-                      {hasNewData && (
+                      {readinessState.kind === "unlock_moment" && (
+                        <span className="flex items-center gap-1 ml-1 text-primary">
+                          <span className="relative flex h-1.5 w-1.5">
+                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+                            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
+                          </span>
+                          <span className="text-[10px] font-medium">Unlocked</span>
+                        </span>
+                      )}
+                      {readinessState.kind === "new_signal" && (
                         <span className="flex items-center gap-1 ml-1 text-primary">
                           <span className="relative flex h-1.5 w-1.5">
                             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
@@ -1088,7 +1499,7 @@ export default function SmartDashboardPage() {
                     </Link>
                   )}
                   {canUseAA && (
-                    <div className={`absolute left-0 top-9 z-30 min-w-[220px] origin-top-left rounded-xl border border-border bg-card p-3 shadow-xl transition-all duration-200 ${
+                    <div className={`absolute left-0 top-9 z-30 min-w-[260px] origin-top-left rounded-xl border border-border bg-card p-3 shadow-xl transition-all duration-200 ${
                       showAdvancedMenu
                         ? "pointer-events-auto translate-y-0 scale-100 opacity-100"
                         : "pointer-events-none -translate-y-1 scale-95 opacity-0"
@@ -1096,7 +1507,7 @@ export default function SmartDashboardPage() {
                       <p className="mb-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">AI Analysis</p>
                       <button
                         onClick={runAdvancedAnalytics}
-                        disabled={isRunningAnalytics}
+                        disabled={isRunningAnalytics || readinessState.kind === "empty"}
                         className="flex w-full flex-col rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted disabled:opacity-50"
                       >
                         <span className="flex items-center gap-2 text-sm font-medium text-foreground">
@@ -1108,6 +1519,7 @@ export default function SmartDashboardPage() {
                         </span>
                         <span className="mt-0.5 text-xs text-muted-foreground">Generate new AI-powered visualizations</span>
                       </button>
+                      <ReadinessHint state={readinessState} />
                     </div>
                   )}
                 </div>
@@ -1310,6 +1722,9 @@ export default function SmartDashboardPage() {
                         monthlyData={monthlyData}
                         categoryData={categoryData}
                         docTypeData={docTypeData}
+                        stackedCompositionData={stackedCompositionData}
+                        composedData={composedData}
+                        bandedSpendData={bandedSpendData}
                         contextSummary={contextSummary}
                         contextSummaryDate={contextSummaryDate}
                         isGeneratingSummary={isGeneratingSummary}

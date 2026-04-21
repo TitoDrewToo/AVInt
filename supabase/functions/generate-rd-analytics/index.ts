@@ -1,5 +1,5 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { createClient, serve } from "../_shared/deps.ts"
+import { type AiProvider, isProviderFailure, providerChain } from "../_shared/ai-providers.ts"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // generate-rd-analytics
@@ -15,10 +15,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 // ─────────────────────────────────────────────────────────────────────────────
 
 const ANTHROPIC_API_KEY         = Deno.env.get("ANTHROPIC_API_KEY")!
+const OPENAI_API_KEY            = Deno.env.get("OPENAI_API_KEY")!
 const SUPABASE_URL              = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 const SUPABASE_ANON_KEY         = Deno.env.get("SUPABASE_ANON_KEY")!
 const SONNET_MODEL              = Deno.env.get("RD_ANALYTICS_MODEL") ?? "claude-sonnet-4-6"
+const RD_ANALYTICS_PROVIDERS    = providerChain("RD_ANALYTICS", "anthropic", "openai")
 
 // Thresholds for R&D run eligibility. Kept in lock-step with the client-side
 // readiness gate in app/tools/smart-dashboard/page.tsx — both must agree.
@@ -114,24 +116,64 @@ Constraints on data[]:
 - For line/area/bar time series use "month" (YYYY-MM) or "period" as x_key.`
 
 // ── AI call ───────────────────────────────────────────────────────────────────
-async function callSonnet(systemPrompt: string, userPrompt: string): Promise<string> {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: SONNET_MODEL,
-      max_tokens: 4096,
-      system: systemPrompt + "\n\nIMPORTANT: Return ONLY a valid JSON object. No markdown, no code blocks.",
-      messages: [{ role: "user", content: userPrompt }],
-    }),
-  })
-  if (!res.ok) throw new Error(`Anthropic API error: ${await res.text()}`)
-  const data = await res.json()
-  return data.content?.[0]?.text ?? ""
+async function callProvider(provider: AiProvider, systemPrompt: string, userPrompt: string): Promise<string> {
+  if (provider === "anthropic") {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: SONNET_MODEL,
+        max_tokens: 4096,
+        system: systemPrompt + "\n\nIMPORTANT: Return ONLY a valid JSON object. No markdown, no code blocks.",
+        messages: [{ role: "user", content: userPrompt }],
+      }),
+    })
+    if (!res.ok) throw new Error(`Anthropic API error: ${await res.text()}`)
+    const data = await res.json()
+    return data.content?.[0]?.text ?? ""
+  }
+
+  if (provider === "openai") {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${OPENAI_API_KEY}` },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        temperature: 0.2,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        max_tokens: 4096,
+      }),
+    })
+    if (!res.ok) throw new Error(`OpenAI API error: ${await res.text()}`)
+    const data = await res.json()
+    return data.choices?.[0]?.message?.content ?? ""
+  }
+
+  throw new Error(`Unsupported R&D analytics provider: ${provider}`)
+}
+
+async function callAI(systemPrompt: string, userPrompt: string): Promise<{ rawText: string; provider: AiProvider }> {
+  let lastError: unknown = null
+  for (const provider of RD_ANALYTICS_PROVIDERS) {
+    try {
+      const rawText = await callProvider(provider, systemPrompt, userPrompt)
+      if (!rawText) throw new Error(`Empty response from ${provider}`)
+      return { rawText, provider }
+    } catch (error) {
+      lastError = error
+      console.error(`R&D analytics provider ${provider} failed:`, error instanceof Error ? error.message : String(error))
+      if (!isProviderFailure(error)) break
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("All R&D analytics providers failed")
 }
 
 // ── Sampling helpers ──────────────────────────────────────────────────────────
@@ -430,8 +472,8 @@ Produce 1–2 rd-insight widgets following the output contract. Return { "widget
 no genuinely non-redundant insight is data-supported.`
 
     // ── 7. Call Sonnet ─────────────────────────────────────────────────────
-    const rawText = await callSonnet(RD_SYSTEM_PROMPT, userPrompt)
-    if (!rawText) throw new Error("Empty response from Sonnet")
+    const { rawText, provider } = await callAI(RD_SYSTEM_PROMPT, userPrompt)
+    if (!rawText) throw new Error(`Empty response from ${provider}`)
 
     let parsed: any
     try {
@@ -439,7 +481,7 @@ no genuinely non-redundant insight is data-supported.`
       if (!jsonMatch) throw new Error("No JSON object found in response")
       parsed = JSON.parse(jsonMatch[0])
     } catch {
-      throw new Error(`Failed to parse Sonnet output: ${rawText.slice(0, 500)}`)
+      throw new Error(`Failed to parse R&D analytics output from ${provider}: ${rawText.slice(0, 500)}`)
     }
 
     const ALLOWED_CHART_TYPES = new Set(["line-chart", "area-chart", "bar-chart", "pie-chart"])

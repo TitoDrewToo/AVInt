@@ -90,14 +90,24 @@ export default function PrivacyPage() {
               </p>
               <p className="text-muted-foreground">
                 When a file is deleted, the file and its related primary records are removed from our active application
-                systems. When an account is deleted, active application data associated with that account is removed from
-                our primary systems.
+                systems. When an account is deleted, all documents, extracted fields, dashboards, reports, and identifying
+                information (email, user ID) are removed from our production database and storage in a single atomic operation.
               </p>
               <p className="text-muted-foreground">
-                Limited historical records may persist temporarily in backups or logs. Deleted database records may
-                remain in provider-managed backups for up to 7 days. Deleted data or related metadata may remain in
-                provider-managed logs for the duration of Supabase&apos;s applicable retention periods.
+                Payment records are retained in anonymized form. After account deletion, your subscription history is
+                stripped of identifying fields — email and user ID are nulled — and the remaining non-identifying finance
+                data (plan, tier, dates, provider transaction identifiers) is kept for chargeback, refund, and tax
+                compliance purposes. These records cannot be used to re-identify you from our systems alone.
               </p>
+              <p className="text-muted-foreground">
+                Short-window traces persist outside our active database and cycle out automatically:
+              </p>
+              <ul className="ml-4 list-disc space-y-1 text-muted-foreground">
+                <li>Database backups (disaster recovery only) — up to 7 days</li>
+                <li>Application and function logs — up to 30 days, rolling</li>
+                <li>AI processing records held by OpenAI, Anthropic, and Google under their own retention policies — typically 30 days for standard API usage</li>
+                <li>Payment records held by Creem — retained under their terms and applicable payment industry regulations</li>
+              </ul>
             </section>
 
             <section className="space-y-3">

@@ -37,10 +37,12 @@ Implications:
 - Advanced Analytics should not be built as a second dashboard with renamed charts
 - Smart Dashboard should not be built as a decorative visuals page detached from this analytic substrate
 - the pipeline becomes more valuable as stored documents deepen, and the dashboard surface should reflect that progression
+- currency should be treated as a meaningful analytic dimension; foreign-currency income or spend can reveal behavior and should not be flattened into one total without explicit FX conversion
 
 See also:
 - `advanced-analytics-drilldowns.md` for the approved hero drill-down surfaces, renderer split (Recharts-pushed vs Three.js), activation thresholds, and the UI-refresh-before-build constraint.
 - `advanced-analytics-correlations.md` for the full inventory of analytic correlations (vendor, domain, payment, discount, geography, income, time-shape, cross-doc, anomaly, consumer-excitement) with signals, excitement scores, and renderer targets per entry.
+- `smart-dashboard-multi-currency.md` for the approved currency-aware dashboard model that Advanced Analytics should respect.
 
 ## Do Not Revive
 

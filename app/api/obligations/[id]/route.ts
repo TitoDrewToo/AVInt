@@ -1,6 +1,8 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
 
+import { serverError } from "@/lib/api-error"
+
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -46,7 +48,7 @@ export async function PATCH(
     .select()
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, { route: "obligations/[id]", stage: "update", userId: user.id })
   if (!data)  return NextResponse.json({ error: "Not found" },   { status: 404 })
 
   return NextResponse.json({ obligation: data })

@@ -1,6 +1,8 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
 
+import { serverError } from "@/lib/api-error"
+
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -21,7 +23,7 @@ export async function POST(req: NextRequest) {
     .eq("user_id", user.id)
     .in("document_type", ["contract", "agreement"])
 
-  if (filesErr) return NextResponse.json({ error: filesErr.message }, { status: 500 })
+  if (filesErr) return serverError(filesErr, { route: "obligations/backfill", stage: "list_files", userId: user.id })
   if (!userFiles?.length) return NextResponse.json({ created: 0 })
 
   const fileIds = userFiles.map((f: any) => f.id)
@@ -33,7 +35,7 @@ export async function POST(req: NextRequest) {
     .in("file_id", fileIds)
     .not("line_items", "is", null)
 
-  if (dfErr) return NextResponse.json({ error: dfErr.message }, { status: 500 })
+  if (dfErr) return serverError(dfErr, { route: "obligations/backfill", stage: "list_fields", userId: user.id })
 
   // 3. Fetch existing obligations to avoid duplicates
   const { data: existing } = await supabaseAdmin
@@ -75,7 +77,7 @@ export async function POST(req: NextRequest) {
     .from("payment_obligations")
     .insert(toInsert)
 
-  if (insertErr) return NextResponse.json({ error: insertErr.message }, { status: 500 })
+  if (insertErr) return serverError(insertErr, { route: "obligations/backfill", stage: "insert", userId: user.id })
 
   return NextResponse.json({ created: toInsert.length })
 }

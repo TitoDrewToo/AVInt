@@ -6,6 +6,7 @@ import {
   getDefaultBusinessExpenseAssumptions,
   normalizeBusinessExpenseAssumptions,
 } from "@/lib/report-assumptions"
+import { serverError } from "@/lib/api-error"
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -41,7 +42,7 @@ export async function GET(req: NextRequest) {
     .eq("scope", scope)
     .maybeSingle()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, { route: "report-assumptions", stage: "get", userId: auth.user.id })
 
   const assumptions = data
     ? normalizeBusinessExpenseAssumptions(data)
@@ -83,7 +84,7 @@ export async function PUT(req: NextRequest) {
     .select("filing_context, federal_marginal_rate, state_marginal_rate, include_self_employment_tax, self_employment_tax_rate, notes")
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverError(error, { route: "report-assumptions", stage: "put", userId: auth.user.id })
 
   return NextResponse.json({
     scope,

@@ -1,11 +1,11 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { createClient, serve } from "../_shared/deps.ts"
+import { type AiProvider, isProviderFailure, providerChain } from "../_shared/ai-providers.ts"
 
 const OPENAI_API_KEY            = Deno.env.get("OPENAI_API_KEY")!
 const ANTHROPIC_API_KEY         = Deno.env.get("ANTHROPIC_API_KEY")!
 const SUPABASE_URL              = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-const AI_PROVIDER               = Deno.env.get("NORMALIZATION_PROVIDER") ?? Deno.env.get("AI_PROVIDER") ?? "anthropic"
+const NORMALIZATION_PROVIDERS   = providerChain("NORMALIZATION", "openai", "anthropic")
 
 const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") ?? "https://www.avintph.com,https://avintph.com").split(",").map(s => s.trim())
 function buildCorsHeaders(req: Request) {
@@ -73,8 +73,8 @@ Rules:
 - merchant_domain vs expense_category are orthogonal (merchant identity vs Schedule C line).
 - is_recurring: be conservative — require explicit recurrence evidence.`
 
-async function callAI(systemPrompt: string, userInput: any): Promise<string> {
-  if (AI_PROVIDER === "anthropic") {
+async function callAIProvider(provider: AiProvider, systemPrompt: string, userInput: any): Promise<string> {
+  if (provider === "anthropic") {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -92,7 +92,8 @@ async function callAI(systemPrompt: string, userInput: any): Promise<string> {
     if (!res.ok) throw new Error(`Anthropic API error: ${await res.text()}`)
     const data = await res.json()
     return data.content?.[0]?.text ?? ""
-  } else {
+  }
+  if (provider === "openai") {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${OPENAI_API_KEY}` },
@@ -111,6 +112,23 @@ async function callAI(systemPrompt: string, userInput: any): Promise<string> {
     const data = await res.json()
     return data.choices?.[0]?.message?.content ?? ""
   }
+  throw new Error(`Unsupported normalization provider: ${provider}`)
+}
+
+async function callAI(systemPrompt: string, userInput: any): Promise<{ rawText: string; provider: AiProvider }> {
+  let lastError: unknown = null
+  for (const provider of NORMALIZATION_PROVIDERS) {
+    try {
+      const rawText = await callAIProvider(provider, systemPrompt, userInput)
+      if (!rawText) throw new Error(`Empty response from ${provider}`)
+      return { rawText, provider }
+    } catch (error) {
+      lastError = error
+      console.error(`reprocess normalization provider ${provider} failed:`, error instanceof Error ? error.message : String(error))
+      if (!isProviderFailure(error)) break
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("All normalization providers failed")
 }
 
 async function normalizeRow(supabase: any, row: any): Promise<void> {
@@ -129,7 +147,7 @@ async function normalizeRow(supabase: any, row: any): Promise<void> {
     raw_json: row.raw_json,
   }
 
-  const rawText = await callAI(SYSTEM_PROMPT, userInput)
+  const { rawText, provider: normalizationProvider } = await callAI(SYSTEM_PROMPT, userInput)
   if (!rawText) throw new Error("Empty response from AI")
 
   let normalized: any
@@ -180,7 +198,9 @@ async function normalizeRow(supabase: any, row: any): Promise<void> {
       line_items:               normalized.line_items               ?? row.line_items ?? row.raw_json?.line_items ?? null,
       raw_json: {
         ...(row.raw_json ?? {}),
-        openai_enriched: normalized,
+        normalization_enriched: normalized,
+        normalization_provider: normalizationProvider,
+        ...(normalizationProvider === "openai" ? { openai_enriched: normalized } : {}),
       },
       // Pipeline state
       normalization_status:  "normalized",

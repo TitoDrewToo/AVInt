@@ -1,16 +1,16 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { createClient, serve } from "../_shared/deps.ts"
 import {
   buildAdvancedAnalyticsSystemPrompt,
   getEnabledAnalyticsWidgetTypes,
 } from "../../../lib/advanced-analytics-config.ts"
+import { type AiProvider, isProviderFailure, providerChain } from "../_shared/ai-providers.ts"
 
 const ANTHROPIC_API_KEY         = Deno.env.get("ANTHROPIC_API_KEY")!
 const OPENAI_API_KEY            = Deno.env.get("OPENAI_API_KEY")!
 const SUPABASE_URL              = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 const SUPABASE_ANON_KEY         = Deno.env.get("SUPABASE_ANON_KEY")!
-const AI_PROVIDER               = Deno.env.get("ANALYTICS_PROVIDER") ?? Deno.env.get("AI_PROVIDER") ?? "anthropic"
+const ANALYTICS_PROVIDERS       = providerChain("ADVANCED_ANALYTICS", "anthropic", "openai", ["ANALYTICS_PROVIDER"])
 // R&D gate — set this env var to your Supabase user UUID to unlock advanced features
 const RD_USER_ID                = Deno.env.get("RD_USER_ID") ?? ""
 
@@ -42,8 +42,8 @@ const ADVANCED_SYSTEM_PROMPT = buildAdvancedAnalyticsSystemPrompt()
 
 // ── AI call ───────────────────────────────────────────────────────────────────
 
-async function callAI(prompt: string, systemPrompt: string): Promise<string> {
-  if (AI_PROVIDER === "anthropic") {
+async function callAIProvider(provider: AiProvider, prompt: string, systemPrompt: string): Promise<string> {
+  if (provider === "anthropic") {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -61,7 +61,8 @@ async function callAI(prompt: string, systemPrompt: string): Promise<string> {
     if (!res.ok) throw new Error(`Anthropic API error: ${await res.text()}`)
     const data = await res.json()
     return data.content?.[0]?.text ?? ""
-  } else {
+  }
+  if (provider === "openai") {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${OPENAI_API_KEY}` },
@@ -80,6 +81,23 @@ async function callAI(prompt: string, systemPrompt: string): Promise<string> {
     const data = await res.json()
     return data.choices?.[0]?.message?.content ?? ""
   }
+  throw new Error(`Unsupported advanced analytics provider: ${provider}`)
+}
+
+async function callAI(prompt: string, systemPrompt: string): Promise<{ rawText: string; provider: AiProvider }> {
+  let lastError: unknown = null
+  for (const provider of ANALYTICS_PROVIDERS) {
+    try {
+      const rawText = await callAIProvider(provider, prompt, systemPrompt)
+      if (!rawText) throw new Error(`Empty response from ${provider}`)
+      return { rawText, provider }
+    } catch (error) {
+      lastError = error
+      console.error(`advanced analytics provider ${provider} failed:`, error instanceof Error ? error.message : String(error))
+      if (!isProviderFailure(error)) break
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("All advanced analytics providers failed")
 }
 
 // ── Main handler ──────────────────────────────────────────────────────────────
@@ -473,7 +491,7 @@ Tax timeline:
 ${taxTimelineSummary || "no tax timeline data"}`
 
     // ── 7. Call Haiku ────────────────────────────────────────────────────────
-    const rawText = await callAI(prompt, ADVANCED_SYSTEM_PROMPT)
+    const { rawText } = await callAI(prompt, ADVANCED_SYSTEM_PROMPT)
     if (!rawText) throw new Error("Empty response from AI")
 
     let parsed: any

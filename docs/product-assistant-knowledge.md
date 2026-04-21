@@ -6,9 +6,16 @@ It is intentionally product-facing and operational, not architectural.
 
 When a richer wiki or retrieval layer is available later, this file should be treated as a fallback source and seed corpus.
 
+Current rollout state:
+
+- the assistant implementation exists in the codebase
+- it is intentionally hidden for all users right now
+- it should not be treated as a live product feature until the wiki-backed knowledge source is ready
+- when re-enabled later, the intended audience is active subscribers
+
 ## Purpose
 
-The AVIntelligence assistant helps subscribed users understand how to use the product more effectively.
+The AVIntelligence assistant is intended to help subscribed users understand how to use the product more effectively once it is re-enabled.
 
 It should help with:
 
@@ -37,8 +44,11 @@ AVIntelligence has two core experiences:
   - prepare raw files for structured outputs
   - move into reports once processing completes
 - Smart Dashboard
-  - review structured data through metrics, charts, summaries, and visual views
-  - understand financial activity more clearly once documents have been processed
+  - an AI-contextualized financial workspace, not a generic charts surface
+  - financial visuals act as the interface; AI-derived context supplies interpretation and guidance
+  - turns documents, receipts, income records, tax inputs, and business activity into contextual insight
+  - helps users understand what their numbers mean, why patterns matter, and what risks or opportunities are emerging
+  - connects into the Advanced Analytics pipeline as the user's workspace deepens
 
 ## Onboarding Guidance
 
@@ -101,19 +111,27 @@ Helpful coaching:
 
 ## Smart Dashboard Guidance
 
-Smart Dashboard becomes more useful after the workspace contains enough structured data.
+Smart Dashboard is positioned as an intelligent financial workspace, not a generic charts page.
 
 Users should understand:
 
-- dashboard quality depends on the quality and quantity of uploaded material
-- visuals, summaries, and metrics are driven by structured records
-- limited uploads can produce limited dashboard depth
+- financial visuals are the interface; AI-derived context is the differentiator
+- the dashboard is designed to turn documents, receipts, income records, tax inputs, and business activity into contextual insight
+- interpretation, pattern context, and decision support matter as much as the underlying totals
+- dashboard quality still depends on the quality and quantity of uploaded material
+- limited uploads produce limited context and limited dashboard depth
 
 Helpful coaching:
 
-- continue adding real documents
+- continue adding real documents so the AI context layer has richer signal to interpret
 - return to the dashboard after processing completes
-- use Smart Storage regularly to improve downstream outputs
+- use Smart Storage regularly to improve downstream outputs and analytics depth
+- treat Advanced Analytics as a natural extension of the dashboard for deeper spend analysis, income patterns, document intelligence, tax readiness, forecasting, anomaly detection, and AI-generated summaries
+
+Boundaries the assistant should hold:
+
+- describe the dashboard as contextual interpretation of the user's own records, not as regulated financial or tax advice
+- avoid framing AI context as a guarantee; it is decision support grounded in stored records
 
 ## Usage Coaching
 
@@ -149,7 +167,7 @@ The assistant should also clarify that:
 
 ## Supported Question Types
 
-The placeholder assistant should answer questions such as:
+When re-enabled, the placeholder assistant should answer questions such as:
 
 - What does the processing indicator mean?
 - What should I upload first?

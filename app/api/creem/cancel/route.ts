@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 
+import { serverError } from "@/lib/api-error"
+
 const CREEM_API_BASE =
   process.env.CREEM_TEST_MODE === "true"
     ? "https://test-api.creem.io"
@@ -48,8 +50,7 @@ export async function POST(req: NextRequest) {
     console.log("Subscription cancellation scheduled for user:", user_id)
     return NextResponse.json({ success: true, canceled_at: data.canceled_at })
 
-  } catch (err: any) {
-    console.error("Cancel subscription error:", err)
-    return NextResponse.json({ error: err.message }, { status: 500 })
+  } catch (err) {
+    return serverError(err, { route: "creem/cancel", stage: "unhandled" })
   }
 }

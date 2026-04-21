@@ -791,7 +791,7 @@ export default function SmartStoragePage() {
   }, [folders, files, currentFolderId, documentVirtualView])
 
   // ── Upload ─────────────────────────────────────────────────────────────────
-  const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50 MB
+  const MAX_FILE_SIZE = 60 * 1024 * 1024 // 60 MB — matches bucket file_size_limit
   const ALLOWED_TYPES = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp", "image/heic", "text/csv", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"])
   const ALLOWED_EXTS = new Set(["pdf", "jpg", "jpeg", "png", "webp", "heic", "csv", "xlsx"])
 
@@ -874,7 +874,7 @@ export default function SmartStoragePage() {
     const uploadOne = async (file: File) => {
       // Validate size
       if (file.size > MAX_FILE_SIZE) {
-        console.error(`Skipped ${file.name}: exceeds 50 MB limit (${(file.size / 1024 / 1024).toFixed(1)} MB)`)
+        console.error(`Skipped ${file.name}: exceeds 60 MB limit (${(file.size / 1024 / 1024).toFixed(1)} MB)`)
         return
       }
       // Validate type

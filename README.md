@@ -9,9 +9,11 @@ The product is built around two core experiences:
   - organize uploaded material and prepare it for reporting
   - move from raw files to usable records faster
 - `Smart Dashboard`
-  - view metrics, charts, and summaries from structured document data
-  - track trends and monitor financial activity in one place
-  - work from a clearer visual view of your records
+  - an intelligent financial workspace rather than a generic charts page
+  - financial visuals are the interface; AI-derived context is the differentiator
+  - turn documents, receipts, income records, tax inputs, and business activity into contextual insight
+  - help users understand what their numbers mean, why patterns matter, and what risks or opportunities are emerging
+  - connect naturally to the Advanced Analytics pipeline for deeper spend analysis, income patterns, document intelligence, tax readiness, forecasting, anomaly detection, and AI-generated summaries
 
 ## What AVIntelligence Is For
 
@@ -21,6 +23,8 @@ AVIntelligence is designed for people who want to:
 - reduce manual sorting and repetitive data entry
 - move from uploads to reports more quickly
 - review data through dashboards and summaries
+- understand the context behind their numbers, not just the totals
+- surface patterns, anomalies, and decision-relevant signals from their own records
 
 ## Main Product Areas
 
@@ -37,6 +41,14 @@ AVIntelligence is designed for people who want to:
   - sign up
   - welcome flow
   - access and purchase entry points
+
+## Current Repository Notes
+
+- The product assistant/chat guide is scaffolded in the codebase but intentionally hidden for now.
+- It is planned to return later as a subscriber feature once a stronger wiki-backed knowledge source is ready.
+- Advanced Analytics is at a baseline state and current planning is focused on enriching output quality rather than reviving earlier discarded directions.
+- Smart Dashboard direction is shifting from a charts-first surface to an AI-contextualized financial workspace. Financial visuals remain the interface, but interpretation, pattern context, and decision support are the active emphasis.
+- Tax Bundle (self-employed, US Schedule C) is the reinforced primary tax report. An employed (US W-2) Tax Bundle variant is on the roadmap; a shell may be present, but the full report logic is still pending construction and is not yet a shipped surface.
 
 ## Local Development
 
@@ -75,11 +87,19 @@ Examples of values you may need:
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 NEXT_PUBLIC_APP_URL=
+NEXT_PUBLIC_AA_BETA_EMAIL=
 
 SUPABASE_SERVICE_ROLE_KEY=
 
+OPENAI_API_KEY=
+
 CREEM_API_KEY=
+CREEM_TEST_MODE=
 CREEM_WEBHOOK_SECRET=
+CREEM_PRODUCT_DAY_PASS_ID=
+CREEM_PRODUCT_PRO_MONTHLY_ID=
+CREEM_PRODUCT_PRO_ANNUAL_ID=
+CREEM_PRODUCT_GIFT_CODE_ID=
 ```
 
 Keep secrets out of source control and only expose values intended for client-side use.

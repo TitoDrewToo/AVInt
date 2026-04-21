@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 
+import { serverError } from "@/lib/api-error"
+
 function getSupabaseAdmin() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -34,77 +36,36 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const user_id = user.id
-  const email = user.email
-
   const normalizedCode = String(code).trim().toUpperCase()
+  const accessEndsAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
 
-  // 1. Look up the gift code
-  const { data: giftCode, error: lookupError } = await supabaseAdmin
-    .from("gift_codes")
-    .select("*")
-    .eq("code", normalizedCode)
-    .single()
+  const { data, error } = await supabaseAdmin.rpc("redeem_gift_code", {
+    p_code:           normalizedCode,
+    p_user_id:        user.id,
+    p_email:          user.email,
+    p_access_ends_at: accessEndsAt,
+  })
 
-  if (lookupError || !giftCode) {
-    return NextResponse.json({ error: "Invalid gift code" }, { status: 404 })
+  if (error) {
+    return serverError(error, { route: "redeem-gift", stage: "rpc", userId: user.id })
   }
 
-  if (giftCode.status === "redeemed") {
-    return NextResponse.json({ error: "This gift code has already been redeemed" }, { status: 409 })
+  const result = (data as { result?: string; plan?: string } | null)?.result
+
+  switch (result) {
+    case "redeemed":
+      console.log("Gift code redeemed:", normalizedCode, "by", user.email)
+      return NextResponse.json({ success: true, plan: "gift_code", expires_at: accessEndsAt })
+    case "already_redeemed":
+      return NextResponse.json({ error: "This gift code has already been redeemed" }, { status: 409 })
+    case "expired":
+      return NextResponse.json({ error: "This gift code has expired" }, { status: 410 })
+    case "invalid":
+      return NextResponse.json({ error: "Invalid gift code" }, { status: 404 })
+    default:
+      return serverError(
+        new Error(`Unexpected redeem_gift_code result: ${String(result)}`),
+        { route: "redeem-gift", stage: "rpc_result", userId: user.id },
+      )
   }
-
-  if (giftCode.expires_at && new Date(giftCode.expires_at) < new Date()) {
-    return NextResponse.json({ error: "This gift code has expired" }, { status: 410 })
-  }
-
-  const nowDate = new Date()
-  const now = nowDate.toISOString()
-  const accessEndsAt = new Date(nowDate.getTime() + 24 * 60 * 60 * 1000).toISOString()
-
-  // 2. Mark code as redeemed
-  const { error: redeemError } = await supabaseAdmin
-    .from("gift_codes")
-    .update({
-      status:              "redeemed",
-      redeemed_by_user_id: user_id,
-      redeemed_at:         now,
-    })
-    .eq("id", giftCode.id)
-
-  if (redeemError) {
-    console.error("Gift code redeem error:", redeemError.message)
-    return NextResponse.json({ error: "Failed to redeem code" }, { status: 500 })
-  }
-
-  // 3. Upsert subscription for the recipient
-  const { data: existing } = await supabaseAdmin
-    .from("subscriptions")
-    .select("id")
-    .eq("user_id", user_id)
-    .single()
-
-  const subPayload = {
-    user_id,
-    email,
-    status:  "gift_code",
-    plan:    "gift_code",
-    current_period_end: accessEndsAt,
-    updated_at: now,
-  }
-
-  if (existing) {
-    await supabaseAdmin
-      .from("subscriptions")
-      .update(subPayload)
-      .eq("user_id", user_id)
-  } else {
-    await supabaseAdmin
-      .from("subscriptions")
-      .insert(subPayload)
-  }
-
-  console.log("Gift code redeemed:", normalizedCode, "by", email)
-
-  return NextResponse.json({ success: true, plan: "gift_code", expires_at: accessEndsAt })
 }

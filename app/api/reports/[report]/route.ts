@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server"
 
 import { computeEntitlement } from "@/lib/subscription"
 import { overlapsDateRange } from "@/lib/report-utils"
+import { serverError } from "@/lib/api-error"
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -25,7 +26,7 @@ async function authorizeReportRequest(req: NextRequest) {
     .maybeSingle()
 
   if (subErr) {
-    return { error: NextResponse.json({ error: subErr.message }, { status: 500 }) }
+    return { error: serverError(subErr, { route: "reports/[report]", stage: "entitlement", userId: user.id }) }
   }
 
   const ent = computeEntitlement(subRow)
@@ -326,7 +327,6 @@ export async function GET(
         return NextResponse.json({ error: "Unknown report" }, { status: 404 })
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to load report data"
-    return NextResponse.json({ error: message }, { status: 500 })
+    return serverError(error, { route: "reports/[report]", stage: report, userId: user.id })
   }
 }

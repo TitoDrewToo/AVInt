@@ -1,10 +1,12 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { createClient, serve } from "../_shared/deps.ts"
+import { type AiProvider, isProviderFailure, providerChain } from "../_shared/ai-providers.ts"
 
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY")!
+const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY")!
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!
+const PRESCAN_PROVIDERS = providerChain("PRESCAN", "gemini", "openai")
 
 const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") ?? "https://www.avintph.com,https://avintph.com").split(",").map(s => s.trim())
 function buildCorsHeaders(req: Request) {
@@ -298,6 +300,78 @@ async function runGeminiSafety(mimeType: string, base64: string): Promise<Safety
   }
 }
 
+function parseSafetyJson(provider: string, rawText: string): SafetyResult {
+  const stripped = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim()
+  const objectMatch = stripped.match(/\{[\s\S]*\}/)
+  if (!objectMatch) throw new Error(`${provider} safety no JSON object in: ${stripped.slice(0, 300)}`)
+  const parsed = JSON.parse(objectMatch[0])
+  return {
+    is_processable: Boolean(parsed.is_processable),
+    doc_category: String(parsed.doc_category ?? "unrelated"),
+    confidence: Number(parsed.confidence ?? 0),
+    abuse_flag: Boolean(parsed.abuse_flag),
+    reason: String(parsed.reason ?? ""),
+  }
+}
+
+function openAiFilePart(mimeType: string, base64: string) {
+  if (mimeType === "application/pdf") {
+    return {
+      type: "input_file",
+      filename: "document.pdf",
+      file_data: base64,
+    }
+  }
+  if (mimeType.startsWith("image/")) {
+    return {
+      type: "input_image",
+      image_url: `data:${mimeType};base64,${base64}`,
+    }
+  }
+  return null
+}
+
+async function runOpenAISafety(mimeType: string, base64: string): Promise<SafetyResult> {
+  const filePart = openAiFilePart(mimeType, base64)
+  if (!filePart) throw new Error(`OpenAI prescan does not support MIME type ${mimeType}`)
+  const res = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      input: [{
+        role: "user",
+        content: [
+          filePart,
+          { type: "input_text", text: SAFETY_PROMPT },
+        ],
+      }],
+      temperature: 0,
+      max_output_tokens: 512,
+    }),
+  })
+  if (!res.ok) {
+    const errBody = (await res.text()).slice(0, 500)
+    throw new Error(`OpenAI safety HTTP ${res.status}: ${errBody}`)
+  }
+  const data = await res.json()
+  const rawText =
+    data.output_text ??
+    data.output?.flatMap((item: any) => item.content ?? []).find((part: any) => part.type === "output_text")?.text ??
+    ""
+  if (!rawText) throw new Error(`OpenAI safety empty response: ${JSON.stringify(data).slice(0, 500)}`)
+  return parseSafetyJson("OpenAI", rawText)
+}
+
+async function runSafety(provider: AiProvider, mimeType: string, base64: string): Promise<SafetyResult> {
+  if (provider === "gemini") return await runGeminiSafety(mimeType, base64)
+  if (provider === "openai") return await runOpenAISafety(mimeType, base64)
+  throw new Error(`Unsupported prescan provider: ${provider}`)
+}
+
 // ── Main handler ─────────────────────────────────────────────────────────────
 serve(async (req) => {
   const corsHeaders = buildCorsHeaders(req)
@@ -428,8 +502,8 @@ serve(async (req) => {
       throw new PrescanReject("known_quarantined_hash", duplicateQuarantine.scan_reason || "This file matches a previously quarantined upload.")
     }
 
-    // Tier 2 — Gemini Safety Pass
-    // Spreadsheets skip safety (Gemini can't see them); Tier 1 magic byte is the gate.
+    // Tier 2 — AI Safety Pass
+    // Spreadsheets skip safety; Tier 1 magic byte + formula/macro checks are the gate.
     const isSpreadsheet =
       detected === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
       detected === "text/csv"
@@ -437,17 +511,20 @@ serve(async (req) => {
     let safety: SafetyResult | null = null
     if (!isSpreadsheet) {
       const base64 = toBase64(bytes)
-      try {
-        safety = await runGeminiSafety(detected, base64)
-      } catch (e) {
-        console.error("Gemini safety attempt 1 failed:", e instanceof Error ? e.message : String(e))
-        // One retry on parse/network failure, then fail closed
+      let lastSafetyError: unknown = null
+      for (const provider of PRESCAN_PROVIDERS) {
         try {
-          safety = await runGeminiSafety(detected, base64)
-        } catch (e2) {
-          console.error("Gemini safety attempt 2 failed:", e2 instanceof Error ? e2.message : String(e2))
-          throw new PrescanReject("safety_check_failed", "Safety check could not complete. Please try again.")
+          safety = await runSafety(provider, detected, base64)
+          break
+        } catch (e) {
+          lastSafetyError = e
+          console.error(`${provider} safety failed:`, e instanceof Error ? e.message : String(e))
+          if (!isProviderFailure(e)) break
         }
+      }
+      if (!safety) {
+        console.error("All prescan providers failed:", lastSafetyError instanceof Error ? lastSafetyError.message : String(lastSafetyError))
+        throw new PrescanReject("safety_check_failed", "Safety check could not complete. Please try again.")
       }
       if (!safety.is_processable || safety.abuse_flag || safety.confidence < 0.7) {
         const reason = safety.reason || "Document does not appear to be a financial or operational record."

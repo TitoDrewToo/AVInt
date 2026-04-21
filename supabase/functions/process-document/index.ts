@@ -1,10 +1,15 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { createClient, serve } from "../_shared/deps.ts"
+import { type AiProvider, isProviderFailure, providerChain } from "../_shared/ai-providers.ts"
+import { logError, logEvent } from "../_shared/log.ts"
+
+const FN = "process-document"
 
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY")!
+const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY")!
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!
+const PROCESS_PROVIDERS = providerChain("PROCESS", "gemini", "openai")
 
 const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") ?? "https://www.avintph.com,https://avintph.com").split(",").map(s => s.trim())
 function buildCorsHeaders(req: Request) {
@@ -15,6 +20,161 @@ function buildCorsHeaders(req: Request) {
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
     "Vary": "Origin",
   }
+}
+
+const EXTRACTION_PROMPT = `You are a document extraction AI. Analyze this document and extract structured data.
+
+CRITICAL FORMATTING RULES:
+1. Return ONLY a single JSON object — starting with { and ending with }
+2. NEVER return a JSON array at the top level (never start your response with [)
+3. No markdown, no code blocks, no explanation — just the JSON object
+4. If the document has multiple line items, put them inside the "line_items" array field
+
+Extract these fields:
+{
+  "document_type": "receipt|invoice|payslip|income_statement|bank_statement|transaction_record|contract|agreement|tax_document|general_document",
+  "vendor_name": "string or null — store/company name shown on the document",
+  "employer_name": "string or null — employer name for payslips",
+  "document_date": "YYYY-MM-DD or null — date printed on the document",
+  "currency": "USD|PHP|SGD|EUR|GBP|etc or null — currency of the amounts",
+  "total_amount": number or null,
+  "gross_income": number or null,
+  "net_income": number or null,
+  "expense_category": "Food|Transport|Housing|Utilities|Healthcare|Entertainment|Shopping|Travel|Office|Salary|Other or null",
+  "line_items": [{"description": "string", "amount": number, "due_date": "YYYY-MM-DD or null", "check_number": "string or null", "bank_name": "string or null"}],
+  "confidence": number between 0 and 1
+}
+
+Rules:
+- document_type must be one of the exact values listed
+- dates must be ISO format YYYY-MM-DD
+- amounts must be numbers not strings
+- For receipts/invoices: vendor_name is the store/restaurant/company issuing the document
+- For screenshots of receipts: read the store name from the header of the receipt
+- confidence reflects how certain you are about the extraction
+- if a field cannot be determined return null
+- line_items should be an empty array [] if no line items found, never null
+
+SPECIAL RULE — Contracts and lease agreements:
+If the document is a contract or agreement that contains a payment schedule table (e.g. post-dated checks, installment plan, rent payment calendar), extract every row of that table into line_items. For each payment entry use:
+  - description: label or purpose (e.g. "Rent - April 2026", "Installment 1", or blank if unlabeled)
+  - amount: the payment amount as a number
+  - due_date: the due/payment date in YYYY-MM-DD format
+  - check_number: the check or reference number if present (string), otherwise null
+  - bank_name: the bank name printed on the check or schedule if present (string), otherwise null
+Philippine PDC (post-dated check) schedules are common — scan all pages for these tables.`
+
+function openAiInputPart(mimeType: string, base64: string, bytes: Uint8Array) {
+  if (mimeType === "application/pdf") {
+    return {
+      type: "input_file",
+      filename: "document.pdf",
+      file_data: base64,
+    }
+  }
+  if (mimeType.startsWith("image/")) {
+    return {
+      type: "input_image",
+      image_url: `data:${mimeType};base64,${base64}`,
+    }
+  }
+  if (mimeType.startsWith("text/")) {
+    return {
+      type: "input_text",
+      text: new TextDecoder("utf-8").decode(bytes).slice(0, 120_000),
+    }
+  }
+  return null
+}
+
+async function callGeminiExtraction(mimeType: string, base64: string): Promise<string> {
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { inline_data: { mime_type: mimeType, data: base64 } },
+            { text: EXTRACTION_PROMPT },
+          ]
+        }],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 8192,
+        }
+      })
+    }
+  )
+
+  if (!res.ok) {
+    throw new Error(`Gemini API error: ${await res.text()}`)
+  }
+
+  const data = await res.json()
+  const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text
+  if (!rawText) throw new Error("No response from Gemini")
+  return rawText
+}
+
+async function callOpenAIExtraction(mimeType: string, base64: string, bytes: Uint8Array): Promise<string> {
+  const filePart = openAiInputPart(mimeType, base64, bytes)
+  if (!filePart) throw new Error(`OpenAI process does not support MIME type ${mimeType}`)
+
+  const res = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      input: [{
+        role: "user",
+        content: [
+          filePart,
+          { type: "input_text", text: EXTRACTION_PROMPT },
+        ],
+      }],
+      temperature: 0.1,
+      max_output_tokens: 8192,
+    }),
+  })
+
+  if (!res.ok) {
+    throw new Error(`OpenAI process API error: ${await res.text()}`)
+  }
+
+  const data = await res.json()
+  const rawText =
+    data.output_text ??
+    data.output?.flatMap((item: any) => item.content ?? []).find((part: any) => part.type === "output_text")?.text ??
+    ""
+  if (!rawText) throw new Error("No response from OpenAI")
+  return rawText
+}
+
+async function callExtractionWithFallback(
+  mimeType: string,
+  base64: string,
+  bytes: Uint8Array,
+): Promise<{ rawText: string; provider: AiProvider }> {
+  let lastError: unknown = null
+  for (const provider of PROCESS_PROVIDERS) {
+    try {
+      let rawText = ""
+      if (provider === "gemini") rawText = await callGeminiExtraction(mimeType, base64)
+      else if (provider === "openai") rawText = await callOpenAIExtraction(mimeType, base64, bytes)
+      else throw new Error(`Unsupported process provider: ${provider}`)
+      return { rawText, provider }
+    } catch (error) {
+      lastError = error
+      logError(FN, "provider_failed", error, { provider })
+      if (!isProviderFailure(error)) break
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("All process providers failed")
 }
 
 serve(async (req) => {
@@ -59,7 +219,7 @@ serve(async (req) => {
 
   try {
     const { file_id, job_id } = body
-    console.log("Received file_id:", file_id, "job_id:", job_id)
+    logEvent(FN, "received", { file_id, job_id })
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
@@ -132,7 +292,7 @@ serve(async (req) => {
         const joined = csvChunks.join("\n\n")
         uint8Array = new TextEncoder().encode(joined)
         mimeType = "text/csv"
-        console.log(`Converted xlsx to csv: ${wb.SheetNames.length} sheet(s), ${uint8Array.length} bytes`)
+        logEvent(FN, "xlsx_converted", { file_id, sheets: wb.SheetNames.length, bytes: uint8Array.length })
       } catch (e: any) {
         throw new Error(`xlsx conversion failed: ${e.message}`)
       }
@@ -145,86 +305,11 @@ serve(async (req) => {
     }
     const base64 = btoa(binary)
 
-    // 6. Call Gemini API
-    const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{
-            parts: [
-              {
-                inline_data: {
-                  mime_type: mimeType,
-                  data: base64,
-                }
-              },
-              {
-                text: `You are a document extraction AI. Analyze this document and extract structured data.
+    // 6. Call document extraction provider chain.
+    const { rawText, provider: extractionProvider } = await callExtractionWithFallback(mimeType, base64, uint8Array)
 
-CRITICAL FORMATTING RULES:
-1. Return ONLY a single JSON object — starting with { and ending with }
-2. NEVER return a JSON array at the top level (never start your response with [)
-3. No markdown, no code blocks, no explanation — just the JSON object
-4. If the document has multiple line items, put them inside the "line_items" array field
-
-Extract these fields:
-{
-  "document_type": "receipt|invoice|payslip|income_statement|bank_statement|transaction_record|contract|agreement|tax_document|general_document",
-  "vendor_name": "string or null — store/company name shown on the document",
-  "employer_name": "string or null — employer name for payslips",
-  "document_date": "YYYY-MM-DD or null — date printed on the document",
-  "currency": "USD|PHP|SGD|EUR|GBP|etc or null — currency of the amounts",
-  "total_amount": number or null,
-  "gross_income": number or null,
-  "net_income": number or null,
-  "expense_category": "Food|Transport|Housing|Utilities|Healthcare|Entertainment|Shopping|Travel|Office|Salary|Other or null",
-  "line_items": [{"description": "string", "amount": number, "due_date": "YYYY-MM-DD or null", "check_number": "string or null", "bank_name": "string or null"}],
-  "confidence": number between 0 and 1
-}
-
-Rules:
-- document_type must be one of the exact values listed
-- dates must be ISO format YYYY-MM-DD
-- amounts must be numbers not strings
-- For receipts/invoices: vendor_name is the store/restaurant/company issuing the document
-- For screenshots of receipts: read the store name from the header of the receipt
-- confidence reflects how certain you are about the extraction
-- if a field cannot be determined return null
-- line_items should be an empty array [] if no line items found, never null
-
-SPECIAL RULE — Contracts and lease agreements:
-If the document is a contract or agreement that contains a payment schedule table (e.g. post-dated checks, installment plan, rent payment calendar), extract every row of that table into line_items. For each payment entry use:
-  - description: label or purpose (e.g. "Rent - April 2026", "Installment 1", or blank if unlabeled)
-  - amount: the payment amount as a number
-  - due_date: the due/payment date in YYYY-MM-DD format
-  - check_number: the check or reference number if present (string), otherwise null
-  - bank_name: the bank name printed on the check or schedule if present (string), otherwise null
-Philippine PDC (post-dated check) schedules are common — scan all pages for these tables.`
-              }
-            ]
-          }],
-          generationConfig: {
-            temperature: 0.1,
-            maxOutputTokens: 8192,
-          }
-        })
-      }
-    )
-
-    if (!geminiResponse.ok) {
-      const err = await geminiResponse.text()
-      throw new Error(`Gemini API error: ${err}`)
-    }
-
-    const geminiData = await geminiResponse.json()
-    const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text
-
-    if (!rawText) throw new Error("No response from Gemini")
-
-    // 7. Parse Gemini JSON output
-    // Gemini sometimes wraps output in ```json ... ``` blocks — strip those first.
+    // 7. Parse extraction JSON output
+    // Providers sometimes wrap output in ```json ... ``` blocks — strip those first.
     // Top-level array = CSV export (multiple document rows). Top-level object = single document.
     // IMPORTANT: use startsWith('[') to detect top-level arrays — NOT a regex search,
     // because a valid document object like {"line_items": [...]} also contains '['.
@@ -244,7 +329,7 @@ Philippine PDC (post-dated check) schedules are common — scan all pages for th
         extractedRows = [JSON.parse(objectMatch[0])]
       }
     } catch {
-      throw new Error(`Failed to parse Gemini output: ${rawText}`)
+      throw new Error(`Failed to parse extraction output: ${rawText}`)
     }
 
     const extracted = extractedRows[0]
@@ -272,7 +357,8 @@ Philippine PDC (post-dated check) schedules are common — scan all pages for th
       net_income:           row.net_income       ?? null,
       expense_category:     row.expense_category ?? null,
       confidence_score:     row.confidence       ?? null,
-      raw_json:             { gemini_raw: row },
+      // gemini_raw is the legacy compatibility key consumed by normalization prompts.
+      raw_json:             { gemini_raw: row, extraction_provider: extractionProvider },
       normalization_status: "raw",
     }))
 
@@ -320,7 +406,7 @@ Philippine PDC (post-dated check) schedules are common — scan all pages for th
       // normalize-document handles its own failure state in document_fields
       // process-document still returns success — Gemini extraction completed
       const errText = await normalizeResponse.text()
-      console.error("Normalize function failed (non-fatal):", errText)
+      logError(FN, "normalize_nonfatal", new Error(errText), { file_id, job_id })
     }
 
     // Mark job as completed so UI processing indicator clears
@@ -335,7 +421,7 @@ Philippine PDC (post-dated check) schedules are common — scan all pages for th
     })
 
   } catch (error: any) {
-    console.error("process-document error:", error)
+    logError(FN, "unhandled", error, { file_id: body?.file_id, job_id: body?.job_id })
 
     // Mark job as failed
     try {

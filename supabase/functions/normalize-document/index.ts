@@ -1,11 +1,14 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { createClient, serve } from "../_shared/deps.ts"
+import { type AiProvider, isProviderFailure, providerChain } from "../_shared/ai-providers.ts"
+import { logError, logEvent } from "../_shared/log.ts"
+
+const FN = "normalize-document"
 
 const OPENAI_API_KEY            = Deno.env.get("OPENAI_API_KEY")!
 const ANTHROPIC_API_KEY         = Deno.env.get("ANTHROPIC_API_KEY")!
 const SUPABASE_URL              = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-const AI_PROVIDER               = Deno.env.get("NORMALIZATION_PROVIDER") ?? Deno.env.get("AI_PROVIDER") ?? "anthropic"
+const NORMALIZATION_PROVIDERS   = providerChain("NORMALIZATION", "openai", "anthropic")
 
 const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") ?? "https://www.avintph.com,https://avintph.com").split(",").map(s => s.trim())
 function buildCorsHeaders(req: Request) {
@@ -163,9 +166,12 @@ serve(async (req) => {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
   const { file_id, job_id, fields: inlineFields } = body
 
+  // Hoisted so the catch block can target the specific row (by id) when it's
+  // known, and increment normalization_attempts against that row.
+  let fields: any
+
   try {
     // 1. Use inline fields if provided (from reprocess-documents), otherwise query DB
-    let fields: any
     if (inlineFields) {
       fields = inlineFields
     } else {
@@ -181,10 +187,32 @@ serve(async (req) => {
       fields = fieldsArr[0]
     }
 
-    // 2. Build input for OpenAI — send both extracted fields AND full raw_json
-    //    so OpenAI can pull additional context Gemini surfaced but didn't map
+    // Retry ceiling. Skip rows that have repeatedly failed normalization to
+    // avoid burning provider tokens on unreparable inputs. Success resets the
+    // counter, so legitimate version-upgrade re-runs aren't blocked.
+    const priorAttempts = fields.normalization_attempts ?? 0
+    if (priorAttempts >= 3 && fields.normalization_status === "failed") {
+      logEvent(FN, "retry_ceiling_skip", { file_id, attempts: priorAttempts })
+      if (job_id) {
+        await supabase
+          .from("processing_jobs")
+          .update({
+            status:        "completed",
+            completed_at:  new Date().toISOString(),
+            error_message: `Skipped: normalization retry ceiling reached (${priorAttempts} attempts)`,
+          })
+          .eq("id", job_id)
+      }
+      return new Response(
+        JSON.stringify({ skipped: true, reason: "retry_ceiling", attempts: priorAttempts, file_id }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      )
+    }
+
+    // 2. Build input for normalization — send both extracted fields AND full raw_json
+    //    so the selected provider can pull context extraction surfaced but didn't map.
     const userInput = {
-      // Already-extracted fields (Gemini's output, may be partial)
+      // Already-extracted fields from process-document, may be partial.
       extracted: {
         vendor_name:      fields.vendor_name,
         employer_name:    fields.employer_name,
@@ -196,50 +224,69 @@ serve(async (req) => {
         expense_category: fields.expense_category,
         confidence_score: fields.confidence_score,
       },
-      // Full raw Gemini output — OpenAI uses this to find additional fields
+      // Full extraction output — normalization uses this to find additional fields.
       raw_json: fields.raw_json,
     }
 
     // 3. Call AI provider
-    let rawText: string
-    if (AI_PROVIDER === "anthropic") {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-          model: "claude-haiku-4-5-20251001",
-          max_tokens: 1024,
-          system: SYSTEM_PROMPT + "\n\nIMPORTANT: Return ONLY a valid JSON object. No markdown, no code blocks.",
-          messages: [{ role: "user", content: JSON.stringify(userInput) }],
-        }),
-      })
-      if (!res.ok) throw new Error(`Anthropic API error: ${await res.text()}`)
-      const data = await res.json()
-      rawText = data.content?.[0]?.text ?? ""
-    } else {
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${OPENAI_API_KEY}` },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          temperature: 0,
-          response_format: { type: "json_object" },
-          messages: [
-            { role: "system", content: SYSTEM_PROMPT },
-            { role: "user",   content: JSON.stringify(userInput) },
-          ],
-          max_tokens: 1024,
-        }),
-      })
-      if (!res.ok) throw new Error(`OpenAI API error: ${await res.text()}`)
-      const data = await res.json()
-      rawText = data.choices?.[0]?.message?.content ?? ""
+    const callProvider = async (provider: AiProvider): Promise<string> => {
+      if (provider === "anthropic") {
+        const res = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model: "claude-haiku-4-5-20251001",
+            max_tokens: 1024,
+            system: SYSTEM_PROMPT + "\n\nIMPORTANT: Return ONLY a valid JSON object. No markdown, no code blocks.",
+            messages: [{ role: "user", content: JSON.stringify(userInput) }],
+          }),
+        })
+        if (!res.ok) throw new Error(`Anthropic API error: ${await res.text()}`)
+        const data = await res.json()
+        return data.content?.[0]?.text ?? ""
+      }
+      if (provider === "openai") {
+        const res = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${OPENAI_API_KEY}` },
+          body: JSON.stringify({
+            model: "gpt-4o-mini",
+            temperature: 0,
+            response_format: { type: "json_object" },
+            messages: [
+              { role: "system", content: SYSTEM_PROMPT },
+              { role: "user",   content: JSON.stringify(userInput) },
+            ],
+            max_tokens: 1024,
+          }),
+        })
+        if (!res.ok) throw new Error(`OpenAI API error: ${await res.text()}`)
+        const data = await res.json()
+        return data.choices?.[0]?.message?.content ?? ""
+      }
+      throw new Error(`Unsupported normalization provider: ${provider}`)
     }
 
+    let rawText = ""
+    let normalizationProvider: AiProvider | null = null
+    let lastProviderError: unknown = null
+    for (const provider of NORMALIZATION_PROVIDERS) {
+      try {
+        rawText = await callProvider(provider)
+        if (!rawText) throw new Error(`Empty response from ${provider}`)
+        normalizationProvider = provider
+        break
+      } catch (error) {
+        lastProviderError = error
+        logError(FN, "provider_failed", error, { provider, file_id })
+        if (!isProviderFailure(error)) break
+      }
+    }
+    if (!rawText && lastProviderError instanceof Error) throw lastProviderError
     if (!rawText) throw new Error("No response from AI")
 
     let normalized: any
@@ -252,7 +299,7 @@ serve(async (req) => {
     }
 
     // 4. Update document_fields with all normalized + enriched values
-    //    Fall back to original Gemini values if OpenAI returns null for a field
+    //    Fall back to original extraction values if normalization returns null for a field
     //    that was already populated — never overwrite good data with null
     const now = new Date().toISOString()
 
@@ -295,16 +342,19 @@ serve(async (req) => {
         is_recurring:             normalized.is_recurring === true,
         recurrence_cadence:       normalized.is_recurring === true ? (normalized.recurrence_cadence ?? null) : null,
         line_items:               normalized.line_items               ?? fields.raw_json?.line_items ?? null,
-        // Preserve full AI outputs in raw_json — gemini_raw from extraction, openai_enriched from normalization
+        // Preserve full AI outputs in raw_json.
         raw_json: {
           ...(fields.raw_json ?? {}),
-          openai_enriched: normalized,
+          normalization_enriched: normalized,
+          normalization_provider: normalizationProvider,
+          ...(normalizationProvider === "openai" ? { openai_enriched: normalized } : {}),
         },
         // Pipeline state
-        normalization_status:  "normalized",
-        normalization_version: NORMALIZATION_VERSION,
-        normalized_at:         now,
-        normalization_error:   null,
+        normalization_status:   "normalized",
+        normalization_version:  NORMALIZATION_VERSION,
+        normalized_at:          now,
+        normalization_error:    null,
+        normalization_attempts: 0,
       })
       .eq("id", fields.id)
 
@@ -355,14 +405,14 @@ serve(async (req) => {
             const { error: oblErr } = await supabase
               .from("payment_obligations")
               .insert(toInsert)
-            if (oblErr) console.error("payment_obligations insert error:", oblErr.message)
-            else console.log(`Created ${toInsert.length} payment obligations for file ${file_id}`)
+            if (oblErr) logError(FN, "obligations_insert", oblErr, { file_id })
+            else logEvent(FN, "obligations_created", { file_id, count: toInsert.length })
           }
         }
       }
     } catch (oblErr: any) {
       // Non-fatal — normalization succeeded; don't fail the job over this
-      console.error("payment_obligations step error:", oblErr.message)
+      logError(FN, "obligations_step", oblErr, { file_id })
     }
 
     // 6. Mark job completed
@@ -378,18 +428,32 @@ serve(async (req) => {
     })
 
   } catch (error: any) {
-    console.error("normalize-document error:", error.message)
+    logError(FN, "unhandled", error, { file_id, job_id })
 
     // Mark normalization as failed — does NOT fail the job entirely
     // (Gemini extraction succeeded; normalization is a separate concern)
     try {
-      await supabase
-        .from("document_fields")
-        .update({
-          normalization_status: "failed",
-          normalization_error:  error.message,
-        })
-        .eq("file_id", file_id)
+      // When the specific row is known, target by id and bump the retry counter.
+      // Early failures (before `fields` resolves) fall back to file_id — those
+      // never reach the AI provider so we don't count them against the ceiling.
+      if (fields?.id != null) {
+        await supabase
+          .from("document_fields")
+          .update({
+            normalization_status:   "failed",
+            normalization_error:    error.message,
+            normalization_attempts: (fields.normalization_attempts ?? 0) + 1,
+          })
+          .eq("id", fields.id)
+      } else {
+        await supabase
+          .from("document_fields")
+          .update({
+            normalization_status: "failed",
+            normalization_error:  error.message,
+          })
+          .eq("file_id", file_id)
+      }
 
       // Mark job completed anyway — file was processed, normalization is best-effort
       if (job_id) {
@@ -403,7 +467,7 @@ serve(async (req) => {
           .eq("id", job_id)
       }
     } catch (innerErr: any) {
-      console.error("Failed to update failure state:", innerErr.message)
+      logError(FN, "failure_state_update", innerErr, { file_id, job_id })
     }
 
     return new Response(JSON.stringify({ error: error.message }), {

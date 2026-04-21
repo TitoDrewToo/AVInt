@@ -1,6 +1,8 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
 
+import { serverError } from "@/lib/api-error"
+
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -49,7 +51,7 @@ export async function POST(req: NextRequest) {
     await supabaseAdmin.from("advanced_widgets").delete().eq("user_id", user.id)
 
     return NextResponse.json({ success: true })
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 })
+  } catch (err) {
+    return serverError(err, { route: "delete-file", stage: "unhandled" })
   }
 }

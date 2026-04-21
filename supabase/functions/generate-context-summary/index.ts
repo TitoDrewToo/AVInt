@@ -1,5 +1,5 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { createClient, serve } from "../_shared/deps.ts"
+import { type AiProvider, isProviderFailure, providerChain } from "../_shared/ai-providers.ts"
 
 const ANTHROPIC_API_KEY      = Deno.env.get("ANTHROPIC_API_KEY")!
 const OPENAI_API_KEY         = Deno.env.get("OPENAI_API_KEY")!
@@ -7,8 +7,7 @@ const SUPABASE_URL           = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 const SUPABASE_ANON_KEY         = Deno.env.get("SUPABASE_ANON_KEY")!
 
-// Switch between providers via Supabase Secret AI_PROVIDER = "anthropic" | "openai"
-const AI_PROVIDER = Deno.env.get("SUMMARY_PROVIDER") ?? Deno.env.get("AI_PROVIDER") ?? "anthropic"
+const SUMMARY_PROVIDERS = providerChain("CONTEXT", "anthropic", "openai", ["SUMMARY_PROVIDER"])
 
 const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") ?? "https://www.avintph.com,https://avintph.com").split(",").map(s => s.trim())
 function buildCorsHeaders(req: Request) {
@@ -96,6 +95,28 @@ async function callOpenAI(prompt: string): Promise<string> {
 
   const data = await res.json()
   return data.choices?.[0]?.message?.content ?? ""
+}
+
+async function callProvider(provider: AiProvider, prompt: string): Promise<string> {
+  if (provider === "anthropic") return await callAnthropic(prompt)
+  if (provider === "openai") return await callOpenAI(prompt)
+  throw new Error(`Unsupported context provider: ${provider}`)
+}
+
+async function callWithFallback(prompt: string): Promise<{ summary: string; provider: AiProvider }> {
+  let lastError: unknown = null
+  for (const provider of SUMMARY_PROVIDERS) {
+    try {
+      const summary = await callProvider(provider, prompt)
+      if (!summary) throw new Error(`Empty response from ${provider}`)
+      return { summary, provider }
+    } catch (error) {
+      lastError = error
+      console.error(`context provider ${provider} failed:`, error instanceof Error ? error.message : String(error))
+      if (!isProviderFailure(error)) break
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("All context providers failed")
 }
 
 serve(async (req) => {
@@ -233,11 +254,7 @@ Net position: ${(totalIncome - totalExpenses).toLocaleString()} ${currency}
 Please write the financial summary now.`
 
     // 3. Call AI
-    const summary = AI_PROVIDER === "anthropic"
-      ? await callAnthropic(prompt)
-      : await callOpenAI(prompt)
-
-    if (!summary) throw new Error("Empty response from AI")
+    const { summary, provider } = await callWithFallback(prompt)
 
     // 4. Upsert into context_summaries
     const now = new Date().toISOString()
@@ -248,7 +265,7 @@ Please write the financial summary now.`
         summary,
         generated_at:   now,
         document_count: userFiles.length,
-        ai_provider:    AI_PROVIDER,
+        ai_provider:    provider,
       }, { onConflict: "user_id" })
 
     return new Response(JSON.stringify({ success: true, summary }), {

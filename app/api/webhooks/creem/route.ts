@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server"
 import crypto from "crypto"
 import { createClient } from "@supabase/supabase-js"
 
+import { logApiError, serverError } from "@/lib/api-error"
+
+// Creem is the active payment provider. Some subscription/gift_codes columns
+// retain legacy lemonsqueezy_* names for schema compatibility only.
+
 // Product IDs come from env vars so test→prod is a config change, not a deploy
 function getProductMap(): Record<string, { status: string; plan: string; isGiftCode?: boolean }> {
   const map: Record<string, { status: string; plan: string; isGiftCode?: boolean }> = {}
@@ -16,12 +21,22 @@ function getProductMap(): Record<string, { status: string; plan: string; isGiftC
   return map
 }
 
-// Generates a human-readable gift code: AVINT-XXXX-XXXX-XXXX
+// Generates a human-readable gift code: AVINT-XXXX-XXXX-XXXX.
+// crypto.randomBytes so fallback codes are not predictable when Creem doesn't
+// return a license key. Rejection sampling avoids the modulo-bias that would
+// leak bits 0-3 of the alphabet (36 does not divide 256 evenly).
 function generateGiftCode(): string {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-  const seg = (n: number) =>
-    Array.from({ length: n }, () => chars[Math.floor(Math.random() * chars.length)]).join("")
-  return `AVINT-${seg(4)}-${seg(4)}-${seg(4)}`
+  const out: string[] = []
+  while (out.length < 12) {
+    for (const b of crypto.randomBytes(16)) {
+      if (b < 252) {
+        out.push(chars[b % 36])
+        if (out.length === 12) break
+      }
+    }
+  }
+  return `AVINT-${out.slice(0, 4).join("")}-${out.slice(4, 8).join("")}-${out.slice(8, 12).join("")}`
 }
 
 function getSupabaseAdmin() {
@@ -77,23 +92,48 @@ export async function POST(req: NextRequest) {
 
   const eventType: string = payload?.eventType ?? ""
   const obj = payload?.object
+  const eventId: string = typeof payload?.id === "string" ? payload.id : ""
 
-  console.log("Creem webhook received:", eventType)
+  console.log("Creem webhook received:", eventType, "id:", eventId || "(none)")
 
   if (!obj) {
     return NextResponse.json({ error: "No object in payload" }, { status: 400 })
   }
 
+  // Idempotency guard. Creem retries on any non-2xx; without dedup we'd
+  // re-run increment_user_counter and re-insert gift codes on every retry.
+  // Insert-before-side-effects means a retry of a partially-processed event
+  // short-circuits here (acceptable — each branch is largely idempotent, and
+  // the alternative of double-counting subscribers is worse). If Creem ever
+  // stops including a top-level `id`, fail open rather than drop the event.
+  if (eventId) {
+    const { error: dedupErr } = await supabaseAdmin
+      .from("processed_webhook_events")
+      .insert({ provider: "creem", event_id: eventId, event_type: eventType })
+    if (dedupErr) {
+      if ((dedupErr as { code?: string }).code === "23505") {
+        console.log("Creem webhook duplicate ignored:", eventId)
+        return NextResponse.json({ received: true, duplicate: true })
+      }
+      return serverError(dedupErr, { route: "webhooks/creem", stage: "dedup_insert" })
+    }
+  } else {
+    console.warn("Creem webhook missing top-level id; dedup skipped")
+  }
+
   // ─── Helpers ──────────────────────────────────────────────────────────────
 
-  // Resolve user_id from email
+  // Resolve user_id from email via indexed RPC.
+  // Prior implementation used auth.admin.listUsers() which capped at ~50 and
+  // silently missed anyone past page 1.
   const resolveUserId = async (email: string): Promise<string | null> => {
-    try {
-      const { data: { users } } = await supabaseAdmin.auth.admin.listUsers()
-      return users?.find((u) => u.email === email)?.id ?? null
-    } catch {
+    if (!email) return null
+    const { data, error } = await supabaseAdmin.rpc("get_user_id_by_email", { p_email: email })
+    if (error) {
+      logApiError(error, { route: "webhooks/creem", stage: "resolve_user_id", extra: { email } })
       return null
     }
+    return typeof data === "string" ? data : null
   }
 
   // Upsert into subscriptions table
@@ -275,8 +315,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ received: true })
 
-  } catch (err: any) {
-    console.error("Creem webhook processing error:", err)
-    return NextResponse.json({ error: err.message }, { status: 500 })
+  } catch (err) {
+    return serverError(err, { route: "webhooks/creem", stage: "unhandled" })
   }
 }

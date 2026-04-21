@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
 
+import { serverError } from "@/lib/api-error"
 import { computeEntitlement } from "@/lib/subscription"
 import {
   PRODUCT_ASSISTANT_SYSTEM_PROMPT,
@@ -30,11 +31,14 @@ async function authorizeAssistantRequest(req: NextRequest) {
     .maybeSingle()
 
   if (subErr) {
-    return { error: NextResponse.json({ error: subErr.message }, { status: 500 }) }
+    return { error: serverError(subErr, { route: "chat", stage: "subscription_lookup", userId: user.id }) }
   }
 
   const ent = computeEntitlement(subRow)
-  if (process.env.NODE_ENV !== "production") {
+  // Explicit bypass, opt-in only. Set ALLOW_CHAT_DEV_BYPASS=1 on dev / preview
+  // envs that need unauthenticated chat. Previous `NODE_ENV !== "production"`
+  // check was implicit and could unlock the assistant on a mis-set preview.
+  if (process.env.ALLOW_CHAT_DEV_BYPASS === "1") {
     return { user }
   }
 
@@ -116,7 +120,6 @@ export async function POST(req: NextRequest) {
       provider: "openai",
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unexpected error"
-    return NextResponse.json({ error: message }, { status: 500 })
+    return serverError(error, { route: "chat", stage: "unhandled" })
   }
 }

@@ -1,4 +1,6 @@
--- Subscriptions table — tracks LemonSqueezy purchases and subscription state
+-- Subscriptions table.
+-- Creem is the active payment provider. lemonsqueezy_* columns are legacy
+-- schema names retained for compatibility and may store Creem identifiers.
 -- status values: 'free' | 'pro' | 'day_pass' | 'gift_code' | 'cancelled'
 -- plan values:   'monthly' | 'annual' | 'day_pass' | 'gift_code'
 CREATE TABLE IF NOT EXISTS subscriptions (

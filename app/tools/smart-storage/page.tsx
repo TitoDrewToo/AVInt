@@ -46,11 +46,18 @@ import {
   Menu,
   BarChart2,
   Loader2,
+  HardDrive,
 } from "lucide-react"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { ManualEntryModal, ReclassifyModal } from "@/components/ui/document-modals"
 import { useRouter } from "next/navigation"
+import {
+  formatStorageAllowance,
+  formatStorageBytes,
+  storageQuotaBytes,
+  storageUsagePercent,
+} from "@/lib/storage-quota"
 
 // ── Document type normalization ───────────────────────────────────────────────
 
@@ -187,11 +194,7 @@ interface UploadedFile {
   scan_reason?: string | null
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
+const formatBytes = formatStorageBytes
 
 function isEditableTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false
@@ -448,7 +451,8 @@ function DateRangeSelector({ dateRange, onChange }: { dateRange: DateRange; onCh
 export default function SmartStoragePage() {
   const [session, setSession] = useState<Session | null>(null)
   const [sessionLoaded, setSessionLoaded] = useState(false)
-  const { isActive: isPro } = useEntitlement(session)
+  const entitlement = useEntitlement(session)
+  const isPro = entitlement.isActive
   const [isProcessing, setIsProcessing] = useState(false)
 
   // Folder/navigation state
@@ -476,6 +480,7 @@ export default function SmartStoragePage() {
 
   // Upload
   const [isUploading, setIsUploading] = useState(false)
+  const [uploadNotice, setUploadNotice] = useState<string | null>(null)
   const [isNavigatingReport, setIsNavigatingReport] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set())
@@ -793,11 +798,32 @@ export default function SmartStoragePage() {
   const handleUpload = async (uploadFiles: FileList | File[]) => {
     if (!session?.user?.id) return
     setIsUploading(true)
+    setUploadNotice(null)
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const folderCache = new Map<string, string | null>()
     const resolvedFolderPaths = new Map<string, string | null>()
     const currentParentId = currentFolderId === "root" ? null : currentFolderId
     const uploadList = Array.from(uploadFiles)
+    const extForFile = (file: File) => (file.name.split(".").pop() ?? "").toLowerCase()
+    const isAllowedFileType = (file: File) => {
+      const ext = extForFile(file)
+      return ALLOWED_TYPES.has(file.type) || ALLOWED_EXTS.has(ext)
+    }
+    const allowedByQuota = new Set<File>()
+    const quotaBytes = storageQuotaBytes(entitlement)
+    let projectedStorageBytes = files.reduce((sum, existing) => sum + (existing.file_size || 0), 0)
+
+    for (const file of uploadList) {
+      if (file.size > MAX_FILE_SIZE || !isAllowedFileType(file)) continue
+      if (projectedStorageBytes + file.size > quotaBytes) {
+        const message = `Storage quota reached. ${formatStorageAllowance(quotaBytes)} is included with your current plan.`
+        console.error(`Skipped ${file.name}: ${message}`)
+        setUploadNotice(message)
+        continue
+      }
+      projectedStorageBytes += file.size
+      allowedByQuota.add(file)
+    }
 
     for (const folder of folders) {
       folderCache.set(`${folder.parentId ?? "root"}::${folder.name}`, folder.id)
@@ -852,9 +878,12 @@ export default function SmartStoragePage() {
         return
       }
       // Validate type
-      const ext = (file.name.split(".").pop() ?? "").toLowerCase()
-      if (!ALLOWED_TYPES.has(file.type) && !ALLOWED_EXTS.has(ext)) {
+      const ext = extForFile(file)
+      if (!isAllowedFileType(file)) {
         console.error(`Skipped ${file.name}: unsupported file type (${file.type || ext})`)
+        return
+      }
+      if (!allowedByQuota.has(file)) {
         return
       }
       const relativePath = file.webkitRelativePath?.split("/").filter(Boolean) ?? []
@@ -1299,6 +1328,9 @@ export default function SmartStoragePage() {
   const visibleClassificationFolders = Object.entries(CLASSIFICATION_FOLDER_MAP)
     .filter(([, types]) => types.some((t) => detectedTypes.includes(t)))
     .map(([name]) => name)
+  const usedStorageBytes = files.reduce((sum, file) => sum + (file.file_size || 0), 0)
+  const includedStorageBytes = storageQuotaBytes(entitlement)
+  const usedStoragePercent = storageUsagePercent(usedStorageBytes, includedStorageBytes)
 
   const currentSubfolders = classificationView || documentVirtualView ? [] : folders.filter((f) =>
     currentFolderId === "root" ? f.parentId === null : f.parentId === currentFolderId
@@ -1335,6 +1367,21 @@ export default function SmartStoragePage() {
 
           {/* LEFT PANE ─────────────────────────────────────────────────────── */}
           <aside className="hidden min-h-0 md:flex w-[15%] min-w-[180px] flex-col border-r border-border bg-card overflow-hidden">
+            <div className="border-b border-border p-3">
+              <div className="flex items-center gap-2 text-xs font-medium text-foreground">
+                <HardDrive className="h-3.5 w-3.5 text-primary" />
+                <span>Storage</span>
+              </div>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-primary transition-[width] duration-300"
+                  style={{ width: `${usedStoragePercent}%` }}
+                />
+              </div>
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                {formatBytes(usedStorageBytes)} of {formatStorageAllowance(includedStorageBytes)}
+              </p>
+            </div>
             {/* Documents section — user folder tree */}
             <div className="flex-[0.6] overflow-y-auto border-b border-border p-2">
               {/* Processing indicator */}
@@ -1566,6 +1613,11 @@ export default function SmartStoragePage() {
                     Add Entry
                   </button>
                 </>)}
+                {uploadNotice && (
+                  <span className="max-w-[240px] truncate text-xs text-destructive">
+                    {uploadNotice}
+                  </span>
+                )}
                 {(classificationView || documentVirtualView) && (
                   <select
                     value={classificationSort}
@@ -1600,7 +1652,7 @@ export default function SmartStoragePage() {
                     </svg>
                   </button>
                 </div>
-                <input ref={fileInputRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,image/*,application/pdf" className="hidden" onChange={(e) => e.target.files && handleUpload(e.target.files)} />
+                <input ref={fileInputRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.csv,.xlsx,image/*,application/pdf,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" onChange={(e) => e.target.files && handleUpload(e.target.files)} />
                 <input ref={directoryInputRef} type="file" multiple className="hidden" onChange={(e) => e.target.files && handleUpload(e.target.files)} />
               </div>
             </div>

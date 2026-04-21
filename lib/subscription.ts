@@ -12,6 +12,7 @@ function getSupabaseAdmin(): SupabaseClient {
 
 export interface EntitlementRow {
   status: string | null
+  plan?: string | null
   current_period_end: string | null
 }
 
@@ -22,6 +23,7 @@ export interface Entitlement {
   isDayPass: boolean
   isGiftCode: boolean
   expiresAt: string | null
+  plan: string | null
 }
 
 const INACTIVE: Entitlement = {
@@ -31,6 +33,7 @@ const INACTIVE: Entitlement = {
   isDayPass: false,
   isGiftCode: false,
   expiresAt: null,
+  plan: null,
 }
 
 // Single source of truth for premium access. Day passes and redeemed gift
@@ -39,7 +42,7 @@ const INACTIVE: Entitlement = {
 export function computeEntitlement(row: EntitlementRow | null | undefined): Entitlement {
   if (!row || !row.status) return INACTIVE
 
-  const { status, current_period_end } = row
+  const { status, current_period_end, plan = null } = row
   const expired =
     !!current_period_end && new Date(current_period_end).getTime() < Date.now()
 
@@ -51,6 +54,7 @@ export function computeEntitlement(row: EntitlementRow | null | undefined): Enti
       isDayPass: false,
       isGiftCode: false,
       expiresAt: current_period_end,
+      plan,
     }
   }
 
@@ -65,6 +69,7 @@ export function computeEntitlement(row: EntitlementRow | null | undefined): Enti
       isDayPass: true,
       isGiftCode: false,
       expiresAt: current_period_end,
+      plan,
     }
   }
 
@@ -79,10 +84,11 @@ export function computeEntitlement(row: EntitlementRow | null | undefined): Enti
       isDayPass: false,
       isGiftCode: true,
       expiresAt: current_period_end,
+      plan,
     }
   }
 
-  return { ...INACTIVE, status, expiresAt: current_period_end }
+  return { ...INACTIVE, status, expiresAt: current_period_end, plan }
 }
 
 export interface SubscriptionInfo {

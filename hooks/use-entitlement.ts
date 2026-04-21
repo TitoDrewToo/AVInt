@@ -12,6 +12,7 @@ const INACTIVE: Entitlement = {
   isDayPass: false,
   isGiftCode: false,
   expiresAt: null,
+  plan: null,
 }
 
 export interface UseEntitlementResult extends Entitlement {
@@ -39,7 +40,7 @@ export function useEntitlement(session: Session | null | undefined): UseEntitlem
     setLoading(true)
     supabase
       .from("subscriptions")
-      .select("status, current_period_end")
+      .select("status, plan, current_period_end")
       .eq("user_id", userId)
       .maybeSingle()
       .then(({ data }) => {

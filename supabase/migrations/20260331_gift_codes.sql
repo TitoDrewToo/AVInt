@@ -1,4 +1,6 @@
--- Gift codes table — stores LemonSqueezy license keys for gift purchases
+-- Gift codes table.
+-- Creem is the active payment provider. lemonsqueezy_* columns are legacy
+-- schema names retained for compatibility and may store Creem identifiers.
 -- status: 'pending' = generated, not yet redeemed | 'redeemed' = used
 CREATE TABLE IF NOT EXISTS gift_codes (
   id                       uuid        DEFAULT gen_random_uuid() PRIMARY KEY,

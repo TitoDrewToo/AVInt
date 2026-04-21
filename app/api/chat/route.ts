@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
 
 import { serverError } from "@/lib/api-error"
+import { checkRateLimit } from "@/lib/rate-limit"
 import { computeEntitlement } from "@/lib/subscription"
 import {
   PRODUCT_ASSISTANT_SYSTEM_PROMPT,
@@ -85,6 +86,10 @@ async function callOpenAI(question: string, context: string) {
 export async function POST(req: NextRequest) {
   const auth = await authorizeAssistantRequest(req)
   if ("error" in auth) return auth.error
+
+  // 15 requests / minute / user — AI credit protection.
+  const allowed = await checkRateLimit("chat", auth.user.id, 60, 15)
+  if (!allowed) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 })
 
   try {
     const body = await req.json()

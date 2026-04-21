@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { computeEntitlement } from "@/lib/subscription"
 import { overlapsDateRange } from "@/lib/report-utils"
 import { serverError } from "@/lib/api-error"
+import { checkRateLimit } from "@/lib/rate-limit"
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -72,6 +73,11 @@ export async function GET(
   if ("error" in auth) return auth.error
 
   const { user } = auth
+
+  // 30 reports / minute / user — expensive SQL, shouldn't fire on a loop.
+  const allowed = await checkRateLimit("reports", user.id, 60, 30)
+  if (!allowed) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 })
+
   const { dateFrom, dateTo, targetFolder } = getFilters(req)
 
   try {

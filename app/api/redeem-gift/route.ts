@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 
 import { serverError } from "@/lib/api-error"
+import { checkRateLimit } from "@/lib/rate-limit"
 
 function getSupabaseAdmin() {
   return createClient(
@@ -35,6 +36,10 @@ export async function POST(req: NextRequest) {
   if (authError || !user?.id || !user.email) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
+
+  // 10 redemption attempts / hour / user — brute-force guard on the code space.
+  const allowed = await checkRateLimit("redeem-gift", user.id, 3600, 10)
+  if (!allowed) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 })
 
   const normalizedCode = String(code).trim().toUpperCase()
   const accessEndsAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()

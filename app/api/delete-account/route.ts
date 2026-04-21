@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
 
 import { logApiError, serverError } from "@/lib/api-error"
+import { checkRateLimit } from "@/lib/rate-limit"
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -21,6 +22,11 @@ export async function POST(req: NextRequest) {
     if (authError || !user || user.id !== user_id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
+
+    // 3 deletion attempts / hour / user — room for retry on transient failure,
+    // not for abuse.
+    const allowed = await checkRateLimit("delete-account", user.id, 3600, 3)
+    if (!allowed) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 })
 
     // Atomic DB deletion. Returns storage_paths + per-table counts. Any SQL
     // failure inside the RPC rolls back the entire transaction — no partial

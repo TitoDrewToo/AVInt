@@ -23,7 +23,7 @@ interface PricingCardProps {
   price: string | null
   annualPrice?: string
   description: string
-  features: string[]
+  features: (string | ((isAnnual?: boolean) => string))[]
   isAnnual?: boolean
   highlighted?: boolean
   isSignedIn: boolean
@@ -118,6 +118,9 @@ function PricingCard({
   isAnnual, highlighted, isSignedIn, activeStatus, onRequireAuth, onRedirect,
 }: PricingCardProps) {
   const displayPrice = isAnnual && annualPrice ? annualPrice : price
+  const displayFeatures = features.map((feature) =>
+    typeof feature === "function" ? feature(isAnnual) : feature
+  )
   const checkoutUrl = name === "Pro"
     ? (isAnnual ? CHECKOUT_URLS["Pro Annual"] : CHECKOUT_URLS["Pro Monthly"])
     : CHECKOUT_URLS[name] ?? "#"
@@ -318,7 +321,7 @@ function PricingCard({
         <div className="relative mt-6 h-12" aria-hidden="true" />
       )}
       <ul className="relative mt-8 flex-1 space-y-4">
-        {features.map((feature) => (
+        {displayFeatures.map((feature) => (
           <li key={feature} className="flex items-start gap-3">
             <Check className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
             <span className="text-muted-foreground">{feature}</span>
@@ -355,7 +358,7 @@ const plans = [
     price: "$12",
     annualPrice: "$100",
     description: "For power users and convenience",
-    features: ["1 TB monthly / 2 TB annual storage", "Smart Storage", "All available reports", "Full structured outputs", "Advanced Analytics", "Smart Dashboards", "Custom Dashboards"],
+    features: [(isAnnual?: boolean) => isAnnual ? "2 TB storage" : "1 TB storage", "Smart Storage", "All available reports", "Full structured outputs", "Advanced Analytics", "Smart Dashboards", "Custom Dashboards"],
     highlighted: true,
   },
 ]

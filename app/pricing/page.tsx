@@ -24,7 +24,6 @@ interface PricingCardProps {
   annualPrice?: string
   description: string
   features: string[]
-  storage: string | ((isAnnual?: boolean) => string)
   isAnnual?: boolean
   highlighted?: boolean
   isSignedIn: boolean
@@ -115,11 +114,10 @@ function isCardActive(name: string, activeStatus: string | null): boolean {
 }
 
 function PricingCard({
-  name, price, annualPrice, description, features, storage,
+  name, price, annualPrice, description, features,
   isAnnual, highlighted, isSignedIn, activeStatus, onRequireAuth, onRedirect,
 }: PricingCardProps) {
   const displayPrice = isAnnual && annualPrice ? annualPrice : price
-  const storageLabel = typeof storage === "function" ? storage(isAnnual) : storage
   const checkoutUrl = name === "Pro"
     ? (isAnnual ? CHECKOUT_URLS["Pro Annual"] : CHECKOUT_URLS["Pro Monthly"])
     : CHECKOUT_URLS[name] ?? "#"
@@ -319,10 +317,6 @@ function PricingCard({
       {displayPrice === null && (
         <div className="relative mt-6 h-12" aria-hidden="true" />
       )}
-      <div className="relative mt-6 rounded-xl border border-border bg-muted/25 px-4 py-3">
-        <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Included storage</p>
-        <p className="mt-1 text-lg font-semibold text-foreground">{storageLabel}</p>
-      </div>
       <ul className="relative mt-8 flex-1 space-y-4">
         {features.map((feature) => (
           <li key={feature} className="flex items-start gap-3">
@@ -342,30 +336,26 @@ const plans = [
     name: "Gift Codes",
     price: "$6",
     description: "Transferable 24-hour access",
-    storage: "5 GB",
-    features: ["Smart Storage", "All available reports", "Full structured outputs", "Advanced Analytics", "Smart Dashboards", "Custom Dashboards"],
+    features: ["5 GB storage", "Smart Storage", "All available reports", "Full structured outputs", "Advanced Analytics", "Smart Dashboards", "Custom Dashboards"],
   },
   {
     name: "Free",
     price: null,
     description: "For individuals getting started",
-    storage: "5 GB",
-    features: ["Secure Storage", "Document classification", "Basic dashboard access"],
+    features: ["5 GB storage", "Secure Storage", "Document classification", "Basic dashboard access"],
   },
   {
     name: "Day Pass",
     price: "$6",
     description: "Full access for 24 hours",
-    storage: "5 GB",
-    features: ["Smart Storage", "All available reports", "Full structured outputs", "Advanced Analytics", "Smart Dashboards", "Custom Dashboards"],
+    features: ["5 GB storage", "Smart Storage", "All available reports", "Full structured outputs", "Advanced Analytics", "Smart Dashboards", "Custom Dashboards"],
   },
   {
     name: "Pro",
     price: "$12",
     annualPrice: "$100",
     description: "For power users and convenience",
-    storage: (isAnnual?: boolean) => isAnnual ? "2 TB" : "1 TB",
-    features: ["Smart Storage", "All available reports", "Full structured outputs", "Advanced Analytics", "Smart Dashboards", "Custom Dashboards"],
+    features: ["1 TB monthly / 2 TB annual storage", "Smart Storage", "All available reports", "Full structured outputs", "Advanced Analytics", "Smart Dashboards", "Custom Dashboards"],
     highlighted: true,
   },
 ]

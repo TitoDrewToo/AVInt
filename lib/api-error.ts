@@ -18,7 +18,11 @@ type LogContext = {
 }
 
 export function logApiError(err: unknown, ctx: LogContext) {
-  const message = err instanceof Error ? err.message : String(err)
+  const message = err instanceof Error
+    ? err.message
+    : typeof err === "object" && err !== null
+      ? JSON.stringify(err)
+      : String(err)
   const stack = err instanceof Error ? err.stack : undefined
   console.error(JSON.stringify({
     ts: new Date().toISOString(),

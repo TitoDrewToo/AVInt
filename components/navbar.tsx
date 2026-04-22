@@ -172,10 +172,9 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
 
           {/* Desktop Navigation */}
           <div className="hidden min-w-0 flex-1 items-center gap-6 md:ml-6 md:flex">
+            {showAssistantPreview ? <ProductAssistantPreview /> : null}
             {toolSlot ? (
               <div className="min-w-0 flex-1">{toolSlot}</div>
-            ) : showAssistantPreview ? (
-              <ProductAssistantPreview />
             ) : null}
             <div className="ml-auto flex shrink-0 items-center gap-6">
             {!toolSlot && (

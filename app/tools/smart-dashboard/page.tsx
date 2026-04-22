@@ -1820,6 +1820,108 @@ export default function SmartDashboardPage() {
             </Link>
           )
         })()}
+
+        {!isMobile && isEditingLayout && (() => {
+          const pickerScope: "widget" | "dashboard" = selectedWidget ? "widget" : "dashboard"
+          const currentAccent = pickerScope === "widget"
+            ? (selectedWidget!.colors?.primary ?? dashboardAccent)
+            : dashboardAccent
+          const hasOverride = pickerScope === "widget" && !!selectedWidget!.colors?.primary
+          const setAccent = (hex: string) => {
+            if (pickerScope === "widget") updateWidgetAccent(selectedWidget!.id, hex)
+            else updateDashboardAccent(hex)
+          }
+          return (
+            <div
+              className="relative flex items-center gap-1.5"
+              onMouseEnter={cancelColorPickerClose}
+              onMouseLeave={showColorPicker ? scheduleColorPickerClose : undefined}
+            >
+              <div className="mx-1 h-4 w-px bg-border" />
+              <span className="text-xs text-muted-foreground">
+                {pickerScope === "widget" ? "Widget color:" : "Dashboard color:"}
+              </span>
+              <div className="relative">
+                <button
+                  onClick={() => { cancelColorPickerClose(); setShowColorPicker(!showColorPicker) }}
+                  className="flex items-center gap-1.5 rounded-lg border border-border px-2 py-1 text-xs text-muted-foreground transition-all duration-200 hover:-translate-y-0.5 hover:bg-muted"
+                >
+                  <span className="h-4 w-4 rounded-full border border-white/10" style={{ background: currentAccent }} />
+                  <ChevronDown className="h-3 w-3" />
+                </button>
+                <div className={`absolute left-0 top-9 z-30 w-64 origin-top-left rounded-xl border border-border bg-card p-4 shadow-xl transition-all duration-200 ${
+                  showColorPicker
+                    ? "pointer-events-auto translate-y-0 scale-100 opacity-100"
+                    : "pointer-events-none -translate-y-1 scale-95 opacity-0"
+                }`}>
+                  <p className="mb-3 text-xs font-medium text-muted-foreground">
+                    {pickerScope === "widget" ? "Widget accent" : "Dashboard accent"}
+                  </p>
+                  <div className="grid grid-cols-8 gap-1.5">
+                    {CURATED_ACCENTS.map((hex) => {
+                      const isActive = currentAccent.toLowerCase() === hex.toLowerCase()
+                      return (
+                        <button
+                          key={hex}
+                          onClick={() => setAccent(hex)}
+                          className={`h-6 w-6 rounded-full border transition-transform hover:scale-110 ${isActive ? "border-foreground ring-2 ring-foreground/20" : "border-white/10"}`}
+                          style={{ background: hex }}
+                          title={hex}
+                        />
+                      )
+                    })}
+                  </div>
+                  <div className="mt-3 flex items-center gap-2">
+                    <label className="flex flex-1 items-center gap-2 rounded-lg border border-border px-2 py-1.5 text-xs text-muted-foreground">
+                      <span>Custom</span>
+                      <input
+                        type="color"
+                        value={currentAccent}
+                        onChange={(e) => setAccent(e.target.value)}
+                        className="h-5 w-8 cursor-pointer border-0 bg-transparent p-0"
+                      />
+                      <span className="ml-auto font-mono text-[10px] uppercase">{currentAccent}</span>
+                    </label>
+                  </div>
+                  {hasOverride && (
+                    <button
+                      onClick={() => { clearWidgetColors(selectedWidget!.id); setShowColorPicker(false) }}
+                      className="mt-3 w-full rounded-lg border border-border px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted"
+                    >
+                      Reset to dashboard accent
+                    </button>
+                  )}
+                </div>
+              </div>
+              {selectedWidget && (
+                <span className="max-w-[120px] truncate text-xs text-muted-foreground">
+                  {selectedWidget.title}
+                </span>
+              )}
+            </div>
+          )
+        })()}
+
+        {!isMobile && isEditingLayout && selectedWidget && CHART_TYPE_OPTIONS[selectedWidget.type] && (
+          <div className="flex items-center gap-1">
+            <div className="mx-1 h-4 w-px bg-border" />
+            <span className="text-xs text-muted-foreground">Chart:</span>
+            <div className="flex items-center gap-0.5 rounded-lg border border-border p-0.5">
+              {CHART_TYPE_OPTIONS[selectedWidget.type].map(opt => {
+                const active = (selectedWidget.chartVariant ?? CHART_DEFAULT[selectedWidget.type]) === opt.value
+                return (
+                  <button
+                    key={opt.value}
+                    onClick={() => updateWidgetChartVariant(selectedWidget.id, opt.value)}
+                    className={`rounded px-2 py-0.5 text-xs transition-colors ${active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+                  >
+                    {opt.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {!isMobile && (

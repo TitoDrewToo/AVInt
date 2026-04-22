@@ -370,18 +370,6 @@ function displayWidgetTitle(widget: Widget, model: DashboardCurrencyModel): stri
 
 // ── Default layout ────────────────────────────────────────────────────────────
 
-const DEFAULT_WIDGETS: Widget[] = [
-  { id: "kpi-income",      type: "kpi-income",      title: "Total Income" },
-  { id: "kpi-expenses",    type: "kpi-expenses",     title: "Total Expenses" },
-  { id: "kpi-net",         type: "kpi-net",          title: "Net Position" },
-  { id: "kpi-tax-exposure",type: "kpi-tax-exposure", title: "Est. Tax Exposure" },
-  { id: "kpi-tax-ratio",   type: "kpi-tax-ratio",    title: "Tax Burden Rate" },
-  { id: "area-chart",      type: "area-chart",       title: "Income vs Expenses" },
-  { id: "bar-chart",       type: "bar-chart",        title: "Expenses by Category" },
-  { id: "bar-deductible",  type: "bar-deductible",   title: "Deductible Expenses" },
-  { id: "pie-chart",       type: "pie-chart",        title: "Document Distribution" },
-]
-
 const DEFAULT_LAYOUT: LayoutItem[] = [
   { i: "kpi-income",       x: 0,  y: 0,  w: 2, h: 5,  minW: 2, minH: 1 },
   { i: "kpi-expenses",     x: 2,  y: 0,  w: 2, h: 5,  minW: 2, minH: 1 },
@@ -1221,8 +1209,8 @@ export default function SmartDashboardPage() {
   const [composedData, setComposedData] = useState<ComposedRow[]>([])
   const [bandedSpendData, setBandedSpendData] = useState<BandedRow[]>([])
   const [currencyModel, setCurrencyModel] = useState<DashboardCurrencyModel>(EMPTY_CURRENCY_MODEL)
-  const [widgets, setWidgets] = useState<Widget[]>(DEFAULT_WIDGETS)
-  const [layout, setLayout] = useState<LayoutItem[]>(DEFAULT_LAYOUT)
+  const [widgets, setWidgets] = useState<Widget[]>([])
+  const [layout, setLayout] = useState<LayoutItem[]>([])
   const [dashboardAccent, setDashboardAccent] = useState<string>(DEFAULT_ACCENT)
   const [selectedWidgetId, setSelectedWidgetId] = useState<string | null>(null)
   const [isEditingLayout, setIsEditingLayout] = useState(false)
@@ -1339,15 +1327,19 @@ export default function SmartDashboardPage() {
 
   // ── Load layout from DB ────────────────────────────────────────────────────
   const loadLayout = useCallback(async () => {
-    if (!session?.user?.id) return
+    if (!session?.user?.id) {
+      setWidgets([])
+      setLayout([])
+      return
+    }
     const { data } = await supabase
       .from("dashboard_layouts")
       .select("layout")
       .eq("user_id", session.user.id)
-      .single()
+      .maybeSingle()
     if (data?.layout) {
       const saved = data.layout
-      if (saved.widgets?.length) setWidgets(saved.widgets)
+      setWidgets(saved.widgets?.length ? saved.widgets : [])
       if (saved.palette?.accent) setDashboardAccent(saved.palette.accent)
       if (saved.gridLayout?.length) {
         // Always apply current minH/minW — never restore stale saved constraints
@@ -1358,7 +1350,12 @@ export default function SmartDashboardPage() {
           minW: constraints[l.i]?.minW ?? 2,
           minH: constraints[l.i]?.minH ?? 1,
         })))
+      } else {
+        setLayout([])
       }
+    } else {
+      setWidgets([])
+      setLayout([])
     }
   }, [session])
 

@@ -65,6 +65,22 @@ If the document is a contract or agreement that contains a payment schedule tabl
   - bank_name: the bank name printed on the check or schedule if present (string), otherwise null
 Philippine PDC (post-dated check) schedules are common — scan all pages for these tables.`
 
+function normalizeExtractedDocumentType(row: any, mimeType: string): string {
+  const documentType = row?.document_type ?? "general_document"
+  const looksLikeReceiptScreenshot =
+    mimeType.startsWith("image/") &&
+    ["transaction_record", "general_document"].includes(documentType) &&
+    !!row?.vendor_name &&
+    row?.total_amount !== null &&
+    row?.total_amount !== undefined &&
+    !!row?.document_date &&
+    !row?.gross_income &&
+    !row?.net_income
+
+  if (looksLikeReceiptScreenshot) return "receipt"
+  return documentType
+}
+
 function openAiInputPart(mimeType: string, base64: string, bytes: Uint8Array) {
   if (mimeType === "application/pdf") {
     return {
@@ -341,7 +357,7 @@ serve(async (req) => {
     await supabase
       .from("files")
       .update({
-        document_type: isCsv ? "csv_export" : (extracted.document_type ?? "general_document"),
+        document_type: isCsv ? "csv_export" : normalizeExtractedDocumentType(extracted, mimeType),
         upload_status: "done",
       })
       .eq("id", file_id)

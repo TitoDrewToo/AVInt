@@ -226,7 +226,7 @@ export function HeroSection() {
                     "linear-gradient(180deg, color-mix(in oklab, var(--background) 74%, transparent) 0%, color-mix(in oklab, var(--background) 34%, transparent) 24%, transparent 54%, transparent 82%, color-mix(in oklab, var(--background) 38%, transparent) 100%)",
                 }}
               />
-              <div className="relative z-[1] flex h-full max-w-[18.5rem] flex-col">
+              <div className="relative z-[1] flex h-full max-w-[24rem] flex-col">
               <div className="mb-2 flex items-center gap-2">
                 <div className="cw-button-flow glass-surface-sm flex h-9 w-9 items-center justify-center rounded-xl transition-all group-hover:[box-shadow:0_0_24px_-4px_var(--retro-glow-red)]">
                   <DashboardIcon className="h-5 w-5" />

@@ -146,6 +146,12 @@ interface DashboardCurrencyModel {
   primaryCurrency: string
   buckets: Record<string, DashboardCurrencyBucket>
   hasMultipleCurrencies: boolean
+  convertedBucket?: DashboardCurrencyBucket | null
+  fx?: {
+    source: string
+    date: string | null
+    missingCurrencies: string[]
+  } | null
 }
 
 // Money widgets that must be suffixed with the primary currency label when
@@ -164,6 +170,18 @@ const MONEY_WIDGET_TYPES = new Set([
   "banded-area",
 ])
 
+const CONVERTED_WIDGET_TYPES = new Set([
+  "kpi-income",
+  "kpi-expenses",
+  "kpi-net",
+  "area-chart",
+  "line-chart",
+  "bar-chart",
+  "stacked-bar",
+  "composed-chart",
+  "banded-area",
+])
+
 function currencyToSymbol(code: string | null | undefined): string {
   const c = (code ?? "").toUpperCase()
   if (c === "PHP") return "₱"
@@ -177,6 +195,8 @@ const EMPTY_CURRENCY_MODEL: DashboardCurrencyModel = {
   primaryCurrency: "USD",
   buckets: {},
   hasMultipleCurrencies: false,
+  convertedBucket: null,
+  fx: null,
 }
 
 function computeBucket(cur: string, rows: any[], safeNum: (v: unknown) => number): DashboardCurrencyBucket {
@@ -335,23 +355,26 @@ function buildCurrencyModel(fields: any[], safeNum: (v: unknown) => number): Das
   }
   const currencies = Object.keys(buckets)
 
-  // Primary currency: income volume → expense volume → total activity → USD.
+  // Primary currency: document count → activity volume → recency.
   let primary = currencies[0] ?? "USD"
   if (currencies.length > 1) {
-    const byIncome = [...currencies].sort((a, b) => buckets[b].totalIncome - buckets[a].totalIncome)
-    if (buckets[byIncome[0]].totalIncome > 0) {
-      primary = byIncome[0]
-    } else {
-      const byExpense = [...currencies].sort((a, b) => buckets[b].totalExpenses - buckets[a].totalExpenses)
-      if (buckets[byExpense[0]].totalExpenses > 0) {
-        primary = byExpense[0]
-      } else {
-        const byActivity = [...currencies].sort(
-          (a, b) => (buckets[b].totalIncome + buckets[b].totalExpenses) - (buckets[a].totalIncome + buckets[a].totalExpenses),
-        )
-        primary = byActivity[0]
+    const stats: Record<string, { count: number; activity: number; latest: string }> = {}
+    for (const [cur, rows] of Object.entries(labeled)) {
+      let activity = 0
+      let latest = ""
+      for (const r of rows) {
+        const dt = r?.files?.document_type
+        if (dt === "payslip" || dt === "income_statement") activity += safeNum(r.gross_income ?? r.total_amount)
+        else activity += safeNum(r.total_amount)
+        if (typeof r?.document_date === "string" && r.document_date > latest) latest = r.document_date
       }
+      stats[cur] = { count: rows.length, activity, latest }
     }
+    primary = [...currencies].sort((a, b) =>
+      stats[b].count - stats[a].count ||
+      stats[b].activity - stats[a].activity ||
+      stats[b].latest.localeCompare(stats[a].latest),
+    )[0]
   }
 
   return {
@@ -359,11 +382,78 @@ function buildCurrencyModel(fields: any[], safeNum: (v: unknown) => number): Das
     primaryCurrency: primary,
     buckets,
     hasMultipleCurrencies: currencies.length > 1,
+    convertedBucket: null,
+    fx: null,
+  }
+}
+
+async function loadFxRates(base: string, quotes: string[]): Promise<{ source: string; date: string | null; rates: Record<string, number> } | null> {
+  if (!quotes.length) return { source: "Frankfurter", date: null, rates: {} }
+  try {
+    const params = new URLSearchParams({ base, quotes: quotes.join(",") })
+    const res = await fetch(`/api/fx/rates?${params.toString()}`)
+    if (!res.ok) return null
+    const data = await res.json()
+    return {
+      source: data.source ?? "Frankfurter",
+      date: data.date ?? null,
+      rates: data.rates ?? {},
+    }
+  } catch {
+    return null
+  }
+}
+
+function convertMoney(value: unknown, sourceCurrency: string, primaryCurrency: string, rates: Record<string, number>, safeNum: (v: unknown) => number) {
+  const amount = safeNum(value)
+  if (sourceCurrency === primaryCurrency) return amount
+  const rate = rates[sourceCurrency]
+  if (!rate || rate <= 0) return null
+  return amount / rate
+}
+
+function withConvertedCurrencyBucket(
+  model: DashboardCurrencyModel,
+  fields: any[],
+  fx: { source: string; date: string | null; rates: Record<string, number> } | null,
+  safeNum: (v: unknown) => number,
+): DashboardCurrencyModel {
+  if (!model.hasMultipleCurrencies || !fx) return model
+
+  const missingCurrencies = model.currencies
+    .filter((cur) => cur !== model.primaryCurrency)
+    .filter((cur) => !fx.rates[cur])
+
+  if (missingCurrencies.length) {
+    return { ...model, fx: { source: fx.source, date: fx.date, missingCurrencies } }
+  }
+
+  const convertedRows = fields.map((row) => {
+    const sourceCurrency = typeof row?.currency === "string" && row.currency.trim()
+      ? row.currency.trim().toUpperCase()
+      : model.primaryCurrency
+    const converted = { ...row, currency: model.primaryCurrency }
+    for (const key of ["total_amount", "gross_income", "net_income", "tax_amount", "discount_amount"]) {
+      if (row[key] !== null && row[key] !== undefined) {
+        const value = convertMoney(row[key], sourceCurrency, model.primaryCurrency, fx.rates, safeNum)
+        converted[key] = value ?? row[key]
+      }
+    }
+    return converted
+  })
+
+  return {
+    ...model,
+    convertedBucket: computeBucket(model.primaryCurrency, convertedRows, safeNum),
+    fx: { source: fx.source, date: fx.date, missingCurrencies: [] },
   }
 }
 
 function displayWidgetTitle(widget: Widget, model: DashboardCurrencyModel): string {
   if (!model.hasMultipleCurrencies) return widget.title
+  if (model.convertedBucket && CONVERTED_WIDGET_TYPES.has(widget.type)) {
+    return `${widget.title} · converted to ${model.primaryCurrency}`
+  }
   if (MONEY_WIDGET_TYPES.has(widget.type)) return `${widget.title} · ${model.primaryCurrency}`
   return widget.title
 }
@@ -651,6 +741,7 @@ function WidgetContent({
           }),
       ]
     : []
+  const convertedBucket = currencyModel.convertedBucket
 
   if (widget.type === "kpi-income") return (
     <div className="flex h-full flex-col justify-between">
@@ -660,7 +751,16 @@ function WidgetContent({
           <TrendingUp className="h-4 w-4" style={{ color: colors.primary }} />
         </div>
       </div>
-      {currencyModel.hasMultipleCurrencies ? (
+      {currencyModel.hasMultipleCurrencies && convertedBucket ? (
+        <div className="mt-3">
+          <p className="text-3xl font-semibold tracking-tight text-foreground">
+            <AnimatedNumber value={convertedBucket.totalIncome} prefix={currencyToSymbol(currencyModel.primaryCurrency)} />
+          </p>
+          <p className="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+            Converted to {currencyModel.primaryCurrency}
+          </p>
+        </div>
+      ) : currencyModel.hasMultipleCurrencies ? (
         <div className="mt-3 space-y-1.5">
           {orderedCurrencies.map((cur) => {
             const b = currencyModel.buckets[cur]
@@ -691,7 +791,16 @@ function WidgetContent({
           <Receipt className="h-4 w-4" style={{ color: colors.secondary }} />
         </div>
       </div>
-      {currencyModel.hasMultipleCurrencies ? (
+      {currencyModel.hasMultipleCurrencies && convertedBucket ? (
+        <div className="mt-3">
+          <p className="text-3xl font-semibold tracking-tight text-foreground">
+            <AnimatedNumber value={convertedBucket.totalExpenses} prefix={currencyToSymbol(currencyModel.primaryCurrency)} />
+          </p>
+          <p className="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+            Converted to {currencyModel.primaryCurrency}
+          </p>
+        </div>
+      ) : currencyModel.hasMultipleCurrencies ? (
         <div className="mt-3 space-y-1.5">
           {orderedCurrencies.map((cur) => {
             const b = currencyModel.buckets[cur]
@@ -893,7 +1002,9 @@ function WidgetContent({
 
   if (widget.type === "bar-chart" || widget.type === "bar-deductible") {
     const variant = widget.chartVariant ?? "bar"
-    const data = categoryData
+    const data = widget.type === "bar-deductible"
+      ? (currencyModel.buckets[currencyModel.primaryCurrency]?.categoryData ?? categoryData)
+      : categoryData
     const label = widget.type === "bar-deductible" ? "Expense categories reducing tax exposure" : "Total spend per category"
     return (
       <div className="flex h-full flex-col">
@@ -1390,25 +1501,33 @@ export default function SmartDashboardPage() {
     // Currency-bucketed model. Primary bucket drives KPI/chart states so the
     // single-currency render path stays identical. Income/Expenses tiles read
     // the full model to stack per-currency rows when more than one exists.
-    const model = buildCurrencyModel(fields as any[], safeNum)
+    const nativeModel = buildCurrencyModel(fields as any[], safeNum)
+    const fx = nativeModel.hasMultipleCurrencies
+      ? await loadFxRates(
+          nativeModel.primaryCurrency,
+          nativeModel.currencies.filter((cur) => cur !== nativeModel.primaryCurrency),
+        )
+      : null
+    const model = withConvertedCurrencyBucket(nativeModel, fields as any[], fx, safeNum)
     setCurrencyModel(model)
     const primary = model.buckets[model.primaryCurrency]
+    const aggregate = model.convertedBucket ?? primary
 
-    if (primary) {
+    if (primary && aggregate) {
       setKpi({
-        totalIncome:   primary.totalIncome,
-        totalExpenses: primary.totalExpenses,
-        netPosition:   primary.netPosition,
-        savingsRate:   primary.savingsRate,
+        totalIncome:   aggregate.totalIncome,
+        totalExpenses: aggregate.totalExpenses,
+        netPosition:   aggregate.netPosition,
+        savingsRate:   aggregate.savingsRate,
         taxExposure:   primary.taxExposure,
         taxRatio:      primary.taxRatio,
         currency:      primary.currency,
       })
-      setMonthlyData(primary.monthlyData)
-      setCategoryData(primary.categoryData)
-      setStackedCompositionData(primary.stackedComposition)
-      setComposedData(primary.composedData)
-      setBandedSpendData(primary.bandedData)
+      setMonthlyData(aggregate.monthlyData)
+      setCategoryData(aggregate.categoryData)
+      setStackedCompositionData(aggregate.stackedComposition)
+      setComposedData(aggregate.composedData)
+      setBandedSpendData(aggregate.bandedData)
     }
 
     // Document Distribution is count-based and stays cross-currency global.
@@ -2280,7 +2399,9 @@ export default function SmartDashboardPage() {
               <>
               {currencyModel.hasMultipleCurrencies && (
                 <div className="mb-3 rounded-lg border border-border bg-muted/40 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
-                  Multiple currencies detected. Income and expenses are shown per currency; net, tax, and charts use your primary currency ({currencyModel.primaryCurrency}). No FX conversion is applied.
+                  {currencyModel.convertedBucket
+                    ? `Multiple currencies detected. Aggregate analytics are converted to ${currencyModel.primaryCurrency} using ${currencyModel.fx?.source ?? "Frankfurter"}${currencyModel.fx?.date ? ` reference rates from ${currencyModel.fx.date}` : " reference rates"}. Tax and deductible views stay on native primary-currency data.`
+                    : `Multiple currencies detected. Some aggregate analytics use your primary currency (${currencyModel.primaryCurrency}); FX conversion is unavailable${currencyModel.fx?.missingCurrencies?.length ? ` for ${currencyModel.fx.missingCurrencies.join(", ")}` : ""}.`}
                 </div>
               )}
               <GridLayout

@@ -586,7 +586,7 @@ export default function SmartStoragePage() {
     const { data: activeJobs } = await supabase
       .from("processing_jobs").select("status")
       .in("file_id", userFiles.map((f) => f.id))
-      .in("status", ["uploaded", "processing"])
+      .in("status", ["uploaded", "pending_scan", "scanning", "processing"])
       .gte("created_at", cutoff)
     const stillActive = (activeJobs?.length ?? 0) > 0
     setIsProcessing(stillActive)
@@ -811,6 +811,7 @@ export default function SmartStoragePage() {
   const handleUpload = async (uploadFiles: FileList | File[]) => {
     if (!session?.user?.id) return
     setIsUploading(true)
+    setIsProcessing(true)
     setUploadNotice(null)
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const folderCache = new Map<string, string | null>()
@@ -954,7 +955,8 @@ export default function SmartStoragePage() {
       }
 
       await loadFiles()
-      await checkProcessingState()
+      const stillActive = await checkProcessingState()
+      if (!stillActive) setIsProcessing(false)
       await checkReportAvailability()
     } finally {
       setIsUploading(false)

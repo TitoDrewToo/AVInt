@@ -54,6 +54,7 @@ interface Widget {
   isPremium?: boolean
   colors?: WidgetColor
   chartVariant?: string
+  timeGrain?: TimeGrain
   advancedId?: string   // references advanced_widgets.id
   insight?: string      // AI-generated insight text
   rdConfig?: RdWidgetConfig
@@ -106,6 +107,8 @@ interface KPIData {
   currency: string
 }
 
+type TimeGrain = "monthly" | "weekly" | "daily"
+
 interface MonthlyData { month: string; expenses: number; income: number }
 interface CategoryData { name: string; value: number }
 
@@ -139,6 +142,10 @@ interface DashboardCurrencyBucket {
   stackedComposition: { rows: StackedRow[]; seriesKeys: string[]; groupBy: "merchant_domain" | "expense_category" }
   composedData: ComposedRow[]
   bandedData: BandedRow[]
+  timeSeriesData: Record<TimeGrain, MonthlyData[]>
+  stackedCompositionByGrain: Record<TimeGrain, { rows: StackedRow[]; seriesKeys: string[]; groupBy: "merchant_domain" | "expense_category" }>
+  composedDataByGrain: Record<TimeGrain, ComposedRow[]>
+  bandedDataByGrain: Record<TimeGrain, BandedRow[]>
 }
 
 interface DashboardCurrencyModel {
@@ -182,12 +189,75 @@ const CONVERTED_WIDGET_TYPES = new Set([
   "banded-area",
 ])
 
+const TIME_GRAINS: TimeGrain[] = ["monthly", "weekly", "daily"]
+const TIME_GRAIN_LABEL: Record<TimeGrain, string> = {
+  monthly: "Monthly",
+  weekly: "Weekly",
+  daily: "Daily",
+}
+const TIME_GRAIN_UNIT: Record<TimeGrain, string> = {
+  monthly: "month",
+  weekly: "week",
+  daily: "day",
+}
+
+const DRILLABLE_WIDGET_TYPES = new Set([
+  "area-chart",
+  "line-chart",
+  "stacked-bar",
+  "composed-chart",
+  "banded-area",
+])
+
 function currencyToSymbol(code: string | null | undefined): string {
   const c = (code ?? "").toUpperCase()
   if (c === "PHP") return "₱"
   if (c === "EUR") return "€"
   if (c === "GBP") return "£"
   return "$"
+}
+
+function dateFromIso(date: string): Date {
+  return new Date(`${date}T00:00:00`)
+}
+
+function isoDate(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
+function timeBucketFor(dateValue: string, grain: TimeGrain): { key: string; label: string } {
+  const date = dateFromIso(dateValue.slice(0, 10))
+  if (grain === "daily") {
+    return {
+      key: dateValue.slice(0, 10),
+      label: date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+    }
+  }
+
+  if (grain === "weekly") {
+    const day = date.getDay() === 0 ? 7 : date.getDay()
+    const monday = new Date(date)
+    monday.setDate(date.getDate() - day + 1)
+    return {
+      key: isoDate(monday),
+      label: monday.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+    }
+  }
+
+  const key = dateValue.slice(0, 7)
+  return {
+    key,
+    label: dateFromIso(`${key}-01`).toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
+  }
+}
+
+function nextTimeGrain(grain: TimeGrain | undefined): TimeGrain {
+  if (grain === "weekly") return "daily"
+  if (grain === "daily") return "monthly"
+  return "weekly"
 }
 
 const EMPTY_CURRENCY_MODEL: DashboardCurrencyModel = {
@@ -209,21 +279,33 @@ function computeBucket(cur: string, rows: any[], safeNum: (v: unknown) => number
   const taxExposure = Math.max(0, netPosition)
   const taxRatio = totalIncome > 0 ? (taxExposure / totalIncome) * 100 : 0
 
-  const monthMap: Record<string, { expenses: number; income: number }> = {}
+  const timeMaps: Record<TimeGrain, Record<string, { label: string; expenses: number; income: number }>> = {
+    monthly: {},
+    weekly: {},
+    daily: {},
+  }
   rows.forEach((f) => {
     if (!f.document_date || !f.files) return
-    const month = f.document_date.slice(0, 7)
-    if (!monthMap[month]) monthMap[month] = { expenses: 0, income: 0 }
-    if (["payslip", "income_statement"].includes(f.files.document_type))
-      monthMap[month].income += safeNum(f.gross_income ?? f.total_amount)
-    else monthMap[month].expenses += safeNum(f.total_amount)
+    const amount = ["payslip", "income_statement"].includes(f.files.document_type)
+      ? safeNum(f.gross_income ?? f.total_amount)
+      : safeNum(f.total_amount)
+    for (const grain of TIME_GRAINS) {
+      const bucket = timeBucketFor(f.document_date, grain)
+      if (!timeMaps[grain][bucket.key]) timeMaps[grain][bucket.key] = { label: bucket.label, expenses: 0, income: 0 }
+      if (["payslip", "income_statement"].includes(f.files.document_type))
+        timeMaps[grain][bucket.key].income += amount
+      else timeMaps[grain][bucket.key].expenses += amount
+    }
   })
-  const monthlyData: MonthlyData[] = Object.entries(monthMap)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([m, d]) => ({
-      month: new Date(m + "-01").toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
-      ...d,
-    }))
+  const timeSeriesData = Object.fromEntries(
+    TIME_GRAINS.map((grain) => [
+      grain,
+      Object.entries(timeMaps[grain])
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([, d]) => ({ month: d.label, expenses: d.expenses, income: d.income })),
+    ]),
+  ) as Record<TimeGrain, MonthlyData[]>
+  const monthlyData = timeSeriesData.monthly
 
   const catMap: Record<string, number> = {}
   expenseRows.forEach((f) => {
@@ -234,14 +316,18 @@ function computeBucket(cur: string, rows: any[], safeNum: (v: unknown) => number
     .sort(([, a], [, b]) => b - a)
     .map(([name, value]) => ({ name, value }))
 
-  const composedData: ComposedRow[] = Object.entries(monthMap)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([m, d]) => ({
-      month: new Date(m + "-01").toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
-      income: d.income,
-      expenses: d.expenses,
-      net: d.income - d.expenses,
-    }))
+  const composedDataByGrain = Object.fromEntries(
+    TIME_GRAINS.map((grain) => [
+      grain,
+      timeSeriesData[grain].map((d) => ({
+        month: d.month,
+        income: d.income,
+        expenses: d.expenses,
+        net: d.income - d.expenses,
+      })),
+    ]),
+  ) as Record<TimeGrain, ComposedRow[]>
+  const composedData = composedDataByGrain.monthly
 
   // Stacked composition — merchant_domain preferred when well-populated.
   const expenseWithDomain = expenseRows.filter((f) => f.merchant_domain).length
@@ -249,56 +335,67 @@ function computeBucket(cur: string, rows: any[], safeNum: (v: unknown) => number
     expenseRows.length > 0 && expenseWithDomain / expenseRows.length >= 0.5
       ? "merchant_domain"
       : "expense_category"
-  const stackedMap: Record<string, Record<string, number>> = {}
   const seriesTotals: Record<string, number> = {}
   expenseRows.forEach((f) => {
-    if (!f.document_date) return
-    const month = f.document_date.slice(0, 7)
     const series = String(f[groupBy] ?? "Other")
-    if (!stackedMap[month]) stackedMap[month] = {}
     const amt = safeNum(f.total_amount)
-    stackedMap[month][series] = (stackedMap[month][series] ?? 0) + amt
     seriesTotals[series] = (seriesTotals[series] ?? 0) + amt
   })
   const topSeries = Object.entries(seriesTotals).sort(([, a], [, b]) => b - a).slice(0, 5).map(([name]) => name)
   const topSet = new Set(topSeries)
   const hasTail = Object.keys(seriesTotals).some((s) => !topSet.has(s))
   const finalSeries = hasTail ? [...topSeries, "Other"] : topSeries
-  const stackedRows: StackedRow[] = Object.entries(stackedMap)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([month, perSeries]) => {
-      const row: StackedRow = {
-        month: new Date(month + "-01").toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
-      }
-      for (const s of finalSeries) row[s] = 0
-      for (const [s, v] of Object.entries(perSeries)) {
-        const bucket = topSet.has(s) ? s : "Other"
-        row[bucket] = Number(row[bucket] ?? 0) + v
-      }
-      return row
-    })
+  const stackedCompositionByGrain = Object.fromEntries(
+    TIME_GRAINS.map((grain) => {
+      const stackedMap: Record<string, { label: string; values: Record<string, number> }> = {}
+      expenseRows.forEach((f) => {
+        if (!f.document_date) return
+        const bucket = timeBucketFor(f.document_date, grain)
+        const series = String(f[groupBy] ?? "Other")
+        if (!stackedMap[bucket.key]) stackedMap[bucket.key] = { label: bucket.label, values: {} }
+        const amt = safeNum(f.total_amount)
+        stackedMap[bucket.key].values[series] = (stackedMap[bucket.key].values[series] ?? 0) + amt
+      })
+      const rows = Object.entries(stackedMap)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([, perSeries]) => {
+          const row: StackedRow = { month: perSeries.label }
+          for (const s of finalSeries) row[s] = 0
+          for (const [s, v] of Object.entries(perSeries.values)) {
+            const bucket = topSet.has(s) ? s : "Other"
+            row[bucket] = Number(row[bucket] ?? 0) + v
+          }
+          return row
+        })
+      return [grain, { rows, seriesKeys: finalSeries, groupBy }]
+    }),
+  ) as Record<TimeGrain, { rows: StackedRow[]; seriesKeys: string[]; groupBy: "merchant_domain" | "expense_category" }>
+  const stackedComposition = stackedCompositionByGrain.monthly
 
-  // Banded — monthly spend vs 3-month trailing mean ± 1σ.
-  const monthlySpendSeries = Object.entries(monthMap)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([m, d]) => ({ month: m, actual: d.expenses }))
-  const bandedData: BandedRow[] = monthlySpendSeries.map((row, i) => {
-    const windowStart = Math.max(0, i - 2)
-    const window = monthlySpendSeries.slice(windowStart, i + 1).map((r) => r.actual)
-    const mean = window.reduce((s, v) => s + v, 0) / window.length
-    const variance = window.reduce((s, v) => s + (v - mean) ** 2, 0) / window.length
-    const sigma = Math.sqrt(variance)
-    const upper = mean + sigma
-    const lower = Math.max(0, mean - sigma)
-    return {
-      month: new Date(row.month + "-01").toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
-      actual: row.actual,
-      mean,
-      upper,
-      lower,
-      bandWidth: Math.max(0, upper - lower),
-    }
-  })
+  // Banded — spend vs 3-period trailing mean ± 1σ for the active time grain.
+  const bandedDataByGrain = Object.fromEntries(
+    TIME_GRAINS.map((grain) => {
+      const spendSeries = timeSeriesData[grain].map((d) => ({ month: d.month, actual: d.expenses }))
+      return [grain, spendSeries.map((row, i) => {
+        const windowStart = Math.max(0, i - 2)
+        const window = spendSeries.slice(windowStart, i + 1).map((r) => r.actual)
+        const mean = window.reduce((s, v) => s + v, 0) / window.length
+        const variance = window.reduce((s, v) => s + (v - mean) ** 2, 0) / window.length
+        const sigma = Math.sqrt(variance)
+        const upper = mean + sigma
+        const lower = Math.max(0, mean - sigma)
+        return {
+          month: row.month,
+          actual: row.actual,
+          mean,
+          upper,
+          lower,
+          bandWidth: Math.max(0, upper - lower),
+        }
+      })]
+    }),
+  ) as Record<TimeGrain, BandedRow[]>
+  const bandedData = bandedDataByGrain.monthly
 
   return {
     currency: cur,
@@ -310,9 +407,13 @@ function computeBucket(cur: string, rows: any[], safeNum: (v: unknown) => number
     taxRatio,
     monthlyData,
     categoryData,
-    stackedComposition: { rows: stackedRows, seriesKeys: finalSeries, groupBy },
+    stackedComposition,
     composedData,
     bandedData,
+    timeSeriesData,
+    stackedCompositionByGrain,
+    composedDataByGrain,
+    bandedDataByGrain,
   }
 }
 
@@ -674,9 +775,10 @@ function CustomTooltip({ active, payload, label, symbol }: any) {
 function WidgetContent({
   widget, kpi, monthlyData, categoryData, docTypeData,
   stackedCompositionData, composedData, bandedSpendData,
+  timeSeriesData, stackedCompositionByGrain, composedDataByGrain, bandedSpendDataByGrain,
   currencyModel,
   dashboardAccent,
-  contextSummary, contextSummaryDate, isGeneratingSummary, isPro, onGenerateSummary,
+  contextSummary, contextSummaryDate, isGeneratingSummary, isPro, onGenerateSummary, onCycleTimeGrain,
 }: {
   widget: Widget
   kpi: KPIData
@@ -686,6 +788,10 @@ function WidgetContent({
   stackedCompositionData: { rows: StackedRow[]; seriesKeys: string[]; groupBy: "merchant_domain" | "expense_category" }
   composedData: ComposedRow[]
   bandedSpendData: BandedRow[]
+  timeSeriesData: Record<TimeGrain, MonthlyData[]>
+  stackedCompositionByGrain: Record<TimeGrain, { rows: StackedRow[]; seriesKeys: string[]; groupBy: "merchant_domain" | "expense_category" }>
+  composedDataByGrain: Record<TimeGrain, ComposedRow[]>
+  bandedSpendDataByGrain: Record<TimeGrain, BandedRow[]>
   currencyModel: DashboardCurrencyModel
   dashboardAccent: string
   contextSummary: string | null
@@ -693,6 +799,7 @@ function WidgetContent({
   isGeneratingSummary: boolean
   isPro: boolean
   onGenerateSummary: () => void
+  onCycleTimeGrain: (widgetId: string) => void
 }) {
   const symbol = currencyToSymbol(kpi.currency)
   const { resolvedTheme } = useTheme()
@@ -732,6 +839,17 @@ function WidgetContent({
   const axisTickColor = themeMode === "dark" ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.5)"
   const gridStroke    = themeMode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)"
   const legendColor   = themeMode === "dark" ? "rgba(255,255,255,0.8)"  : "rgba(0,0,0,0.8)"
+  const timeGrain = widget.timeGrain ?? "monthly"
+  const drillButton = DRILLABLE_WIDGET_TYPES.has(widget.type) ? (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); onCycleTimeGrain(widget.id) }}
+      className="rounded-md border border-border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      title="Cycle monthly, weekly, and daily view"
+    >
+      {TIME_GRAIN_LABEL[timeGrain]}
+    </button>
+  ) : null
 
   // Multi-currency bucket order for stacked rows: primary first, then the rest
   // sorted by activity. Keeps the user's dominant currency anchored at the top.
@@ -942,6 +1060,7 @@ function WidgetContent({
 
   if (widget.type === "area-chart") {
     const variant = widget.chartVariant ?? "area"
+    const activeMonthlyData = timeSeriesData[timeGrain] ?? monthlyData
     const axisProps = {
       xAxis: <XAxis dataKey="month" tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} />,
       yAxis: <YAxis tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${symbol}${(v/1000).toFixed(0)}k`} />,
@@ -951,23 +1070,26 @@ function WidgetContent({
     }
     return (
       <div className="flex h-full flex-col">
-        <p className="mb-3 text-xs text-muted-foreground">Monthly income vs expenses from your documents</p>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <p className="min-w-0 text-xs text-muted-foreground">{TIME_GRAIN_LABEL[timeGrain]} income vs expenses from your documents</p>
+          {drillButton}
+        </div>
         <div className="flex-1 min-h-0">
           <ResponsiveContainer width="100%" height="100%">
             {variant === "bar" ? (
-              <BarChart data={monthlyData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }} barSize={20}>
+              <BarChart data={activeMonthlyData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }} barSize={20}>
                 {axisProps.grid}{axisProps.xAxis}{axisProps.yAxis}{axisProps.tooltip}{axisProps.legend}
                 <Bar dataKey="income" name="Income" fill={colors.primary} radius={[4,4,0,0]} />
                 <Bar dataKey="expenses" name="Expenses" fill={colors.secondary} radius={[4,4,0,0]} />
               </BarChart>
             ) : variant === "line" ? (
-              <LineChart data={monthlyData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+              <LineChart data={activeMonthlyData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                 {axisProps.grid}{axisProps.xAxis}{axisProps.yAxis}{axisProps.tooltip}{axisProps.legend}
                 <Line type="monotone" dataKey="income" name="Income" stroke={colors.primary} strokeWidth={2.5} dot={{ fill: colors.primary, r: 3, strokeWidth: 0 }} activeDot={{ r: 5 }} />
                 <Line type="monotone" dataKey="expenses" name="Expenses" stroke={colors.secondary} strokeWidth={2.5} dot={{ fill: colors.secondary, r: 3, strokeWidth: 0 }} activeDot={{ r: 5 }} />
               </LineChart>
             ) : (
-              <AreaChart data={monthlyData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+              <AreaChart data={activeMonthlyData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                 <defs>
                   <linearGradient id={`incomeGrad-${widget.id}`} x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor={colors.primary} stopOpacity={0.25} /><stop offset="95%" stopColor={colors.primary} stopOpacity={0} />
@@ -988,12 +1110,16 @@ function WidgetContent({
   }
 
   if (widget.type === "line-chart") {
+    const activeMonthlyData = timeSeriesData[timeGrain] ?? monthlyData
     return (
       <div className="flex h-full flex-col">
-        <p className="mb-3 text-xs text-muted-foreground">{widget.title ?? "Trend over time"}</p>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <p className="min-w-0 text-xs text-muted-foreground">{TIME_GRAIN_LABEL[timeGrain]} {widget.title ?? "trend over time"}</p>
+          {drillButton}
+        </div>
         <div className="flex-1 min-h-0">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={monthlyData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+            <LineChart data={activeMonthlyData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
               <XAxis dataKey="month" tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${symbol}${(v/1000).toFixed(0)}k`} />
@@ -1103,21 +1229,25 @@ function WidgetContent({
   }
 
   if (widget.type === "stacked-bar") {
-    const groupLabel = stackedCompositionData.groupBy === "merchant_domain" ? "merchant domain" : "expense category"
+    const activeStackedData = stackedCompositionByGrain[timeGrain] ?? stackedCompositionData
+    const groupLabel = activeStackedData.groupBy === "merchant_domain" ? "merchant domain" : "expense category"
     return (
       <div className="flex h-full flex-col">
-        <p className="mb-3 text-xs text-muted-foreground">Monthly spend share by {groupLabel}</p>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <p className="min-w-0 text-xs text-muted-foreground">{TIME_GRAIN_LABEL[timeGrain]} spend share by {groupLabel}</p>
+          {drillButton}
+        </div>
         <div className="flex-1 min-h-0">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={stackedCompositionData.rows} margin={{ top: 5, right: 10, left: 0, bottom: 0 }} barSize={24}>
-              <defs>{renderCategoricalDefs(widget.id, MULTI_COLORS, themeMode, stackedCompositionData.seriesKeys.length)}</defs>
+            <BarChart data={activeStackedData.rows} margin={{ top: 5, right: 10, left: 0, bottom: 0 }} barSize={24}>
+              <defs>{renderCategoricalDefs(widget.id, MULTI_COLORS, themeMode, activeStackedData.seriesKeys.length)}</defs>
               <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
               <XAxis dataKey="month" tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${symbol}${(v/1000).toFixed(0)}k`} />
               <Tooltip content={<CustomTooltip symbol={symbol} />} />
               <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, color: legendColor }} />
-              {stackedCompositionData.seriesKeys.map((key, i) => (
-                <Bar key={key} dataKey={key} name={key} stackId="spend" fill={categoricalFillFor(widget.id, MULTI_COLORS, i)} radius={i === stackedCompositionData.seriesKeys.length - 1 ? [4,4,0,0] : [0,0,0,0]} />
+              {activeStackedData.seriesKeys.map((key, i) => (
+                <Bar key={key} dataKey={key} name={key} stackId="spend" fill={categoricalFillFor(widget.id, MULTI_COLORS, i)} radius={i === activeStackedData.seriesKeys.length - 1 ? [4,4,0,0] : [0,0,0,0]} />
               ))}
             </BarChart>
           </ResponsiveContainer>
@@ -1127,12 +1257,16 @@ function WidgetContent({
   }
 
   if (widget.type === "composed-chart") {
+    const activeComposedData = composedDataByGrain[timeGrain] ?? composedData
     return (
       <div className="flex h-full flex-col">
-        <p className="mb-3 text-xs text-muted-foreground">Income, expenses, and net position per month</p>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <p className="min-w-0 text-xs text-muted-foreground">Income, expenses, and net position by {TIME_GRAIN_UNIT[timeGrain]}</p>
+          {drillButton}
+        </div>
         <div className="flex-1 min-h-0">
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={composedData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+            <ComposedChart data={activeComposedData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id={`netGrad-${widget.id}`} x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor={colors.tertiary} stopOpacity={0.25} /><stop offset="95%" stopColor={colors.tertiary} stopOpacity={0} />
@@ -1154,12 +1288,16 @@ function WidgetContent({
   }
 
   if (widget.type === "banded-area") {
+    const activeBandedData = bandedSpendDataByGrain[timeGrain] ?? bandedSpendData
     return (
       <div className="flex h-full flex-col">
-        <p className="mb-3 text-xs text-muted-foreground">Monthly spend vs trailing normal range (mean ± 1σ)</p>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <p className="min-w-0 text-xs text-muted-foreground">{TIME_GRAIN_LABEL[timeGrain]} spend vs trailing normal range (mean ± 1σ)</p>
+          {drillButton}
+        </div>
         <div className="flex-1 min-h-0">
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={bandedSpendData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+            <ComposedChart data={activeBandedData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id={`bandGrad-${widget.id}`} x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor={colors.primary} stopOpacity={0.18} /><stop offset="95%" stopColor={colors.primary} stopOpacity={0.04} />
@@ -1314,6 +1452,26 @@ function ReadinessHint({ state }: { state: ReadinessState }) {
   )
 }
 
+function emptyTimeSeries(): Record<TimeGrain, MonthlyData[]> {
+  return { monthly: [], weekly: [], daily: [] }
+}
+
+function emptyComposedSeries(): Record<TimeGrain, ComposedRow[]> {
+  return { monthly: [], weekly: [], daily: [] }
+}
+
+function emptyBandedSeries(): Record<TimeGrain, BandedRow[]> {
+  return { monthly: [], weekly: [], daily: [] }
+}
+
+function emptyStackedSeries(): Record<TimeGrain, { rows: StackedRow[]; seriesKeys: string[]; groupBy: "merchant_domain" | "expense_category" }> {
+  return {
+    monthly: { rows: [], seriesKeys: [], groupBy: "expense_category" },
+    weekly: { rows: [], seriesKeys: [], groupBy: "expense_category" },
+    daily: { rows: [], seriesKeys: [], groupBy: "expense_category" },
+  }
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function SmartDashboardPage() {
@@ -1327,6 +1485,10 @@ export default function SmartDashboardPage() {
   const [stackedCompositionData, setStackedCompositionData] = useState<{ rows: StackedRow[]; seriesKeys: string[]; groupBy: "merchant_domain" | "expense_category" }>({ rows: [], seriesKeys: [], groupBy: "expense_category" })
   const [composedData, setComposedData] = useState<ComposedRow[]>([])
   const [bandedSpendData, setBandedSpendData] = useState<BandedRow[]>([])
+  const [timeSeriesData, setTimeSeriesData] = useState<Record<TimeGrain, MonthlyData[]>>(emptyTimeSeries)
+  const [stackedCompositionByGrain, setStackedCompositionByGrain] = useState<Record<TimeGrain, { rows: StackedRow[]; seriesKeys: string[]; groupBy: "merchant_domain" | "expense_category" }>>(emptyStackedSeries)
+  const [composedDataByGrain, setComposedDataByGrain] = useState<Record<TimeGrain, ComposedRow[]>>(emptyComposedSeries)
+  const [bandedSpendDataByGrain, setBandedSpendDataByGrain] = useState<Record<TimeGrain, BandedRow[]>>(emptyBandedSeries)
   const [currencyModel, setCurrencyModel] = useState<DashboardCurrencyModel>(EMPTY_CURRENCY_MODEL)
   const [widgets, setWidgets] = useState<Widget[]>([])
   const [layout, setLayout] = useState<LayoutItem[]>([])
@@ -1538,6 +1700,10 @@ export default function SmartDashboardPage() {
       setStackedCompositionData(aggregate.stackedComposition)
       setComposedData(aggregate.composedData)
       setBandedSpendData(aggregate.bandedData)
+      setTimeSeriesData(aggregate.timeSeriesData)
+      setStackedCompositionByGrain(aggregate.stackedCompositionByGrain)
+      setComposedDataByGrain(aggregate.composedDataByGrain)
+      setBandedSpendDataByGrain(aggregate.bandedDataByGrain)
     }
 
     // Document Distribution is count-based and stays cross-currency global.
@@ -1768,21 +1934,35 @@ export default function SmartDashboardPage() {
   }
 
   // ── Save layout ────────────────────────────────────────────────────────────
-  const saveLayout = async () => {
+  const persistLayout = async (
+    nextWidgets: Widget[] = widgets,
+    nextLayout: LayoutItem[] = layout,
+    options: { closeEditor?: boolean; showConfirm?: boolean } = {},
+  ) => {
     if (!session?.user?.id) return
+    const closeEditor = options.closeEditor ?? true
+    const showConfirm = options.showConfirm ?? true
     setIsSaving(true)
     await supabase.from("dashboard_layouts").upsert({
       user_id: session.user.id,
-      layout: { widgets, gridLayout: layout, palette: { accent: dashboardAccent } },
+      layout: { widgets: nextWidgets, gridLayout: nextLayout, palette: { accent: dashboardAccent } },
       updated_at: new Date().toISOString(),
     }, { onConflict: "user_id" })
     setIsSaving(false)
     setIsDirty(false)
-    setIsEditingLayout(false)
-    setSelectedWidgetId(null)
-    setShowColorPicker(false)
-    setSavedConfirm(true)
-    setTimeout(() => setSavedConfirm(false), 2000)
+    if (closeEditor) {
+      setIsEditingLayout(false)
+      setSelectedWidgetId(null)
+      setShowColorPicker(false)
+    }
+    if (showConfirm) {
+      setSavedConfirm(true)
+      setTimeout(() => setSavedConfirm(false), 2000)
+    }
+  }
+
+  const saveLayout = async () => {
+    await persistLayout(widgets, layout, { closeEditor: true, showConfirm: true })
   }
 
   // ── Widget management ──────────────────────────────────────────────────────
@@ -1810,6 +1990,16 @@ export default function SmartDashboardPage() {
     setLayout(prev => prev.filter(l => l.i !== id))
     if (selectedWidgetId === id) setSelectedWidgetId(null)
     setIsDirty(true)
+  }
+
+  const cycleWidgetTimeGrain = (widgetId: string) => {
+    const nextWidgets = widgets.map(w => w.id === widgetId ? { ...w, timeGrain: nextTimeGrain(w.timeGrain) } : w)
+    setWidgets(nextWidgets)
+    if (isEditingLayout) {
+      setIsDirty(true)
+    } else {
+      void persistLayout(nextWidgets, layout, { closeEditor: false, showConfirm: false })
+    }
   }
 
   // Accent-only palette wiring. Roles are derived at render time from
@@ -1920,18 +2110,63 @@ export default function SmartDashboardPage() {
           const isBetaUser = betaEmail && session?.user?.email === betaEmail
           const canUseAA = isPro && isBetaUser
           return canUseAA ? (
-            <button
-              onClick={runAdvancedAnalytics}
-              disabled={isRunningAnalytics || readinessState.kind === "empty"}
-              className={`flex h-7 items-center gap-1.5 rounded-lg border px-3 text-xs transition-all duration-200 hover:-translate-y-0.5 hover:bg-muted hover:text-foreground ${
-                readinessState.kind === "unlock_moment"
-                  ? "border-primary/60 text-foreground [box-shadow:0_0_20px_-4px_var(--retro-glow-red)]"
-                  : "border-border text-muted-foreground"
-              } disabled:opacity-50`}
+            <div
+              className="relative"
+              onMouseEnter={cancelAdvancedMenuClose}
+              onMouseLeave={showAdvancedMenu ? scheduleAdvancedMenuClose : undefined}
             >
-              {isRunningAnalytics ? <div className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" /> : <Sparkles className="h-3.5 w-3.5" />}
-              {isRunningAnalytics ? "Generating..." : "Advanced Analytics"}
-            </button>
+              <button
+                onClick={() => { cancelAdvancedMenuClose(); setShowAdvancedMenu(!showAdvancedMenu); setShowColorPicker(false); setShowDateFilter(false) }}
+                className={`flex h-7 items-center gap-1.5 rounded-lg border px-3 text-xs transition-all duration-200 hover:-translate-y-0.5 hover:bg-muted hover:text-foreground ${
+                  readinessState.kind === "unlock_moment"
+                    ? "border-primary/60 text-foreground [box-shadow:0_0_20px_-4px_var(--retro-glow-red)]"
+                    : "border-border text-muted-foreground"
+                }`}
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                Advanced Analytics
+                {readinessState.kind === "unlock_moment" && (
+                  <span className="flex items-center gap-1 ml-1 text-primary">
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+                      <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
+                    </span>
+                    <span className="text-[10px] font-medium">Unlocked</span>
+                  </span>
+                )}
+                {readinessState.kind === "new_signal" && (
+                  <span className="flex items-center gap-1 ml-1 text-primary">
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+                      <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
+                    </span>
+                    <span className="text-[10px] font-medium">New data</span>
+                  </span>
+                )}
+              </button>
+              <div className={`absolute left-0 top-9 z-30 min-w-[260px] origin-top-left rounded-xl border border-border bg-card p-3 shadow-xl transition-all duration-200 ${
+                showAdvancedMenu
+                  ? "pointer-events-auto translate-y-0 scale-100 opacity-100"
+                  : "pointer-events-none -translate-y-1 scale-95 opacity-0"
+              }`}>
+                <p className="mb-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">AI Analysis</p>
+                <button
+                  onClick={runAdvancedAnalytics}
+                  disabled={isRunningAnalytics || readinessState.kind === "empty"}
+                  className="flex w-full flex-col rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted disabled:opacity-50"
+                >
+                  <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+                    {isRunningAnalytics ? (
+                      <><div className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" /> Generating…</>
+                    ) : (
+                      <><Sparkles className="h-3.5 w-3.5 text-primary" /> Run Advanced Analytics</>
+                    )}
+                  </span>
+                  <span className="mt-0.5 text-xs text-muted-foreground">Generate new AI-powered visualizations</span>
+                </button>
+                <ReadinessHint state={readinessState} />
+              </div>
+            </div>
           ) : (
             <Link
               href="/pricing"
@@ -2470,6 +2705,10 @@ export default function SmartDashboardPage() {
                         stackedCompositionData={stackedCompositionData}
                         composedData={composedData}
                         bandedSpendData={bandedSpendData}
+                        timeSeriesData={timeSeriesData}
+                        stackedCompositionByGrain={stackedCompositionByGrain}
+                        composedDataByGrain={composedDataByGrain}
+                        bandedSpendDataByGrain={bandedSpendDataByGrain}
                         currencyModel={currencyModel}
                         dashboardAccent={dashboardAccent}
                         contextSummary={contextSummary}
@@ -2477,6 +2716,7 @@ export default function SmartDashboardPage() {
                         isGeneratingSummary={isGeneratingSummary}
                         isPro={isPro}
                         onGenerateSummary={generateContextSummary}
+                        onCycleTimeGrain={cycleWidgetTimeGrain}
                       />
                     </div>
 

@@ -178,9 +178,11 @@ export function HeroSection() {
                 </div>
                 <h3 className="text-base font-semibold text-foreground">Smart Storage</h3>
               </div>
-              <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
-                <span className="block whitespace-nowrap">Secure cloud storage. AI-structured data. Reports ready.</span>
-                <span className="block whitespace-nowrap text-xs text-muted-foreground/70">Tax-ready insights, smart flags, and exportable summaries when you need them.</span>
+              <p className="mb-4 text-[11px] leading-snug text-muted-foreground sm:text-sm sm:leading-relaxed">
+                <span className="block sm:whitespace-nowrap">Secure cloud storage. AI-structured data. Reports ready.</span>
+                <span className="block text-[10px] leading-snug text-muted-foreground/70 sm:whitespace-nowrap sm:text-xs">
+                  Tax-ready insights, smart flags, and exportable summaries when you need them.
+                </span>
               </p>
               {/* Tags */}
               <div className="mt-3 flex flex-wrap gap-1.5">

@@ -1366,9 +1366,155 @@ export default function SmartStoragePage() {
   if (!sessionLoaded) return null
   if (!session) return <AuthGuardModal isVisible={true} />
 
+  const storageToolbar = (
+    <div className="flex min-w-0 items-center gap-2">
+      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden text-sm">
+        {classificationView ? (
+          <>
+            <button
+              onClick={() => { setClassificationView(null); setDocumentVirtualView(null); setSelectedLeftFolder("Documents") }}
+              className="rounded px-1 py-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >Classification</button>
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <span className="truncate px-1 font-medium text-foreground">{classificationView}</span>
+          </>
+        ) : documentVirtualView === "unclassified" ? (
+          <>
+            <button
+              onClick={() => { setDocumentVirtualView(null); setSelectedLeftFolder("Documents") }}
+              className="rounded px-1 py-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >Documents</button>
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <span className="truncate px-1 font-medium text-foreground">Unclassified</span>
+          </>
+        ) : (
+          breadcrumb.map((crumb, index) => (
+            <span key={crumb.id} className="flex min-w-0 items-center gap-1">
+              {index > 0 && <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+              <button
+                onClick={() => navigateBreadcrumb(crumb.id, crumb.name, index)}
+                className={`truncate rounded px-1 py-0.5 transition-colors hover:bg-muted ${
+                  index === breadcrumb.length - 1 ? "font-medium text-foreground" : "text-muted-foreground"
+                }`}
+              >
+                {crumb.name}
+              </button>
+            </span>
+          ))
+        )}
+      </div>
+
+      {selectedFiles.size > 0 && (
+        <div className="flex shrink-0 items-center gap-1 border-r border-border pr-2">
+          <span className="text-xs text-muted-foreground">{selectedFiles.size} selected</span>
+          <button
+            onClick={() => {
+              const fileId = [...selectedFiles][0]
+              const file = files.find(f => f.id === fileId)
+              if (file) { setRenamingFileId(fileId); setRenameFileValue(file.filename) }
+            }}
+            disabled={selectedFiles.size !== 1}
+            className="flex h-7 items-center gap-1 rounded px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+          >
+            <Pencil className="h-3 w-3" />
+            Rename
+          </button>
+          <button
+            onClick={() => { void Promise.all([...selectedFiles].map(id => handleDeleteFile(id))) }}
+            className="flex h-7 items-center gap-1 rounded px-2 text-xs text-destructive transition-colors hover:bg-destructive/10"
+          >
+            <X className="h-3 w-3" />
+            Delete
+          </button>
+        </div>
+      )}
+
+      <div className="flex shrink-0 items-center gap-1">
+        {breadcrumb.length > 1 && (
+          <button
+            onClick={() => { const prev = breadcrumb[breadcrumb.length - 2]; navigateBreadcrumb(prev.id, prev.name, breadcrumb.length - 2) }}
+            className="flex h-7 w-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+          </button>
+        )}
+        {!classificationView && !documentVirtualView && (<>
+          <button
+            onClick={() => setIsCreatingFolder(true)}
+            className="flex h-7 items-center gap-1.5 rounded px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            New folder
+          </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild disabled={isUploading}>
+              <button className="flex h-7 items-center gap-1.5 rounded px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50">
+                {isUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                {isUploading ? "Uploading..." : "Upload"}
+                <ChevronDown className="h-3.5 w-3.5" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="min-w-[176px] rounded-xl">
+              <DropdownMenuItem onSelect={() => fileInputRef.current?.click()}>
+                <Upload className="h-3.5 w-3.5" />
+                Upload files
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => directoryInputRef.current?.click()}>
+                <FolderOpen className="h-3.5 w-3.5" />
+                Upload folder
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <button
+            onClick={() => setManualEntryOpen(true)}
+            className="flex h-7 items-center gap-1.5 rounded px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <PenLine className="h-3.5 w-3.5" />
+            Add Entry
+          </button>
+        </>)}
+        {(classificationView || documentVirtualView) && (
+          <select
+            value={classificationSort}
+            onChange={(e) => setClassificationSort(e.target.value as typeof classificationSort)}
+            className="h-7 rounded border border-border bg-card px-2 text-xs text-muted-foreground focus:outline-none"
+          >
+            <option value="date-desc">Newest first</option>
+            <option value="date-asc">Oldest first</option>
+            <option value="name">Name A-Z</option>
+          </select>
+        )}
+        <div className="flex items-center rounded border border-border">
+          <button
+            onClick={() => setViewMode("list")}
+            className={`flex h-6 w-6 items-center justify-center rounded-l text-xs transition-colors ${viewMode === "list" ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/50"}`}
+            aria-label="List view"
+          >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth={1.5}>
+              <line x1="4" y1="4" x2="14" y2="4"/><line x1="4" y1="8" x2="14" y2="8"/><line x1="4" y1="12" x2="14" y2="12"/>
+              <rect x="1" y="3" width="2" height="2" rx="0.5" fill="currentColor" stroke="none"/>
+              <rect x="1" y="7" width="2" height="2" rx="0.5" fill="currentColor" stroke="none"/>
+              <rect x="1" y="11" width="2" height="2" rx="0.5" fill="currentColor" stroke="none"/>
+            </svg>
+          </button>
+          <button
+            onClick={() => setViewMode("grid")}
+            className={`flex h-6 w-6 items-center justify-center rounded-r text-xs transition-colors ${viewMode === "grid" ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/50"}`}
+            aria-label="Grid view"
+          >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth={1.5}>
+              <rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/>
+              <rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+
   return (
     <div className="flex min-h-screen flex-col">
-      <Navbar />
+      <Navbar wide toolSlot={storageToolbar} />
 
       <main className="flex min-h-0 flex-1 overflow-hidden">
         <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -1501,7 +1647,7 @@ export default function SmartStoragePage() {
             onDrop={handleDrop}
           >
             {/* Toolbar */}
-            <div className="flex h-10 items-center gap-2 border-b border-border bg-card/50 px-4">
+            <div className="flex h-10 items-center gap-2 border-b border-border bg-card/50 px-4 md:hidden">
               {/* Mobile nav trigger */}
               <button
                 className="flex md:hidden h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"

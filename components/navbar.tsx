@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import Image from "next/image"
+import type { ReactNode } from "react"
 import { useEffect, useRef, useState } from "react"
 import { useTheme } from "next-themes"
 import { ChevronDown, Menu, X, Sun, Moon, User } from "lucide-react"
@@ -55,7 +56,7 @@ function AccountMenuButton({ onClick }: { onClick: () => void }) {
   )
 }
 
-export function Navbar() {
+export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [productsOpen, setProductsOpen] = useState(false)
   const [toolsOpen, setToolsOpen] = useState(false)
@@ -144,7 +145,9 @@ export function Navbar() {
   return (
     <>
       <header className="sticky top-0 z-50 w-full px-4 pt-4">
-        <nav className="glass-surface mx-auto flex max-w-6xl items-center justify-between rounded-2xl px-5 py-3">
+        <nav className={`glass-surface mx-auto flex items-center justify-between rounded-2xl px-5 py-3 ${
+          wide ? "w-full max-w-none" : "max-w-6xl"
+        }`}>
           {/* Desktop Logo */}
           <Link href="/" className="flex-shrink-0">
             <Image
@@ -168,9 +171,15 @@ export function Navbar() {
           </Link>
 
           {/* Desktop Navigation */}
-          <div className="hidden flex-1 items-center gap-6 md:ml-6 md:flex">
-            {showAssistantPreview ? <ProductAssistantPreview /> : null}
-            <div className="ml-auto flex items-center gap-6">
+          <div className="hidden min-w-0 flex-1 items-center gap-6 md:ml-6 md:flex">
+            {toolSlot ? (
+              <div className="min-w-0 flex-1">{toolSlot}</div>
+            ) : showAssistantPreview ? (
+              <ProductAssistantPreview />
+            ) : null}
+            <div className="ml-auto flex shrink-0 items-center gap-6">
+            {!toolSlot && (
+              <>
             {/* Products Dropdown */}
             <div
               className="relative"
@@ -278,6 +287,8 @@ export function Navbar() {
             >
               Pricing
             </Link>
+              </>
+            )}
 
             <ThemeToggle />
 

@@ -1737,14 +1737,141 @@ export default function SmartDashboardPage() {
     static: isMobile || !isEditingLayout,
   }))
 
+  const dashboardToolbar = (
+    <div className="flex min-w-0 items-center justify-between gap-2">
+      <div className="flex min-w-0 flex-1 items-center gap-2 overflow-visible">
+        <div
+          className="relative"
+          onMouseEnter={!isMobile ? cancelDateFilterClose : undefined}
+          onMouseLeave={!isMobile && showDateFilter ? scheduleDateFilterClose : undefined}
+        >
+          <button
+            onClick={() => { cancelDateFilterClose(); setShowDateFilter(!showDateFilter); setShowColorPicker(false) }}
+            className="flex h-7 items-center gap-1.5 rounded-lg border border-border px-3 text-xs text-muted-foreground transition-all duration-200 hover:-translate-y-0.5 hover:bg-muted hover:text-foreground"
+          >
+            <Calendar className="h-3.5 w-3.5" />
+            {dateFrom && dateTo ? `${dateFrom} - ${dateTo}` : "All time"}
+            <ChevronDown className={`h-3 w-3 transition-transform ${showDateFilter ? "rotate-180" : ""}`} />
+          </button>
+          <div className={`absolute left-0 top-9 z-30 origin-top-left rounded-xl border border-border bg-card p-4 shadow-xl transition-all duration-200 ${
+            showDateFilter
+              ? "pointer-events-auto translate-y-0 scale-100 opacity-100"
+              : "pointer-events-none -translate-y-1 scale-95 opacity-0"
+          }`}>
+            <div className="space-y-1">
+              {(() => {
+                const today = new Date()
+                const fmt = (d: Date) => d.toISOString().slice(0, 10)
+                const todayStr = fmt(today)
+                const dayOfWeek = today.getDay() === 0 ? 7 : today.getDay()
+                const lastSun = new Date(today); lastSun.setDate(today.getDate() - dayOfWeek)
+                const lastMon = new Date(lastSun); lastMon.setDate(lastSun.getDate() - 6)
+                const firstOfThisMonth = new Date(today.getFullYear(), today.getMonth(), 1)
+                const lastMonthEnd = new Date(firstOfThisMonth); lastMonthEnd.setDate(lastMonthEnd.getDate() - 1)
+                const lastMonthStart = new Date(lastMonthEnd.getFullYear(), lastMonthEnd.getMonth(), 1)
+
+                return [
+                  { label: "All time", from: "", to: "" },
+                  { label: "This year", from: `${today.getFullYear()}-01-01`, to: todayStr },
+                  { label: "Last week", from: fmt(lastMon), to: fmt(lastSun) },
+                  { label: "Last month", from: fmt(lastMonthStart), to: fmt(lastMonthEnd) },
+                ]
+              })().map(p => (
+                <button key={p.label} onClick={() => { setDateFrom(p.from); setDateTo(p.to); setShowDateFilter(false) }}
+                  className={`block w-full rounded-lg px-3 py-1.5 text-left text-xs transition-colors hover:bg-muted ${dateFrom === p.from && dateTo === p.to ? "bg-primary/10 font-medium text-primary" : "text-foreground"}`}
+                >{p.label}</button>
+              ))}
+              <div className="my-1 h-px bg-border" />
+              <div className="flex items-center gap-2 pt-1">
+                <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-32 rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground" />
+                <span className="text-xs text-muted-foreground">to</span>
+                <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-32 rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {!isMobile && (() => {
+          const betaEmail = process.env.NEXT_PUBLIC_AA_BETA_EMAIL
+          const isBetaUser = betaEmail && session?.user?.email === betaEmail
+          const canUseAA = isPro && isBetaUser
+          return canUseAA ? (
+            <button
+              onClick={runAdvancedAnalytics}
+              disabled={isRunningAnalytics || readinessState.kind === "empty"}
+              className={`flex h-7 items-center gap-1.5 rounded-lg border px-3 text-xs transition-all duration-200 hover:-translate-y-0.5 hover:bg-muted hover:text-foreground ${
+                readinessState.kind === "unlock_moment"
+                  ? "border-primary/60 text-foreground [box-shadow:0_0_20px_-4px_var(--retro-glow-red)]"
+                  : "border-border text-muted-foreground"
+              } disabled:opacity-50`}
+            >
+              {isRunningAnalytics ? <div className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" /> : <Sparkles className="h-3.5 w-3.5" />}
+              {isRunningAnalytics ? "Generating..." : "Advanced Analytics"}
+            </button>
+          ) : (
+            <Link
+              href="/pricing"
+              title="Upgrade to Pro to unlock Advanced Analytics"
+              className="flex h-7 items-center gap-1.5 rounded-lg border border-border px-3 text-xs text-muted-foreground opacity-40 transition-opacity hover:opacity-70"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              Advanced Analytics
+              <Lock className="h-3 w-3" />
+            </Link>
+          )
+        })()}
+      </div>
+
+      {!isMobile && (
+        <div className="flex shrink-0 items-center gap-2">
+          <span className={`text-xs font-medium ${isEditingLayout ? "text-primary" : "text-muted-foreground"}`}>
+            {savedConfirm ? "Saved / Locked" : isEditingLayout ? (isDirty ? "Editing - Unsaved" : "Editing") : "Saved / Locked"}
+          </span>
+          <button
+            onClick={() => {
+              if (!isEditingLayout) {
+                setIsEditingLayout(true)
+                setShowWidgetPanel(true)
+                return
+              }
+              if (isDirty) {
+                void saveLayout()
+                return
+              }
+              setIsEditingLayout(false)
+              setSelectedWidgetId(null)
+              setShowColorPicker(false)
+              setShowAdvancedMenu(false)
+              setShowDateFilter(false)
+            }}
+            disabled={isSaving}
+            className={`flex h-7 items-center gap-1.5 rounded-lg px-3 text-xs transition-all ${
+              !isEditingLayout
+                ? "border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                : isDirty
+                  ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                  : "border border-border text-primary hover:bg-primary/5"
+            }`}
+          >
+            {savedConfirm ? <><Check className="h-3.5 w-3.5" /> Saved</>
+              : isSaving ? <><div className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" /> Saving...</>
+              : !isEditingLayout ? <><LayoutGrid className="h-3.5 w-3.5" /> Edit Layout</>
+              : isDirty ? <><Save className="h-3.5 w-3.5" /> Save Layout</>
+              : <><Lock className="h-3.5 w-3.5" /> Lock Layout</>}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+
   return (
     <div className="flex h-screen flex-col overflow-hidden">
-      <Navbar />
+      <Navbar wide toolSlot={dashboardToolbar} />
 
       <div className="flex flex-1 flex-col overflow-hidden">
 
         {/* TOP TOOLBAR */}
-        <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-4">
+        <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-4 md:hidden">
           <div className="flex min-w-0 flex-1 items-center gap-2 overflow-visible">
 
             {/* Date filter */}

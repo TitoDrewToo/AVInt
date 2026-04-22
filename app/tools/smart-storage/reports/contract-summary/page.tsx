@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { Suspense, useState, useEffect, useCallback } from "react"
 import { Navbar } from "@/components/navbar"
 import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
@@ -10,6 +10,7 @@ import { summarizeCurrencies } from "@/lib/report-utils"
 import type { Session } from "@supabase/supabase-js"
 import { AlertTriangle, ArrowLeft, Download, ChevronDown, ChevronUp, RefreshCw, FolderOpen, Printer } from "lucide-react"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 
 interface FolderOption { id: string; name: string }
 
@@ -107,7 +108,8 @@ function StatusBadge({ status }: { status: ObligationDisplay }) {
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
-export default function ContractSummaryPage() {
+function ContractSummaryContent() {
+  const searchParams = useSearchParams()
   const [session, setSession]             = useState<Session | null>(null)
   const [sessionLoaded, setSessionLoaded] = useState(false)
   const { isActive: isPro }               = useEntitlement(session)
@@ -115,10 +117,10 @@ export default function ContractSummaryPage() {
   const [obligations, setObligations]     = useState<Record<string, PaymentObligation[]>>({})
   const [loading, setLoading]             = useState(true)
   const [error, setError]                 = useState<string | null>(null)
-  const [dateFrom, setDateFrom]           = useState("")
-  const [dateTo, setDateTo]               = useState("")
+  const [dateFrom, setDateFrom]           = useState(searchParams.get("dateFrom") ?? "")
+  const [dateTo, setDateTo]               = useState(searchParams.get("dateTo") ?? "")
   const [folders, setFolders]             = useState<FolderOption[]>([])
-  const [targetFolder, setTargetFolder]   = useState("")
+  const [targetFolder, setTargetFolder]   = useState(searchParams.get("targetFolder") ?? "")
   const [expandedFileId, setExpandedFileId] = useState<string | null>(null)
   const [markPaidForm, setMarkPaidForm]   = useState<MarkPaidForm | null>(null)
   const [saving, setSaving]               = useState(false)
@@ -723,5 +725,13 @@ export default function ContractSummaryPage() {
         </div>
       </main>
     </div>
+  )
+}
+
+export default function ContractSummaryPage() {
+  return (
+    <Suspense fallback={null}>
+      <ContractSummaryContent />
+    </Suspense>
   )
 }

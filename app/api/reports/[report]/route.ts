@@ -48,6 +48,32 @@ function getFilters(req: NextRequest) {
 }
 
 async function getFileIds(userId: string, documentTypes: string[], targetFolder: string) {
+  let targetFolderIds: string[] = []
+  if (targetFolder) {
+    const { data: folders, error: folderErr } = await supabaseAdmin
+      .from("folders")
+      .select("id, parent_id")
+      .eq("user_id", userId)
+
+    if (folderErr) throw new Error(folderErr.message)
+
+    const childrenByParent = new Map<string | null, string[]>()
+    for (const folder of folders ?? []) {
+      const parentId = folder.parent_id ?? null
+      childrenByParent.set(parentId, [...(childrenByParent.get(parentId) ?? []), folder.id])
+    }
+
+    const queue = [targetFolder]
+    const seen = new Set<string>()
+    while (queue.length > 0) {
+      const folderId = queue.shift()!
+      if (seen.has(folderId)) continue
+      seen.add(folderId)
+      queue.push(...(childrenByParent.get(folderId) ?? []))
+    }
+    targetFolderIds = Array.from(seen)
+  }
+
   let query = supabaseAdmin
     .from("files")
     .select("id")
@@ -57,7 +83,7 @@ async function getFileIds(userId: string, documentTypes: string[], targetFolder:
     query = query.in("document_type", documentTypes)
   }
 
-  if (targetFolder) query = query.eq("folder_id", targetFolder)
+  if (targetFolderIds.length > 0) query = query.in("folder_id", targetFolderIds)
 
   const { data, error } = await query
   if (error) throw new Error(error.message)
@@ -288,6 +314,7 @@ export async function GET(
             .from("document_fields")
             .select("period_start, period_end, document_date, files!inner(user_id)")
             .eq("files.user_id", user.id)
+            .in("file_id", fileIds)
 
           if (yearErr) throw new Error(yearErr.message)
 

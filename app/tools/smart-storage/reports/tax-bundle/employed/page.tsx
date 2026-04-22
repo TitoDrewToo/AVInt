@@ -1,7 +1,8 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { Suspense, useState, useEffect, useCallback, useMemo } from "react"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import type { Session } from "@supabase/supabase-js"
 import {
   AlertTriangle,
@@ -57,17 +58,18 @@ function toISO(d: Date): string {
   return `${y}-${m}-${day}`
 }
 
-export default function EmployedTaxBundlePage() {
+function EmployedTaxBundleContent() {
+  const searchParams = useSearchParams()
   const [session, setSession] = useState<Session | null>(null)
   const [sessionLoaded, setSessionLoaded] = useState(false)
   const { isActive: isPro } = useEntitlement(session)
   const [rows, setRows] = useState<TaxRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [dateFrom, setDateFrom] = useState("")
-  const [dateTo, setDateTo] = useState("")
+  const [dateFrom, setDateFrom] = useState(searchParams.get("dateFrom") ?? "")
+  const [dateTo, setDateTo] = useState(searchParams.get("dateTo") ?? "")
   const [folders, setFolders] = useState<FolderOption[]>([])
-  const [targetFolder, setTargetFolder] = useState("")
+  const [targetFolder, setTargetFolder] = useState(searchParams.get("targetFolder") ?? "")
   const [defaultsApplied, setDefaultsApplied] = useState(false)
   const [totalOwnedDocs, setTotalOwnedDocs] = useState<number | null>(null)
   const [detectedYears, setDetectedYears] = useState<number[]>([])
@@ -559,5 +561,13 @@ export default function EmployedTaxBundlePage() {
         </div>
       </main>
     </div>
+  )
+}
+
+export default function EmployedTaxBundlePage() {
+  return (
+    <Suspense fallback={null}>
+      <EmployedTaxBundleContent />
+    </Suspense>
   )
 }

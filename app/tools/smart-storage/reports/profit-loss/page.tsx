@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { Suspense, useState, useEffect, useCallback } from "react"
 import { Navbar } from "@/components/navbar"
 import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
@@ -10,6 +10,7 @@ import { summarizeCurrencies } from "@/lib/report-utils"
 import type { Session } from "@supabase/supabase-js"
 import { AlertTriangle, ArrowLeft, FolderOpen, Printer } from "lucide-react"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 
 interface FolderOption { id: string; name: string }
 
@@ -90,7 +91,8 @@ function prettyIncomeClass(cls: IncomeSourceClass) {
 
 // ── Component ──────────────────────────────────────────────────────────────────
 
-export default function ProfitLossPage() {
+function ProfitLossContent() {
+  const searchParams = useSearchParams()
   const [session, setSession] = useState<Session | null>(null)
   const [sessionLoaded, setSessionLoaded] = useState(false)
   const { isActive: isPro } = useEntitlement(session)
@@ -98,10 +100,10 @@ export default function ProfitLossPage() {
   const [expenseRows, setExpenseRows] = useState<ExpenseEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [dateFrom, setDateFrom] = useState("")
-  const [dateTo, setDateTo] = useState("")
+  const [dateFrom, setDateFrom] = useState(searchParams.get("dateFrom") ?? "")
+  const [dateTo, setDateTo] = useState(searchParams.get("dateTo") ?? "")
   const [folders, setFolders] = useState<FolderOption[]>([])
-  const [targetFolder, setTargetFolder] = useState("")
+  const [targetFolder, setTargetFolder] = useState(searchParams.get("targetFolder") ?? "")
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -616,5 +618,13 @@ export default function ProfitLossPage() {
         </div>
       </main>
     </div>
+  )
+}
+
+export default function ProfitLossPage() {
+  return (
+    <Suspense fallback={null}>
+      <ProfitLossContent />
+    </Suspense>
   )
 }

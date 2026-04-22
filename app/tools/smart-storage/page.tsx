@@ -551,7 +551,15 @@ export default function SmartStoragePage() {
     if (!route) return
 
     setIsNavigatingReport(true)
-    const url = options?.mode && options.mode !== "employed" ? `${route}?mode=${options.mode}` : route
+    const params = new URLSearchParams()
+    if (options?.mode && options.mode !== "employed") params.set("mode", options.mode)
+    if (dateRange.from) params.set("dateFrom", dateRange.from)
+    if (dateRange.to) params.set("dateTo", dateRange.to)
+    if (!classificationView && !documentVirtualView && currentFolderId !== "root") {
+      params.set("targetFolder", currentFolderId)
+    }
+    const queryString = params.toString()
+    const url = queryString ? `${route}?${queryString}` : route
     window.open(url, "_blank", "noopener,noreferrer")
     window.setTimeout(() => setIsNavigatingReport(false), 600)
   }

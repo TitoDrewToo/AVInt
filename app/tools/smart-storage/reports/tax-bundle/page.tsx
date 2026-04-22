@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { Suspense, useState, useEffect, useCallback, useMemo } from "react"
 import { Navbar } from "@/components/navbar"
 import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
@@ -12,6 +12,7 @@ import {
   XCircle, Copy, FileWarning, Ban, Printer, Archive, Save, Loader2,
 } from "lucide-react"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import JSZip from "jszip"
 
 import {
@@ -61,17 +62,18 @@ function prettyIncomeClass(cls: string | null): string {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default function TaxBundlePage() {
+function TaxBundleContent() {
+  const searchParams = useSearchParams()
   const [session, setSession] = useState<Session | null>(null)
   const [sessionLoaded, setSessionLoaded] = useState(false)
   const { isActive: isPro } = useEntitlement(session)
   const [rows, setRows] = useState<TaxRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [dateFrom, setDateFrom] = useState("")
-  const [dateTo, setDateTo] = useState("")
+  const [dateFrom, setDateFrom] = useState(searchParams.get("dateFrom") ?? "")
+  const [dateTo, setDateTo] = useState(searchParams.get("dateTo") ?? "")
   const [folders, setFolders] = useState<FolderOption[]>([])
-  const [targetFolder, setTargetFolder] = useState("")
+  const [targetFolder, setTargetFolder] = useState(searchParams.get("targetFolder") ?? "")
   // Auto-scoping: on first load with data, default period to the most recent
   // tax year that has documents. Tracked so clearing dates doesn't re-apply.
   const [defaultsApplied, setDefaultsApplied] = useState(false)
@@ -1387,5 +1389,13 @@ export default function TaxBundlePage() {
         </div>
       </main>
     </div>
+  )
+}
+
+export default function TaxBundlePage() {
+  return (
+    <Suspense fallback={null}>
+      <TaxBundleContent />
+    </Suspense>
   )
 }

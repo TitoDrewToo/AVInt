@@ -1523,7 +1523,7 @@ export default function SmartDashboardPage() {
     const lastY = layout.length ? Math.max(...layout.map(l => l.y + l.h)) : 0
     const minSize = WIDGET_MIN_SIZE[aw.widget_type] ?? WIDGET_MIN_SIZE[newWidget.type] ?? { minW: 2, minH: 2 }
     setWidgets(prev => [...prev, newWidget])
-    setLayout(prev => [...prev, { i: newWidget.id, x: 0, y: lastY, w: minSize.minW + 2, h: minSize.minH + 2, minW: minSize.minW, minH: minSize.minH }])
+    setLayout(prev => [...prev, { i: newWidget.id, x: 0, y: lastY, w: minSize.minW, h: minSize.minH, minW: minSize.minW, minH: minSize.minH }])
     setIsDirty(true)
   }
 
@@ -1662,11 +1662,9 @@ export default function SmartDashboardPage() {
     if (isPremium && !isPro) return
     if (widgets.some(w => w.type === type)) return
     const id = `${type}-${Date.now()}`
-    const isKpi = type.startsWith("kpi")
-    const defaultW = isKpi ? 2 : 4
-    const defaultH = isKpi ? 3 : 7
+    const minSize = WIDGET_MIN_SIZE[type] ?? { minW: 2, minH: 2 }
     setWidgets(prev => [...prev, { id, type, title }])
-    setLayout(prev => [...prev, { i: id, x: 0, y: Infinity, w: isKpi ? 3 : 6, h: isKpi ? 4 : 8, minW: isKpi ? 2 : 3, minH: isKpi ? 1 : 3 }])
+    setLayout(prev => [...prev, { i: id, x: 0, y: Infinity, w: minSize.minW, h: minSize.minH, minW: minSize.minW, minH: minSize.minH }])
     setIsDirty(true)
   }
 

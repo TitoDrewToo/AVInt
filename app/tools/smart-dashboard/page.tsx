@@ -496,13 +496,13 @@ function toMobileLayout(desktopLayout: LayoutItem[]): LayoutItem[] {
 }
 
 const WIDGET_MIN_SIZE: Record<string, { minW: number; minH: number }> = {
-  "kpi-income":      { minW: 2, minH: 2 },
-  "kpi-expenses":    { minW: 2, minH: 2 },
-  "kpi-net":         { minW: 2, minH: 2 },
-  "kpi-tax-exposure":{ minW: 2, minH: 2 },
-  "kpi-tax-ratio":   { minW: 2, minH: 2 },
-  "kpi-savings":     { minW: 2, minH: 2 },
-  "kpi-tax":         { minW: 2, minH: 2 },
+  "kpi-income":      { minW: 2, minH: 1 },
+  "kpi-expenses":    { minW: 2, minH: 1 },
+  "kpi-net":         { minW: 2, minH: 1 },
+  "kpi-tax-exposure":{ minW: 2, minH: 1 },
+  "kpi-tax-ratio":   { minW: 2, minH: 1 },
+  "kpi-savings":     { minW: 2, minH: 1 },
+  "kpi-tax":         { minW: 2, minH: 1 },
   "bar-chart":       { minW: 3, minH: 3 },
   "bar-deductible":  { minW: 3, minH: 3 },
   "line-chart":      { minW: 3, minH: 3 },
@@ -522,7 +522,7 @@ function widgetMinSize(type?: string | null): { minW: number; minH: number } {
 function compactStaleWidgetSize(item: LayoutItem, widget?: Widget): LayoutItem {
   const minSize = widgetMinSize(widget?.type ?? item.i)
   const isKpi = (widget?.type ?? item.i).startsWith("kpi")
-  const wasOldGeneratedKpi = isKpi && ((item.w === 3 && item.h === 4) || item.h === 5)
+  const wasOldGeneratedKpi = isKpi && (((item.w === 2 || item.w === 3) && item.h === 2) || (item.w === 3 && item.h === 4) || item.h === 5)
   const wasOldGeneratedChart = !isKpi && item.w === 6 && item.h === 8
   const wasOldDefaultChart = !isKpi && ((item.w === 12 && item.h === 12) || (item.w === 4 && item.h === 11))
   const wasOldGeneratedAdvanced = Boolean(widget?.advancedId) && item.w === minSize.minW + 2 && item.h === minSize.minH + 2

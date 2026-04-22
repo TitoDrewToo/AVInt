@@ -4,7 +4,7 @@ import Link from "next/link"
 import { StorageIcon, DashboardIcon } from "@/components/sections/tools"
 import { CollapseBoxGraphic, FloatingCubeGraphic } from "@/components/sections/graphics-staging"
 
-import { useEffect, useState, useCallback, type MouseEvent } from "react"
+import { useEffect, useRef, useState, useCallback, type MouseEvent } from "react"
 import { supabase } from "@/lib/supabase"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 import type { Session } from "@supabase/supabase-js"
@@ -12,6 +12,7 @@ function TrustedCounter() {
   const [current, setCurrent] = useState<number | null>(null)
   const [next, setNext] = useState<number | null>(null)
   const [phase, setPhase] = useState<"idle" | "exit" | "enter">("idle")
+  const currentRef = useRef<number | null>(null)
 
   const animateTo = (newCount: number) => {
     setPhase("exit")
@@ -19,6 +20,7 @@ function TrustedCounter() {
       setNext(newCount)
       setPhase("enter")
       setTimeout(() => {
+        currentRef.current = newCount
         setCurrent(newCount)
         setNext(null)
         setPhase("idle")
@@ -27,27 +29,26 @@ function TrustedCounter() {
   }
 
   useEffect(() => {
-    supabase
-      .from("user_counter")
-      .select("total_users")
-      .eq("id", 1)
-      .single()
-      .then(({ data }) => {
-        if (data?.total_users != null) setCurrent(data.total_users)
-      })
+    let cancelled = false
+    async function loadTrustedCount() {
+      try {
+        const res = await fetch("/api/trusted-count")
+        if (!res.ok) return
+        const data = await res.json()
+        if (!cancelled && typeof data.total_users === "number") {
+          if (currentRef.current === null) {
+            currentRef.current = data.total_users
+            setCurrent(data.total_users)
+          } else if (data.total_users !== currentRef.current) {
+            animateTo(data.total_users)
+          }
+        }
+      } catch {}
+    }
 
-    const channel = supabase
-      .channel("user_counter_realtime")
-      .on("postgres_changes", {
-        event: "UPDATE",
-        schema: "public",
-        table: "user_counter",
-      }, (payload) => {
-        animateTo(payload.new.total_users)
-      })
-      .subscribe()
-
-    return () => { supabase.removeChannel(channel) }
+    void loadTrustedCount()
+    const id = window.setInterval(loadTrustedCount, 60_000)
+    return () => { cancelled = true; window.clearInterval(id) }
   }, [])
 
   if (current === null) return <span className="font-medium text-primary">—</span>

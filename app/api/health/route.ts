@@ -33,21 +33,6 @@ async function checkSupabase(): Promise<string> {
   }
 }
 
-// Creem — try Atlassian statuspage format, fall back to unknown
-async function checkCreem(): Promise<string> {
-  try {
-    const res = await fetch("https://status.creem.io/api/v2/status.json", {
-      signal: AbortSignal.timeout(5000),
-      next: { revalidate: 60 },
-    })
-    if (!res.ok) return "unknown"
-    const data = await res.json()
-    return data?.status?.indicator ?? "none"
-  } catch {
-    return "unknown"
-  }
-}
-
 // Gemini — parse Google Cloud public incidents feed (no API key, no cost)
 // Active incidents (end === null) affecting Generative AI / Vertex AI = degraded/outage
 async function checkGemini(): Promise<string> {
@@ -85,21 +70,18 @@ function worstOf(...indicators: string[]): "operational" | "degraded" | "outage"
 }
 
 export async function GET() {
-  const [supabase, creem, openai, anthropic, gemini] = await Promise.all([
+  const [supabase, vercel, openai, anthropic, gemini] = await Promise.all([
     checkSupabase(),
-    checkCreem(),
+    fetchStatusPage("https://www.vercel-status.com/api/v2/status.json"),
     fetchStatusPage("https://status.openai.com/api/v2/status.json"),
     fetchStatusPage("https://status.anthropic.com/api/v2/status.json"),
     checkGemini(),
   ])
 
-  // Creem only drags overall to outage — minor/degraded payments issues don't affect core indicator
-  const core = worstOf(supabase, openai, anthropic, gemini)
-  const overall: "operational" | "degraded" | "outage" =
-    creem === "major" || creem === "critical" ? "outage" : core
+  const overall = worstOf(supabase, vercel, openai, anthropic, gemini)
 
   return NextResponse.json({
     overall,
-    providers: { supabase, creem, openai, anthropic, gemini },
+    providers: { supabase, vercel, openai, anthropic, gemini },
   })
 }

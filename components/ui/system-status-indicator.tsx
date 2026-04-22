@@ -9,7 +9,7 @@ interface HealthResponse {
   overall: Overall
   providers: {
     supabase: string
-    creem: string
+    vercel: string
     openai: string
     anthropic: string
     gemini: string
@@ -40,22 +40,47 @@ function worstOf(...statuses: string[]): Overall {
   return "operational"
 }
 
-function StatusRow({ label, indicator }: { label: string; indicator: string }) {
+function StatusRow({
+  label,
+  indicator,
+  href,
+  operationalText,
+}: {
+  label: string
+  indicator: string
+  href?: string
+  operationalText?: string
+}) {
   const status = indicatorToStatus(indicator)
   const color =
     status === "operational" ? "text-green-500" :
     status === "outage"      ? "text-red-500"   : "text-amber-400"
   const text =
-    indicator === "none"        ? "Operational" :
+    indicator === "none"        ? operationalText ?? "Operational" :
     indicator === "unknown"     ? "Unknown"     :
     indicator === "minor"       ? "Minor issues":
     indicator === "maintenance" ? "Maintenance" :
     ["major", "critical"].includes(indicator) ? "Outage" : indicator
 
-  return (
-    <div className="flex items-center justify-between">
+  const content = (
+    <>
       <span className="text-xs text-muted-foreground">{label}</span>
-      <span className={`text-xs font-medium ${color}`}>{text}</span>
+      <span className={`text-right text-xs font-medium ${color}`}>{text}</span>
+    </>
+  )
+
+  return href ? (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="flex items-center justify-between gap-3 rounded-sm transition-colors hover:text-foreground"
+    >
+      {content}
+    </a>
+  ) : (
+    <div className="flex items-center justify-between gap-3">
+      {content}
     </div>
   )
 }
@@ -126,12 +151,17 @@ export function SystemStatusIndicator() {
               /* Owner view — all providers */
               <div className="space-y-1.5 border-t border-border pt-2">
                 <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1.5">Infrastructure</p>
-                <StatusRow label="Supabase" indicator={p?.supabase ?? "unknown"} />
-                <StatusRow label="Creem"    indicator={p?.creem    ?? "unknown"} />
+                <StatusRow label="Supabase" indicator={p?.supabase ?? "unknown"} href="https://status.supabase.com/" />
+                <StatusRow label="Vercel Hosting" indicator={p?.vercel ?? "unknown"} href="https://www.vercel-status.com/" />
                 <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mt-2.5 mb-1.5">AI Providers</p>
-                <StatusRow label="OpenAI"    indicator={p?.openai    ?? "unknown"} />
-                <StatusRow label="Anthropic" indicator={p?.anthropic ?? "unknown"} />
-                <StatusRow label="Gemini"    indicator={p?.gemini    ?? "unknown"} />
+                <StatusRow label="OpenAI" indicator={p?.openai ?? "unknown"} href="https://status.openai.com/" />
+                <StatusRow label="Anthropic" indicator={p?.anthropic ?? "unknown"} href="https://status.claude.com/" />
+                <StatusRow
+                  label="Gemini"
+                  indicator={p?.gemini ?? "unknown"}
+                  href="https://aistudio.google.com/status"
+                  operationalText="Operational (for my account only)"
+                />
               </div>
             ) : (
               /* User view — DB and AI only */

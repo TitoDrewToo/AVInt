@@ -1,5 +1,6 @@
 import { createClient, serve } from "../_shared/deps.ts"
 import { type AiProvider, isProviderFailure, providerChain } from "../_shared/ai-providers.ts"
+import { fetchWithTimeout } from "../_shared/fetch.ts"
 
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY")!
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY")!
@@ -258,7 +259,7 @@ type SafetyResult = {
 }
 
 async function runGeminiSafety(mimeType: string, base64: string): Promise<SafetyResult> {
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
     {
       method: "POST",
@@ -334,7 +335,7 @@ function openAiFilePart(mimeType: string, base64: string) {
 async function runOpenAISafety(mimeType: string, base64: string): Promise<SafetyResult> {
   const filePart = openAiFilePart(mimeType, base64)
   if (!filePart) throw new Error(`OpenAI prescan does not support MIME type ${mimeType}`)
-  const res = await fetch("https://api.openai.com/v1/responses", {
+  const res = await fetchWithTimeout("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

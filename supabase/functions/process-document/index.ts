@@ -1,6 +1,7 @@
 import { createClient, serve } from "../_shared/deps.ts"
 import { type AiProvider, isProviderFailure, providerChain } from "../_shared/ai-providers.ts"
 import { logError, logEvent } from "../_shared/log.ts"
+import { fetchWithTimeout } from "../_shared/fetch.ts"
 
 const FN = "process-document"
 
@@ -88,7 +89,7 @@ function openAiInputPart(mimeType: string, base64: string, bytes: Uint8Array) {
 }
 
 async function callGeminiExtraction(mimeType: string, base64: string): Promise<string> {
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
     {
       method: "POST",
@@ -122,7 +123,7 @@ async function callOpenAIExtraction(mimeType: string, base64: string, bytes: Uin
   const filePart = openAiInputPart(mimeType, base64, bytes)
   if (!filePart) throw new Error(`OpenAI process does not support MIME type ${mimeType}`)
 
-  const res = await fetch("https://api.openai.com/v1/responses", {
+  const res = await fetchWithTimeout("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -435,7 +436,7 @@ serve(async (req) => {
       }
     } catch {}
 
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error: "Something went wrong" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     })

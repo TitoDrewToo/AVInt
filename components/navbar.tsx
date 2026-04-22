@@ -10,7 +10,7 @@ import { AccountPanel } from "@/components/account-panel"
 import { SystemStatusIndicator } from "@/components/ui/system-status-indicator"
 import { ProductAssistantPreview } from "@/components/product-assistant-preview"
 import { supabase } from "@/lib/supabase"
-import { computeEntitlement } from "@/lib/subscription"
+import { computeEntitlement } from "@/lib/entitlement"
 
 const geistFontStyle = {
   fontFamily: 'var(--font-aldrich), "Aldrich", var(--font-geist), "Geist", "Geist Fallback", sans-serif',

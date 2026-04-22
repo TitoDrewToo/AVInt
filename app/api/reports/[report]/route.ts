@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
 
-import { computeEntitlement } from "@/lib/subscription"
+import { computeEntitlement } from "@/lib/entitlement"
 import { overlapsDateRange } from "@/lib/report-utils"
 import { serverError } from "@/lib/api-error"
 import { checkRateLimit } from "@/lib/rate-limit"

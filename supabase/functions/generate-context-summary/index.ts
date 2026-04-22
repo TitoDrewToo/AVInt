@@ -1,5 +1,6 @@
 import { createClient, serve } from "../_shared/deps.ts"
 import { type AiProvider, isProviderFailure, providerChain } from "../_shared/ai-providers.ts"
+import { fetchWithTimeout } from "../_shared/fetch.ts"
 
 const ANTHROPIC_API_KEY      = Deno.env.get("ANTHROPIC_API_KEY")!
 const OPENAI_API_KEY         = Deno.env.get("OPENAI_API_KEY")!
@@ -46,7 +47,7 @@ Focus on:
 Do not mention technical terms like "document_fields" or "raw_json". Speak directly to the user.`
 
 async function callAnthropic(prompt: string): Promise<string> {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+  const res = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -71,7 +72,7 @@ async function callAnthropic(prompt: string): Promise<string> {
 }
 
 async function callOpenAI(prompt: string): Promise<string> {
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+  const res = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -273,8 +274,8 @@ Please write the financial summary now.`
     })
 
   } catch (error: any) {
-    console.error("generate-context-summary error:", error.message)
-    return new Response(JSON.stringify({ error: error.message }), {
+    console.error("generate-context-summary error:", error instanceof Error ? error.message : String(error))
+    return new Response(JSON.stringify({ error: "Something went wrong" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     })

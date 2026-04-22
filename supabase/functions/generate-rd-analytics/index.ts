@@ -1,5 +1,6 @@
 import { createClient, serve } from "../_shared/deps.ts"
 import { type AiProvider, isProviderFailure, providerChain } from "../_shared/ai-providers.ts"
+import { fetchWithTimeout } from "../_shared/fetch.ts"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // generate-rd-analytics
@@ -118,7 +119,7 @@ Constraints on data[]:
 // ── AI call ───────────────────────────────────────────────────────────────────
 async function callProvider(provider: AiProvider, systemPrompt: string, userPrompt: string): Promise<string> {
   if (provider === "anthropic") {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -138,7 +139,7 @@ async function callProvider(provider: AiProvider, systemPrompt: string, userProm
   }
 
   if (provider === "openai") {
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    const res = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${OPENAI_API_KEY}` },
       body: JSON.stringify({
@@ -551,8 +552,8 @@ no genuinely non-redundant insight is data-supported.`
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     )
   } catch (error: any) {
-    console.error("generate-rd-analytics error:", error.message)
-    return new Response(JSON.stringify({ error: error.message }), {
+    console.error("generate-rd-analytics error:", error instanceof Error ? error.message : String(error))
+    return new Response(JSON.stringify({ error: "Something went wrong" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     })

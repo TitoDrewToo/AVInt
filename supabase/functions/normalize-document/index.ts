@@ -1,6 +1,7 @@
 import { createClient, serve } from "../_shared/deps.ts"
 import { type AiProvider, isProviderFailure, providerChain } from "../_shared/ai-providers.ts"
 import { logError, logEvent } from "../_shared/log.ts"
+import { fetchWithTimeout } from "../_shared/fetch.ts"
 
 const FN = "normalize-document"
 
@@ -231,7 +232,7 @@ serve(async (req) => {
     // 3. Call AI provider
     const callProvider = async (provider: AiProvider): Promise<string> => {
       if (provider === "anthropic") {
-        const res = await fetch("https://api.anthropic.com/v1/messages", {
+        const res = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -250,7 +251,7 @@ serve(async (req) => {
         return data.content?.[0]?.text ?? ""
       }
       if (provider === "openai") {
-        const res = await fetch("https://api.openai.com/v1/chat/completions", {
+        const res = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${OPENAI_API_KEY}` },
           body: JSON.stringify({
@@ -470,7 +471,7 @@ serve(async (req) => {
       logError(FN, "failure_state_update", innerErr, { file_id, job_id })
     }
 
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error: "Something went wrong" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     })

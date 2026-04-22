@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import type { Session } from "@supabase/supabase-js"
 import { supabase } from "@/lib/supabase"
-import { computeEntitlement, type Entitlement } from "@/lib/subscription"
+import { computeEntitlement, type Entitlement } from "@/lib/entitlement"
 
 const INACTIVE: Entitlement = {
   status: "none",

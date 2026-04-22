@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server"
 
 import { serverError } from "@/lib/api-error"
 import { checkRateLimit } from "@/lib/rate-limit"
-import { computeEntitlement } from "@/lib/subscription"
+import { computeEntitlement } from "@/lib/entitlement"
 import {
   PRODUCT_ASSISTANT_SYSTEM_PROMPT,
   buildKnowledgeContext,
@@ -36,10 +36,13 @@ async function authorizeAssistantRequest(req: NextRequest) {
   }
 
   const ent = computeEntitlement(subRow)
-  // Explicit bypass, opt-in only. Set ALLOW_CHAT_DEV_BYPASS=1 on dev / preview
-  // envs that need unauthenticated chat. Previous `NODE_ENV !== "production"`
-  // check was implicit and could unlock the assistant on a mis-set preview.
-  if (process.env.ALLOW_CHAT_DEV_BYPASS === "1") {
+  // Dev/preview only. Explicitly refuses to bypass entitlement when
+  // VERCEL_ENV === "production", so a misconfigured env var on the prod
+  // deployment cannot unlock paid AI cost. Auth above is still enforced.
+  if (
+    process.env.ALLOW_CHAT_DEV_BYPASS === "1" &&
+    process.env.VERCEL_ENV !== "production"
+  ) {
     return { user }
   }
 
@@ -61,7 +64,7 @@ async function callOpenAI(question: string, context: string) {
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: "gpt-5.4-mini",
+      model: "gpt-4o-mini",
       temperature: 0.2,
       max_completion_tokens: 420,
       messages: [

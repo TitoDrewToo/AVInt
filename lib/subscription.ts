@@ -1,4 +1,11 @@
+// Server-only module. Constructs an admin Supabase client bearing
+// SUPABASE_SERVICE_ROLE_KEY, so it must never be imported from client
+// components. Pure entitlement logic lives in lib/entitlement.ts and
+// is safe for either surface — import that one from client code.
+
 import { createClient, type SupabaseClient } from "@supabase/supabase-js"
+
+import { computeEntitlement } from "@/lib/entitlement"
 
 let _admin: SupabaseClient | null = null
 function getSupabaseAdmin(): SupabaseClient {
@@ -8,87 +15,6 @@ function getSupabaseAdmin(): SupabaseClient {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
   return _admin
-}
-
-export interface EntitlementRow {
-  status: string | null
-  plan?: string | null
-  current_period_end: string | null
-}
-
-export interface Entitlement {
-  status: string
-  isActive: boolean
-  isPro: boolean
-  isDayPass: boolean
-  isGiftCode: boolean
-  expiresAt: string | null
-  plan: string | null
-}
-
-const INACTIVE: Entitlement = {
-  status: "none",
-  isActive: false,
-  isPro: false,
-  isDayPass: false,
-  isGiftCode: false,
-  expiresAt: null,
-  plan: null,
-}
-
-// Single source of truth for premium access. Day passes and redeemed gift
-// codes expire on current_period_end; pro lifecycles are managed by webhooks
-// so a matching status is sufficient.
-export function computeEntitlement(row: EntitlementRow | null | undefined): Entitlement {
-  if (!row || !row.status) return INACTIVE
-
-  const { status, current_period_end, plan = null } = row
-  const expired =
-    !!current_period_end && new Date(current_period_end).getTime() < Date.now()
-
-  if (status === "pro") {
-    return {
-      status: "pro",
-      isActive: true,
-      isPro: true,
-      isDayPass: false,
-      isGiftCode: false,
-      expiresAt: current_period_end,
-      plan,
-    }
-  }
-
-  if (status === "day_pass") {
-    if (!current_period_end || expired) {
-      return { ...INACTIVE, status: "expired", expiresAt: current_period_end }
-    }
-    return {
-      status: "day_pass",
-      isActive: true,
-      isPro: false,
-      isDayPass: true,
-      isGiftCode: false,
-      expiresAt: current_period_end,
-      plan,
-    }
-  }
-
-  if (status === "gift_code") {
-    if (!current_period_end || expired) {
-      return { ...INACTIVE, status: "expired", expiresAt: current_period_end }
-    }
-    return {
-      status: "gift_code",
-      isActive: true,
-      isPro: false,
-      isDayPass: false,
-      isGiftCode: true,
-      expiresAt: current_period_end,
-      plan,
-    }
-  }
-
-  return { ...INACTIVE, status, expiresAt: current_period_end, plan }
 }
 
 export interface SubscriptionInfo {

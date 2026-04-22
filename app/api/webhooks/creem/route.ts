@@ -136,23 +136,23 @@ export async function POST(req: NextRequest) {
     return typeof data === "string" ? data : null
   }
 
-  // Upsert into subscriptions table
+  // Upsert into subscriptions table.
+  // Concurrency model: Creem delivers webhooks via retries; the user_id branch
+  // relies on the partial unique index subscriptions_user_id_unique
+  // (migration 20260421_subscriptions_user_id_unique.sql) so a racing
+  // duplicate insert resolves via ON CONFLICT rather than creating a second
+  // row. The email branch keeps check-then-write because pre-signup rows
+  // have user_id = NULL and the partial index excludes them.
   const upsertSubscription = async (fields: Record<string, unknown>, userId: string | null) => {
     const email = fields.email as string
     if (userId) {
-      const { data: existing } = await supabaseAdmin
+      await supabaseAdmin
         .from("subscriptions")
-        .select("id")
-        .eq("user_id", userId)
-        .single()
-
-      if (existing) {
-        await supabaseAdmin.from("subscriptions").update({ ...fields, updated_at: new Date().toISOString() }).eq("user_id", userId)
-      } else {
-        await supabaseAdmin.from("subscriptions").insert({ ...fields, user_id: userId, updated_at: new Date().toISOString() })
-      }
+        .upsert(
+          { ...fields, user_id: userId, updated_at: new Date().toISOString() },
+          { onConflict: "user_id" },
+        )
     } else {
-      // No user account yet — insert by email, link later
       const { data: existing } = await supabaseAdmin
         .from("subscriptions")
         .select("id")

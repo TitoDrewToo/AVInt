@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Check, CheckCircle, ShieldCheck, X } from "lucide-react"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
-import { computeEntitlement } from "@/lib/subscription"
+import { computeEntitlement } from "@/lib/entitlement"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 import { ProcessingIndicator } from "@/components/ui/processing-indicator"
 

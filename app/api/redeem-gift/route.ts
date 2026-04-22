@@ -42,7 +42,36 @@ export async function POST(req: NextRequest) {
   if (!allowed) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 })
 
   const normalizedCode = String(code).trim().toUpperCase()
-  const accessEndsAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+  let accessEndsAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+
+  const { data: codeRow, error: codeLookupError } = await supabaseAdmin
+    .from("gift_codes")
+    .select("status, duration_hours")
+    .eq("code", normalizedCode)
+    .maybeSingle()
+
+  if (codeLookupError) {
+    return serverError(codeLookupError, { route: "redeem-gift", stage: "code_lookup", userId: user.id })
+  }
+
+  const durationHours = Number(codeRow?.duration_hours)
+  if (Number.isFinite(durationHours) && durationHours > 0) {
+    accessEndsAt = new Date(Date.now() + durationHours * 60 * 60 * 1000).toISOString()
+  }
+
+  // Legacy manually-issued codes used status='active'. The atomic RPC now
+  // expects pending/redeemed states, so normalize old active rows just-in-time.
+  if (codeRow?.status === "active") {
+    const { error: legacyStatusError } = await supabaseAdmin
+      .from("gift_codes")
+      .update({ status: "pending" })
+      .eq("code", normalizedCode)
+      .eq("status", "active")
+
+    if (legacyStatusError) {
+      return serverError(legacyStatusError, { route: "redeem-gift", stage: "legacy_status", userId: user.id })
+    }
+  }
 
   const { data, error } = await supabaseAdmin.rpc("redeem_gift_code", {
     p_code:           normalizedCode,
@@ -55,12 +84,14 @@ export async function POST(req: NextRequest) {
     return serverError(error, { route: "redeem-gift", stage: "rpc", userId: user.id })
   }
 
-  const result = (data as { result?: string; plan?: string } | null)?.result
+  const redeemResult = data as { result?: string; plan?: string; access_ends_at?: string } | null
+  const result = redeemResult?.result
+  const grantedAccessEndsAt = redeemResult?.access_ends_at ?? accessEndsAt
 
   switch (result) {
     case "redeemed":
       console.log("Gift code redeemed for user:", user.id)
-      return NextResponse.json({ success: true, plan: "gift_code", expires_at: accessEndsAt })
+      return NextResponse.json({ success: true, plan: "gift_code", expires_at: grantedAccessEndsAt })
     case "already_redeemed":
       return NextResponse.json({ error: "This gift code has already been redeemed" }, { status: 409 })
     case "expired":

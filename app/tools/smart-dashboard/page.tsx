@@ -458,20 +458,6 @@ function displayWidgetTitle(widget: Widget, model: DashboardCurrencyModel): stri
   return widget.title
 }
 
-// ── Default layout ────────────────────────────────────────────────────────────
-
-const DEFAULT_LAYOUT: LayoutItem[] = [
-  { i: "kpi-income",       x: 0,  y: 0,  w: 2, h: 5,  minW: 2, minH: 1 },
-  { i: "kpi-expenses",     x: 2,  y: 0,  w: 2, h: 5,  minW: 2, minH: 1 },
-  { i: "kpi-net",          x: 4,  y: 0,  w: 2, h: 5,  minW: 2, minH: 1 },
-  { i: "kpi-tax-exposure", x: 6,  y: 0,  w: 3, h: 5,  minW: 2, minH: 1 },
-  { i: "kpi-tax-ratio",    x: 9,  y: 0,  w: 3, h: 5,  minW: 2, minH: 1 },
-  { i: "area-chart",       x: 0,  y: 5,  w: 12, h: 12, minW: 4, minH: 3 },
-  { i: "bar-chart",        x: 0,  y: 17, w: 4, h: 11, minW: 3, minH: 3 },
-  { i: "bar-deductible",   x: 4,  y: 17, w: 4, h: 11, minW: 3, minH: 3 },
-  { i: "pie-chart",        x: 8,  y: 17, w: 4, h: 11, minW: 3, minH: 3 },
-]
-
 // ── Mobile layout derivation ──────────────────────────────────────────────────
 // Translates a saved 12-col desktop layout into a mobile-friendly 12-col layout.
 // Keeps cols=12 so containerWidth math is identical — only widget sizes change:
@@ -527,6 +513,28 @@ const WIDGET_MIN_SIZE: Record<string, { minW: number; minH: number }> = {
   "stacked-bar":     { minW: 3, minH: 3 },
   "composed-chart":  { minW: 3, minH: 3 },
   "banded-area":     { minW: 3, minH: 3 },
+}
+
+function widgetMinSize(type?: string | null): { minW: number; minH: number } {
+  return (type && WIDGET_MIN_SIZE[type]) || { minW: 2, minH: 2 }
+}
+
+function compactStaleWidgetSize(item: LayoutItem, widget?: Widget): LayoutItem {
+  const minSize = widgetMinSize(widget?.type ?? item.i)
+  const isKpi = (widget?.type ?? item.i).startsWith("kpi")
+  const wasOldGeneratedKpi = isKpi && ((item.w === 3 && item.h === 4) || item.h === 5)
+  const wasOldGeneratedChart = !isKpi && item.w === 6 && item.h === 8
+  const wasOldDefaultChart = !isKpi && ((item.w === 12 && item.h === 12) || (item.w === 4 && item.h === 11))
+  const wasOldGeneratedAdvanced = Boolean(widget?.advancedId) && item.w === minSize.minW + 2 && item.h === minSize.minH + 2
+  const shouldCompact = wasOldGeneratedKpi || wasOldGeneratedChart || wasOldDefaultChart || wasOldGeneratedAdvanced
+
+  return {
+    ...item,
+    w: shouldCompact ? minSize.minW : Math.max(item.w, minSize.minW),
+    h: shouldCompact ? minSize.minH : Math.max(item.h, minSize.minH),
+    minW: minSize.minW,
+    minH: minSize.minH,
+  }
 }
 
 const WIDGET_LIBRARY = [
@@ -1450,17 +1458,19 @@ export default function SmartDashboardPage() {
       .maybeSingle()
     if (data?.layout) {
       const saved = data.layout
-      setWidgets(saved.widgets?.length ? saved.widgets : [])
+      const savedWidgets: Widget[] = saved.widgets?.length ? saved.widgets : []
+      const widgetById = new Map<string, Widget>(savedWidgets.map((widget) => [widget.id, widget]))
+      setWidgets(savedWidgets)
       if (saved.palette?.accent) setDashboardAccent(saved.palette.accent)
       if (saved.gridLayout?.length) {
         // Always apply current minH/minW — never restore stale saved constraints
-        const constraints: Record<string, { minW: number; minH: number }> = {}
-        DEFAULT_LAYOUT.forEach(l => { constraints[l.i] = { minW: l.minW ?? 2, minH: l.minH ?? 1 } })
         setLayout(saved.gridLayout.map((l: any) => ({
-          i: l.i, x: l.x, y: l.y, w: l.w, h: l.h,
-          minW: constraints[l.i]?.minW ?? 2,
-          minH: constraints[l.i]?.minH ?? 1,
-        })))
+          i: l.i,
+          x: l.x,
+          y: l.y,
+          w: l.w,
+          h: l.h,
+        })).map((item: LayoutItem) => compactStaleWidgetSize(item, widgetById.get(item.i))))
       } else {
         setLayout([])
       }
@@ -1640,7 +1650,7 @@ export default function SmartDashboardPage() {
       rdConfig,
     }
     const lastY = layout.length ? Math.max(...layout.map(l => l.y + l.h)) : 0
-    const minSize = WIDGET_MIN_SIZE[aw.widget_type] ?? WIDGET_MIN_SIZE[newWidget.type] ?? { minW: 2, minH: 2 }
+    const minSize = WIDGET_MIN_SIZE[aw.widget_type] ?? widgetMinSize(newWidget.type)
     setWidgets(prev => [...prev, newWidget])
     setLayout(prev => [...prev, { i: newWidget.id, x: 0, y: lastY, w: minSize.minW, h: minSize.minH, minW: minSize.minW, minH: minSize.minH }])
     setIsDirty(true)
@@ -1781,7 +1791,7 @@ export default function SmartDashboardPage() {
     if (isPremium && !isPro) return
     if (widgets.some(w => w.type === type)) return
     const id = `${type}-${Date.now()}`
-    const minSize = WIDGET_MIN_SIZE[type] ?? { minW: 2, minH: 2 }
+    const minSize = widgetMinSize(type)
     setWidgets(prev => [...prev, { id, type, title }])
     setLayout(prev => [...prev, { i: id, x: 0, y: Infinity, w: minSize.minW, h: minSize.minH, minW: minSize.minW, minH: minSize.minH }])
     setIsDirty(true)

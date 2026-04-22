@@ -213,6 +213,11 @@ function fileIcon(fileType: string) {
   return <File className="h-4 w-4 shrink-0 text-muted-foreground" />
 }
 
+function collapseBreadcrumb<T>(items: T[]): Array<T | "ellipsis"> {
+  if (items.length <= 3) return items
+  return [items[0], "ellipsis", ...items.slice(-2)]
+}
+
 interface StorageItemMenuProps {
   kind: "file" | "folder"
   filename: string
@@ -1366,6 +1371,8 @@ export default function SmartStoragePage() {
   if (!sessionLoaded) return null
   if (!session) return <AuthGuardModal isVisible={true} />
 
+  const visibleBreadcrumb = collapseBreadcrumb(breadcrumb)
+
   const storageToolbar = (
     <div className="flex min-w-0 items-center gap-2">
       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden text-sm">
@@ -1388,19 +1395,31 @@ export default function SmartStoragePage() {
             <span className="truncate px-1 font-medium text-foreground">Unclassified</span>
           </>
         ) : (
-          breadcrumb.map((crumb, index) => (
-            <span key={crumb.id} className="flex min-w-0 items-center gap-1">
-              {index > 0 && <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+          visibleBreadcrumb.map((crumb, index) => {
+            if (crumb === "ellipsis") {
+              return (
+                <span key="breadcrumb-ellipsis" className="flex shrink-0 items-center gap-1">
+                  <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <span className="rounded px-1 py-0.5 text-muted-foreground">...</span>
+                </span>
+              )
+            }
+
+            const originalIndex = breadcrumb.findIndex((item) => item.id === crumb.id)
+            return (
+              <span key={crumb.id} className="flex min-w-0 items-center gap-1">
+                {index > 0 && <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
               <button
-                onClick={() => navigateBreadcrumb(crumb.id, crumb.name, index)}
+                onClick={() => navigateBreadcrumb(crumb.id, crumb.name, originalIndex)}
                 className={`truncate rounded px-1 py-0.5 transition-colors hover:bg-muted ${
-                  index === breadcrumb.length - 1 ? "font-medium text-foreground" : "text-muted-foreground"
+                  originalIndex === breadcrumb.length - 1 ? "font-medium text-foreground" : "text-muted-foreground"
                 }`}
               >
                 {crumb.name}
               </button>
             </span>
-          ))
+            )
+          })
         )}
       </div>
 

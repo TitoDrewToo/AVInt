@@ -42,6 +42,19 @@ AVIntelligence is designed for people who want to:
   - welcome flow
   - access and purchase entry points
 
+## Security and Privacy Posture
+
+AVIntelligence handles financial documents with a privacy-first product posture:
+
+- user files and extracted records are isolated by account
+- uploads are screened before document processing begins
+- document processing runs server-side; sensitive service keys are not exposed to the browser
+- AI processing is automated through third-party providers; documents are not manually reviewed
+- payments are handled by Creem, and card or banking details are not stored by AVIntelligence
+- users can delete individual files or delete their account from the workspace
+
+For the full public policy language, see the Privacy Policy and Terms of Service in the application.
+
 ## Current Repository Notes
 
 - The product assistant/chat guide is scaffolded in the codebase but intentionally hidden for now.

@@ -192,7 +192,7 @@ const capabilities = [
   { icon: <IconFileText />,     title: "Field extraction",         description: "Pull key data points from unstructured documents" },
   { icon: <IconDatabase />,     title: "Structured datasets",      description: "Convert documents into organized, queryable data" },
   { icon: <IconFileBarChart />, title: "Report generation",        description: "Create summaries and reports from extracted data" },
-  { icon: <IconShield />,       title: "Secure storage",           description: "Keep your documents protected and encrypted" },
+  { icon: <IconShield />,       title: "Secure storage",           description: "Keep documents account-isolated and access-controlled" },
   { icon: <IconFolderOpen />,   title: "Organized retrieval",      description: "Find and access documents quickly when needed" },
 ]
 
@@ -303,8 +303,8 @@ export default function SmartStorageProductPage() {
 
             <StaggerContainer className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {capabilities.map((capability) => (
-                <StaggerItem key={capability.title}>
-                  <div className="group glass-surface hover-bloom rounded-2xl p-6">
+                <StaggerItem key={capability.title} className="h-full">
+                  <div className="group glass-surface hover-bloom h-full rounded-2xl p-6">
                     <div className="glass-surface-sm flex h-10 w-10 items-center justify-center rounded-lg text-primary transition-all group-hover:[box-shadow:0_0_24px_-4px_var(--retro-glow-red)]">
                       {capability.icon}
                     </div>
@@ -354,51 +354,51 @@ export default function SmartStorageProductPage() {
                 Built on enterprise infrastructure
               </h2>
               <p className="mt-4 text-muted-foreground">
-                Your documents are protected at every layer — from upload to storage to processing.
+                Smart Storage keeps financial documents account-isolated, screened before processing, and handled by server-side systems.
               </p>
             </FadeUp>
 
             <StaggerContainer className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
 
               {/* Database */}
-              <StaggerItem>
-                <div className="glass-surface hover-bloom rounded-2xl p-5">
+              <StaggerItem className="h-full">
+                <div className="glass-surface hover-bloom h-full rounded-2xl p-5">
                   <div className="flex items-center gap-2">
                     <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
                     <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Database & Storage</span>
                   </div>
                   <p className="mt-3 text-sm font-medium text-foreground">SOC 2 Type II Certified</p>
-                  <p className="mt-1 text-xs text-muted-foreground">Row-level security enforced — only your account can access your data, by architecture.</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Account-level access controls keep each user's files and structured records separated.</p>
                 </div>
               </StaggerItem>
 
-              {/* Hosting */}
-              <StaggerItem>
-                <div className="glass-surface hover-bloom rounded-2xl p-5">
+              {/* Upload Safety */}
+              <StaggerItem className="h-full">
+                <div className="glass-surface hover-bloom h-full rounded-2xl p-5">
                   <div className="flex items-center gap-2">
                     <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
-                    <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Hosting</span>
+                    <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Upload Screening</span>
                   </div>
-                  <p className="mt-3 text-sm font-medium text-foreground">SOC 2 Type II · ISO 27001</p>
-                  <p className="mt-1 text-xs text-muted-foreground">Global edge network with DDoS protection and TLS encryption enforced end-to-end.</p>
+                  <p className="mt-3 text-sm font-medium text-foreground">Checked before processing</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Uploaded documents pass file-type and safety checks before they become report-ready records.</p>
                 </div>
               </StaggerItem>
 
               {/* AI Providers */}
-              <StaggerItem>
-                <div className="glass-surface hover-bloom rounded-2xl p-5">
+              <StaggerItem className="h-full">
+                <div className="glass-surface hover-bloom h-full rounded-2xl p-5">
                   <div className="flex items-center gap-2">
                     <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
                     <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">AI Processing</span>
                   </div>
                   <p className="mt-3 text-sm font-medium text-foreground">OpenAI · Anthropic · Google</p>
-                  <p className="mt-1 text-xs text-muted-foreground">Enterprise-grade AI infrastructure. Documents are processed programmatically — no human review.</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Documents are processed programmatically for extraction, classification, and reporting — no manual review.</p>
                 </div>
               </StaggerItem>
 
-              {/* Payments */}
-              <StaggerItem>
-                <div className="glass-surface hover-bloom rounded-2xl p-5">
+              {/* Payments — replace this card with paid security coverage once managed protection is live. */}
+              <StaggerItem className="h-full">
+                <div className="glass-surface hover-bloom h-full rounded-2xl p-5">
                   <div className="flex items-center gap-2">
                     <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
                     <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Payments</span>
@@ -408,27 +408,27 @@ export default function SmartStorageProductPage() {
                 </div>
               </StaggerItem>
 
-              {/* Encryption */}
-              <StaggerItem>
-                <div className="glass-surface hover-bloom rounded-2xl p-5">
+              {/* Data Isolation */}
+              <StaggerItem className="h-full">
+                <div className="glass-surface hover-bloom h-full rounded-2xl p-5">
                   <div className="flex items-center gap-2">
                     <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
                     <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Data Isolation</span>
                   </div>
                   <p className="mt-3 text-sm font-medium text-foreground">Row-Level Security</p>
-                  <p className="mt-1 text-xs text-muted-foreground">Database policies enforced at the row level. No shared data between accounts — by architecture, not policy.</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Database policies are enforced at the row level so account data stays separated by design.</p>
                 </div>
               </StaggerItem>
 
               {/* Access */}
-              <StaggerItem>
-                <div className="glass-surface hover-bloom rounded-2xl p-5">
+              <StaggerItem className="h-full">
+                <div className="glass-surface hover-bloom h-full rounded-2xl p-5">
                   <div className="flex items-center gap-2">
                     <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
                     <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Access Control</span>
                   </div>
                   <p className="mt-3 text-sm font-medium text-foreground">Auth-gated, server-side only</p>
-                  <p className="mt-1 text-xs text-muted-foreground">Sensitive keys never reach the client. All document processing runs server-side in isolated edge environments.</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Sensitive keys never reach the client. Document processing runs through server-side systems.</p>
                 </div>
               </StaggerItem>
 

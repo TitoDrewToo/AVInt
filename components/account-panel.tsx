@@ -251,6 +251,8 @@ interface SubRecord {
 
 function resolveDisplayPlan(sub: SubRecord | null): { label: string; note: string; isActive: boolean } {
   const ent = computeEntitlement(sub)
+  const isUnlimitedAccess =
+    !!ent.expiresAt && new Date(ent.expiresAt).getFullYear() >= 2099
 
   if (ent.isDayPass) {
     const expiresAt = ent.expiresAt
@@ -260,17 +262,21 @@ function resolveDisplayPlan(sub: SubRecord | null): { label: string; note: strin
   }
 
   if (ent.isPro) {
-    const note = ent.expiresAt
+    const note = isUnlimitedAccess
+      ? "Access until: Unlimited"
+      : ent.expiresAt
       ? `Renews ${new Date(ent.expiresAt).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "2-digit" })}`
       : "Active"
     return { label: "Pro", note, isActive: true }
   }
 
   if (ent.isGiftCode) {
-    const note = ent.expiresAt
+    const note = isUnlimitedAccess
+      ? "Access until: Unlimited"
+      : ent.expiresAt
       ? `Access until ${new Date(ent.expiresAt).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "2-digit" })}`
       : "Active"
-    return { label: "Pro (Gift)", note, isActive: true }
+    return { label: "Pro", note, isActive: true }
   }
 
   if (sub?.status === "gift_code") return { label: "Free", note: "Gift access expired", isActive: false }
@@ -521,17 +527,10 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                       })()}
 
                       <div className="rounded-lg border border-border/80 bg-card/60 p-3">
-                        <p className="text-xs text-muted-foreground">
-                          Manage subscription is reserved for billing-area controls such as subscription changes and future billing actions. It is not wired to a live billing portal yet.
-                        </p>
-                        <Button variant="outline" size="sm" className="mt-3 w-full rounded-lg" disabled>
-                          Manage subscription
-                        </Button>
-                      </div>
-
-                      <div className="rounded-lg border border-border/80 bg-card/60 p-3">
                         <p className="mb-2 text-xs text-muted-foreground">
-                          Redeem a gift code to activate access.
+                          {subRecord?.status === "gift_code"
+                            ? "Gift code access is active. You can apply another code later if needed."
+                            : "Redeem a gift code to activate access."}
                         </p>
                         <div className="flex gap-2">
                           <Input
@@ -540,12 +539,12 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                             value={giftCode}
                             onChange={(e) => { setGiftCode(e.target.value); setGiftCodeError("") }}
                             className="flex-1 rounded-lg"
-                            disabled={giftCodeApplied}
+                            disabled={giftCodeLoading}
                           />
                           <Button
                             size="sm"
                             className="cw-button-flow rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
-                            disabled={!giftCode.trim() || giftCodeLoading || giftCodeApplied}
+                            disabled={!giftCode.trim() || giftCodeLoading}
                             onClick={async () => {
                               if (!session?.user) return
                               setGiftCodeLoading(true)
@@ -571,6 +570,7 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                                   setGiftCodeError(data.error ?? "Failed to redeem code")
                                 } else {
                                   setGiftCodeApplied(true)
+                                  setGiftCode("")
                                   if (session?.user?.id) {
                                     supabase
                                       .from("subscriptions")

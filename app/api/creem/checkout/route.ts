@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 
 import { serverError } from "@/lib/api-error"
+import { checkRateLimit } from "@/lib/rate-limit"
 
 const CREEM_API_BASE =
   process.env.CREEM_TEST_MODE === "true"
@@ -26,8 +27,17 @@ function safeSuccessUrl(value: unknown) {
   }
 }
 
+function clientKey(req: NextRequest) {
+  return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+    ?? req.headers.get("x-real-ip")
+    ?? "unknown"
+}
+
 export async function POST(req: NextRequest) {
   try {
+    const allowed = await checkRateLimit("checkout", clientKey(req), 60, 20)
+    if (!allowed) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 })
+
     const { product_id, email, success_url } = await req.json()
 
     if (!product_id) {

@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
 
   switch (result) {
     case "redeemed":
-      console.log("Gift code redeemed:", normalizedCode, "by", user.email)
+      console.log("Gift code redeemed for user:", user.id)
       return NextResponse.json({ success: true, plan: "gift_code", expires_at: accessEndsAt })
     case "already_redeemed":
       return NextResponse.json({ error: "This gift code has already been redeemed" }, { status: 409 })

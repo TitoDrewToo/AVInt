@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 
 import { serverError } from "@/lib/api-error"
+import { checkRateLimit } from "@/lib/rate-limit"
 
 const CREEM_API_BASE =
   process.env.CREEM_TEST_MODE === "true"
@@ -34,6 +35,9 @@ export async function POST(req: NextRequest) {
     if (authError || !user || user.id !== user_id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
+
+    const allowed = await checkRateLimit("creem-cancel", user.id, 3600, 5)
+    if (!allowed) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 })
 
     const { data: subscription, error: subscriptionError } = await supabaseAdmin
       .from("subscriptions")
@@ -72,7 +76,7 @@ export async function POST(req: NextRequest) {
       .update({ status: "scheduled_cancel", updated_at: new Date().toISOString() })
       .eq("user_id", user.id)
 
-    console.log("Subscription cancellation scheduled for user:", user.id)
+    console.log("Subscription cancellation scheduled")
     return NextResponse.json({ success: true, canceled_at: data.canceled_at })
 
   } catch (err) {

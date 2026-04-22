@@ -8,7 +8,7 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 )
 
-export type RateLimitBucket = "chat" | "reports" | "delete-account" | "redeem-gift"
+export type RateLimitBucket = "chat" | "reports" | "delete-account" | "redeem-gift" | "checkout" | "creem-cancel"
 
 // Fail-open. If the rate-limit RPC is unreachable (network blip, Postgres
 // hiccup) we let the request through rather than block legitimate users.

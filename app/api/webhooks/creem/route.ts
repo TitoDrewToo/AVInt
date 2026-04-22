@@ -7,6 +7,12 @@ import { logApiError, serverError } from "@/lib/api-error"
 // Creem is the active payment provider. Some subscription/gift_codes columns
 // retain legacy lemonsqueezy_* names for schema compatibility only.
 
+function redactEmail(email: string) {
+  const [local, domain] = email.split("@")
+  if (!local || !domain) return "(none)"
+  return `${local.slice(0, 2)}***@${domain}`
+}
+
 // Product IDs come from env vars so test→prod is a config change, not a deploy
 function getProductMap(): Record<string, { status: string; plan: string; isGiftCode?: boolean }> {
   const map: Record<string, { status: string; plan: string; isGiftCode?: boolean }> = {}
@@ -180,7 +186,7 @@ export async function POST(req: NextRequest) {
       const customerId: string = obj.customer?.id ?? ""
       const productName: string = obj.product?.name ?? ""
 
-      console.log("checkout.completed — email:", email, "product:", productId)
+      console.log("checkout.completed — email:", redactEmail(email), "product:", productId)
 
       const mapping = getProductMap()[productId]
       if (!mapping) {
@@ -216,7 +222,7 @@ export async function POST(req: NextRequest) {
           lemonsqueezy_order_id: orderId, // reusing column for Creem order ID
         })
         if (giftError) console.error("Gift code insert error:", giftError.message)
-        else console.log("Gift code stored:", licenseKey, "for", email)
+        else console.log("Gift code stored for:", redactEmail(email))
       } else {
         await upsertSubscription({
           email,
@@ -232,7 +238,7 @@ export async function POST(req: NextRequest) {
         // Only count direct subscribers here — gift code purchases are counted on redemption
         try { await supabaseAdmin.rpc("increment_user_counter") } catch (e) { console.warn("rpc error:", e) }
       }
-      console.log("checkout.completed processed for:", email)
+      console.log("checkout.completed processed for:", redactEmail(email))
     }
 
     // ── subscription.active / subscription.paid ───────────────────────────────
@@ -245,7 +251,7 @@ export async function POST(req: NextRequest) {
       const customerId: string = obj.customer?.id ?? ""
       const productName: string = obj.product?.name ?? ""
 
-      console.log(eventType, "— email:", email, "product:", productId)
+      console.log(eventType, "— email:", redactEmail(email), "product:", productId)
 
       const mapping = getProductMap()[productId]
       if (!mapping) {
@@ -270,7 +276,7 @@ export async function POST(req: NextRequest) {
       if (eventType === "subscription.active") {
         try { await supabaseAdmin.rpc("increment_user_counter") } catch (e) { console.warn("rpc error:", e) }
       }
-      console.log(eventType, "processed for:", email)
+      console.log(eventType, "processed for:", redactEmail(email))
     }
 
     // ── subscription.canceled / subscription.expired ──────────────────────────

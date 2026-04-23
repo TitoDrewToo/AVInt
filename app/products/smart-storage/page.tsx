@@ -403,8 +403,8 @@ export default function SmartStorageProductPage() {
                     <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
                     <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Smart Security</span>
                   </div>
-                  <p className="mt-3 text-sm font-medium text-foreground">ClamAV-backed file defense</p>
-                  <p className="mt-1 text-xs text-muted-foreground">Documents are scanned by a separate defensive service before extraction and reporting begin.</p>
+                  <p className="mt-3 text-sm font-medium text-foreground">Defense before processing</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Uploads pass malware checks, risky-structure screening, abuse detection, and perimeter signals before extraction begins.</p>
                 </div>
               </StaggerItem>
 

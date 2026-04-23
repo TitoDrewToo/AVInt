@@ -1,67 +1,43 @@
 # AVIntelligence
 
-AVIntelligence helps turn everyday financial documents into organized data, reports, and visual insights.
+AVIntelligence is an AI-powered financial document workspace. It turns receipts, invoices, payslips, contracts, screenshots, and related records into organized data, structured reports, and dashboard-ready insight.
 
-The product is built around two core experiences:
+The product is organized around two core experiences:
 
-- `Smart Storage`
-  - bring receipts, invoices, screenshots, contracts, and related files into one workspace
-  - organize uploaded material and prepare it for reporting
-  - move from raw files to usable records faster
-- `Smart Dashboard`
-  - an intelligent financial workspace rather than a generic charts page
-  - financial visuals are the interface; AI-derived context is the differentiator
-  - turn documents, receipts, income records, tax inputs, and business activity into contextual insight
-  - help users understand what their numbers mean, why patterns matter, and what risks or opportunities are emerging
-  - connect naturally to the Advanced Analytics pipeline for deeper spend analysis, income patterns, document intelligence, tax readiness, forecasting, anomaly detection, and AI-generated summaries
+- **Smart Storage** — upload, organize, and work with financial documents in one workspace
+- **Smart Dashboard** — an AI-contextualized financial view built on the user's own records, designed to help people understand what their numbers mean rather than just seeing totals
 
-## What AVIntelligence Is For
+## Product Capabilities
 
-AVIntelligence is designed for people who want to:
+- Upload and organize receipts, invoices, payslips, contracts, screenshots, and related financial records
+- Account-isolated storage and extracted records
+- Structured data extraction from uploaded documents
+- Report generation:
+  - Expense Summary
+  - Income Summary
+  - Profit & Loss
+  - Business Expense Report
+  - Contract Summary
+  - Key Terms
+  - Tax Bundle (self-employed workflow)
+- Smart Dashboard with financial KPI widgets, custom dashboard layouts, analytics visuals, and drill-down views
+- Multi-currency dashboard handling — money-based totals stay per-currency, with explicit FX conversion where applied
+- Advanced analytics surfaces that deepen spend, income, and document-level insight as more data accumulates
+- Account authentication, subscription access, gift-code redemption, and payment flows
+- Account controls for deleting individual files or removing account data
 
-- centralize financial documents
-- reduce manual sorting and repetitive data entry
-- move from uploads to reports more quickly
-- review data through dashboards and summaries
-- understand the context behind their numbers, not just the totals
-- surface patterns, anomalies, and decision-relevant signals from their own records
+## Privacy and Security Posture
 
-## Main Product Areas
+AVIntelligence is built with a privacy-first product posture:
 
-- Marketing site
-  - homepage
-  - product pages
-  - pricing
-  - blog
-  - privacy and terms
-- Product workspace
-  - Smart Storage
-  - Smart Dashboard
-- Account and onboarding
-  - sign up
-  - welcome flow
-  - access and purchase entry points
+- Files and extracted records are isolated per account, with row-level data isolation
+- Document processing runs server-side; sensitive credentials are not exposed to the browser
+- Uploads and sensitive actions pass through a dedicated defensive screening layer before deeper processing
+- Payment processing is handled by a certified third-party processor; AVIntelligence does not store card data
+- AI processing is automated through third-party providers; documents are not subject to manual review by default
+- Users can delete individual files or delete their account from the workspace
 
-## Security and Privacy Posture
-
-AVIntelligence handles financial documents with a privacy-first product posture:
-
-- user files and extracted records are isolated by account
-- uploads are screened before document processing begins
-- document processing runs server-side; sensitive service keys are not exposed to the browser
-- AI processing is automated through third-party providers; documents are not manually reviewed
-- payments are handled by Creem, and card or banking details are not stored by AVIntelligence
-- users can delete individual files or delete their account from the workspace
-
-For the full public policy language, see the Privacy Policy and Terms of Service in the application.
-
-## Current Repository Notes
-
-- The product assistant/chat guide is scaffolded in the codebase but intentionally hidden for now.
-- It is planned to return later as a subscriber feature once a stronger wiki-backed knowledge source is ready.
-- Advanced Analytics is at a baseline state and current planning is focused on enriching output quality rather than reviving earlier discarded directions.
-- Smart Dashboard direction is shifting from a charts-first surface to an AI-contextualized financial workspace. Financial visuals remain the interface, but interpretation, pattern context, and decision support are the active emphasis.
-- Tax Bundle (self-employed, US Schedule C) is the reinforced primary tax report. An employed (US W-2) Tax Bundle variant is on the roadmap; a shell may be present, but the full report logic is still pending construction and is not yet a shipped surface.
+For full public policy language, see the Privacy Policy and Terms of Service in the application.
 
 ## Local Development
 
@@ -92,33 +68,8 @@ pnpm lint
 
 ## Environment
 
-Create a local `.env.local` for the services used by this project.
-
-Examples of values you may need:
-
-```bash
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-NEXT_PUBLIC_APP_URL=
-NEXT_PUBLIC_AA_BETA_EMAIL=
-
-SUPABASE_SERVICE_ROLE_KEY=
-
-OPENAI_API_KEY=
-
-CREEM_API_KEY=
-CREEM_TEST_MODE=
-CREEM_WEBHOOK_SECRET=
-CREEM_PRODUCT_DAY_PASS_ID=
-CREEM_PRODUCT_PRO_MONTHLY_ID=
-CREEM_PRODUCT_PRO_ANNUAL_ID=
-CREEM_PRODUCT_GIFT_CODE_ID=
-```
-
-Keep secrets out of source control and only expose values intended for client-side use.
+This project reads configuration from a local `.env.local` file. The app requires credentials for the database layer, authentication, AI processing, and the payment provider. Populate those values in your own local environment and never commit credentials to source control.
 
 ## Notes
 
-- This README is intentionally product-facing.
-- Public documentation should describe capabilities, use cases, and objectives rather than internal architecture.
-- Repository-aware tools such as Code Wiki can infer code structure directly from the codebase when deeper understanding is needed.
+This README is intentionally product-facing. Internal architecture, operational design, and engineering details live in private engineering documentation rather than this repository.

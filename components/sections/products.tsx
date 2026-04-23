@@ -134,23 +134,6 @@ function DashboardIcon({ className }: { className?: string }) {
   )
 }
 
-function SecurityIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <style>{`
-        @keyframes ss-scan { 0%,100%{transform:translateY(-4px);opacity:.35} 50%{transform:translateY(4px);opacity:1} }
-        @keyframes ss-dot  { 0%,100%{opacity:.25} 50%{opacity:1} }
-        .ss-line { animation:ss-scan 2s ease-in-out infinite; transform-origin:12px 12px; }
-        .ss-dot  { animation:ss-dot 1.8s ease-in-out infinite; }
-      `}</style>
-      <path d="M12 3l7 3v5c0 4.5-2.7 8.2-7 10-4.3-1.8-7-5.5-7-10V6l7-3z" className="fill-card stroke-border" strokeWidth="0.7" />
-      <path d="M8 12l2.2 2.2L16 8.5" stroke="rgb(220,38,38)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-      <path className="ss-line" d="M7 11.5h10" stroke="rgb(220,38,38)" strokeWidth="0.8" strokeLinecap="round" />
-      <circle className="ss-dot" cx="18" cy="6" r="2" fill="rgb(220,38,38)" />
-    </svg>
-  )
-}
-
 function ProductCard({ name, description, status, href, external, disabled, icon }: ProductCardProps) {
   const content = (
     <div
@@ -196,13 +179,6 @@ const products: ProductCardProps[] = [
     description: "Visualize financial activity and trends derived from structured data.",
     href: "/products/smart-dashboard",
     icon: <DashboardIcon className="h-5 w-5" />,
-  },
-  {
-    name: "Smart Security",
-    description: "Defensive file scanning and active-security signals for document systems.",
-    href: "/products/smart-security",
-    status: "development",
-    icon: <SecurityIcon className="h-5 w-5" />,
   },
   {
     name: "PicklePal",

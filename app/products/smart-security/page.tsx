@@ -4,6 +4,7 @@ import { Footer } from "@/components/footer"
 import { Button } from "@/components/ui/button"
 import { FadeUp, StaggerContainer, StaggerItem } from "@/components/fade-up"
 import { Activity, BrainCircuit, FileSearch, ShieldCheck, Siren } from "lucide-react"
+import { SmartSecurityAccessGate } from "@/components/smart-security-access-gate"
 
 export const metadata = {
   title: "Smart Security — Defensive File Scanning | AVIntelligence",
@@ -44,31 +45,32 @@ export default function SmartSecurityProductPage() {
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
-      <main>
-        <section className="relative overflow-hidden px-6 pb-20 pt-32">
-          <div aria-hidden className="pointer-events-none absolute inset-0 retro-grid-bg opacity-30" />
-          <div className="relative mx-auto max-w-6xl">
-            <FadeUp className="max-w-3xl">
-              <p className="text-sm font-medium uppercase tracking-wider text-primary">Smart Security</p>
-              <h1 className="mt-5 text-balance text-4xl font-semibold leading-[1.05] text-foreground md:text-6xl">
-                Defensive security engineer for document systems.
-              </h1>
-              <p className="mt-6 max-w-2xl text-base leading-7 text-muted-foreground">
-                Smart Security is the defense layer we built for AVIntelligence: a standalone service that scans files, detects risky structure, and prepares signals for active defense.
-              </p>
-              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                <Link href="/tools/smart-security">
-                  <Button size="lg" className="rounded-xl">Open Console</Button>
-                </Link>
-                <Link href="/products/smart-storage">
-                  <Button variant="outline" size="lg" className="rounded-xl glass-surface-sm">
-                    See Smart Storage
-                  </Button>
-                </Link>
-              </div>
-            </FadeUp>
-          </div>
-        </section>
+      <SmartSecurityAccessGate>
+        <main>
+          <section className="relative overflow-hidden px-6 pb-20 pt-32">
+            <div aria-hidden className="pointer-events-none absolute inset-0 retro-grid-bg opacity-30" />
+            <div className="relative mx-auto max-w-6xl">
+              <FadeUp className="max-w-3xl">
+                <p className="text-sm font-medium uppercase tracking-wider text-primary">Smart Security</p>
+                <h1 className="mt-5 text-balance text-4xl font-semibold leading-[1.05] text-foreground md:text-6xl">
+                  Defensive security engineer for document systems.
+                </h1>
+                <p className="mt-6 max-w-2xl text-base leading-7 text-muted-foreground">
+                  Smart Security is the defense layer we built for AVIntelligence: a standalone service that scans files, detects risky structure, and prepares signals for active defense.
+                </p>
+                <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                  <Link href="/tools/smart-security">
+                    <Button size="lg" className="rounded-xl">Open Console</Button>
+                  </Link>
+                  <Link href="/products/smart-storage">
+                    <Button variant="outline" size="lg" className="rounded-xl glass-surface-sm">
+                      See Smart Storage
+                    </Button>
+                  </Link>
+                </div>
+              </FadeUp>
+            </div>
+          </section>
 
         <section className="px-6 py-20">
           <div className="mx-auto max-w-6xl">
@@ -113,7 +115,8 @@ export default function SmartSecurityProductPage() {
             </div>
           </div>
         </section>
-      </main>
+        </main>
+      </SmartSecurityAccessGate>
       <Footer />
     </div>
   )

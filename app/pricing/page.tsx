@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Check, CheckCircle, ShieldCheck, X } from "lucide-react"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
-import { computeEntitlement } from "@/lib/entitlement"
+import { computeEntitlement, pricingStatusForEntitlement } from "@/lib/entitlement"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 import { ProcessingIndicator } from "@/components/ui/processing-indicator"
 
@@ -111,10 +111,6 @@ function isCardActive(name: string, activeStatus: string | null): boolean {
   if (name === "Pro" && activeStatus === "pro") return true
   if (name === "Gift Codes" && activeStatus === "gift_code") return true
   return false
-}
-
-function isUnlimitedAccess(expiresAt: string | null): boolean {
-  return !!expiresAt && new Date(expiresAt).getFullYear() >= 2099
 }
 
 function PricingCard({
@@ -401,7 +397,7 @@ export default function PricingPage() {
       .eq("email", email)
       .maybeSingle()
     const ent = computeEntitlement(data)
-    setActiveStatus(ent.isActive ? (isUnlimitedAccess(ent.expiresAt) ? "pro" : ent.status) : null)
+    setActiveStatus(pricingStatusForEntitlement(ent))
   }
 
   const handleRequireAuth = (checkoutUrl: string) => setPendingCheckoutUrl(checkoutUrl)

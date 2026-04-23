@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { GoogleSignInButton } from "@/components/google-sign-in-button"
 import { supabase } from "@/lib/supabase"
-import { computeEntitlement } from "@/lib/entitlement"
+import { computeEntitlement, isUnlimitedEntitlement } from "@/lib/entitlement"
 import type { Session } from "@supabase/supabase-js"
 
 const chromeFontStyle = {
@@ -251,8 +251,7 @@ interface SubRecord {
 
 function resolveDisplayPlan(sub: SubRecord | null): { label: string; note: string; isActive: boolean } {
   const ent = computeEntitlement(sub)
-  const isUnlimitedAccess =
-    !!ent.expiresAt && new Date(ent.expiresAt).getFullYear() >= 2099
+  const isUnlimitedAccess = isUnlimitedEntitlement(ent)
 
   if (ent.isDayPass) {
     const expiresAt = ent.expiresAt

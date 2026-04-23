@@ -87,3 +87,12 @@ export function computeEntitlement(row: EntitlementRow | null | undefined): Enti
 
   return { ...INACTIVE, status, expiresAt: current_period_end, plan }
 }
+
+export function isUnlimitedEntitlement(entitlement: Pick<Entitlement, "expiresAt">): boolean {
+  return !!entitlement.expiresAt && new Date(entitlement.expiresAt).getFullYear() >= 2099
+}
+
+export function pricingStatusForEntitlement(entitlement: Entitlement): string | null {
+  if (!entitlement.isActive) return null
+  return isUnlimitedEntitlement(entitlement) ? "pro" : entitlement.status
+}

@@ -44,6 +44,12 @@ import {
   type ThemeMode,
   type WidgetColor,
 } from "@/lib/palette"
+import {
+  WIDGET_MIN_SIZE,
+  compactStaleWidgetSize,
+  toMobileLayout,
+  widgetMinSize,
+} from "@/lib/dashboard-layout"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -204,17 +210,6 @@ const TIME_GRAIN_UNIT: Record<TimeGrain, string> = {
 const DRILLABLE_WIDGET_TYPES = new Set([
   "area-chart",
   "line-chart",
-  "stacked-bar",
-  "composed-chart",
-  "banded-area",
-])
-
-const CHART_WIDGET_TYPES = new Set([
-  "area-chart",
-  "bar-chart",
-  "bar-deductible",
-  "line-chart",
-  "pie-chart",
   "stacked-bar",
   "composed-chart",
   "banded-area",
@@ -568,88 +563,6 @@ function displayWidgetTitle(widget: Widget, model: DashboardCurrencyModel): stri
   }
   if (MONEY_WIDGET_TYPES.has(widget.type)) return `${widget.title} · ${model.primaryCurrency}`
   return widget.title
-}
-
-// ── Mobile layout derivation ──────────────────────────────────────────────────
-// Translates a saved 12-col desktop layout into a mobile-friendly 12-col layout.
-// Keeps cols=12 so containerWidth math is identical — only widget sizes change:
-//   w ≤ 2 on desktop  →  w=6  (half screen, two per row)
-//   w  > 2 on desktop  →  w=12 (full screen, one per row)
-// Never persisted — computed at render time so desktop config is untouched.
-function toMobileLayout(desktopLayout: LayoutItem[]): LayoutItem[] {
-  const MOBILE_COLS = 12
-  const HALF = 6
-
-  // Sort by desktop reading order: top row first, then left to right
-  const sorted = [...desktopLayout].sort((a, b) => a.y !== b.y ? a.y - b.y : a.x - b.x)
-
-  const mobile: LayoutItem[] = []
-  let curX = 0
-  let curY = 0
-  let rowH = 0
-
-  for (const item of sorted) {
-    const mw = item.w <= 2 ? HALF : MOBILE_COLS
-    const mh = item.h
-
-    // Wrap to next row if it won't fit
-    if (curX + mw > MOBILE_COLS) {
-      curY += rowH
-      curX = 0
-      rowH = 0
-    }
-
-    mobile.push({ ...item, x: curX, y: curY, w: mw, h: mh, static: true })
-    curX += mw
-    rowH = Math.max(rowH, mh)
-  }
-
-  return mobile
-}
-
-const WIDGET_MIN_SIZE: Record<string, { minW: number; minH: number }> = {
-  "kpi-income":      { minW: 2, minH: 1 },
-  "kpi-expenses":    { minW: 2, minH: 1 },
-  "kpi-net":         { minW: 2, minH: 1 },
-  "kpi-tax-exposure":{ minW: 2, minH: 1 },
-  "kpi-tax-ratio":   { minW: 2, minH: 1 },
-  "kpi-savings":     { minW: 2, minH: 1 },
-  "kpi-tax":         { minW: 2, minH: 1 },
-  "bar-chart":       { minW: 3, minH: 2 },
-  "bar-deductible":  { minW: 3, minH: 2 },
-  "line-chart":      { minW: 3, minH: 2 },
-  "area-chart":      { minW: 3, minH: 2 },
-  "pie-chart":       { minW: 2, minH: 2 },
-  "context-summary": { minW: 3, minH: 3 },
-  "rd-insight":      { minW: 3, minH: 3 },
-  "stacked-bar":     { minW: 3, minH: 2 },
-  "composed-chart":  { minW: 3, minH: 2 },
-  "banded-area":     { minW: 3, minH: 2 },
-}
-
-function widgetMinSize(type?: string | null): { minW: number; minH: number } {
-  return (type && WIDGET_MIN_SIZE[type]) || { minW: 2, minH: 2 }
-}
-
-function compactStaleWidgetSize(item: LayoutItem, widget?: Widget): LayoutItem {
-  const widgetType = widget?.type ?? item.i
-  const minSize = widgetMinSize(widgetType)
-  const isKpi = widgetType.startsWith("kpi")
-  const isChart = CHART_WIDGET_TYPES.has(widgetType)
-  const wasOldGeneratedKpi = isKpi && (((item.w === 2 || item.w === 3) && item.h === 2) || (item.w === 3 && item.h === 4) || item.h === 5)
-  const wasOldGeneratedChart = !isKpi && item.w === 6 && item.h === 8
-  const wasOldDefaultChart = !isKpi && ((item.w === 12 && item.h === 12) || (item.w === 4 && item.h === 11))
-  const wasPreviousChartMinimum = isChart && item.h === 3 && minSize.minH === 2
-  const wasOldGeneratedAdvanced = Boolean(widget?.advancedId) && item.w === minSize.minW + 2 && item.h === minSize.minH + 2
-  const shouldCompact = wasOldGeneratedKpi || wasOldGeneratedChart || wasOldDefaultChart || wasPreviousChartMinimum || wasOldGeneratedAdvanced
-
-  return {
-    ...item,
-    w: shouldCompact ? minSize.minW : Math.max(item.w, minSize.minW),
-    h: shouldCompact ? minSize.minH : Math.max(item.h, minSize.minH),
-    minW: minSize.minW,
-    minH: minSize.minH,
-  }
 }
 
 const WIDGET_LIBRARY = [

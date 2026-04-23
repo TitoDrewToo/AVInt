@@ -58,6 +58,7 @@ import {
   storageQuotaBytes,
   storageUsagePercent,
 } from "@/lib/storage-quota"
+import { collapseBreadcrumb } from "@/lib/breadcrumb"
 
 // ── Document type normalization ───────────────────────────────────────────────
 
@@ -211,11 +212,6 @@ function fileIcon(fileType: string) {
   if (fileType.startsWith("image/")) return <ImageIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
   if (fileType === "application/pdf") return <FileText className="h-4 w-4 shrink-0 text-primary/60" />
   return <File className="h-4 w-4 shrink-0 text-muted-foreground" />
-}
-
-function collapseBreadcrumb<T>(items: T[]): Array<T | "ellipsis"> {
-  if (items.length <= 3) return items
-  return [items[0], "ellipsis", ...items.slice(-2)]
 }
 
 interface StorageItemMenuProps {

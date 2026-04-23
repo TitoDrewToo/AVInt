@@ -12,15 +12,6 @@ import {
 import { Input } from "@/components/ui/input"
 import { ProcessingIndicator } from "@/components/ui/processing-indicator"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuLabel,
-  ContextMenuSeparator,
-  ContextMenuShortcut,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu"
 import { supabase } from "@/lib/supabase"
 import { useEntitlement } from "@/hooks/use-entitlement"
 import type { Session } from "@supabase/supabase-js"
@@ -39,18 +30,17 @@ import {
   X,
   Upload,
   ArrowLeft,
-  FolderOutput,
-  Download,
   PenLine,
-  Tag,
   Menu,
-  BarChart2,
   Loader2,
   HardDrive,
 } from "lucide-react"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { ManualEntryModal, ReclassifyModal } from "@/components/ui/document-modals"
+import { DateRangeSelector } from "@/components/smart-storage/date-range-selector"
+import { LeftFolderItem } from "@/components/smart-storage/left-folder-item"
+import { StorageItemMenu } from "@/components/smart-storage/storage-item-menu"
 import { useRouter } from "next/navigation"
 import {
   formatStorageAllowance,
@@ -59,27 +49,28 @@ import {
   storageUsagePercent,
 } from "@/lib/storage-quota"
 import { collapseBreadcrumb } from "@/lib/breadcrumb"
+import {
+  CLASSIFICATION_FOLDER_MAP,
+  MAX_FILE_SIZE,
+  PRESET_LABELS,
+  REPORTS,
+  REPORT_ROUTES,
+  fileExtension,
+  findFreeGridSlot,
+  getDisplayedSmartStorageFiles,
+  getOrderedDisplayedFiles,
+  getPresetRange,
+  isAllowedUploadFile,
+  isUnclassifiedDocument,
+  type ClassificationSort,
+  type DateRange,
+  type DocumentVirtualView,
+  type GridPosition,
+  type UploadedFile,
+  type VirtualFolder,
+  type ViewMode,
+} from "@/lib/smart-storage"
 
-// ── Document type normalization ───────────────────────────────────────────────
-
-const SUPPORTED_DOCUMENT_TYPES = [
-  "receipt", "invoice", "payslip", "income_statement", "bank_statement",
-  "transaction_record", "contract", "agreement", "tax_document", "general_document",
-] as const
-
-type DocumentType = typeof SUPPORTED_DOCUMENT_TYPES[number]
-
-const DOCUMENT_TYPE_ALIASES: Record<string, DocumentType> = {
-  "expense receipt": "receipt", "expense": "receipt", "bill": "receipt",
-  "salary slip": "payslip", "pay slip": "payslip", "paycheck": "payslip",
-  "employment agreement": "contract", "service agreement": "contract", "nda": "contract",
-  "bank record": "bank_statement", "account statement": "bank_statement",
-  "income record": "income_statement", "earnings statement": "income_statement",
-  "tax form": "tax_document", "tax return": "tax_document",
-  "transaction": "transaction_record",
-}
-
-const CONFIDENCE_THRESHOLD = 0.7
 const HOVER_PREVIEW_WIDTH = 208
 const HOVER_PREVIEW_ESTIMATED_HEIGHT = 248
 const HOVER_PREVIEW_CURSOR_GAP = 28
@@ -90,109 +81,6 @@ type HoverPreviewState = {
   url: string | null
   x: number
   y: number
-}
-
-type DocumentVirtualView = "unclassified"
-
-function normalizeDocumentType(raw: string, confidence: number): DocumentType {
-  if (confidence < CONFIDENCE_THRESHOLD) return "general_document"
-  const lower = raw.toLowerCase().trim()
-  if (SUPPORTED_DOCUMENT_TYPES.includes(lower as DocumentType)) return lower as DocumentType
-  if (DOCUMENT_TYPE_ALIASES[lower]) return DOCUMENT_TYPE_ALIASES[lower]
-  for (const [alias, type] of Object.entries(DOCUMENT_TYPE_ALIASES)) {
-    if (lower.includes(alias) || alias.includes(lower)) return type
-  }
-  return "general_document"
-}
-
-function isUnclassifiedDocument(file: Pick<UploadedFile, "document_type">) {
-  return !file.document_type || file.document_type === "unknown"
-}
-
-// ── Classification folder mapping ─────────────────────────────────────────────
-
-const CLASSIFICATION_FOLDER_MAP: Record<string, string[]> = {
-  Receipts:     ["receipt"],
-  Invoices:     ["invoice"],
-  Income:       ["payslip", "income_statement"],
-  Tax:          ["tax_document"],
-  Contracts:    ["contract", "agreement"],
-  Transactions: ["bank_statement", "transaction_record"],
-  Other:        ["general_document"],
-}
-
-// ── Date range ────────────────────────────────────────────────────────────────
-
-type DateRangePreset = "last_month" | "this_year" | "prev_year" | "custom"
-
-interface DateRange {
-  preset: DateRangePreset
-  from: string
-  to: string
-}
-
-function getPresetRange(preset: DateRangePreset): { from: string; to: string } {
-  const now = new Date()
-  const pad = (n: number) => String(n).padStart(2, "0")
-  const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-  const today = fmt(now)
-  switch (preset) {
-    case "last_month": {
-      const first = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-      const last  = new Date(now.getFullYear(), now.getMonth(), 0)
-      return { from: fmt(first), to: fmt(last) }
-    }
-    case "this_year":  return { from: `${now.getFullYear()}-01-01`, to: today }
-    case "prev_year":  return { from: `${now.getFullYear() - 1}-01-01`, to: `${now.getFullYear() - 1}-12-31` }
-    default: return { from: "", to: today }
-  }
-}
-
-const PRESET_LABELS: Record<string, string> = {
-  "last_month": "Last month",
-  "this_year": "This year", "prev_year": "Prev year",
-}
-
-// ── Reports ───────────────────────────────────────────────────────────────────
-
-interface ReportDef {
-  id: string
-  label: string
-  description: string
-  requires: "any_file" | "date_and_amount_2" | "income_amount" | "expense_or_income" | "contract_fields"
-  coreEnabled: boolean
-}
-
-const REPORTS: ReportDef[] = [
-  { id: "expense_summary",     label: "Expense Summary",          description: "Categorized breakdown of all expenses with totals and trends. Ideal for budgeting reviews and cost management.",                             requires: "date_and_amount_2",  coreEnabled: true  },
-  { id: "income_summary",      label: "Income Summary",           description: "Consolidated view of all income sources, employer details, and gross/net figures. Perfect for tax filing and financial planning.",            requires: "income_amount",       coreEnabled: true  },
-  { id: "tax_bundle",          label: "Tax Bundle Summary",       description: "Schedule C-ready summary for business income and deductible expenses.",                                  requires: "expense_or_income",   coreEnabled: true  },
-  { id: "profit_loss",         label: "Profit & Loss Summary",    description: "Income vs. expenses comparison showing net position and savings rate. Essential for freelancers, consultants, and business owners.",           requires: "expense_or_income",   coreEnabled: true  },
-  { id: "contract_summary",    label: "Contract Summary",         description: "Key parties, dates, obligations, and terms extracted from all contracts. Useful for legal reviews, renewals, and compliance tracking.",        requires: "contract_fields",     coreEnabled: true  },
-  { id: "key_terms",           label: "Key Terms Summary",        description: "Critical clauses and definitions consolidated across all contract documents. Great for quick reference before negotiations or renewals.",       requires: "contract_fields",     coreEnabled: true  },
-  { id: "business_expense",    label: "Business Expense Summary", description: "Business-specific expense breakdown highlighting deductible items and vendor spending. Designed for business tax filing and reimbursements.",  requires: "expense_or_income",   coreEnabled: true  },
-]
-
-// ── Folder / File types ───────────────────────────────────────────────────────
-
-interface VirtualFolder {
-  id: string
-  name: string
-  parentId: string | null
-  isRenaming?: boolean
-}
-
-interface UploadedFile {
-  id: string
-  filename: string
-  file_type: string
-  file_size: number
-  document_type: string
-  created_at: string
-  storage_path: string
-  folder_id: string | null
-  upload_status?: string | null
-  scan_reason?: string | null
 }
 
 const formatBytes = formatStorageBytes
@@ -214,239 +102,6 @@ function fileIcon(fileType: string) {
   return <File className="h-4 w-4 shrink-0 text-muted-foreground" />
 }
 
-interface StorageItemMenuProps {
-  kind: "file" | "folder"
-  filename: string
-  isMultiSelect: boolean
-  multiSelectCount: number
-  canMoveUp?: boolean
-  onRename: () => void
-  onDelete: () => void | Promise<void>
-  onDownload?: () => void | Promise<void>
-  onDownloadSelection?: () => void | Promise<void>
-  onDeleteSelection?: () => void | Promise<void>
-  onMoveUp?: () => void | Promise<void>
-  onReclassify?: () => void
-  onContextIntent?: () => void
-  children: React.ReactNode
-}
-
-function StorageItemMenu({
-  kind,
-  filename,
-  isMultiSelect,
-  multiSelectCount,
-  canMoveUp = false,
-  onRename,
-  onDelete,
-  onDownload,
-  onDownloadSelection,
-  onDeleteSelection,
-  onMoveUp,
-  onReclassify,
-  onContextIntent,
-  children,
-}: StorageItemMenuProps) {
-  return (
-    <ContextMenu>
-      <ContextMenuTrigger onContextMenuCapture={() => onContextIntent?.()} className="block">
-        {children}
-      </ContextMenuTrigger>
-      <ContextMenuContent className="min-w-[196px] rounded-xl">
-        {isMultiSelect ? (
-          <>
-            <ContextMenuLabel>{multiSelectCount} files selected</ContextMenuLabel>
-            <ContextMenuSeparator />
-            <ContextMenuItem inset onSelect={() => void onDownloadSelection?.()}>
-              <Download className="h-3.5 w-3.5" />
-              Download all
-              <ContextMenuShortcut>Enter</ContextMenuShortcut>
-            </ContextMenuItem>
-            <ContextMenuSeparator />
-            <ContextMenuItem inset variant="destructive" onSelect={() => void onDeleteSelection?.()}>
-              <X className="h-3.5 w-3.5" />
-              Delete all selected
-              <ContextMenuShortcut>Del</ContextMenuShortcut>
-            </ContextMenuItem>
-          </>
-        ) : kind === "folder" ? (
-          <>
-            <ContextMenuLabel className="truncate">{filename}</ContextMenuLabel>
-            <ContextMenuSeparator />
-            <ContextMenuItem inset onSelect={() => void onRename()}>
-              <Pencil className="h-3.5 w-3.5" />
-              Rename
-            </ContextMenuItem>
-            <ContextMenuSeparator />
-            <ContextMenuItem inset variant="destructive" onSelect={() => void onDelete()}>
-              <X className="h-3.5 w-3.5" />
-              Delete folder
-            </ContextMenuItem>
-          </>
-        ) : (
-          <>
-            <ContextMenuLabel className="truncate">{filename}</ContextMenuLabel>
-            <ContextMenuSeparator />
-            <ContextMenuItem inset onSelect={() => void onRename()}>
-              <Pencil className="h-3.5 w-3.5" />
-              Rename
-            </ContextMenuItem>
-            {canMoveUp && onMoveUp && (
-              <>
-                <ContextMenuSeparator />
-                <ContextMenuItem inset onSelect={() => void onMoveUp()}>
-                  <FolderOutput className="h-3.5 w-3.5" />
-                  Move up
-                </ContextMenuItem>
-              </>
-            )}
-            {onReclassify && (
-              <>
-                <ContextMenuSeparator />
-                <ContextMenuItem inset onSelect={onReclassify}>
-                  <Tag className="h-3.5 w-3.5" />
-                  Reclassify
-                </ContextMenuItem>
-              </>
-            )}
-            {onDownload && (
-              <>
-                <ContextMenuSeparator />
-                <ContextMenuItem inset onSelect={() => void onDownload()}>
-                  <Download className="h-3.5 w-3.5" />
-                  Download
-                  <ContextMenuShortcut>Enter</ContextMenuShortcut>
-                </ContextMenuItem>
-              </>
-            )}
-            <ContextMenuSeparator />
-            <ContextMenuItem inset variant="destructive" onSelect={() => void onDelete()}>
-              <X className="h-3.5 w-3.5" />
-              Delete file
-              <ContextMenuShortcut>Del</ContextMenuShortcut>
-            </ContextMenuItem>
-          </>
-        )}
-      </ContextMenuContent>
-    </ContextMenu>
-  )
-}
-
-// ── Left pane folder tree item ────────────────────────────────────────────────
-
-function LeftFolderItem({
-  name,
-  isOpen,
-  isSelected,
-  onSelect,
-  onToggle,
-  children,
-  level = 0,
-  onRename,
-  onDelete,
-}: {
-  name: string
-  isOpen?: boolean
-  isSelected: boolean
-  onSelect: () => void
-  onToggle?: () => void
-  children?: React.ReactNode
-  level?: number
-  onRename?: () => void
-  onDelete?: () => void
-}) {
-  return (
-    <div>
-      <div
-        className={`group flex w-full items-center rounded text-sm transition-colors hover:bg-muted ${
-          isSelected ? "bg-muted text-foreground" : "text-muted-foreground"
-        }`}
-        style={{ paddingLeft: `${level * 12 + 8}px` }}
-      >
-        <button
-          onClick={() => { onSelect(); onToggle?.() }}
-          className="flex flex-1 min-w-0 items-center gap-1.5 py-1 text-left"
-        >
-          {children ? (
-            isOpen
-              ? <ChevronDown className="h-3.5 w-3.5 shrink-0" />
-              : <ChevronRight className="h-3.5 w-3.5 shrink-0" />
-          ) : <span className="w-3.5" />}
-          {isOpen
-            ? <FolderOpen className="h-4 w-4 shrink-0 text-primary/70" />
-            : <Folder className="h-4 w-4 shrink-0 text-muted-foreground" />}
-          <span className="truncate">{name}</span>
-        </button>
-        {(onRename || onDelete) && (
-          <div className="flex items-center gap-0.5 pr-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            {onRename && (
-              <button
-                onClick={(e) => { e.stopPropagation(); onRename() }}
-                className="flex h-5 w-5 items-center justify-center rounded hover:bg-muted-foreground/20"
-                title="Rename"
-              >
-                <Pencil className="h-3 w-3" />
-              </button>
-            )}
-            {onDelete && (
-              <button
-                onClick={(e) => { e.stopPropagation(); onDelete() }}
-                className="flex h-5 w-5 items-center justify-center rounded hover:bg-destructive/20 hover:text-destructive"
-                title="Delete"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-      {isOpen && children && <div>{children}</div>}
-    </div>
-  )
-}
-
-// ── Date range selector ───────────────────────────────────────────────────────
-
-function DateRangeSelector({ dateRange, onChange }: { dateRange: DateRange; onChange: (r: DateRange) => void }) {
-  const presets: { label: string; value: DateRangePreset }[] = [
-    { label: "Last month", value: "last_month" },
-    { label: "This year",  value: "this_year"  },
-    { label: "Prev year",  value: "prev_year"  },
-    { label: "Custom",     value: "custom"     },
-  ]
-  return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap gap-1">
-        {presets.map((p) => (
-          <button
-            key={p.value}
-            onClick={() => { const r = getPresetRange(p.value); onChange({ preset: p.value, ...r }) }}
-            className={`rounded px-2 py-0.5 text-xs transition-colors ${
-              dateRange.preset === p.value
-                ? "bg-primary text-primary-foreground"
-                : "bg-muted text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {p.label}
-          </button>
-        ))}
-      </div>
-      {dateRange.preset === "custom" && (
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-2">
-            <span className="w-6 text-xs text-muted-foreground">From</span>
-            <Input type="date" value={dateRange.from} onChange={(e) => onChange({ ...dateRange, from: e.target.value })} className="h-7 text-xs" />
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-6 text-xs text-muted-foreground">To</span>
-            <Input type="date" value={dateRange.to} onChange={(e) => onChange({ ...dateRange, to: e.target.value })} className="h-7 text-xs" />
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function SmartStoragePage() {
@@ -464,7 +119,7 @@ export default function SmartStoragePage() {
   const [docsOpen, setDocsOpen] = useState(true)
   // Classification view — null = normal folder view, string = active classification name
   const [classificationView, setClassificationView] = useState<string | null>(null)
-  const [classificationSort, setClassificationSort] = useState<"date-desc" | "date-asc" | "name">("date-desc")
+  const [classificationSort, setClassificationSort] = useState<ClassificationSort>("date-desc")
 
   // Virtual folders (local state — DB-backed folders coming later)
   const [folders, setFolders] = useState<VirtualFolder[]>([
@@ -485,7 +140,7 @@ export default function SmartStoragePage() {
   const [isNavigatingReport, setIsNavigatingReport] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set())
-  const [viewMode, setViewMode] = useState<"list" | "grid">("grid")
+  const [viewMode, setViewMode] = useState<ViewMode>("grid")
   const [boxSelect, setBoxSelect] = useState<{ startX: number; startY: number; currentX: number; currentY: number } | null>(null)
   const lastSelectedRef = useRef<string | null>(null)
   const canvasBoxSelectStart = useRef<{ x: number; y: number } | null>(null)
@@ -510,7 +165,7 @@ export default function SmartStoragePage() {
   const CELL_H = 104
   const GRID_PAD = 8
   const canvasRef = useRef<HTMLDivElement>(null)
-  const [itemPositions, setItemPositions] = useState<Record<string, { col: number; row: number }>>({})
+  const [itemPositions, setItemPositions] = useState<Record<string, GridPosition>>({})
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dragSelectionIds, setDragSelectionIds] = useState<string[]>([])
   // Drag intent tracking — refs avoid stale closure issues in pointer handlers
@@ -529,16 +184,6 @@ export default function SmartStoragePage() {
   const [reportAvailability, setReportAvailability] = useState<Record<string, boolean>>({})
   const router = useRouter()
   const isTaxBundleSelected = selectedReport === "tax_bundle"
-
-  const REPORT_ROUTES: Record<string, string> = {
-    expense_summary:   "/tools/smart-storage/reports/expense-summary",
-    income_summary:    "/tools/smart-storage/reports/income-summary",
-    tax_bundle:        "/tools/smart-storage/reports/tax-bundle",
-    profit_loss:       "/tools/smart-storage/reports/profit-loss",
-    contract_summary:  "/tools/smart-storage/reports/contract-summary",
-    key_terms:         "/tools/smart-storage/reports/key-terms",
-    business_expense:  "/tools/smart-storage/reports/business-expense",
-  }
 
   function openReport(reportId: string, options?: { mode?: "schedule_c" | "employed" }) {
     if (!isPro) {
@@ -670,36 +315,21 @@ export default function SmartStoragePage() {
 
   // Files — classification view shows all matching types across all folders, sorted by date
   // Declared here (before keyboard shortcut useEffect) to avoid TS2448 forward-reference error.
-  const displayedFiles = (() => {
-    const sortFiles = (matched: UploadedFile[]) => {
-      if (classificationSort === "date-desc") return [...matched].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-      if (classificationSort === "date-asc")  return [...matched].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-      return [...matched].sort((a, b) => a.filename.localeCompare(b.filename))
-    }
-    if (documentVirtualView === "unclassified") {
-      return sortFiles(files.filter(isUnclassifiedDocument))
-    }
-    if (classificationView) {
-      const matched = classificationView === "Manual Entries"
-        ? files.filter(f => f.file_type === "manual")
-        : (() => {
-            const types = CLASSIFICATION_FOLDER_MAP[classificationView] ?? []
-            return files.filter(f => types.some(t => f.document_type?.includes(t) || t === f.document_type))
-          })()
-      return sortFiles(matched)
-    }
-    return files.filter(f =>
-      (f.folder_id ?? null) === (currentFolderId === "root" ? null : currentFolderId)
-    )
-  })()
+  const displayedFiles = getDisplayedSmartStorageFiles({
+    files,
+    currentFolderId,
+    documentVirtualView,
+    classificationView,
+    classificationSort,
+  })
 
   const orderedDisplayedFiles = useMemo(() => {
-    if (viewMode !== "grid" || classificationView || documentVirtualView) return displayedFiles
-    return [...displayedFiles].sort((a, b) => {
-      const posA = itemPositions[a.id] ?? { row: Number.MAX_SAFE_INTEGER, col: Number.MAX_SAFE_INTEGER }
-      const posB = itemPositions[b.id] ?? { row: Number.MAX_SAFE_INTEGER, col: Number.MAX_SAFE_INTEGER }
-      if (posA.row !== posB.row) return posA.row - posB.row
-      return posA.col - posB.col
+    return getOrderedDisplayedFiles({
+      displayedFiles,
+      viewMode,
+      classificationView,
+      documentVirtualView,
+      itemPositions,
     })
   }, [classificationView, displayedFiles, documentVirtualView, itemPositions, viewMode])
 
@@ -800,10 +430,6 @@ export default function SmartStoragePage() {
   }, [folders, files, currentFolderId, documentVirtualView])
 
   // ── Upload ─────────────────────────────────────────────────────────────────
-  const MAX_FILE_SIZE = 60 * 1024 * 1024 // 60 MB — matches bucket file_size_limit
-  const ALLOWED_TYPES = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp", "image/heic", "text/csv", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"])
-  const ALLOWED_EXTS = new Set(["pdf", "jpg", "jpeg", "png", "webp", "heic", "csv", "xlsx"])
-
   const handleUpload = async (uploadFiles: FileList | File[]) => {
     if (!session?.user?.id) return
     setIsUploading(true)
@@ -814,17 +440,12 @@ export default function SmartStoragePage() {
     const resolvedFolderPaths = new Map<string, string | null>()
     const currentParentId = currentFolderId === "root" ? null : currentFolderId
     const uploadList = Array.from(uploadFiles)
-    const extForFile = (file: File) => (file.name.split(".").pop() ?? "").toLowerCase()
-    const isAllowedFileType = (file: File) => {
-      const ext = extForFile(file)
-      return ALLOWED_TYPES.has(file.type) || ALLOWED_EXTS.has(ext)
-    }
     const allowedByQuota = new Set<File>()
     const quotaBytes = storageQuotaBytes(entitlement)
     let projectedStorageBytes = files.reduce((sum, existing) => sum + (existing.file_size || 0), 0)
 
     for (const file of uploadList) {
-      if (file.size > MAX_FILE_SIZE || !isAllowedFileType(file)) continue
+      if (file.size > MAX_FILE_SIZE || !isAllowedUploadFile(file)) continue
       if (projectedStorageBytes + file.size > quotaBytes) {
         const message = `Storage quota reached. ${formatStorageAllowance(quotaBytes)} is included with your current plan.`
         console.error(`Skipped ${file.name}: ${message}`)
@@ -888,8 +509,8 @@ export default function SmartStoragePage() {
         return
       }
       // Validate type
-      const ext = extForFile(file)
-      if (!isAllowedFileType(file)) {
+      const ext = fileExtension(file)
+      if (!isAllowedUploadFile(file)) {
         console.error(`Skipped ${file.name}: unsupported file type (${file.type || ext})`)
         return
       }
@@ -1137,22 +758,6 @@ export default function SmartStoragePage() {
   }
 
   // ── Canvas helpers ─────────────────────────────────────────────────────────
-  const findFreeSlot = (targetCol: number, targetRow: number, occupied: Set<string>) => {
-    if (!occupied.has(`${targetCol},${targetRow}`)) return { col: targetCol, row: targetRow }
-    for (let dist = 1; dist < 30; dist++) {
-      for (let dc = -dist; dc <= dist; dc++) {
-        for (let dr = -dist; dr <= dist; dr++) {
-          if (Math.abs(dc) + Math.abs(dr) === dist) {
-            const c = Math.max(0, targetCol + dc)
-            const r = Math.max(0, targetRow + dr)
-            if (!occupied.has(`${c},${r}`)) return { col: c, row: r }
-          }
-        }
-      }
-    }
-    return { col: targetCol, row: targetRow }
-  }
-
   const moveFileToFolder = async (fileId: string, targetFolderId: string | null) => {
     setFiles(prev => prev.map(f => f.id === fileId ? { ...f, folder_id: targetFolderId } : f))
     setItemPositions(prev => { const next = { ...prev }; delete next[fileId]; return next })
@@ -1271,12 +876,12 @@ export default function SmartStoragePage() {
           if (!current) return
           const proposedCol = Math.max(0, current.col + deltaCol)
           const proposedRow = Math.max(0, current.row + deltaRow)
-          const slot = findFreeSlot(proposedCol, proposedRow, occupied)
+          const slot = findFreeGridSlot(proposedCol, proposedRow, occupied)
           next[fileId] = slot
           occupied.add(`${slot.col},${slot.row}`)
         })
       } else {
-        const slot = findFreeSlot(targetCol, targetRow, occupied)
+        const slot = findFreeGridSlot(targetCol, targetRow, occupied)
         next[id] = slot
       }
       return next

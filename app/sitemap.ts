@@ -49,6 +49,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "monthly",
       priority: 0.9,
     },
+    {
+      url: `${BASE_URL}/products/smart-security`,
+      lastModified: new Date(),
+      changeFrequency: "monthly",
+      priority: 0.7,
+    },
     // ── Legal ──────────────────────────────────────────────────────────────────
     {
       url: `${BASE_URL}/privacy`,

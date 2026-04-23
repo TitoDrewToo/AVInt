@@ -22,11 +22,13 @@ const products = [
   { name: "Hooper", href: "#", disabled: true },
   { name: "Smart Storage", href: "/products/smart-storage" },
   { name: "Smart Dashboard", href: "/products/smart-dashboard" },
+  { name: "Smart Security", href: "/products/smart-security" },
 ]
 
 const tools = [
   { name: "Smart Storage", href: "/tools/smart-storage" },
   { name: "Smart Dashboard", href: "/tools/smart-dashboard" },
+  { name: "Smart Security", href: "/tools/smart-security" },
 ]
 
 function ThemeToggle() {

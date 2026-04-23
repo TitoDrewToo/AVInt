@@ -8,6 +8,9 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!
 const PRESCAN_PROVIDERS = providerChain("PRESCAN", "gemini", "openai")
+const SMART_SECURITY_URL = (Deno.env.get("SMART_SECURITY_URL") ?? "").replace(/\/+$/, "")
+const SMART_SECURITY_API_KEY = Deno.env.get("SMART_SECURITY_API_KEY") ?? ""
+const SMART_SECURITY_REQUIRED = (Deno.env.get("SMART_SECURITY_REQUIRED") ?? "false").toLowerCase() === "true"
 
 const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") ?? "https://www.avintph.com,https://avintph.com").split(",").map(s => s.trim())
 function buildCorsHeaders(req: Request) {
@@ -258,6 +261,18 @@ type SafetyResult = {
   reason: string
 }
 
+type SmartSecurityDecision = "clean" | "suspicious" | "infected" | "scan_error"
+
+type SmartSecurityResult = {
+  decision: SmartSecurityDecision
+  risk_score?: number
+  signals?: string[]
+  scanner?: {
+    clamav?: { status?: string; summary?: string; signature?: string }
+    structural?: { status?: string; signals?: string[] }
+  }
+}
+
 async function runGeminiSafety(mimeType: string, base64: string): Promise<SafetyResult> {
   const res = await fetchWithTimeout(
     `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
@@ -371,6 +386,54 @@ async function runSafety(provider: AiProvider, mimeType: string, base64: string)
   if (provider === "gemini") return await runGeminiSafety(mimeType, base64)
   if (provider === "openai") return await runOpenAISafety(mimeType, base64)
   throw new Error(`Unsupported prescan provider: ${provider}`)
+}
+
+async function runSmartSecurityScan(file: any, detectedMime: string): Promise<SmartSecurityResult | null> {
+  if (!SMART_SECURITY_URL || !SMART_SECURITY_API_KEY) {
+    if (SMART_SECURITY_REQUIRED) {
+      throw new PrescanReject("smart_security_unconfigured", "Smart Security is required but not configured.")
+    }
+    console.warn("Smart Security skipped: URL or API key missing")
+    return null
+  }
+
+  const res = await fetchWithTimeout(`${SMART_SECURITY_URL}/v1/scan/file`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-smart-security-key": SMART_SECURITY_API_KEY,
+    },
+    body: JSON.stringify({
+      app_id: "avintelligence",
+      file_id: file.id,
+      storage_path: file.storage_path,
+      mime_type: detectedMime,
+      filename: file.filename ?? null,
+    }),
+  }, 60_000)
+
+  const bodyText = await res.text()
+  if (!res.ok) {
+    throw new Error(`Smart Security HTTP ${res.status}: ${bodyText.slice(0, 300)}`)
+  }
+
+  const parsed = JSON.parse(bodyText) as SmartSecurityResult
+  if (!["clean", "suspicious", "infected", "scan_error"].includes(parsed.decision)) {
+    throw new Error(`Smart Security returned an unknown decision: ${String((parsed as any).decision)}`)
+  }
+  return parsed
+}
+
+function smartSecurityRejectMessage(result: SmartSecurityResult): string {
+  const signals = (result.signals ?? []).slice(0, 3).join(", ")
+  if (result.decision === "infected") {
+    const signature = result.scanner?.clamav?.signature
+    return signature ? `Malware signature detected: ${signature}` : "Malware signature detected."
+  }
+  if (result.decision === "suspicious") {
+    return signals ? `Risky file structure detected: ${signals}` : "Risky file structure detected."
+  }
+  return "Smart Security could not complete the scan."
 }
 
 // ── Main handler ─────────────────────────────────────────────────────────────
@@ -501,6 +564,30 @@ serve(async (req) => {
       .maybeSingle()
     if (duplicateQuarantine) {
       throw new PrescanReject("known_quarantined_hash", duplicateQuarantine.scan_reason || "This file matches a previously quarantined upload.")
+    }
+
+    // Tier 1.5 — Smart Security active file defense.
+    // This calls the standalone Cloud Run scanner before any AI extraction.
+    // Required mode is controlled by SMART_SECURITY_REQUIRED so rollout can
+    // start in observe mode and become fail-closed without another deploy.
+    try {
+      const smartSecurity = await runSmartSecurityScan(file, detected)
+      if (smartSecurity?.decision === "infected" || smartSecurity?.decision === "suspicious") {
+        throw new PrescanReject(`smart_security_${smartSecurity.decision}`, smartSecurityRejectMessage(smartSecurity))
+      }
+      if (smartSecurity?.decision === "scan_error" && SMART_SECURITY_REQUIRED) {
+        throw new PrescanReject("smart_security_scan_error", smartSecurityRejectMessage(smartSecurity))
+      }
+      if (smartSecurity?.decision === "scan_error") {
+        console.warn("Smart Security scan_error ignored in observe mode:", JSON.stringify(smartSecurity).slice(0, 500))
+      }
+    } catch (e) {
+      if (e instanceof PrescanReject) throw e
+      const message = e instanceof Error ? e.message : String(e)
+      if (SMART_SECURITY_REQUIRED) {
+        throw new PrescanReject("smart_security_unavailable", "Smart Security scan could not complete. Please try again.")
+      }
+      console.error("Smart Security unavailable in observe mode:", message)
     }
 
     // Tier 2 — AI Safety Pass

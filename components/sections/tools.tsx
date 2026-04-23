@@ -58,6 +58,23 @@ export function DashboardIcon({ className }: { className?: string }) {
   )
 }
 
+export function SecurityIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <style>{`
+        @keyframes tseek { 0%,100%{transform:translateY(-4px);opacity:.3} 50%{transform:translateY(4px);opacity:1} }
+        @keyframes tpulse{ 0%,100%{opacity:.3} 50%{opacity:1} }
+        .ts-line{animation:tseek 2s ease-in-out infinite;transform-origin:12px 12px}
+        .ts-dot{animation:tpulse 1.7s ease-in-out infinite}
+      `}</style>
+      <path d="M12 3l7 3v5c0 4.5-2.7 8.2-7 10-4.3-1.8-7-5.5-7-10V6l7-3z" className="fill-card stroke-border" strokeWidth="0.7" />
+      <path d="M8 12l2.2 2.2L16 8.5" stroke="rgb(220,38,38)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path className="ts-line" d="M7 11.5h10" stroke="rgb(220,38,38)" strokeWidth="0.8" strokeLinecap="round" />
+      <circle className="ts-dot" cx="18" cy="6" r="2" fill="rgb(220,38,38)" />
+    </svg>
+  )
+}
+
 interface ToolCardProps {
   name: string
   description: string
@@ -153,6 +170,14 @@ export function ToolsSection() {
       launchHref: "/tools/smart-dashboard",
       icon: <DashboardIcon className="h-6 w-6" />,
     },
+    {
+      name: "Smart Security",
+      description: "Monitor the defensive file-scanning service protecting uploads.",
+      subtext: "ClamAV, structural checks, and future active-defense signals.",
+      learnMoreHref: "/products/smart-security",
+      launchHref: "/tools/smart-security",
+      icon: <SecurityIcon className="h-6 w-6" />,
+    },
   ]
 
   return (
@@ -161,7 +186,7 @@ export function ToolsSection() {
         <h2 className="text-center text-sm font-medium uppercase tracking-wider text-primary">
           Tools
         </h2>
-        <div className="mt-12 grid gap-6 md:grid-cols-2">
+        <div className="mt-12 grid gap-6 md:grid-cols-3">
           {tools.map(tool => (
             <ToolCard
               key={tool.name}

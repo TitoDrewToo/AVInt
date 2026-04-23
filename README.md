@@ -20,9 +20,9 @@ The product is organized around two core experiences:
   - Contract Summary
   - Key Terms Summary
   - Tax Bundle — includes a Schedule C-oriented self-employed report and an employee income worksheet for wage and payslip records. The employee worksheet supports W-2-style review context but is not a substitute for official W-2 or 1099 forms, tax filing software, or tax advice.
-- Smart Dashboard with financial KPI widgets, custom dashboard layouts, analytics visuals, and drill-down views
+- Smart Dashboard with financial KPI widgets, custom dashboard layouts, analytics visuals, contextual summaries, and drill-down views
 - Multi-currency dashboard handling — money-based totals stay per-currency, with explicit FX conversion where applied
-- Advanced analytics surfaces for deeper spend, income, and document-level insight
+- Advanced dashboard analytics for spend, income, currency-aware trends, document mix, and AI-assisted narrative context
 - Account authentication, subscription access, gift-code redemption, and payment flows
 - Account controls for deleting individual files or removing account data
 

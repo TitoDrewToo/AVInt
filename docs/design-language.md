@@ -254,7 +254,7 @@ When a new surface needs something this doc doesn't cover:
 ## What This Doc Is Not
 
 - Not a component library spec. Components live in `components/ui/`.
-- Not a content style guide — copy tone lives in `docs/page-details.md` and `docs/product-assistant-knowledge.md`.
-- Not a dashboard data-viz spec — chart families live in `docs/advanced-analytics.md` and `docs/advanced-analytics-drilldowns.md`.
+- Not a content style guide — public page intent and copy direction live in `docs/page-details.md`.
+- Not a dashboard data-viz spec — dashboard analytics behavior is governed by the product code and public capability notes, not this visual style guide.
 
 This doc governs surface, motion, and interaction only.

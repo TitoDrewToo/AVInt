@@ -37,3 +37,4 @@ Multi-currency context can reveal useful patterns such as:
 - currency-aware trend and category visuals
 - explicit FX conversion where the user has enabled a unified display currency
 - clear labeling when values have been converted versus reported in their native currency
+- contextual summaries that acknowledge mixed-currency or incomplete data instead of silently over-combining values

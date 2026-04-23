@@ -23,7 +23,7 @@ Purpose:
 Purpose:
 - present an AI-contextualized view of the user's financial activity, not a generic charts page
 - use financial visuals as the interface and AI-derived context as the differentiator
-- help users understand what their numbers mean, why patterns matter, and what may be worth acting on
+- help users understand what their numbers show, why patterns may matter, and what may be worth inspecting next
 - connect naturally into deeper analytics views for spend, income, document, tax, forecasting, and anomaly context
 
 ### Pricing
@@ -74,9 +74,11 @@ Main objectives:
 Main objectives:
 - give users an intelligent financial workspace grounded in their own documents, transactions, receipts, income records, and tax inputs
 - keep financial visuals as the interface while leaning on AI-derived context for interpretation and guidance
-- surface what numbers mean, why patterns matter, and what risks or opportunities are emerging
+- surface what numbers show, why patterns may matter, and what may be worth inspecting next
 - support decision-making without overstating regulated financial or tax advice
 - treat currency as a first-class dimension for money visuals; do not mix currencies into one total or one y-axis without explicit FX conversion
+- support advanced dashboard analytics that choose visual forms based on the underlying question: trend, comparison, composition, volatility, or changing mix
+- provide concise dashboard context summaries that explain the observed pattern, its practical meaning, and the next useful inspection point
 
 See also:
 - `smart-dashboard-multi-currency.md` for the multi-currency dashboard model, including per-currency KPI cards and currency-aware trend and category visuals.

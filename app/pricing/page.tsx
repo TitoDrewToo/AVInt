@@ -113,6 +113,10 @@ function isCardActive(name: string, activeStatus: string | null): boolean {
   return false
 }
 
+function isUnlimitedAccess(expiresAt: string | null): boolean {
+  return !!expiresAt && new Date(expiresAt).getFullYear() >= 2099
+}
+
 function PricingCard({
   name, price, annualPrice, description, features,
   isAnnual, highlighted, isSignedIn, activeStatus, onRequireAuth, onRedirect,
@@ -338,7 +342,7 @@ const plans = [
   {
     name: "Gift Codes",
     price: "$6",
-    description: "Transferable 24-hour access",
+    description: "Shareable 24-hour access",
     features: ["5 GB storage", "Smart Storage", "All available reports", "Full structured outputs", "Advanced Analytics", "Smart Dashboards", "Custom Dashboards"],
   },
   {
@@ -393,11 +397,11 @@ export default function PricingPage() {
   const fetchSubscription = async (email: string) => {
     const { data } = await supabase
       .from("subscriptions")
-      .select("status, current_period_end")
+      .select("status, plan, current_period_end")
       .eq("email", email)
       .maybeSingle()
     const ent = computeEntitlement(data)
-    setActiveStatus(ent.isActive ? ent.status : null)
+    setActiveStatus(ent.isActive ? (isUnlimitedAccess(ent.expiresAt) ? "pro" : ent.status) : null)
   }
 
   const handleRequireAuth = (checkoutUrl: string) => setPendingCheckoutUrl(checkoutUrl)

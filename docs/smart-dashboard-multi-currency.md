@@ -6,7 +6,7 @@ Smart Dashboard treats currency as a first-class dimension.
 
 The product does not force all financial activity into a single global currency, and it does not combine unlike currencies into one money total. If a user has income in one currency and spending in another, those are represented as separate financial realities unless explicit FX conversion is applied.
 
-The goal is correct separation, clear visual grouping, and richer context — not hidden currency conversion.
+The goal is correct separation, clear visual grouping, and richer context — not silent currency conversion.
 
 ## Core Principle
 

@@ -81,7 +81,7 @@ Main objectives:
 See also:
 - `smart-dashboard-multi-currency.md` for the multi-currency dashboard model, including per-currency KPI cards and currency-aware trend and category visuals.
 
-Related report surfaces include Tax Bundle workflows for self-employed users.
+Related report surfaces include Tax Bundle, which provides a Schedule C-oriented self-employed report and an employee income worksheet for wage and payslip records. The employee worksheet supports W-2-style review context but is not a substitute for official W-2 or 1099 forms, tax filing software, or tax advice.
 
 ### Account Panel
 

@@ -9,7 +9,7 @@ The product is organized around two core experiences:
 
 ## Product Capabilities
 
-- Upload and organize receipts, invoices, payslips, contracts, screenshots, and related financial records
+- Upload and organize receipts, invoices, payslips, contracts, screenshots, and related financial records across PDFs, common image formats, CSV, and XLSX
 - Account-isolated storage and extracted records
 - Structured data extraction from uploaded documents
 - Report generation:
@@ -18,11 +18,11 @@ The product is organized around two core experiences:
   - Profit & Loss
   - Business Expense Report
   - Contract Summary
-  - Key Terms
-  - Tax Bundle (self-employed workflow)
+  - Key Terms Summary
+  - Tax Bundle — includes a Schedule C-oriented self-employed report and an employee income worksheet for wage and payslip records. The employee worksheet supports W-2-style review context but is not a substitute for official W-2 or 1099 forms, tax filing software, or tax advice.
 - Smart Dashboard with financial KPI widgets, custom dashboard layouts, analytics visuals, and drill-down views
 - Multi-currency dashboard handling — money-based totals stay per-currency, with explicit FX conversion where applied
-- Advanced analytics surfaces that deepen spend, income, and document-level insight as more data accumulates
+- Advanced analytics surfaces for deeper spend, income, and document-level insight
 - Account authentication, subscription access, gift-code redemption, and payment flows
 - Account controls for deleting individual files or removing account data
 

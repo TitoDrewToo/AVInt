@@ -209,6 +209,17 @@ const DRILLABLE_WIDGET_TYPES = new Set([
   "banded-area",
 ])
 
+const CHART_WIDGET_TYPES = new Set([
+  "area-chart",
+  "bar-chart",
+  "bar-deductible",
+  "line-chart",
+  "pie-chart",
+  "stacked-bar",
+  "composed-chart",
+  "banded-area",
+])
+
 function currencyToSymbol(code: string | null | undefined): string {
   const c = (code ?? "").toUpperCase()
   if (c === "PHP") return "₱"
@@ -604,16 +615,16 @@ const WIDGET_MIN_SIZE: Record<string, { minW: number; minH: number }> = {
   "kpi-tax-ratio":   { minW: 2, minH: 1 },
   "kpi-savings":     { minW: 2, minH: 1 },
   "kpi-tax":         { minW: 2, minH: 1 },
-  "bar-chart":       { minW: 3, minH: 3 },
-  "bar-deductible":  { minW: 3, minH: 3 },
-  "line-chart":      { minW: 3, minH: 3 },
-  "area-chart":      { minW: 3, minH: 3 },
-  "pie-chart":       { minW: 2, minH: 3 },
+  "bar-chart":       { minW: 3, minH: 2 },
+  "bar-deductible":  { minW: 3, minH: 2 },
+  "line-chart":      { minW: 3, minH: 2 },
+  "area-chart":      { minW: 3, minH: 2 },
+  "pie-chart":       { minW: 2, minH: 2 },
   "context-summary": { minW: 3, minH: 3 },
   "rd-insight":      { minW: 3, minH: 3 },
-  "stacked-bar":     { minW: 3, minH: 3 },
-  "composed-chart":  { minW: 3, minH: 3 },
-  "banded-area":     { minW: 3, minH: 3 },
+  "stacked-bar":     { minW: 3, minH: 2 },
+  "composed-chart":  { minW: 3, minH: 2 },
+  "banded-area":     { minW: 3, minH: 2 },
 }
 
 function widgetMinSize(type?: string | null): { minW: number; minH: number } {
@@ -621,13 +632,16 @@ function widgetMinSize(type?: string | null): { minW: number; minH: number } {
 }
 
 function compactStaleWidgetSize(item: LayoutItem, widget?: Widget): LayoutItem {
-  const minSize = widgetMinSize(widget?.type ?? item.i)
-  const isKpi = (widget?.type ?? item.i).startsWith("kpi")
+  const widgetType = widget?.type ?? item.i
+  const minSize = widgetMinSize(widgetType)
+  const isKpi = widgetType.startsWith("kpi")
+  const isChart = CHART_WIDGET_TYPES.has(widgetType)
   const wasOldGeneratedKpi = isKpi && (((item.w === 2 || item.w === 3) && item.h === 2) || (item.w === 3 && item.h === 4) || item.h === 5)
   const wasOldGeneratedChart = !isKpi && item.w === 6 && item.h === 8
   const wasOldDefaultChart = !isKpi && ((item.w === 12 && item.h === 12) || (item.w === 4 && item.h === 11))
+  const wasPreviousChartMinimum = isChart && item.h === 3 && minSize.minH === 2
   const wasOldGeneratedAdvanced = Boolean(widget?.advancedId) && item.w === minSize.minW + 2 && item.h === minSize.minH + 2
-  const shouldCompact = wasOldGeneratedKpi || wasOldGeneratedChart || wasOldDefaultChart || wasOldGeneratedAdvanced
+  const shouldCompact = wasOldGeneratedKpi || wasOldGeneratedChart || wasOldDefaultChart || wasPreviousChartMinimum || wasOldGeneratedAdvanced
 
   return {
     ...item,

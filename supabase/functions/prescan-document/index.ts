@@ -388,13 +388,20 @@ async function runSafety(provider: AiProvider, mimeType: string, base64: string)
   throw new Error(`Unsupported prescan provider: ${provider}`)
 }
 
-async function runSmartSecurityScan(file: any, detectedMime: string): Promise<SmartSecurityResult | null> {
+async function runSmartSecurityScan(supabase: any, file: any, detectedMime: string): Promise<SmartSecurityResult | null> {
   if (!SMART_SECURITY_URL || !SMART_SECURITY_API_KEY) {
     if (SMART_SECURITY_REQUIRED) {
       throw new PrescanReject("smart_security_unconfigured", "Smart Security is required but not configured.")
     }
     console.warn("Smart Security skipped: URL or API key missing")
     return null
+  }
+
+  const { data: signed, error: signedError } = await supabase.storage
+    .from("documents")
+    .createSignedUrl(file.storage_path, 120)
+  if (signedError || !signed?.signedUrl) {
+    throw new Error(`Smart Security signed URL failed: ${signedError?.message ?? "missing signed URL"}`)
   }
 
   const res = await fetchWithTimeout(`${SMART_SECURITY_URL}/v1/scan/file`, {
@@ -407,6 +414,7 @@ async function runSmartSecurityScan(file: any, detectedMime: string): Promise<Sm
       app_id: "avintelligence",
       file_id: file.id,
       storage_path: file.storage_path,
+      signed_url: signed.signedUrl,
       mime_type: detectedMime,
       filename: file.filename ?? null,
     }),
@@ -571,7 +579,7 @@ serve(async (req) => {
     // Required mode is controlled by SMART_SECURITY_REQUIRED so rollout can
     // start in observe mode and become fail-closed without another deploy.
     try {
-      const smartSecurity = await runSmartSecurityScan(file, detected)
+      const smartSecurity = await runSmartSecurityScan(supabase, file, detected)
       if (smartSecurity?.decision === "infected" || smartSecurity?.decision === "suspicious") {
         throw new PrescanReject(`smart_security_${smartSecurity.decision}`, smartSecurityRejectMessage(smartSecurity))
       }

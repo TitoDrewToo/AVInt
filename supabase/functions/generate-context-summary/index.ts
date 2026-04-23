@@ -36,15 +36,20 @@ function hasActiveEntitlement(row: { status: string | null; current_period_end: 
 
 const SYSTEM_PROMPT = `You are a personal financial analyst AI. You receive structured data extracted from a user's financial documents (receipts, invoices, payslips, etc.).
 
-Write a concise, friendly, and insightful financial summary for the user. Use natural language — no bullet points, no headers, no markdown. Write 3-5 sentences max.
+Write a concise, friendly, and insightful Smart Dashboard context summary for the user. Use natural language — no headers, no markdown. Write 3-5 sentences max.
 
 Focus on:
-- Overall financial picture (income vs expenses)
-- Notable patterns or standout items
-- Any observations about spending categories
+- What: the clearest observed financial pattern from the provided fields
+- So what: why that pattern matters for the user's dashboard view
+- Now what: one practical next inspection point or caveat
+- Overall financial picture (income vs expenses), only when supported by the provided data
+- Notable patterns, standout categories, employers, vendors, or document mix
 - Tone: warm, professional, helpful — like a trusted financial advisor
 
-Do not mention technical terms like "document_fields" or "raw_json". Speak directly to the user.`
+Rules:
+- Do not invent causes, forecasts, benchmarks, legal/tax conclusions, or advice not supported by the data.
+- If data is sparse, mixed-currency, or incomplete, say that briefly and keep the summary useful.
+- Do not mention technical terms like "document_fields" or "raw_json". Speak directly to the user.`
 
 async function callAnthropic(prompt: string): Promise<string> {
   const res = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
@@ -234,12 +239,23 @@ serve(async (req) => {
     const employers = [...new Set((fields ?? []).filter((f) => f.employer_name).map((f) => f.employer_name))]
     const vendors   = [...new Set((fields ?? []).filter((f) => f.vendor_name).map((f) => f.vendor_name))].slice(0, 5)
     const currency  = (fields ?? []).find((f) => f.currency)?.currency ?? "PHP"
+    const currencies = [...new Set((fields ?? []).map((f) => f.currency).filter(Boolean))]
+    const datedRows = (fields ?? []).filter((f) => f.document_date)
+    const monthsTracked = [...new Set(datedRows.map((f) => String(f.document_date).slice(0, 7)))].length
+    const documentTypes = [...new Set(userFiles.map((f) => f.document_type))]
+    const dataQualityNotes = [
+      monthsTracked > 0 ? `${monthsTracked} month${monthsTracked === 1 ? "" : "s"} with dated records` : "no dated records detected",
+      currencies.length > 1 ? `mixed currencies detected: ${currencies.join(", ")}` : `primary currency: ${currency}`,
+      topCategories.length ? "categorized expense data available" : "limited expense category data",
+      employers.length ? "income source data available" : "limited income source data",
+    ]
 
     const prompt = `Here is a summary of the user's financial documents:
 
 Total documents: ${userFiles.length}
-Document types: ${[...new Set(userFiles.map((f) => f.document_type))].join(", ")}
+Document types: ${documentTypes.join(", ")}
 Currency: ${currency}
+Data quality context: ${dataQualityNotes.join("; ")}
 
 Income:
 - Total gross income: ${totalIncome.toLocaleString()} ${currency}
@@ -252,7 +268,7 @@ Expenses:
 
 Net position: ${(totalIncome - totalExpenses).toLocaleString()} ${currency}
 
-Please write the financial summary now.`
+Please write the Smart Dashboard context summary now using What / So What / Now What in natural prose.`
 
     // 3. Call AI
     const { summary, provider } = await callWithFallback(prompt)

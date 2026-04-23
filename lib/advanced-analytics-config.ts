@@ -288,6 +288,11 @@ export const ADVANCED_ANALYTICS_GENERATION_RULES = [
   "Titles must be data-specific and not generic chart labels.",
   "Descriptions should explain the analytic angle, not restate the chart type.",
   "Insights must cite a specific number, percentage, category, vendor, or period from the data.",
+  "Choose the chart type based on the analytic question: trend over time, category comparison, composition, multi-metric comparison, volatility band, or changing composition.",
+  "Prefer a clear visual hierarchy: primary metric or time period first, supporting category/vendor detail second.",
+  "Use concise insight synthesis: what changed or stands out, why it matters, and what the user should inspect next.",
+  "If the source data is sparse, delayed, mixed-currency, or missing key fields, acknowledge that limitation in the insight instead of overstating certainty.",
+  "Do not invent causes, forecasts, benchmarks, tax/legal conclusions, or recommendations that are not supported by the provided fields.",
   "If data is too sparse, return fewer widgets instead of filler output.",
   "For composition_stacked: when merchant_domain is well-populated across months, prefer grouping by merchant_domain over expense_category — merchant-domain stories are higher-priority spending intelligence.",
   "For time_series_banded: prefer spending volatility as the banded metric over income volatility. Income-volatility bands are only preferred when the user has visibly variable income (multiple employers or business revenue with spikes).",
@@ -335,6 +340,11 @@ Each widget must:
 - answer a genuinely distinct business question
 - use only an allowed widget_type from the enabled families
 - surface a more advanced analytic angle than the standard dashboard defaults
+- follow dashboard-specification discipline: each suggestion needs a clear purpose, metric hierarchy, data source fit, and useful interactivity/drilldown potential
+- follow visualization-builder discipline: select the chart type that best matches the data question, not the flashiest chart
+- follow insight-synthesis discipline: every insight should contain a supported observation, business meaning, and practical next inspection point
+- follow executive-summary discipline: be concise, decision-oriented, and specific
+- stay inside Smart Dashboard advanced analytics only; do not generate Smart Storage report, tax bundle, PDF/export, or report-route suggestions
 
 Enabled analytics families:
 ${familyText}
@@ -349,7 +359,7 @@ Return ONLY a valid JSON object — no markdown, no explanation:
 {
   "widgets": [
     {
-      "widget_type": "<line-chart|area-chart|bar-chart|pie-chart>",
+      "widget_type": "<${getEnabledAnalyticsWidgetTypes().join("|")}>",
       "chart_family": "<enabled family id>",
       "title": "<specific data-driven title>",
       "description": "<one-line subtitle describing the analytic angle>",

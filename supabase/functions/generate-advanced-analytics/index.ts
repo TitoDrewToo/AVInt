@@ -233,6 +233,10 @@ serve(async (req) => {
     const f = fields ?? []
     const currency = f.find((x: any) => x.currency)?.currency ?? "PHP"
     const symbol   = currency === "PHP" ? "₱" : currency === "EUR" ? "€" : currency === "GBP" ? "£" : "$"
+    const currencies = [...new Set(f.map((x: any) => x.currency).filter(Boolean))]
+    const currencyNote = currencies.length > 1
+      ? `mixed currencies detected (${currencies.join(", ")}); only generate combined money insights when the provided aggregate is explicitly meaningful, and mention currency uncertainty in insight text`
+      : `single primary currency detected (${currency})`
 
     // ── 3. Core aggregations — csv_export rows classified by gross_income presence ─
     const isIncomeRow  = (x: any) => {
@@ -448,11 +452,19 @@ Allowed widget types: [${getEnabledAnalyticsWidgetTypes().join(", ")}]
 already_plotted (DO NOT use these widget types): [${alreadyPlotted.join(", ")}]
 standard_dashboard_widget_types: [${(existing_widget_types ?? []).join(", ")}]
 
+Dashboard product context:
+- Surface advanced Smart Dashboard widgets only.
+- Do not propose Smart Storage reports, report exports, tax-bundle/report pages, or report-generation procedures.
+- Choose widgets that answer one clear dashboard question and can be understood from a small widget.
+- Use concise data storytelling: What stands out, why it matters, and what the user should inspect next.
+- Do not invent causes, forecasts, benchmarks, legal/tax conclusions, or recommendations not supported by this data.
+
 Data sufficiency:
 - months_tracked: ${months}
 - transaction_count: ${transactionCount}
 - distinct_categories: ${Object.keys(categories).length}
 - distinct_vendors: ${topVendors.length}
+- currency_context: ${currencyNote}
 
 Financial summary:
 - total_income: ${symbol}${totalIncome.toLocaleString()}

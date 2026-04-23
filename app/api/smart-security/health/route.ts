@@ -2,8 +2,10 @@ import { NextResponse } from "next/server"
 
 export const dynamic = "force-dynamic"
 
+const DEFAULT_SMART_SECURITY_URL = "https://smart-security-14720117769.asia-southeast1.run.app"
+
 export async function GET() {
-  const baseUrl = process.env.SMART_SECURITY_URL?.replace(/\/+$/, "")
+  const baseUrl = (process.env.SMART_SECURITY_URL ?? DEFAULT_SMART_SECURITY_URL).replace(/\/+$/, "")
 
   if (!baseUrl) {
     return NextResponse.json({

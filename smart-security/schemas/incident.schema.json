@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://avintph.com/smart-security/schemas/incident.schema.json",
+  "title": "SmartSecurityIncident",
+  "description": "Rollup of related decisions. One incident may contain multiple decisions across the timeline.",
+  "type": "object",
+  "required": ["incident_id", "tenant_id", "opened_at", "severity", "status"],
+  "additionalProperties": false,
+  "properties": {
+    "incident_id": { "type": "string", "format": "uuid" },
+    "tenant_id": { "type": "string", "minLength": 1 },
+    "opened_at": { "type": "string", "format": "date-time" },
+    "closed_at": { "type": ["string", "null"], "format": "date-time" },
+    "severity": {
+      "type": "string",
+      "enum": ["info", "low", "medium", "high", "critical"]
+    },
+    "attack_ids": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^T\\d{4}(\\.\\d{3})?$" }
+    },
+    "decision_ids": {
+      "type": "array",
+      "items": { "type": "string", "format": "uuid" }
+    },
+    "timeline": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["at", "event"],
+        "additionalProperties": false,
+        "properties": {
+          "at": { "type": "string", "format": "date-time" },
+          "event": { "type": "string" },
+          "decision_id": { "type": "string", "format": "uuid" },
+          "note": { "type": "string" }
+        }
+      }
+    },
+    "review_path": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["open", "contained", "reviewed", "closed"]
+    },
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "true_positive",
+        "false_positive",
+        "inconclusive",
+        "false_negative_retro"
+      ]
+    }
+  }
+}

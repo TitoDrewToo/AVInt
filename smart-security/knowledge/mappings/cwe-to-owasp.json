@@ -1,0 +1,5 @@
+{
+  "$schema_version": "1.0.0",
+  "description": "CWE id -> OWASP Top 10 category. Phase 3 populates it.",
+  "mappings": {}
+}

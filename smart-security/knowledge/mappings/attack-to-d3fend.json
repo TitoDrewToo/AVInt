@@ -1,0 +1,5 @@
+{
+  "$schema_version": "1.0.0",
+  "description": "MITRE ATT&CK technique -> D3FEND mitigation. Phase 3 populates it.",
+  "mappings": {}
+}

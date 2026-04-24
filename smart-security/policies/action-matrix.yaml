@@ -1,0 +1,35 @@
+# Smart Security — action matrix.
+# (detection_id, tier) -> action + mode + reversibility + approver.
+#
+# This file is the source of truth for autonomous action boundaries.
+# Prompt drift does not override entries here.
+
+version: "1.0.0"
+
+# Global kill switch. When false, all rows are forced to mode: observe.
+enforcement_enabled: false
+
+rows:
+  - detection_id: pdf.suspicious-marker.javascript
+    tier: internal
+    action: quarantine
+    mode: observe
+    reversible: true
+    reversal_path: "Restore from evidence bucket via admin console."
+    approver: null
+    notes: >
+      Seed rule ported from supabase/functions/prescan-document/index.ts
+      suspicious PDF markers. Observe-only until phase 2 introduces the real
+      detection pipeline.
+
+  - detection_id: pdf.suspicious-marker.launch
+    tier: internal
+    action: quarantine
+    mode: observe
+    reversible: true
+    reversal_path: "Restore from evidence bucket via admin console."
+    approver: null
+    notes: >
+      Seed rule ported from supabase/functions/prescan-document/index.ts
+      suspicious PDF markers. Observe-only until phase 2 introduces the real
+      detection pipeline.

@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://avintph.com/smart-security/schemas/evidence.schema.json",
+  "title": "SmartSecurityEvidence",
+  "description": "Artifact capture record. Points to the stored bytes; never contains them inline.",
+  "type": "object",
+  "required": [
+    "evidence_id",
+    "tenant_id",
+    "sha256",
+    "captured_at",
+    "kind",
+    "storage_uri",
+    "retention_class"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "evidence_id": { "type": "string", "format": "uuid" },
+    "tenant_id": { "type": "string", "minLength": 1 },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "captured_at": { "type": "string", "format": "date-time" },
+    "kind": {
+      "type": "string",
+      "enum": ["document", "request", "response", "log", "screenshot"]
+    },
+    "storage_uri": { "type": "string", "format": "uri" },
+    "retention_class": {
+      "type": "string",
+      "enum": ["short-7d", "standard-90d", "extended-1y", "legal-hold"]
+    },
+    "redactions": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "strategy": { "type": "string" },
+        "fields": { "type": "array", "items": { "type": "string" } },
+        "applied_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "related_decision_id": { "type": "string", "format": "uuid" }
+  }
+}

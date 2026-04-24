@@ -1,0 +1,103 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://avintph.com/smart-security/schemas/decision.schema.json",
+  "title": "SmartSecurityDecision",
+  "description": "Internal record written before every autonomous or agent-driven action. Invariant: no action commits until the decision record persists. The `action` enum is Smart Security's INTERNAL vocabulary; the API handlers for /v1/scan/file and /v1/decide translate these to the wire-vocabulary enums in wire-scan-file.schema.json and wire-decide.schema.json respectively. Translation table: allow->clean/allow; allow_with_watch->suspicious/allow; quarantine->suspicious/block; reject->infected/block; revoke_session->n/a/block; rate_limit->n/a/rate_limit; block_ingress->infected/n/a; escalate_human->scan_error/allow.",
+  "type": "object",
+  "required": [
+    "decision_id",
+    "tenant_id",
+    "created_at",
+    "actor",
+    "trigger",
+    "action",
+    "mode",
+    "target",
+    "policy_ref",
+    "reversible"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "decision_id": { "type": "string", "format": "uuid" },
+    "tenant_id": { "type": "string", "minLength": 1 },
+    "created_at": { "type": "string", "format": "date-time" },
+    "actor": {
+      "type": "string",
+      "enum": [
+        "triage-agent",
+        "responder-agent",
+        "investigator-agent",
+        "orchestrator",
+        "human"
+      ]
+    },
+    "actor_model": { "type": "string" },
+    "actor_model_version": { "type": "string" },
+    "trigger": {
+      "type": "object",
+      "required": ["detection_id", "rule_version"],
+      "additionalProperties": false,
+      "properties": {
+        "detection_id": { "type": "string" },
+        "rule_version": { "type": "string" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "allow",
+        "allow_with_watch",
+        "quarantine",
+        "reject",
+        "revoke_session",
+        "rate_limit",
+        "block_ingress",
+        "escalate_human"
+      ]
+    },
+    "mode": { "type": "string", "enum": ["observe", "enforce"] },
+    "target": {
+      "type": "object",
+      "required": ["kind", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["document", "session", "principal", "ip", "hash"]
+        },
+        "id": { "type": "string" },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+    "policy_ref": { "type": "string" },
+    "doctrine_refs": { "type": "array", "items": { "type": "string" } },
+    "reversible": { "type": "boolean" },
+    "reversal_path": { "type": "string" },
+    "human_approval": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["approver", "approved_at"],
+          "additionalProperties": false,
+          "properties": {
+            "approver": { "type": "string" },
+            "approved_at": { "type": "string", "format": "date-time" },
+            "note": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "evidence_pointer": { "type": "string", "format": "uri" },
+    "wire_response": {
+      "description": "The wire-vocabulary response actually returned to the caller. Recorded for audit and for regression detection when the translation layer changes.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "endpoint": { "type": "string", "enum": ["/v1/scan/file", "/v1/decide"] },
+        "decision": { "type": "string" }
+      }
+    }
+  }
+}

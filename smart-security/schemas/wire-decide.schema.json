@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://avintph.com/smart-security/schemas/wire-decide.schema.json",
+  "title": "WireDecide",
+  "description": "Existing wire contract for POST /v1/decide. Captures the request and response shapes as consumed by proxy.ts at HEAD. Phase 0 documents this contract; phase 4 implements the intelligent handler that satisfies it. In phases 0-3 the service may legitimately return decision:allow for every request.",
+  "type": "object",
+  "definitions": {
+    "request": {
+      "type": "object",
+      "required": ["app_id", "source", "method", "path"],
+      "additionalProperties": true,
+      "properties": {
+        "app_id": { "type": "string", "const": "avintelligence" },
+        "source": { "type": "string", "const": "vercel_middleware" },
+        "ip": { "type": ["string", "null"] },
+        "method": { "type": "string" },
+        "path": { "type": "string" },
+        "user_agent": { "type": ["string", "null"] },
+        "accept_language": { "type": ["string", "null"] },
+        "country": { "type": ["string", "null"] },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "host": { "type": ["string", "null"] },
+            "referer": { "type": ["string", "null"] }
+          }
+        }
+      }
+    },
+    "response": {
+      "type": "object",
+      "required": ["decision"],
+      "additionalProperties": true,
+      "properties": {
+        "decision": {
+          "type": "string",
+          "enum": ["allow", "block", "rate_limit", "challenge"]
+        }
+      }
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/definitions/request" },
+    { "$ref": "#/definitions/response" }
+  ]
+}

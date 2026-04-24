@@ -1,0 +1,8 @@
+{
+  "$schema_version": "1.0.0",
+  "description": "Local detection_id -> ATT&CK technique. Kept in sync with detections/registry.json. Phase 3 populates it beyond the seed entries.",
+  "mappings": {
+    "pdf.suspicious-marker.javascript": ["T1204.002"],
+    "pdf.suspicious-marker.launch": ["T1204.002"]
+  }
+}

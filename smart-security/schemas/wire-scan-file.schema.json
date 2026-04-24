@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://avintph.com/smart-security/schemas/wire-scan-file.schema.json",
+  "title": "WireScanFile",
+  "description": "Existing wire contract for POST /v1/scan/file. Captures the request and response shapes as consumed by supabase/functions/prescan-document/index.ts at HEAD. Phase 0 documents this contract; phase 2 implements the handler that satisfies it.",
+  "type": "object",
+  "definitions": {
+    "request": {
+      "type": "object",
+      "required": ["app_id", "file_id", "storage_path", "signed_url", "mime_type"],
+      "additionalProperties": false,
+      "properties": {
+        "app_id": { "type": "string", "const": "avintelligence" },
+        "file_id": { "type": "string" },
+        "storage_path": { "type": "string" },
+        "signed_url": { "type": "string", "format": "uri" },
+        "mime_type": { "type": "string" },
+        "filename": { "type": ["string", "null"] }
+      }
+    },
+    "response": {
+      "type": "object",
+      "required": ["decision"],
+      "additionalProperties": true,
+      "properties": {
+        "decision": {
+          "type": "string",
+          "enum": ["clean", "suspicious", "infected", "scan_error"]
+        },
+        "signals": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "scanner": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "clamav": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "signature": { "type": ["string", "null"] }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/definitions/request" },
+    { "$ref": "#/definitions/response" }
+  ]
+}

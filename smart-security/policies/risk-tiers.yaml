@@ -1,0 +1,21 @@
+# Smart Security — risk tiers.
+# Year 1 defines one tier. Year 2 introduces per-tenant configurable tiers.
+
+version: "1.0.0"
+
+tiers:
+  internal:
+    description: >
+      AVIntelligence internal tenant. Year-1 default. Reversible autonomous
+      actions allowed; irreversible actions require human approval.
+    autonomous_actions_allowed:
+      - allow
+      - allow_with_watch
+      - quarantine
+      - rate_limit
+      - block_ingress
+    actions_requiring_human_approval:
+      - revoke_session
+      - escalate_human
+    actions_forbidden:
+      - reject

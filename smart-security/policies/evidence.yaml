@@ -1,0 +1,32 @@
+# Smart Security — evidence retention and redaction policy.
+
+version: "1.0.0"
+
+retention_classes:
+  short-7d:
+    retain_days: 7
+    description: Low-severity incidents, auto-resolved observations.
+  standard-90d:
+    retain_days: 90
+    description: Default for quarantined documents and medium-severity events.
+  extended-1y:
+    retain_days: 365
+    description: High-severity incidents and anything tagged for long review.
+  legal-hold:
+    retain_days: null
+    description: No auto-delete. Only human removal after hold release.
+
+default_class: standard-90d
+
+redaction:
+  strategy: structural-only
+  description: >
+    Year 1 retains raw bytes within the tenant's evidence bucket. Structural
+    redaction (removing PII fields from logs before retention) applies only to
+    request/response records, never to document artifacts.
+  pii_fields_to_redact:
+    - authorization
+    - cookie
+    - x-api-key
+    - sb-access-token
+    - sb-refresh-token

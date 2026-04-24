@@ -1,0 +1,5 @@
+{
+  "$schema_version": "1.0.0",
+  "description": "Pointer manifest for doctrine sources. Chunk text lives in Supabase Storage; this file tracks source identity, hash, and ingestion state. Phase 3 populates it.",
+  "sources": []
+}

@@ -337,11 +337,108 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
       return positions
     }
 
+    function sampleSignalDiamond(count: number) {
+      const positions = new Float32Array(count * 3)
+
+      for (let i = 0; i < count; i += 1) {
+        const mode = Math.random()
+        let x = 0
+        let y = 0
+
+        const angle = Math.random() * Math.PI * 2
+        const cosA = Math.cos(angle)
+        const sinA = Math.sin(angle)
+        const horizontal = 1.2
+        const vertical = 1.82
+        const power = 2 / 3
+        const edge = 1 / Math.pow(
+          Math.pow(Math.abs(cosA) / horizontal, power) + Math.pow(Math.abs(sinA) / vertical, power),
+          1 / power,
+        )
+
+        if (mode < 0.64) {
+          const radius = edge * (0.82 + Math.random() * 0.2)
+          x = cosA * radius + (Math.random() - 0.5) * 0.04
+          y = sinA * radius + (Math.random() - 0.5) * 0.04
+        } else if (mode < 0.92) {
+          const radius = edge * Math.pow(Math.random(), 0.58)
+          x = cosA * radius
+          y = sinA * radius
+        } else {
+          const axis = Math.floor(Math.random() * 4)
+          const axisAngle = axis * (Math.PI / 2)
+          const length = axis % 2 === 0 ? horizontal : vertical
+          const radius = Math.pow(Math.random(), 0.26) * length
+          const width = 0.045 * (1 - radius / length)
+          x = Math.cos(axisAngle) * radius + Math.cos(axisAngle + Math.PI / 2) * (Math.random() - 0.5) * width
+          y = Math.sin(axisAngle) * radius + Math.sin(axisAngle + Math.PI / 2) * (Math.random() - 0.5) * width
+        }
+
+        positions[i * 3] = x
+        positions[i * 3 + 1] = y
+        positions[i * 3 + 2] = (Math.random() - 0.5) * 0.18
+      }
+
+      return positions
+    }
+
+    function sampleTerminalCloud(count: number) {
+      const positions = new Float32Array(count * 3)
+      const lobes = [
+        { x: -0.86, y: -0.02, r: 0.74 },
+        { x: -0.34, y: 0.22, r: 0.86 },
+        { x: 0.28, y: 0.32, r: 0.98 },
+        { x: 0.86, y: 0.02, r: 0.74 },
+        { x: -0.1, y: -0.18, r: 1.18 },
+      ]
+      const glyphSegments = [
+        [{ x: -0.46, y: 0.28 }, { x: -0.08, y: 0.02 }],
+        [{ x: -0.08, y: 0.02 }, { x: -0.46, y: -0.24 }],
+        [{ x: 0.08, y: -0.34 }, { x: 0.58, y: -0.34 }],
+      ]
+
+      for (let i = 0; i < count; i += 1) {
+        const mode = Math.random()
+        let x = 0
+        let y = 0
+        let z = 0
+
+        if (mode < 0.68) {
+          const lobe = lobes[Math.floor(Math.random() * lobes.length)]
+          const angle = Math.random() * Math.PI * 2
+          const radius = Math.sqrt(Math.random()) * lobe.r
+          x = lobe.x + Math.cos(angle) * radius
+          y = lobe.y + Math.sin(angle) * radius * 0.72
+          z = (Math.random() - 0.5) * 0.22
+
+          if (y < -0.82) y = -0.82 + Math.random() * 0.1
+        } else if (mode < 0.9) {
+          const [a, b] = glyphSegments[Math.floor(Math.random() * glyphSegments.length)]
+          const t = Math.random()
+          x = a.x + (b.x - a.x) * t + (Math.random() - 0.5) * 0.08
+          y = a.y + (b.y - a.y) * t + (Math.random() - 0.5) * 0.08
+          z = 0.18 + (Math.random() - 0.5) * 0.08
+        } else {
+          x = -1.25 + Math.random() * 2.5
+          y = -0.72 + (Math.random() - 0.5) * 0.12
+          z = (Math.random() - 0.5) * 0.14
+        }
+
+        positions[i * 3] = x
+        positions[i * 3 + 1] = y
+        positions[i * 3 + 2] = z
+      }
+
+      return positions
+    }
+
     const geometry = new THREE.BufferGeometry()
     const spherePositions = sampleSphere(particleCount)
     const documentPositions = sampleDocument(particleCount)
     const locationPositions = sampleLocation(particleCount)
     const visualizationPositions = sampleVisualization(particleCount)
+    const signalDiamondPositions = sampleSignalDiamond(particleCount)
+    const terminalCloudPositions = sampleTerminalCloud(particleCount)
     const positions = new Float32Array(spherePositions)
     const colors = new Float32Array(particleCount * 3)
     const sizes = new Float32Array(particleCount)
@@ -572,6 +669,7 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
     const morphDuration = 2.6
     const holdDuration = 6
     const visualizationHoldDuration = 3.8
+    const abstractHoldDuration = 2.9
 
     const onResize = () => {
       const { width, height } = getViewportSize()
@@ -621,85 +719,118 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
         holdDuration +
         morphDuration +
         visualizationHoldDuration +
+        morphDuration +
+        abstractHoldDuration +
+        morphDuration +
+        abstractHoldDuration +
         morphDuration
       const cycleTime = elapsed % cycleDuration
       let source = spherePositions
       let target = spherePositions
       let progress = 0
+      const documentStart = holdDuration
+      const documentHoldStart = documentStart + morphDuration
+      const locationStart = documentHoldStart + holdDuration
+      const locationHoldStart = locationStart + morphDuration
+      const visualizationStart = locationHoldStart + holdDuration
+      const visualizationHoldStart = visualizationStart + morphDuration
+      const signalDiamondStart = visualizationHoldStart + visualizationHoldDuration
+      const signalDiamondHoldStart = signalDiamondStart + morphDuration
+      const terminalCloudStart = signalDiamondHoldStart + abstractHoldDuration
+      const terminalCloudHoldStart = terminalCloudStart + morphDuration
+      const sphereReturnStart = terminalCloudHoldStart + abstractHoldDuration
 
-      if (cycleTime < holdDuration) {
+      if (cycleTime < documentStart) {
         source = spherePositions
         target = spherePositions
         material.uniforms.uDocumentSignal.value = 0
         material.uniforms.uLocationSignal.value = 0
         material.uniforms.uVisualizationSignal.value = 0
         material.uniforms.uVisualizationStage.value = 0
-      } else if (cycleTime < holdDuration + morphDuration) {
+      } else if (cycleTime < documentHoldStart) {
         source = spherePositions
         target = documentPositions
-        progress = easeInOutCubic((cycleTime - holdDuration) / morphDuration)
+        progress = easeInOutCubic((cycleTime - documentStart) / morphDuration)
         material.uniforms.uDocumentSignal.value = progress
         material.uniforms.uLocationSignal.value = 0
         material.uniforms.uVisualizationSignal.value = 0
         material.uniforms.uVisualizationStage.value = 0
-      } else if (cycleTime < holdDuration + morphDuration + holdDuration) {
+      } else if (cycleTime < locationStart) {
         source = documentPositions
         target = documentPositions
         material.uniforms.uDocumentSignal.value = 1
         material.uniforms.uLocationSignal.value = 0
         material.uniforms.uVisualizationSignal.value = 0
         material.uniforms.uVisualizationStage.value = 0
-      } else if (cycleTime < holdDuration + morphDuration + holdDuration + morphDuration) {
+      } else if (cycleTime < locationHoldStart) {
         source = documentPositions
         target = locationPositions
-        progress = easeInOutCubic((cycleTime - holdDuration - morphDuration - holdDuration) / morphDuration)
+        progress = easeInOutCubic((cycleTime - locationStart) / morphDuration)
         material.uniforms.uDocumentSignal.value = 1 - progress
         material.uniforms.uLocationSignal.value = progress
         material.uniforms.uVisualizationSignal.value = 0
         material.uniforms.uVisualizationStage.value = 0
-      } else if (cycleTime < holdDuration + morphDuration + holdDuration + morphDuration + holdDuration) {
+      } else if (cycleTime < visualizationStart) {
         source = locationPositions
         target = locationPositions
         material.uniforms.uDocumentSignal.value = 0
         material.uniforms.uLocationSignal.value = 1
         material.uniforms.uVisualizationSignal.value = 0
         material.uniforms.uVisualizationStage.value = 0
-      } else if (cycleTime < holdDuration + morphDuration + holdDuration + morphDuration + holdDuration + morphDuration) {
+      } else if (cycleTime < visualizationHoldStart) {
         source = locationPositions
         target = visualizationPositions
-        progress = easeInOutCubic((cycleTime - holdDuration - morphDuration - holdDuration - morphDuration - holdDuration) / morphDuration)
+        progress = easeInOutCubic((cycleTime - visualizationStart) / morphDuration)
         material.uniforms.uDocumentSignal.value = 0
         material.uniforms.uLocationSignal.value = 1 - progress
         material.uniforms.uVisualizationSignal.value = progress
         material.uniforms.uVisualizationStage.value = progress * 0.28
-      } else if (
-        cycleTime <
-        holdDuration + morphDuration + holdDuration + morphDuration + holdDuration + morphDuration + visualizationHoldDuration
-      ) {
+      } else if (cycleTime < signalDiamondStart) {
         source = visualizationPositions
         target = visualizationPositions
-        const vizTime = cycleTime - (holdDuration + morphDuration + holdDuration + morphDuration + holdDuration + morphDuration)
+        const vizTime = cycleTime - visualizationHoldStart
         material.uniforms.uDocumentSignal.value = 0
         material.uniforms.uLocationSignal.value = 0
         material.uniforms.uVisualizationSignal.value = 1
         material.uniforms.uVisualizationStage.value = Math.min(vizTime / visualizationHoldDuration, 1)
-      } else {
+      } else if (cycleTime < signalDiamondHoldStart) {
         source = visualizationPositions
-        target = spherePositions
-        progress = easeInOutCubic((
-          cycleTime -
-          holdDuration -
-          morphDuration -
-          holdDuration -
-          morphDuration -
-          holdDuration -
-          morphDuration -
-          visualizationHoldDuration
-        ) / morphDuration)
+        target = signalDiamondPositions
+        progress = easeInOutCubic((cycleTime - signalDiamondStart) / morphDuration)
         material.uniforms.uDocumentSignal.value = 0
         material.uniforms.uLocationSignal.value = 0
         material.uniforms.uVisualizationSignal.value = 1 - progress
-        material.uniforms.uVisualizationStage.value = 1 - progress * 0.12
+        material.uniforms.uVisualizationStage.value = 1 - progress
+      } else if (cycleTime < terminalCloudStart) {
+        source = signalDiamondPositions
+        target = signalDiamondPositions
+        material.uniforms.uDocumentSignal.value = 0
+        material.uniforms.uLocationSignal.value = 0
+        material.uniforms.uVisualizationSignal.value = 0
+        material.uniforms.uVisualizationStage.value = 0
+      } else if (cycleTime < terminalCloudHoldStart) {
+        source = signalDiamondPositions
+        target = terminalCloudPositions
+        progress = easeInOutCubic((cycleTime - terminalCloudStart) / morphDuration)
+        material.uniforms.uDocumentSignal.value = 0
+        material.uniforms.uLocationSignal.value = 0
+        material.uniforms.uVisualizationSignal.value = 0
+        material.uniforms.uVisualizationStage.value = 0
+      } else if (cycleTime < sphereReturnStart) {
+        source = terminalCloudPositions
+        target = terminalCloudPositions
+        material.uniforms.uDocumentSignal.value = 0
+        material.uniforms.uLocationSignal.value = 0
+        material.uniforms.uVisualizationSignal.value = 0
+        material.uniforms.uVisualizationStage.value = 0
+      } else {
+        source = terminalCloudPositions
+        target = spherePositions
+        progress = easeInOutCubic((cycleTime - sphereReturnStart) / morphDuration)
+        material.uniforms.uDocumentSignal.value = 0
+        material.uniforms.uLocationSignal.value = 0
+        material.uniforms.uVisualizationSignal.value = 0
+        material.uniforms.uVisualizationStage.value = 0
       }
 
       const positionAttr = geometry.attributes.position.array as Float32Array

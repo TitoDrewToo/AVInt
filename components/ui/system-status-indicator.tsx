@@ -160,7 +160,6 @@ export function SystemStatusIndicator() {
                   label="Gemini"
                   indicator={p?.gemini ?? "unknown"}
                   href="https://aistudio.google.com/status"
-                  operationalText="Operational (for my account only)"
                 />
               </div>
             ) : (

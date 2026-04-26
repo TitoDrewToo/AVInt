@@ -252,23 +252,30 @@ export default function SmartStoragePage() {
   // ── Report availability ────────────────────────────────────────────────────
   const checkReportAvailability = useCallback(async () => {
     if (!session?.user?.id) return
-    const { data: userFiles } = await supabase.from("files").select("id").eq("user_id", session.user.id)
+    const { data: userFiles } = await supabase.from("files").select("id, document_type").eq("user_id", session.user.id)
     const availability: Record<string, boolean> = {}
     if (!userFiles?.length) { REPORTS.forEach((r) => { availability[r.id] = false }); setReportAvailability(availability); return }
     const fileIds = userFiles.map((f) => f.id)
+    const typeByFileId = new Map(userFiles.map((f) => [f.id, f.document_type]))
     const { data: fields } = await supabase
       .from("document_fields")
-      .select("file_id, total_amount, gross_income, net_income, document_date, vendor_name, employer_name, counterparty_name")
+      .select("file_id, total_amount, gross_income, net_income, vendor_name, employer_name, counterparty_name")
       .in("file_id", fileIds)
     const f = fields ?? []
+    const isExpense = (x: { file_id: string }) => ["receipt", "invoice"].includes(typeByFileId.get(x.file_id) ?? "")
+    const isIncome = (x: { file_id: string }) => ["payslip", "income_statement"].includes(typeByFileId.get(x.file_id) ?? "")
+    const isContract = (x: { file_id: string }) => ["contract", "agreement"].includes(typeByFileId.get(x.file_id) ?? "")
+    const hasExpense = f.some((x) => isExpense(x) && x.total_amount != null)
+    const hasIncome = f.some((x) => isIncome(x) && (x.gross_income != null || x.net_income != null || x.total_amount != null))
     for (const report of REPORTS) {
       if (!report.coreEnabled) { availability[report.id] = false; continue }
       switch (report.requires) {
         case "any_file":           availability[report.id] = fileIds.length > 0; break
-        case "date_and_amount_2":  availability[report.id] = f.filter((x) => x.document_date && x.total_amount != null).length >= 2; break
-        case "income_amount":      availability[report.id] = f.filter((x) => x.gross_income != null || x.net_income != null).length >= 1; break
-        case "expense_or_income":  availability[report.id] = f.filter((x) => x.total_amount != null || x.gross_income != null).length >= 1; break
-        case "contract_fields":    availability[report.id] = f.filter((x) => x.vendor_name || x.employer_name || x.counterparty_name).length >= 1; break
+        case "expense_amount":     availability[report.id] = hasExpense; break
+        case "income_amount":      availability[report.id] = hasIncome; break
+        case "expense_or_income":  availability[report.id] = hasExpense || hasIncome; break
+        case "income_and_expense": availability[report.id] = hasIncome && hasExpense; break
+        case "contract_fields":    availability[report.id] = f.some((x) => isContract(x) && (x.vendor_name || x.employer_name || x.counterparty_name)); break
       }
     }
     setReportAvailability(availability)

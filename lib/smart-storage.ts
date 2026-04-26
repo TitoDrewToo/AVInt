@@ -27,7 +27,7 @@ export interface ReportDef {
   id: string
   label: string
   description: string
-  requires: "any_file" | "date_and_amount_2" | "income_amount" | "expense_or_income" | "contract_fields"
+  requires: "any_file" | "expense_amount" | "income_amount" | "expense_or_income" | "income_and_expense" | "contract_fields"
   coreEnabled: boolean
 }
 
@@ -105,13 +105,13 @@ export const PRESET_LABELS: Record<string, string> = {
 }
 
 export const REPORTS: ReportDef[] = [
-  { id: "expense_summary", label: "Expense Summary", description: "Categorized breakdown of all expenses with totals and trends. Ideal for budgeting reviews and cost management.", requires: "date_and_amount_2", coreEnabled: true },
+  { id: "expense_summary", label: "Expense Summary", description: "Categorized breakdown of all expenses with totals and trends. Ideal for budgeting reviews and cost management.", requires: "expense_amount", coreEnabled: true },
   { id: "income_summary", label: "Income Summary", description: "Consolidated view of all income sources, employer details, and gross/net figures. Perfect for tax filing and financial planning.", requires: "income_amount", coreEnabled: true },
   { id: "tax_bundle", label: "Tax Bundle Summary", description: "Schedule C-ready summary for business income and deductible expenses.", requires: "expense_or_income", coreEnabled: true },
-  { id: "profit_loss", label: "Profit & Loss Summary", description: "Income vs. expenses comparison showing net position and savings rate. Essential for freelancers, consultants, and business owners.", requires: "expense_or_income", coreEnabled: true },
+  { id: "profit_loss", label: "Profit & Loss Summary", description: "Income vs. expenses comparison showing net position and savings rate. Essential for freelancers, consultants, and business owners.", requires: "income_and_expense", coreEnabled: true },
   { id: "contract_summary", label: "Contract Summary", description: "Key parties, dates, obligations, and terms extracted from all contracts. Useful for legal reviews, renewals, and compliance tracking.", requires: "contract_fields", coreEnabled: true },
   { id: "key_terms", label: "Key Terms Summary", description: "Critical clauses and definitions consolidated across all contract documents. Great for quick reference before negotiations or renewals.", requires: "contract_fields", coreEnabled: true },
-  { id: "business_expense", label: "Business Expense Summary", description: "Business-specific expense breakdown highlighting deductible items and vendor spending. Designed for business tax filing and reimbursements.", requires: "expense_or_income", coreEnabled: true },
+  { id: "business_expense", label: "Business Expense Summary", description: "Business-specific expense breakdown highlighting deductible items and vendor spending. Designed for business tax filing and reimbursements.", requires: "expense_amount", coreEnabled: true },
 ]
 
 export const REPORT_ROUTES: Record<string, string> = {

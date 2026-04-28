@@ -13,7 +13,7 @@ export const SUPPORTED_DOCUMENT_TYPES = [
 
 export type DocumentType = typeof SUPPORTED_DOCUMENT_TYPES[number]
 export type DocumentVirtualView = "unclassified"
-export type DateRangePreset = "last_month" | "this_year" | "prev_year" | "custom"
+export type DateRangePreset = "this_month" | "last_month" | "this_year" | "prev_year" | "custom"
 export type ClassificationSort = "date-desc" | "date-asc" | "name"
 export type ViewMode = "list" | "grid"
 
@@ -99,6 +99,7 @@ export const CLASSIFICATION_FOLDER_MAP: Record<string, string[]> = {
 }
 
 export const PRESET_LABELS: Record<string, string> = {
+  this_month: "This month",
   last_month: "Last month",
   this_year: "This year",
   prev_year: "Prev year",
@@ -145,6 +146,10 @@ export function getPresetRange(preset: DateRangePreset): { from: string; to: str
   const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
   const today = fmt(now)
   switch (preset) {
+    case "this_month": {
+      const first = new Date(now.getFullYear(), now.getMonth(), 1)
+      return { from: fmt(first), to: today }
+    }
     case "last_month": {
       const first = new Date(now.getFullYear(), now.getMonth() - 1, 1)
       const last = new Date(now.getFullYear(), now.getMonth(), 0)

@@ -10,6 +10,7 @@ interface DateRangeSelectorProps {
 
 export function DateRangeSelector({ dateRange, onChange }: DateRangeSelectorProps) {
   const presets: { label: string; value: DateRangePreset }[] = [
+    { label: "This month", value: "this_month" },
     { label: "Last month", value: "last_month" },
     { label: "This year", value: "this_year" },
     { label: "Prev year", value: "prev_year" },

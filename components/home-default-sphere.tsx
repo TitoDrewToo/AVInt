@@ -668,8 +668,8 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
     let lastMouseX = 0
     const morphDuration = 2.6
     const holdDuration = 6
-    const visualizationHoldDuration = 3.8
-    const abstractHoldDuration = 2.9
+    const visualizationHoldDuration = holdDuration
+    const abstractHoldDuration = holdDuration
 
     const onResize = () => {
       const { width, height } = getViewportSize()

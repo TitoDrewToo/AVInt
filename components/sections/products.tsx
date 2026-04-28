@@ -1,6 +1,7 @@
 import type { ReactNode } from "react"
 import Link from "next/link"
 import { ArrowUpRight } from "lucide-react"
+import { FadeUp, StaggerContainer, StaggerItem } from "@/components/fade-up"
 
 type StatusType = "live" | "development" | "coming-soon"
 
@@ -199,23 +200,27 @@ const products: ProductCardProps[] = [
 
 export function ProductsSection() {
   return (
-    <section id="products" className="relative px-6 py-24">
+    <section id="products" className="marketing-scroll-section relative px-6">
       <div aria-hidden className="pointer-events-none absolute inset-0 retro-grid-bg opacity-30" />
       <div className="relative mx-auto max-w-6xl">
-        <h2 className="text-center text-sm font-medium uppercase tracking-wider text-primary">
-          Products
-        </h2>
-        <p className="mx-auto mt-4 max-w-2xl text-center text-lg text-foreground">
-          We develop products that simplify organization, decisions, and workflows.
-        </p>
-        <p className="mx-auto mt-2 max-w-2xl text-center text-sm text-muted-foreground">
-          Applied intelligence for real-world systems.
-        </p>
-        <div className="mt-12 grid gap-6 sm:grid-cols-2">
+        <FadeUp className="text-center">
+          <h2 className="text-sm font-medium uppercase tracking-wider text-primary">
+            Products
+          </h2>
+          <p className="mx-auto mt-4 max-w-2xl text-lg text-foreground">
+            We develop products that simplify organization, decisions, and workflows.
+          </p>
+          <p className="mx-auto mt-2 max-w-2xl text-sm text-muted-foreground">
+            Applied intelligence for real-world systems.
+          </p>
+        </FadeUp>
+        <StaggerContainer className="mt-12 grid gap-6 sm:grid-cols-2">
           {products.map((product) => (
-            <ProductCard key={product.name} {...product} />
+            <StaggerItem key={product.name} className="h-full">
+              <ProductCard {...product} />
+            </StaggerItem>
           ))}
-        </div>
+        </StaggerContainer>
       </div>
     </section>
   )

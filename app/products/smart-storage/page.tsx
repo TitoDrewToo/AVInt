@@ -227,9 +227,9 @@ export default function SmartStorageProductPage() {
         })}}
       />
       <Navbar />
-      <main className="relative z-[1] flex-1">
+      <main className="marketing-scroll-stage relative z-[1] flex-1">
         {/* Hero */}
-        <section className="relative px-6 py-24 md:py-32">
+        <section className="marketing-hero-section marketing-hero-section-spacious relative px-6">
           <div aria-hidden className="pointer-events-none absolute inset-0 retro-grid-bg opacity-40" />
           <div className="relative mx-auto max-w-6xl">
             <div className="grid items-center gap-10 md:grid-cols-[1.6fr_1fr] md:gap-16">
@@ -267,7 +267,7 @@ export default function SmartStorageProductPage() {
         </section>
 
         {/* What Smart Storage does */}
-        <section className="relative px-6 py-24">
+        <section className="marketing-scroll-section marketing-scroll-section-centered relative px-6">
           <div aria-hidden className="pointer-events-none absolute inset-0 retro-grid-bg opacity-30" />
           <div className="relative mx-auto max-w-4xl">
             <FadeUp className="text-center">
@@ -293,7 +293,7 @@ export default function SmartStorageProductPage() {
         </section>
 
         {/* Core capabilities */}
-        <section className="relative px-6 py-24">
+        <section className="marketing-scroll-section relative px-6">
           <div className="relative mx-auto max-w-5xl">
             <FadeUp className="text-center">
               <h2 className="text-sm font-medium uppercase tracking-wider text-primary">
@@ -318,7 +318,7 @@ export default function SmartStorageProductPage() {
         </section>
 
         {/* Workflow simplicity */}
-        <section className="relative px-6 py-24">
+        <section className="marketing-scroll-section marketing-scroll-section-centered relative px-6">
           <div aria-hidden className="pointer-events-none absolute inset-0 retro-grid-bg opacity-30" />
           <div className="relative mx-auto max-w-4xl">
             <FadeUp className="text-center">
@@ -329,8 +329,15 @@ export default function SmartStorageProductPage() {
 
             <StaggerContainer className="mt-12 flex flex-col items-center gap-8 md:flex-row md:justify-center md:gap-4">
               {workflowSteps.map((step, index) => (
-                <StaggerItem key={step.title} className="flex items-center gap-4">
-                  <div className="flex flex-col items-center text-center">
+                <StaggerItem
+                  key={step.title}
+                  className="flex items-center gap-4"
+                >
+                  <div
+                    className={`flex flex-col items-center text-center ${
+                      index === 1 ? "workflow-middle-step" : ""
+                    }`}
+                  >
                     <div className="glass-surface hover-bloom flex h-16 w-16 items-center justify-center rounded-2xl text-primary">
                       {step.icon}
                     </div>
@@ -347,7 +354,7 @@ export default function SmartStorageProductPage() {
         </section>
 
         {/* Infrastructure & Security */}
-        <section className="relative px-6 py-24">
+        <section className="marketing-scroll-section relative px-6">
           <div className="relative mx-auto max-w-4xl">
             <FadeUp className="text-center">
               <h2 className="text-sm font-medium uppercase tracking-wider text-primary">
@@ -437,7 +444,7 @@ export default function SmartStorageProductPage() {
         </section>
 
         {/* CTA */}
-        <section className="relative px-6 py-24">
+        <section className="marketing-scroll-section relative px-6">
           <div aria-hidden className="pointer-events-none absolute inset-0 retro-grid-bg opacity-30" />
           <div className="relative mx-auto max-w-4xl">
             <div className="text-left">

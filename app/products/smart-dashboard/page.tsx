@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { StartFreeButton } from "@/components/start-free-button"
 import { PomelliClip } from "@/components/ui/pomelli-clip"
-import { FadeUp } from "@/components/fade-up"
+import { FadeUp, StaggerContainer, StaggerItem } from "@/components/fade-up"
 import { HomeDefaultSphere } from "@/components/home-default-sphere"
 
 export const metadata = {
@@ -141,9 +141,9 @@ export default function SmartDashboardProductPage() {
       <HomeDefaultSphere className="pointer-events-none fixed inset-0 z-0 hidden md:block" />
       <Navbar />
 
-      <main className="relative z-[1] flex-1">
+      <main className="marketing-scroll-stage relative z-[1] flex-1">
         {/* Hero */}
-        <section className="relative px-6 py-24 md:py-32">
+        <section className="marketing-hero-section marketing-hero-section-spacious relative px-6">
           <div aria-hidden className="pointer-events-none absolute inset-0 retro-grid-bg opacity-40" />
           <div className="relative mx-auto max-w-6xl">
             <div className="grid items-center gap-10 md:grid-cols-[1.6fr_1fr] md:gap-16">
@@ -183,48 +183,47 @@ export default function SmartDashboardProductPage() {
         </section>
 
         {/* What Smart Dashboard shows */}
-        <section className="relative px-6 py-24">
+        <section className="marketing-scroll-section marketing-scroll-section-centered relative px-6">
           <div aria-hidden className="pointer-events-none absolute inset-0 retro-grid-bg opacity-30" />
           <div className="relative mx-auto max-w-4xl">
-            <div className="text-center">
+            <FadeUp className="text-center">
               <h2 className="text-sm font-medium uppercase tracking-wider text-primary">
                 What Smart Dashboard shows
               </h2>
               <p className="mt-6 text-xl text-foreground md:text-2xl">
                 Dashboards provide visibility into financial activity, document patterns, and categorized summaries generated from structured datasets.
               </p>
-            </div>
+            </FadeUp>
           </div>
         </section>
 
         {/* Example dashboard modules */}
-        <section className="relative px-6 py-24">
+        <section className="marketing-scroll-section relative px-6">
           <div className="relative mx-auto max-w-5xl">
-            <div className="text-center">
+            <FadeUp className="text-center">
               <h2 className="text-sm font-medium uppercase tracking-wider text-primary">
                 Example dashboard modules
               </h2>
-            </div>
+            </FadeUp>
 
-            <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            <StaggerContainer className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {dashboardModules.map((module) => (
-                <div
-                  key={module.title}
-                  className="glass-surface hover-bloom rounded-2xl p-6"
-                >
-                  <div className="mb-4 text-sm font-medium text-foreground">{module.title}</div>
-                  {module.visualization}
-                </div>
+                <StaggerItem key={module.title}>
+                  <div className="glass-surface hover-bloom rounded-2xl p-6">
+                    <div className="mb-4 text-sm font-medium text-foreground">{module.title}</div>
+                    {module.visualization}
+                  </div>
+                </StaggerItem>
               ))}
-            </div>
+            </StaggerContainer>
           </div>
         </section>
 
         {/* Relationship to Smart Storage */}
-        <section className="relative px-6 py-24">
+        <section className="marketing-scroll-section relative px-6">
           <div aria-hidden className="pointer-events-none absolute inset-0 retro-grid-bg opacity-30" />
           <div className="relative mx-auto max-w-3xl">
-            <div className="text-center">
+            <FadeUp className="text-center">
               <h2 className="text-sm font-medium uppercase tracking-wider text-primary">
                 How they work together
               </h2>
@@ -239,12 +238,12 @@ export default function SmartDashboardProductPage() {
                   Together they form a continuous workflow from document ingestion to insight generation.
                 </p>
               </div>
-            </div>
+            </FadeUp>
           </div>
         </section>
 
         {/* CTA */}
-        <section className="relative px-6 py-24">
+        <section className="marketing-scroll-section relative px-6">
           <div aria-hidden className="pointer-events-none absolute inset-0 retro-grid-bg opacity-30" />
           <div className="relative mx-auto max-w-4xl">
             <div className="text-left">

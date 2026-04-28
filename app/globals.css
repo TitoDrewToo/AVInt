@@ -242,6 +242,73 @@
   mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
   -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
 }
+.marketing-scroll-section,
+.marketing-hero-section {
+  padding-block: 6rem;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+@supports (animation-timeline: view()) {
+  .marketing-scroll-stage .marketing-scroll-section,
+  .marketing-scroll-stage .marketing-hero-section {
+    animation: marketing-section-presence linear both;
+    animation-timeline: view();
+    animation-range: entry 0% exit 100%;
+  }
+}
+@keyframes marketing-section-presence {
+  0%,
+  100% {
+    opacity: 0.18;
+  }
+  18%,
+  82% {
+    opacity: 1;
+  }
+}
+@media (min-width: 768px) {
+  html:has(.marketing-scroll-stage),
+  body:has(.marketing-scroll-stage) {
+    scroll-snap-type: y proximity;
+    scroll-padding-top: 5.5rem;
+  }
+  .marketing-scroll-section {
+    min-height: 100vh;
+    min-height: 100svh;
+    padding-block: clamp(8rem, 14svh, 12rem);
+  }
+  .marketing-hero-section {
+    min-height: calc(100vh - 5.5rem);
+    min-height: calc(100svh - 5.5rem);
+    padding-block: clamp(6rem, 12svh, 9rem);
+  }
+  .marketing-hero-section-spacious {
+    min-height: 100vh;
+    min-height: 100svh;
+  }
+  .marketing-scroll-section-centered {
+    display: flex;
+    align-items: center;
+  }
+  .marketing-scroll-section-centered > :not([aria-hidden]) {
+    width: 100%;
+  }
+  .workflow-middle-step {
+    transform: translateX(35px);
+  }
+  .marketing-scroll-stage > .marketing-scroll-section:last-child,
+  .marketing-scroll-section-final {
+    min-height: auto;
+    padding-bottom: clamp(5rem, 8svh, 7rem);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .marketing-scroll-stage .marketing-scroll-section,
+  .marketing-scroll-stage .marketing-hero-section {
+    animation: none;
+    opacity: 1;
+  }
+}
 @property --cw-angle {
   syntax: "<angle>";
   inherits: false;

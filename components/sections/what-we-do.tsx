@@ -3,7 +3,7 @@ import { PomelliClip } from "@/components/ui/pomelli-clip"
 
 export function WhatWeDoSection() {
   return (
-    <section className="relative px-6 py-24 md:py-32">
+    <section className="marketing-scroll-section relative px-6">
       <div aria-hidden className="pointer-events-none absolute inset-0 retro-grid-bg opacity-40" />
       <div className="relative mx-auto max-w-6xl">
         <div className="grid items-center gap-10 md:grid-cols-[1.6fr_1fr] md:gap-16">

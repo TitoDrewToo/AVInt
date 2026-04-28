@@ -92,7 +92,7 @@ export function PricingPreviewSection() {
   const [isAnnual, setIsAnnual] = useState(false)
 
   return (
-    <section className="relative px-6 py-24">
+    <section className="marketing-scroll-section marketing-scroll-section-final relative px-6">
       <div aria-hidden className="pointer-events-none absolute inset-0 retro-grid-bg opacity-30" />
       <div className="relative mx-auto max-w-6xl">
         <FadeUp>

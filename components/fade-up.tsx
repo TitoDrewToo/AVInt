@@ -16,13 +16,13 @@ export function FadeUp({
   delay = 0,
   duration = 0.5,
   className,
-  once = true,
+  once = false,
 }: FadeUpProps) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 24 }}
       whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once, margin: "-60px" }}
+      viewport={{ once, margin: "-80px 0px -80px 0px", amount: 0.25 }}
       transition={{ duration, delay, ease: [0.25, 0.46, 0.45, 0.94] }}
       className={className}
     >
@@ -36,17 +36,19 @@ export function StaggerContainer({
   children,
   className,
   staggerDelay = 0.08,
+  once = false,
 }: {
   children: React.ReactNode
   className?: string
   staggerDelay?: number
+  once?: boolean
 }) {
   return (
     <motion.div
       className={className}
       initial="hidden"
       whileInView="visible"
-      viewport={{ once: true, margin: "-60px" }}
+      viewport={{ once, margin: "-80px 0px -80px 0px", amount: 0.2 }}
       variants={{
         hidden: {},
         visible: { transition: { staggerChildren: staggerDelay } },

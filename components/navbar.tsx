@@ -2,12 +2,17 @@
 
 import Link from "next/link"
 import Image from "next/image"
-import type { ReactNode } from "react"
+import type { MouseEvent, ReactNode } from "react"
 import { useEffect, useRef, useState } from "react"
+import { usePathname } from "next/navigation"
 import { useTheme } from "next-themes"
 import { ChevronDown, Menu, X, Sun, Moon, User } from "lucide-react"
 import type { Session } from "@supabase/supabase-js"
 import { AccountPanel } from "@/components/account-panel"
+import {
+  MARKETING_SCROLL_RESET_PATHS,
+  scrollMarketingPageToTop,
+} from "@/components/marketing-scroll-reset"
 import { SystemStatusIndicator } from "@/components/ui/system-status-indicator"
 import { ProductAssistantPreview } from "@/components/product-assistant-preview"
 import { supabase } from "@/lib/supabase"
@@ -57,6 +62,7 @@ function AccountMenuButton({ onClick }: { onClick: () => void }) {
 }
 
 export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: ReactNode }) {
+  const pathname = usePathname()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [productsOpen, setProductsOpen] = useState(false)
   const [toolsOpen, setToolsOpen] = useState(false)
@@ -142,6 +148,21 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
     }, 180)
   }
 
+  function handleMarketingLinkClick(
+    href: string,
+    event?: MouseEvent<HTMLAnchorElement>,
+    close?: () => void
+  ) {
+    close?.()
+
+    if (!MARKETING_SCROLL_RESET_PATHS.has(href)) return
+
+    if (pathname === href) {
+      event?.preventDefault()
+      scrollMarketingPageToTop()
+    }
+  }
+
   return (
     <>
       <header className="sticky top-0 z-50 w-full px-4 pt-4">
@@ -149,7 +170,11 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
           wide ? "w-full max-w-none" : "max-w-6xl"
         }`}>
           {/* Desktop Logo */}
-          <Link href="/" className="flex-shrink-0">
+          <Link
+            href="/"
+            className="flex-shrink-0"
+            onClickCapture={(event) => handleMarketingLinkClick("/", event)}
+          >
             <Image
               src="/avintelligence-wordmark.png"
               alt="AVINTELLIGENCE"
@@ -227,7 +252,13 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
                             : "text-foreground/80 hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
                         }`}
                         style={geistFontStyle}
-                        onClick={() => setProductsOpen(false)}
+                        onClickCapture={(event) => {
+                          if (product.disabled) {
+                            event.preventDefault()
+                            return
+                          }
+                          handleMarketingLinkClick(product.href, event, () => setProductsOpen(false))
+                        }}
                       >
                         {product.name}
                       </Link>
@@ -343,7 +374,13 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
                         product.disabled ? "text-muted-foreground" : "text-foreground"
                       }`}
                       style={geistFontStyle}
-                      onClick={() => setMobileMenuOpen(false)}
+                      onClickCapture={(event) => {
+                        if (product.disabled) {
+                          event.preventDefault()
+                          return
+                        }
+                        handleMarketingLinkClick(product.href, event, () => setMobileMenuOpen(false))
+                      }}
                     >
                       {product.name}
                     </Link>

@@ -127,7 +127,7 @@ export function HeroSection() {
         onSuccess={handleAuthSuccess}
         onClose={() => { setAuthModalVisible(false); setPendingHref(null) }}
       />
-      <section className="relative overflow-hidden px-6 py-20 md:py-28">
+      <section className="marketing-hero-section marketing-hero-section-spacious relative overflow-hidden px-6">
         {/* Retro-futurism backdrop — grid + radial red glow, decorative only */}
         <div
           aria-hidden

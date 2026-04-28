@@ -19,7 +19,7 @@ export default function HomePage() {
     <div className="relative flex min-h-screen flex-col">
       <HomeDefaultSphere className="pointer-events-none fixed inset-0 z-0" />
       <Navbar />
-      <main className="relative z-[1] flex-1">
+      <main className="marketing-scroll-stage relative z-[1] flex-1">
         <HeroSection />
         <WhatWeDoSection />
         <HomeInteractiveTrail>

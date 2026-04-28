@@ -1,4 +1,5 @@
 import type { ReactNode } from "react"
+import { FadeUp, StaggerContainer, StaggerItem } from "@/components/fade-up"
 
 function CloudIcon({ className }: { className?: string }) {
   return (
@@ -168,23 +169,25 @@ const steps: StepProps[] = [
 
 export function HowItWorksSection() {
   return (
-    <section className="px-6 py-24">
+    <section className="marketing-scroll-section px-6">
       <div className="mx-auto max-w-4xl">
-        <h2 className="text-center text-sm font-medium uppercase tracking-wider text-primary">
-          How it works
-        </h2>
-        <div className="mt-16 flex flex-col items-center gap-12 md:flex-row md:items-start md:gap-0">
+        <FadeUp>
+          <h2 className="text-center text-sm font-medium uppercase tracking-wider text-primary">
+            How it works
+          </h2>
+        </FadeUp>
+        <StaggerContainer className="mt-16 flex flex-col items-center gap-12 md:flex-row md:items-start md:gap-0">
           {steps.map((step, index) => (
             <div key={step.number} className="contents">
-              <div className="flex flex-1 justify-center">
+              <StaggerItem className="flex flex-1 justify-center">
                 <Step {...step} />
-              </div>
+              </StaggerItem>
               {index < steps.length - 1 && (
                 <div className="retro-divider hidden w-24 shrink-0 md:block md:mt-8" />
               )}
             </div>
           ))}
-        </div>
+        </StaggerContainer>
       </div>
     </section>
   )

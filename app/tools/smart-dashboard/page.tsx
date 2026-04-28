@@ -1617,6 +1617,7 @@ export default function SmartDashboardPage() {
 
                 return [
                   { label: "All time", from: "", to: "" },
+                  { label: "This month", from: fmt(firstOfThisMonth), to: todayStr },
                   { label: "This year", from: `${today.getFullYear()}-01-01`, to: todayStr },
                   { label: "Last week", from: fmt(lastMon), to: fmt(lastSun) },
                   { label: "Last month", from: fmt(lastMonthStart), to: fmt(lastMonthEnd) },
@@ -1822,6 +1823,7 @@ export default function SmartDashboardPage() {
 
                       return [
                         { label: "All time", from: "", to: "" },
+                        { label: "This month", from: fmt(firstOfThisMonth), to: todayStr },
                         { label: "This year", from: `${today.getFullYear()}-01-01`, to: todayStr },
                         { label: "Last week", from: fmt(lastMon), to: fmt(lastSun) },
                         { label: "Last month", from: fmt(lastMonthStart), to: fmt(lastMonthEnd) },

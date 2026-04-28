@@ -259,10 +259,10 @@
 @keyframes marketing-section-presence {
   0%,
   100% {
-    opacity: 0.18;
+    opacity: 0.78;
   }
-  18%,
-  82% {
+  6%,
+  94% {
     opacity: 1;
   }
 }

@@ -230,7 +230,7 @@ function PricingCard({
   }
 
   return (
-    <div className={`group relative flex flex-col overflow-hidden rounded-2xl border p-8 transition-all duration-300 ease-out hover:-translate-y-1.5 hover:[box-shadow:0_26px_80px_-42px_var(--retro-glow-red)] ${
+    <div className={`group relative flex flex-col ${active ? "overflow-visible" : "overflow-hidden"} rounded-2xl border p-8 transition-all duration-300 ease-out hover:-translate-y-1.5 hover:[box-shadow:0_26px_80px_-42px_var(--retro-glow-red)] ${
       active
         ? "border-primary bg-card shadow-lg ring-1 ring-primary/30"
         : highlighted
@@ -279,7 +279,7 @@ function PricingCard({
       />
       {/* Active badge */}
       {active && (
-        <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+        <div className="absolute -top-3 left-1/2 z-10 -translate-x-1/2">
           <span className="flex items-center gap-1 rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground">
             <CheckCircle className="h-3 w-3" />
             Active

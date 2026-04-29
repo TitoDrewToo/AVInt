@@ -42,12 +42,12 @@ function ProcessIcon({ className }: { className?: string }) {
     <svg className={className} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
       <style>{`
         @keyframes node-pulse {
-          0%, 100% { opacity: 0.3; transform: scale(1); }
+          0%, 100% { opacity: 1; transform: scale(1); }
           50% { opacity: 1; transform: scale(1.3); }
         }
         @keyframes center-pulse {
           0%, 100% { opacity: 1; r: 1.5; }
-          50% { opacity: 0.5; r: 2.5; }
+          50% { opacity: 1; r: 2.5; }
         }
         @keyframes line-flow {
           0% { stroke-dashoffset: 12; }
@@ -60,14 +60,14 @@ function ProcessIcon({ className }: { className?: string }) {
         .center-dot { animation: center-pulse 1.5s ease-in-out infinite; }
         .flow-line { stroke-dasharray: 6 2; animation: line-flow 1s linear infinite; }
       `}</style>
-      <rect x="10" y="10" width="12" height="12" rx="2" className="fill-card stroke-border" strokeWidth="0.75" />
-      <rect x="13" y="13" width="6" height="6" rx="1" className="fill-primary/20 stroke-primary/40" strokeWidth="0.5" />
-      <path d="M16 4V10M16 22V28" stroke="currentColor" className="stroke-muted-foreground/50 flow-line" strokeWidth="1" strokeLinecap="round" />
-      <path d="M4 16H10M22 16H28" stroke="currentColor" className="stroke-muted-foreground/50 flow-line" strokeWidth="1" strokeLinecap="round" />
+      <rect x="10" y="10" width="12" height="12" rx="2" className="fill-card stroke-primary" strokeWidth="0.75" />
+      <rect x="13" y="13" width="6" height="6" rx="1" className="fill-primary stroke-primary" strokeWidth="0.5" />
+      <path d="M16 4V10M16 22V28" stroke="currentColor" className="stroke-primary flow-line" strokeWidth="1" strokeLinecap="round" />
+      <path d="M4 16H10M22 16H28" stroke="currentColor" className="stroke-primary flow-line" strokeWidth="1" strokeLinecap="round" />
       <circle cx="6" cy="6" r="2" className="fill-muted stroke-border node-1" strokeWidth="0.5" />
       <circle cx="26" cy="6" r="2" className="fill-muted stroke-border node-2" strokeWidth="0.5" />
       <circle cx="6" cy="26" r="2" className="fill-muted stroke-border node-3" strokeWidth="0.5" />
-      <circle cx="26" cy="26" r="2" className="fill-primary/60 node-4" strokeWidth="0.5" />
+      <circle cx="26" cy="26" r="2" className="fill-primary stroke-primary node-4" strokeWidth="0.5" />
       <circle cx="16" cy="16" r="1.5" className="fill-primary center-dot" />
     </svg>
   )
@@ -141,7 +141,7 @@ function Step({ number, title, subtitle, icon }: StepProps) {
         </span>
       </div>
       <h3 className="mt-6 text-base font-medium text-foreground">{title}</h3>
-      <p className="mt-1.5 max-w-[200px] text-xs leading-relaxed text-muted-foreground">{subtitle}</p>
+      <p className="mt-1.5 max-w-[200px] text-xs leading-relaxed text-primary">{subtitle}</p>
     </div>
   )
 }

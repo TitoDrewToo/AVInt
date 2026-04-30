@@ -572,6 +572,7 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
                     const dimmed = highlightedActive && !highlighted
                     const sourceIndex = row.raw_json?.source_index ?? rowNumber - 1
                     const sourceEntry = fileMeta?.source_rows_json?.[sourceIndex] ?? row.raw_json?.source_row ?? null
+                    const sourceCells = sourceEntry?.cells ?? sourceEntry?.source_row ?? {}
                     return (
                       <tr
                         key={row.id}
@@ -631,7 +632,7 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
                               <div className="grid grid-cols-2 gap-3 text-xs">
                                 <div>
                                   <div className="mb-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">Original</div>
-                                  {Object.entries(sourceEntry?.source_row ?? {}).slice(0, 8).map(([key, value]) => (
+                                  {Object.entries(sourceCells).slice(0, 8).map(([key, value]) => (
                                     <div key={key} className="mb-1">
                                       <div className="text-muted-foreground">{key}</div>
                                       <div className="font-mono text-foreground">{String(value ?? "")}</div>

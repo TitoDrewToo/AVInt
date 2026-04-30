@@ -10,6 +10,7 @@ const ANTHROPIC_API_KEY         = Deno.env.get("ANTHROPIC_API_KEY")!
 const SUPABASE_URL              = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 const NORMALIZATION_PROVIDERS   = providerChain("NORMALIZATION", "openai", "anthropic")
+const MAX_NORMALIZATION_ATTEMPTS = 3
 
 const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") ?? "https://www.avintph.com,https://avintph.com").split(",").map(s => s.trim())
 function buildCorsHeaders(req: Request) {
@@ -26,6 +27,22 @@ function buildCorsHeaders(req: Request) {
 // Version bumped when this prompt changes. Rows stamped with a lower
 // normalization_version can be lazily re-normalized by scripts/renormalize.ts.
 const NORMALIZATION_VERSION = 3
+
+async function closeFileProcessingJobIfNoRawRows(supabase: any, file_id: string) {
+  const { count: rawCount } = await supabase
+    .from("document_fields")
+    .select("id", { count: "exact", head: true })
+    .eq("file_id", file_id)
+    .eq("normalization_status", "raw")
+
+  if ((rawCount ?? 0) === 0) {
+    await supabase
+      .from("processing_jobs")
+      .update({ status: "completed", completed_at: new Date().toISOString() })
+      .eq("file_id", file_id)
+      .in("status", ["uploaded", "processing"])
+  }
+}
 
 const SYSTEM_PROMPT = `You are a financial document normalization AI.
 
@@ -192,7 +209,7 @@ serve(async (req) => {
     // avoid burning provider tokens on unreparable inputs. Success resets the
     // counter, so legitimate version-upgrade re-runs aren't blocked.
     const priorAttempts = fields.normalization_attempts ?? 0
-    if (priorAttempts >= 3 && fields.normalization_status === "failed") {
+    if (priorAttempts >= MAX_NORMALIZATION_ATTEMPTS && fields.normalization_status === "failed") {
       logEvent(FN, "retry_ceiling_skip", { file_id, attempts: priorAttempts })
       if (job_id) {
         await supabase
@@ -423,6 +440,7 @@ serve(async (req) => {
         .update({ status: "completed", completed_at: now })
         .eq("id", job_id)
     }
+    await closeFileProcessingJobIfNoRawRows(supabase, file_id)
 
     return new Response(JSON.stringify({ success: true, file_id }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -467,6 +485,7 @@ serve(async (req) => {
           })
           .eq("id", job_id)
       }
+      await closeFileProcessingJobIfNoRawRows(supabase, file_id)
     } catch (innerErr: any) {
       logError(FN, "failure_state_update", innerErr, { file_id, job_id })
     }

@@ -7,6 +7,8 @@ const ANTHROPIC_API_KEY         = Deno.env.get("ANTHROPIC_API_KEY")!
 const SUPABASE_URL              = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 const NORMALIZATION_PROVIDERS   = providerChain("NORMALIZATION", "openai", "anthropic")
+const MAX_NORMALIZATION_ATTEMPTS = 3
+const REPROCESS_BATCH_LIMIT = 25
 
 const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") ?? "https://www.avintph.com,https://avintph.com").split(",").map(s => s.trim())
 function buildCorsHeaders(req: Request) {
@@ -23,6 +25,22 @@ function buildCorsHeaders(req: Request) {
 // When the primary prompt changes, mirror it here and bump NORMALIZATION_VERSION
 // so downstream version-gated flows can distinguish freshly re-normalized rows.
 const NORMALIZATION_VERSION = 3
+
+async function closeFileProcessingJobIfNoRawRows(supabase: any, file_id: string) {
+  const { count: rawCount } = await supabase
+    .from("document_fields")
+    .select("id", { count: "exact", head: true })
+    .eq("file_id", file_id)
+    .eq("normalization_status", "raw")
+
+  if ((rawCount ?? 0) === 0) {
+    await supabase
+      .from("processing_jobs")
+      .update({ status: "completed", completed_at: new Date().toISOString() })
+      .eq("file_id", file_id)
+      .in("status", ["uploaded", "processing"])
+  }
+}
 
 const SYSTEM_PROMPT = `You are a financial document normalization AI.
 
@@ -208,6 +226,7 @@ async function normalizeRow(supabase: any, row: any): Promise<void> {
       normalization_version: NORMALIZATION_VERSION,
       normalized_at:         now,
       normalization_error:   null,
+      normalization_attempts: 0,
     })
     .eq("id", row.id)
 }
@@ -233,6 +252,9 @@ serve(async (req) => {
     .from("document_fields")
     .select("*")
     .eq("normalization_status", "raw")
+    .lt("created_at", new Date(Date.now() - 5 * 60 * 1000).toISOString())
+    .order("created_at", { ascending: true })
+    .limit(REPROCESS_BATCH_LIMIT)
 
   if (error) {
     console.error("reprocess-documents query error:", error.message)
@@ -250,29 +272,60 @@ serve(async (req) => {
 
   console.log(`Reprocessing ${rawRows.length} raw document_fields records`)
 
-  const results: { file_id: string; status: string; error?: string }[] = []
+  const taskResults = await Promise.allSettled(
+    rawRows.map(async (row: any): Promise<{ file_id: string; status: string; error?: string }> => {
+      const attempts = row.normalization_attempts ?? 0
+      if (attempts >= MAX_NORMALIZATION_ATTEMPTS) {
+        await supabase
+          .from("document_fields")
+          .update({
+            normalization_status: "failed",
+            normalization_error: "Retry ceiling reached",
+          })
+          .eq("id", row.id)
+        return { file_id: row.file_id, status: "failed", error: "Retry ceiling reached" }
+      }
 
-  for (const row of rawRows) {
-    try {
-      await normalizeRow(supabase, row)
-      results.push({ file_id: row.file_id, status: "normalized" })
-    } catch (err: any) {
-      console.error(`Failed to normalize file_id ${row.file_id}:`, err.message)
       await supabase
         .from("document_fields")
-        .update({ normalization_status: "failed", normalization_error: err.message })
+        .update({ normalization_attempts: attempts + 1 })
         .eq("id", row.id)
-      results.push({ file_id: row.file_id, status: "failed", error: err.message })
-    }
-  }
+
+      try {
+        await normalizeRow(supabase, { ...row, normalization_attempts: attempts + 1 })
+        return { file_id: row.file_id, status: "normalized" }
+      } catch (err: any) {
+        const message = err?.message ?? "Normalization failed"
+        console.error(`Failed to normalize file_id ${row.file_id}:`, message)
+        await supabase
+          .from("document_fields")
+          .update({
+            normalization_status: "raw",
+            normalization_error: message,
+          })
+          .eq("id", row.id)
+        return { file_id: row.file_id, status: "retry_pending", error: message }
+      }
+    })
+  )
+
+  const results = taskResults.map((result) =>
+    result.status === "fulfilled"
+      ? result.value
+      : { file_id: "unknown", status: "failed", error: result.reason?.message ?? "Task failed" }
+  )
+
+  const touchedFileIds = [...new Set(results.map((result) => result.file_id).filter((fileId) => fileId !== "unknown"))]
+  await Promise.allSettled(touchedFileIds.map((fileId) => closeFileProcessingJobIfNoRawRows(supabase, fileId)))
 
   const succeeded = results.filter((r) => r.status === "normalized").length
-  const failed    = results.filter((r) => r.status !== "normalized").length
+  const failed    = results.filter((r) => r.status === "failed").length
+  const retryPending = results.filter((r) => r.status === "retry_pending").length
 
-  console.log(`Done: ${succeeded} normalized, ${failed} failed`)
+  console.log(`Done: ${succeeded} normalized, ${retryPending} retry pending, ${failed} failed`)
 
   return new Response(
-    JSON.stringify({ total: rawRows.length, succeeded, failed, results }),
+    JSON.stringify({ total: rawRows.length, succeeded, retry_pending: retryPending, failed, results }),
     { headers: { ...corsHeaders, "Content-Type": "application/json" } }
   )
 })

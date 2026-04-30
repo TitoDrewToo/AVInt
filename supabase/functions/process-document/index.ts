@@ -428,12 +428,15 @@ serve(async (req) => {
       logError(FN, "normalize_nonfatal", new Error(errText), { file_id, job_id })
     }
 
-    // Mark job as completed so UI processing indicator clears
-    await supabase
-      .from("processing_jobs")
-      .update({ status: "completed" })
-      .eq("file_id", file_id)
-      .in("status", ["uploaded", "processing"])
+    // Single-row files complete here. Multi-row CSV jobs remain processing until
+    // the last normalize-document invocation clears the final raw row.
+    if (rowsForNormalization.length <= 1) {
+      await supabase
+        .from("processing_jobs")
+        .update({ status: "completed" })
+        .eq("file_id", file_id)
+        .in("status", ["uploaded", "processing"])
+    }
 
     return new Response(JSON.stringify({ success: true, file_id }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -49,6 +49,10 @@ export interface UploadedFile {
   folder_id: string | null
   upload_status?: string | null
   scan_reason?: string | null
+  analysis_json?: unknown
+  analyzed_at?: string | null
+  source_rows_json?: unknown
+  field_count?: number
   processing_job?: {
     status: string | null
     created_at: string | null

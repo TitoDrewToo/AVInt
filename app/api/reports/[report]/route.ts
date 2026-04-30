@@ -120,6 +120,7 @@ export async function GET(
             files!inner(filename, document_type)
           `)
           .in("file_id", fileIds)
+          .neq("normalization_status", "excluded")
           .order("document_date", { ascending: false })
 
         if (dateFrom) query = query.gte("document_date", dateFrom)
@@ -142,6 +143,7 @@ export async function GET(
             files!inner(filename, document_type)
           `)
           .in("file_id", fileIds)
+          .neq("normalization_status", "excluded")
           .order("document_date", { ascending: false })
 
         if (dateFrom) query = query.gte("document_date", dateFrom)
@@ -164,6 +166,7 @@ export async function GET(
             .from("document_fields")
             .select("document_date, gross_income, net_income, total_amount, currency, employer_name, income_source, files!inner(document_type)")
             .in("file_id", incomeFileIds)
+            .neq("normalization_status", "excluded")
             .order("document_date", { ascending: true })
           if (dateFrom) incomeQuery = incomeQuery.gte("document_date", dateFrom)
           if (dateTo) incomeQuery = incomeQuery.lte("document_date", dateTo)
@@ -177,6 +180,7 @@ export async function GET(
             .from("document_fields")
             .select("document_date, total_amount, currency, vendor_name, expense_category, files!inner(document_type)")
             .in("file_id", expenseFileIds)
+            .neq("normalization_status", "excluded")
             .order("document_date", { ascending: true })
           if (dateFrom) expenseQuery = expenseQuery.gte("document_date", dateFrom)
           if (dateTo) expenseQuery = expenseQuery.lte("document_date", dateTo)
@@ -200,6 +204,7 @@ export async function GET(
             files!inner(filename, document_type)
           `)
           .in("file_id", fileIds)
+          .neq("normalization_status", "excluded")
           .order("document_date", { ascending: false })
 
         if (dateFrom) query = query.gte("document_date", dateFrom)
@@ -230,6 +235,7 @@ export async function GET(
             files!inner(filename, document_type)
           `)
           .in("file_id", fileIds)
+          .neq("normalization_status", "excluded")
           .order("document_date", { ascending: false })
 
         if (contractErr) throw new Error(contractErr.message)
@@ -286,6 +292,7 @@ export async function GET(
             files!inner(filename, document_type)
           `)
           .in("file_id", fileIds)
+          .neq("normalization_status", "excluded")
           .order("document_date", { ascending: false })
 
         if (error) throw new Error(error.message)
@@ -315,6 +322,7 @@ export async function GET(
             .select("period_start, period_end, document_date, files!inner(user_id)")
             .eq("files.user_id", user.id)
             .in("file_id", fileIds)
+            .neq("normalization_status", "excluded")
 
           if (yearErr) throw new Error(yearErr.message)
 
@@ -341,6 +349,7 @@ export async function GET(
             files!inner(filename, document_type, storage_path)
           `)
           .in("file_id", fileIds)
+          .neq("normalization_status", "excluded")
           .order("document_date", { ascending: false })
 
         if (dateFrom) query = query.gte("period_end", dateFrom)

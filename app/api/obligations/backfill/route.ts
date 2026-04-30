@@ -33,6 +33,7 @@ export async function POST(req: NextRequest) {
     .from("document_fields")
     .select("file_id, line_items, counterparty_name, currency")
     .in("file_id", fileIds)
+    .neq("normalization_status", "excluded")
     .not("line_items", "is", null)
 
   if (dfErr) return serverError(dfErr, { route: "obligations/backfill", stage: "list_fields", userId: user.id })

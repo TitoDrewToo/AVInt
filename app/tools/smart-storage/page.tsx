@@ -38,6 +38,7 @@ import {
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { ManualEntryModal, ReclassifyModal } from "@/components/ui/document-modals"
+import { ReclassifySheetModal } from "@/components/ui/reclassify-sheet-modal"
 import { DateRangeSelector } from "@/components/smart-storage/date-range-selector"
 import { LeftFolderItem } from "@/components/smart-storage/left-folder-item"
 import { StorageItemMenu } from "@/components/smart-storage/storage-item-menu"
@@ -175,6 +176,8 @@ export default function SmartStoragePage() {
   const lastClickRef = useRef<{ id: string; time: number } | null>(null)
   const [manualEntryOpen, setManualEntryOpen] = useState(false)
   const [reclassifyTarget, setReclassifyTarget] = useState<{ fileId: string; filename: string } | null>(null)
+  const [reclassifySheetTarget, setReclassifySheetTarget] = useState<{ fileId: string; filename: string } | null>(null)
+  const [fileSheetMap, setFileSheetMap] = useState<Record<string, boolean>>({})
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const isMobile = useIsMobile()
   const [renamingFileId, setRenamingFileId] = useState<string | null>(null)
@@ -285,18 +288,25 @@ export default function SmartStoragePage() {
     if (!session?.user?.id) return
     const { data } = await supabase
       .from("files")
-      .select("id, filename, file_type, file_size, document_type, created_at, storage_path, folder_id, upload_status, scan_reason")
+      .select("id, filename, file_type, file_size, document_type, created_at, storage_path, folder_id, upload_status, scan_reason, analysis_json, analyzed_at, source_rows_json")
       .eq("user_id", session.user.id)
       .order("created_at", { ascending: false })
     if (data) {
       const fileIds = data.map((file) => file.id)
       const latestJobByFileId = new Map<string, NonNullable<UploadedFile["processing_job"]>>()
+      const fieldCountByFileId = new Map<string, number>()
       if (fileIds.length > 0) {
-        const { data: jobs } = await supabase
-          .from("processing_jobs")
-          .select("file_id, status, created_at, error_message")
-          .in("file_id", fileIds)
-          .order("created_at", { ascending: false })
+        const [{ data: jobs }, { data: fieldRows }] = await Promise.all([
+          supabase
+            .from("processing_jobs")
+            .select("file_id, status, created_at, error_message")
+            .in("file_id", fileIds)
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("document_fields")
+            .select("file_id")
+            .in("file_id", fileIds),
+        ])
         for (const job of jobs ?? []) {
           if (!latestJobByFileId.has(job.file_id)) {
             latestJobByFileId.set(job.file_id, {
@@ -306,9 +316,19 @@ export default function SmartStoragePage() {
             })
           }
         }
+        for (const row of fieldRows ?? []) {
+          fieldCountByFileId.set(row.file_id, (fieldCountByFileId.get(row.file_id) ?? 0) + 1)
+        }
       }
+      const sheetMap: Record<string, boolean> = {}
+      for (const file of data) {
+        const count = fieldCountByFileId.get(file.id) ?? 0
+        sheetMap[file.id] = count > 1 || file.document_type === "csv_export"
+      }
+      setFileSheetMap(sheetMap)
       setFiles(data.map((file) => ({
         ...file,
+        field_count: fieldCountByFileId.get(file.id) ?? 0,
         processing_job: latestJobByFileId.get(file.id) ?? null,
       })))
       const types = [...new Set(data.map((f) => f.document_type).filter((t) => t !== "unknown"))]
@@ -328,6 +348,7 @@ export default function SmartStoragePage() {
       .from("document_fields")
       .select("file_id, total_amount, gross_income, net_income, vendor_name, employer_name, counterparty_name")
       .in("file_id", fileIds)
+      .neq("normalization_status", "excluded")
     const f = fields ?? []
     const isExpense = (x: { file_id: string }) => ["receipt", "invoice"].includes(typeByFileId.get(x.file_id) ?? "")
     const isIncome = (x: { file_id: string }) => ["payslip", "income_statement"].includes(typeByFileId.get(x.file_id) ?? "")
@@ -1816,7 +1837,8 @@ export default function SmartStoragePage() {
                           const parentFolderId = folders.find(f => f.id === file.folder_id)?.parentId ?? null
                           return moveFileToFolder(file.id, parentFolderId)
                         }}
-                        onReclassify={() => setReclassifyTarget({ fileId: file.id, filename: file.filename })}
+                        onReclassify={fileSheetMap[file.id] ? undefined : () => setReclassifyTarget({ fileId: file.id, filename: file.filename })}
+                        onReclassifySheet={fileSheetMap[file.id] ? () => setReclassifySheetTarget({ fileId: file.id, filename: file.filename }) : undefined}
                         onContextIntent={() => handleFileContextIntent(file.id)}
                       >
                         <div
@@ -1910,7 +1932,8 @@ export default function SmartStoragePage() {
                     const parentFolderId = folders.find(f => f.id === file.folder_id)?.parentId ?? null
                     return moveFileToFolder(file.id, parentFolderId)
                   }}
-                  onReclassify={() => setReclassifyTarget({ fileId: file.id, filename: file.filename })}
+                  onReclassify={fileSheetMap[file.id] ? undefined : () => setReclassifyTarget({ fileId: file.id, filename: file.filename })}
+                  onReclassifySheet={fileSheetMap[file.id] ? () => setReclassifySheetTarget({ fileId: file.id, filename: file.filename }) : undefined}
                   onContextIntent={() => handleFileContextIntent(file.id)}
                 >
                   <div
@@ -2210,6 +2233,18 @@ export default function SmartStoragePage() {
         onSaved={(fileId, newType) => {
           setFiles(prev => prev.map(f => f.id === fileId ? { ...f, document_type: newType } : f))
           setReclassifyTarget(null)
+        }}
+      />
+
+      <ReclassifySheetModal
+        isOpen={reclassifySheetTarget !== null}
+        fileId={reclassifySheetTarget?.fileId ?? null}
+        filename={reclassifySheetTarget?.filename ?? ""}
+        onClose={() => setReclassifySheetTarget(null)}
+        onSaved={() => {
+          void loadFiles()
+          void checkReportAvailability()
+          setReclassifySheetTarget(null)
         }}
       />
 

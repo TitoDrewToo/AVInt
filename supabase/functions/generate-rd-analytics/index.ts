@@ -314,6 +314,7 @@ serve(async (req) => {
         "is_recurring", "recurrence_cadence", "line_items", "raw_json",
       ].join(", "))
       .in("file_id", fileIds)
+      .neq("normalization_status", "excluded")
 
     const rows = (fields ?? []) as any[]
 

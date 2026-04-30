@@ -286,6 +286,7 @@ serve(async (req) => {
     // 4. Convert to base64 (chunked to avoid call stack overflow on large files)
     const arrayBuffer = await fileData.arrayBuffer()
     let uint8Array = new Uint8Array(arrayBuffer)
+    let sourceRows: any[] | null = null
 
     // 4b. Spreadsheet → CSV conversion.
     // XLSX files are ZIP binaries Gemini cannot read directly. Convert to CSV
@@ -299,8 +300,17 @@ serve(async (req) => {
         const XLSX = await import("https://esm.sh/xlsx@0.18.5")
         const wb = XLSX.read(uint8Array, { type: "array" })
         const csvChunks: string[] = []
+        const capturedSourceRows: any[] = []
         for (const name of wb.SheetNames) {
           const sheet = wb.Sheets[name]
+          const jsonRows = XLSX.utils.sheet_to_json(sheet, { defval: null })
+          jsonRows.forEach((source_row: any, rowIndex: number) => {
+            capturedSourceRows.push({
+              sheet_name: name,
+              row_index: rowIndex + 2,
+              source_row,
+            })
+          })
           const csv = XLSX.utils.sheet_to_csv(sheet)
           if (csv.trim().length > 0) {
             csvChunks.push(`# Sheet: ${name}\n${csv}`)
@@ -309,6 +319,11 @@ serve(async (req) => {
         const joined = csvChunks.join("\n\n")
         uint8Array = new TextEncoder().encode(joined)
         mimeType = "text/csv"
+        sourceRows = capturedSourceRows
+        await supabase
+          .from("files")
+          .update({ source_rows_json: sourceRows })
+          .eq("id", file_id)
         logEvent(FN, "xlsx_converted", { file_id, sheets: wb.SheetNames.length, bytes: uint8Array.length })
       } catch (e: any) {
         throw new Error(`xlsx conversion failed: ${e.message}`)
@@ -363,7 +378,7 @@ serve(async (req) => {
       .eq("id", file_id)
 
     // 9. Insert all rows into document_fields
-    const rowsToInsert = extractedRows.map((row: any) => ({
+    const rowsToInsert = extractedRows.map((row: any, index: number) => ({
       file_id,
       vendor_name:          row.vendor_name      ?? null,
       employer_name:        row.employer_name    ?? null,
@@ -375,7 +390,12 @@ serve(async (req) => {
       expense_category:     row.expense_category ?? null,
       confidence_score:     row.confidence       ?? null,
       // gemini_raw is the legacy compatibility key consumed by normalization prompts.
-      raw_json:             { gemini_raw: row, extraction_provider: extractionProvider },
+      raw_json:             {
+        gemini_raw: row,
+        extraction_provider: extractionProvider,
+        source_index: sourceRows?.[index] ? index : null,
+        source_row: sourceRows?.[index] ?? null,
+      },
       normalization_status: "raw",
     }))
 

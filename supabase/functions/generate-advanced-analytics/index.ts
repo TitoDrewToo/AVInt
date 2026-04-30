@@ -229,6 +229,7 @@ serve(async (req) => {
       .from("document_fields")
       .select(selectFields)
       .in("file_id", fileIds)
+      .neq("normalization_status", "excluded")
 
     const f = fields ?? []
     const currency = f.find((x: any) => x.currency)?.currency ?? "PHP"

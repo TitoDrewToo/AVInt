@@ -214,6 +214,7 @@ serve(async (req) => {
       .from("document_fields")
       .select("file_id, vendor_name, employer_name, document_date, currency, total_amount, gross_income, net_income, expense_category, tax_amount, discount_amount, line_items")
       .in("file_id", fileIds)
+      .neq("normalization_status", "excluded")
 
     // 2. Build a concise data summary for the AI prompt
     const totalIncome = (fields ?? [])

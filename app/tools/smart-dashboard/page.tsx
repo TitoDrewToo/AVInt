@@ -1191,6 +1191,7 @@ export default function SmartDashboardPage() {
       .from("document_fields")
       .select("file_id, document_date, total_amount, gross_income, net_income, expense_category, merchant_domain, currency, files!inner(document_type, filename)")
       .in("file_id", fileIds)
+      .neq("normalization_status", "excluded")
       .order("document_date", { ascending: true })
 
     if (dateFrom) query = query.gte("document_date", dateFrom)
@@ -1267,6 +1268,7 @@ export default function SmartDashboardPage() {
       .from("document_fields")
       .select("document_date, vendor_normalized, expense_category, merchant_domain, merchant_address_region, is_recurring, line_items")
       .in("file_id", fileIds)
+      .neq("normalization_status", "excluded")
 
     const signature = computeCorpusSignature(fieldRows ?? [])
     setCurrentSignature(signature)

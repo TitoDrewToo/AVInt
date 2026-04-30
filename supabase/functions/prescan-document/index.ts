@@ -643,7 +643,7 @@ serve(async (req) => {
     }).eq("id", file_id)
 
     // Chain into process-document (service role — internal chain allowed)
-    fetch(`${SUPABASE_URL}/functions/v1/process-document`, {
+    const chain = fetch(`${SUPABASE_URL}/functions/v1/process-document`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -651,6 +651,8 @@ serve(async (req) => {
       },
       body: JSON.stringify({ file_id }),
     }).catch(err => console.error("process-document chain failed:", err))
+    // @ts-ignore - EdgeRuntime is a Supabase runtime global
+    if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(chain)
 
     return new Response(
       JSON.stringify({ ok: true, approved: true, category: safety?.doc_category ?? null }),

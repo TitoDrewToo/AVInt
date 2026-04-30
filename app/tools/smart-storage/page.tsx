@@ -75,6 +75,10 @@ const HOVER_PREVIEW_WIDTH = 208
 const HOVER_PREVIEW_ESTIMATED_HEIGHT = 248
 const HOVER_PREVIEW_CURSOR_GAP = 28
 const HOVER_PREVIEW_VIEWPORT_PAD = 8
+const ACTIVE_PROCESSING_WINDOW_MS = 2 * 60 * 1000
+const ACTIONABLE_JOB_WINDOW_MS = 60 * 60 * 1000
+const ACTIVE_PROCESSING_STATUSES = ["uploaded", "pending_scan", "scanning", "processing"]
+const SLOW_PROCESSING_STATUSES = ["uploaded", "processing"]
 
 type HoverPreviewState = {
   fileId: string
@@ -82,6 +86,8 @@ type HoverPreviewState = {
   x: number
   y: number
 }
+
+type ProcessingBadgeState = "working_slow" | "failed"
 
 const formatBytes = formatStorageBytes
 
@@ -100,6 +106,20 @@ function fileIcon(fileType: string) {
   if (fileType.startsWith("image/")) return <ImageIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
   if (fileType === "application/pdf") return <FileText className="h-4 w-4 shrink-0 text-primary/60" />
   return <File className="h-4 w-4 shrink-0 text-muted-foreground" />
+}
+
+function processingBadgeState(file: UploadedFile): ProcessingBadgeState | null {
+  const job = file.processing_job
+  if (!job?.status || !job.created_at) return null
+  const createdAt = Date.parse(job.created_at)
+  if (!Number.isFinite(createdAt)) return null
+  const ageMs = Date.now() - createdAt
+  if (ageMs >= ACTIONABLE_JOB_WINDOW_MS) return null
+  if (job.status === "failed") return "failed"
+  if (SLOW_PROCESSING_STATUSES.includes(job.status) && ageMs > ACTIVE_PROCESSING_WINDOW_MS) {
+    return "working_slow"
+  }
+  return null
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
@@ -133,6 +153,8 @@ export default function SmartStoragePage() {
   // Files state
   const [files, setFiles] = useState<UploadedFile[]>([])
   const [detectedTypes, setDetectedTypes] = useState<string[]>([])
+  const processingExpiryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const checkProcessingStateRef = useRef<(() => Promise<boolean | undefined>) | null>(null)
 
   // Upload
   const [isUploading, setIsUploading] = useState(false)
@@ -217,22 +239,46 @@ export default function SmartStoragePage() {
     return () => subscription.unsubscribe()
   }, [])
 
-  // ── Processing indicator + polling ────────────────────────────────────────
+  // ── Processing indicator + realtime ───────────────────────────────────────
   const checkProcessingState = useCallback(async () => {
     if (!session?.user?.id) return
+    if (processingExpiryTimeoutRef.current) {
+      clearTimeout(processingExpiryTimeoutRef.current)
+      processingExpiryTimeoutRef.current = null
+    }
     const { data: userFiles } = await supabase.from("files").select("id").eq("user_id", session.user.id)
     if (!userFiles?.length) { setIsProcessing(false); return false }
-    // Only consider jobs created in the last 30 min — stale stuck jobs won't fire the indicator
-    const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString()
+    const activeCutoff = new Date(Date.now() - ACTIVE_PROCESSING_WINDOW_MS).toISOString()
     const { data: activeJobs } = await supabase
-      .from("processing_jobs").select("status")
+      .from("processing_jobs").select("status, created_at")
       .in("file_id", userFiles.map((f) => f.id))
-      .in("status", ["uploaded", "pending_scan", "scanning", "processing"])
-      .gte("created_at", cutoff)
+      .in("status", ACTIVE_PROCESSING_STATUSES)
+      .gte("created_at", activeCutoff)
     const stillActive = (activeJobs?.length ?? 0) > 0
     setIsProcessing(stillActive)
+    if (stillActive) {
+      const now = Date.now()
+      const delays = (activeJobs ?? [])
+        .map((job) => Date.parse(job.created_at ?? "") + ACTIVE_PROCESSING_WINDOW_MS - now)
+        .filter((delay) => Number.isFinite(delay) && delay > 0)
+      if (delays.length > 0) {
+        processingExpiryTimeoutRef.current = setTimeout(() => {
+          void checkProcessingStateRef.current?.()
+        }, Math.max(1000, Math.min(...delays) + 250))
+      }
+    }
     return stillActive
   }, [session])
+
+  useEffect(() => {
+    checkProcessingStateRef.current = checkProcessingState
+  }, [checkProcessingState])
+
+  useEffect(() => {
+    return () => {
+      if (processingExpiryTimeoutRef.current) clearTimeout(processingExpiryTimeoutRef.current)
+    }
+  }, [])
 
   // ── Load files ─────────────────────────────────────────────────────────────
   const loadFiles = useCallback(async () => {
@@ -243,7 +289,28 @@ export default function SmartStoragePage() {
       .eq("user_id", session.user.id)
       .order("created_at", { ascending: false })
     if (data) {
-      setFiles(data)
+      const fileIds = data.map((file) => file.id)
+      const latestJobByFileId = new Map<string, NonNullable<UploadedFile["processing_job"]>>()
+      if (fileIds.length > 0) {
+        const { data: jobs } = await supabase
+          .from("processing_jobs")
+          .select("file_id, status, created_at, error_message")
+          .in("file_id", fileIds)
+          .order("created_at", { ascending: false })
+        for (const job of jobs ?? []) {
+          if (!latestJobByFileId.has(job.file_id)) {
+            latestJobByFileId.set(job.file_id, {
+              status: job.status,
+              created_at: job.created_at,
+              error_message: job.error_message,
+            })
+          }
+        }
+      }
+      setFiles(data.map((file) => ({
+        ...file,
+        processing_job: latestJobByFileId.get(file.id) ?? null,
+      })))
       const types = [...new Set(data.map((f) => f.document_type).filter((t) => t !== "unknown"))]
       setDetectedTypes(types)
     }
@@ -281,19 +348,35 @@ export default function SmartStoragePage() {
     setReportAvailability(availability)
   }, [session])
 
-  // Poll every 3s while processing — stops when jobs complete, then refreshes files
   useEffect(() => {
-    if (!isProcessing) return
-    const interval = setInterval(async () => {
-      const stillActive = await checkProcessingState()
-      if (!stillActive) {
-        clearInterval(interval)
-        await loadFiles()
-        await checkReportAvailability()
-      }
-    }, 3000)
-    return () => clearInterval(interval)
-  }, [isProcessing, checkProcessingState, loadFiles, checkReportAvailability])
+    if (!session?.user?.id) return
+    const channel = supabase
+      .channel(`processing-jobs-${session.user.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "processing_jobs" },
+        async (payload) => {
+          const fileId = (payload.new as any)?.file_id ?? (payload.old as any)?.file_id
+          if (!fileId) return
+          const { data: ownsFile } = await supabase
+            .from("files")
+            .select("id")
+            .eq("id", fileId)
+            .eq("user_id", session.user.id)
+            .maybeSingle()
+          if (!ownsFile) return
+          const stillActive = await checkProcessingState()
+          if (!stillActive) {
+            await loadFiles()
+            await checkReportAvailability()
+          }
+        },
+      )
+      .subscribe()
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [session, checkProcessingState, loadFiles, checkReportAvailability])
 
   const loadFolders = useCallback(async () => {
     if (!session?.user?.id) return
@@ -586,6 +669,43 @@ export default function SmartStoragePage() {
       setIsUploading(false)
     }
   }
+
+  const handleRetryProcessing = useCallback(async (file: UploadedFile) => {
+    if (!session?.user?.id) return
+    const functionName =
+      file.upload_status === "pending_scan"
+        ? "prescan-document"
+        : file.upload_status === "approved"
+        ? "process-document"
+        : null
+    if (!functionName) return
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    if (!supabaseUrl) return
+
+    setIsProcessing(true)
+    if (file.processing_job?.status === "failed") {
+      const { error } = await supabase
+        .from("processing_jobs")
+        .insert({ file_id: file.id, status: "uploaded" })
+      if (error) console.error("processing_jobs retry insert failed:", error)
+    }
+    const userToken = (await supabase.auth.getSession()).data.session?.access_token
+    const res = await fetch(`${supabaseUrl}/functions/v1/${functionName}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${userToken ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+        "apikey": process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
+      },
+      body: JSON.stringify({ file_id: file.id }),
+    })
+    if (!res.ok) {
+      const text = await res.text().catch(() => "")
+      console.error(`${functionName} retry failed:`, text || res.statusText)
+    }
+    await loadFiles()
+    await checkProcessingState()
+  }, [session, loadFiles, checkProcessingState])
 
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragOver(true) }
   const handleDragLeave = () => setIsDragOver(false)
@@ -1140,6 +1260,45 @@ export default function SmartStoragePage() {
       </div>
     </div>
   )
+
+  const renderProcessingJobBadge = (file: UploadedFile) => {
+    const badge = processingBadgeState(file)
+    if (!badge) return null
+    const title = badge === "failed"
+      ? file.processing_job?.error_message ?? "Processing failed"
+      : "Processing is taking longer than expected"
+    const label = badge === "failed" ? "Failed - retry" : "Still working..."
+
+    return (
+      <span
+        className={`inline-flex max-w-full items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] leading-none ${
+          badge === "failed"
+            ? "border-red-200 bg-red-50 text-red-700"
+            : "border-amber-200 bg-amber-50 text-amber-700"
+        }`}
+        title={title}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          className="truncate text-left underline-offset-2 hover:underline"
+          onClick={() => { void handleRetryProcessing(file) }}
+        >
+          {label}
+        </button>
+        {badge === "working_slow" && (
+          <button
+            type="button"
+            className="shrink-0 underline-offset-2 hover:underline"
+            onClick={() => { void handleRetryProcessing(file) }}
+          >
+            Retry
+          </button>
+        )}
+      </span>
+    )
+  }
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -1725,6 +1884,7 @@ export default function SmartStoragePage() {
                               {file.document_type === "unknown" ? "Processing…" : file.document_type.replace(/_/g, " ")}
                             </span>
                           )}
+                          {renderProcessingJobBadge(file)}
                         </div>
                       </StorageItemMenu>
                     )
@@ -1783,15 +1943,18 @@ export default function SmartStoragePage() {
                         <span className="truncate text-foreground">{file.filename}</span>
                       )}
                     </div>
-                    {file.upload_status === "quarantined" ? (
-                      <span className="truncate text-red-600" title={file.scan_reason ?? "Blocked by security scan"}>
-                        Blocked
-                      </span>
-                    ) : (
-                      <span className="truncate text-muted-foreground capitalize">
-                        {file.document_type === "unknown" ? "Processing…" : file.document_type.replace(/_/g, " ")}
-                      </span>
-                    )}
+                    <span className="flex min-w-0 flex-col items-start gap-1">
+                      {file.upload_status === "quarantined" ? (
+                        <span className="max-w-full truncate text-red-600" title={file.scan_reason ?? "Blocked by security scan"}>
+                          Blocked
+                        </span>
+                      ) : (
+                        <span className="max-w-full truncate text-muted-foreground capitalize">
+                          {file.document_type === "unknown" ? "Processing…" : file.document_type.replace(/_/g, " ")}
+                        </span>
+                      )}
+                      {renderProcessingJobBadge(file)}
+                    </span>
                     <span className="text-muted-foreground text-xs">
                       {new Date(file.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" })}
                       {" "}

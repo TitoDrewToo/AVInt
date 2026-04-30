@@ -405,7 +405,7 @@ serve(async (req) => {
 
     // For CSV multi-row: normalize remaining rows in parallel (fire and forget)
     if (rowsForNormalization.length > 1) {
-      Promise.all(
+      const normalizeChain = Promise.all(
         rowsForNormalization.map((row: any) =>
           fetch(`${SUPABASE_URL}/functions/v1/normalize-document`, {
             method: "POST",
@@ -417,6 +417,8 @@ serve(async (req) => {
           })
         )
       ).catch(() => {/* non-blocking — normalization failures handled per-row */})
+      // @ts-ignore - EdgeRuntime is a Supabase runtime global
+      if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(normalizeChain)
     }
 
     if (!normalizeResponse.ok) {

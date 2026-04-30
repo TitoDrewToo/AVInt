@@ -49,6 +49,11 @@ export interface UploadedFile {
   folder_id: string | null
   upload_status?: string | null
   scan_reason?: string | null
+  processing_job?: {
+    status: string | null
+    created_at: string | null
+    error_message?: string | null
+  } | null
 }
 
 export interface GridPosition {

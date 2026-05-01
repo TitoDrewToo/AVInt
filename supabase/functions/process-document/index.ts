@@ -25,11 +25,40 @@ function buildCorsHeaders(req: Request) {
 
 const EXTRACTION_PROMPT = `You are a document extraction AI. Analyze this document and extract structured data.
 
+MULTI-SHEET / MULTI-ROW DETECTION (read this first):
+
+If the input text contains ANY of the following:
+  a) Two or more lines that begin with "# Sheet:" markers, OR
+  b) A repeating tabular structure (header row followed by 2+ data rows
+     of similar shape)
+
+THEN you MUST return a TOP-LEVEL JSON ARRAY where each element is one
+document object (one per row of data). Each object follows the same
+field schema described below.
+
+Do NOT collapse multiple data rows into a single document's "line_items"
+field. The line_items field is reserved for sub-items WITHIN a single
+transaction (e.g., a single receipt's individual purchases, or a
+contract's payment-schedule entries). It is NOT for separate rows in a
+spreadsheet.
+
+Example:
+- A 50-row CSV of expense transactions -> return a 50-element array.
+- A multi-sheet workbook with 30 rows in Sheet 1 and 20 rows in
+  Sheet 2 -> return a 50-element array (one element per row across all sheets).
+- A single receipt with 5 line items -> return a single object with
+  line_items = [5 sub-items].
+
+If the input is genuinely a single document (one PDF receipt, one
+contract scan, etc.) WITHOUT multiple sheet markers and without a
+repeating row structure, return a single JSON object as before.
+
 CRITICAL FORMATTING RULES:
-1. Return ONLY a single JSON object — starting with { and ending with }
-2. NEVER return a JSON array at the top level (never start your response with [)
-3. No markdown, no code blocks, no explanation — just the JSON object
-4. If the document has multiple line items, put them inside the "line_items" array field
+1. Return ONLY JSON — either a single JSON object for a single document, or a top-level JSON array for multi-sheet/multi-row spreadsheet data.
+2. For multi-sheet/multi-row spreadsheet data, the response MUST start with [ and end with ].
+3. For a genuinely single document, the response MUST start with { and end with }.
+4. No markdown, no code blocks, no explanation — just the JSON.
+5. If a single document has multiple line items, put them inside the "line_items" array field.
 
 Extract these fields:
 {
@@ -366,6 +395,17 @@ serve(async (req) => {
 
     const extracted = extractedRows[0]
     const isCsv = extractedRows.length > 1
+    const decodedInputText = mimeType === "text/csv" ? new TextDecoder().decode(uint8Array) : ""
+    const sheetMarkerCount = decodedInputText.match(/^# Sheet:/gm)?.length ?? 0
+    const wasMultiSheet = mimeType === "text/csv" && sheetMarkerCount >= 2
+
+    if (wasMultiSheet && !isCsv) {
+      logEvent(FN, "multi_sheet_collapsed_to_object", {
+        file_id,
+        sheet_count: sheetMarkerCount,
+        extracted_doc_type: extracted?.document_type ?? null,
+      })
+    }
 
     // 8. Update files.document_type
     // For CSVs use the first row's type; mark as csv_export for clarity

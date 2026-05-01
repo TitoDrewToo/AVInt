@@ -109,6 +109,16 @@ function fileIcon(fileType: string) {
   return <File className="h-4 w-4 shrink-0 text-muted-foreground" />
 }
 
+export function isSpreadsheetFile(file: { file_type?: string | null; filename?: string | null }): boolean {
+  const mime = file.file_type ?? ""
+  const name = file.filename ?? ""
+  return (
+    mime === "text/csv" ||
+    mime === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+    /\.(xlsx|csv)$/i.test(name)
+  )
+}
+
 function processingBadgeState(file: UploadedFile): ProcessingBadgeState | null {
   const job = file.processing_job
   if (!job?.status || !job.created_at) return null
@@ -177,7 +187,6 @@ export default function SmartStoragePage() {
   const [manualEntryOpen, setManualEntryOpen] = useState(false)
   const [reclassifyTarget, setReclassifyTarget] = useState<{ fileId: string; filename: string } | null>(null)
   const [reclassifySheetTarget, setReclassifySheetTarget] = useState<{ fileId: string; filename: string } | null>(null)
-  const [fileSheetMap, setFileSheetMap] = useState<Record<string, boolean>>({})
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const isMobile = useIsMobile()
   const [renamingFileId, setRenamingFileId] = useState<string | null>(null)
@@ -294,19 +303,12 @@ export default function SmartStoragePage() {
     if (data) {
       const fileIds = data.map((file) => file.id)
       const latestJobByFileId = new Map<string, NonNullable<UploadedFile["processing_job"]>>()
-      const fieldCountByFileId = new Map<string, number>()
       if (fileIds.length > 0) {
-        const [{ data: jobs }, { data: fieldRows }] = await Promise.all([
-          supabase
-            .from("processing_jobs")
-            .select("file_id, status, created_at, error_message")
-            .in("file_id", fileIds)
-            .order("created_at", { ascending: false }),
-          supabase
-            .from("document_fields")
-            .select("file_id")
-            .in("file_id", fileIds),
-        ])
+        const { data: jobs } = await supabase
+          .from("processing_jobs")
+          .select("file_id, status, created_at, error_message")
+          .in("file_id", fileIds)
+          .order("created_at", { ascending: false })
         for (const job of jobs ?? []) {
           if (!latestJobByFileId.has(job.file_id)) {
             latestJobByFileId.set(job.file_id, {
@@ -316,19 +318,9 @@ export default function SmartStoragePage() {
             })
           }
         }
-        for (const row of fieldRows ?? []) {
-          fieldCountByFileId.set(row.file_id, (fieldCountByFileId.get(row.file_id) ?? 0) + 1)
-        }
       }
-      const sheetMap: Record<string, boolean> = {}
-      for (const file of data) {
-        const count = fieldCountByFileId.get(file.id) ?? 0
-        sheetMap[file.id] = count > 1 || file.document_type === "csv_export"
-      }
-      setFileSheetMap(sheetMap)
       setFiles(data.map((file) => ({
         ...file,
-        field_count: fieldCountByFileId.get(file.id) ?? 0,
         processing_job: latestJobByFileId.get(file.id) ?? null,
       })))
       const types = [...new Set(data.map((f) => f.document_type).filter((t) => t !== "unknown"))]
@@ -1837,8 +1829,13 @@ export default function SmartStoragePage() {
                           const parentFolderId = folders.find(f => f.id === file.folder_id)?.parentId ?? null
                           return moveFileToFolder(file.id, parentFolderId)
                         }}
-                        onReclassify={fileSheetMap[file.id] ? undefined : () => setReclassifyTarget({ fileId: file.id, filename: file.filename })}
-                        onReclassifySheet={fileSheetMap[file.id] ? () => setReclassifySheetTarget({ fileId: file.id, filename: file.filename }) : undefined}
+                        onReclassify={() => {
+                          if (isSpreadsheetFile(file)) {
+                            setReclassifySheetTarget({ fileId: file.id, filename: file.filename })
+                          } else {
+                            setReclassifyTarget({ fileId: file.id, filename: file.filename })
+                          }
+                        }}
                         onContextIntent={() => handleFileContextIntent(file.id)}
                       >
                         <div
@@ -1932,8 +1929,13 @@ export default function SmartStoragePage() {
                     const parentFolderId = folders.find(f => f.id === file.folder_id)?.parentId ?? null
                     return moveFileToFolder(file.id, parentFolderId)
                   }}
-                  onReclassify={fileSheetMap[file.id] ? undefined : () => setReclassifyTarget({ fileId: file.id, filename: file.filename })}
-                  onReclassifySheet={fileSheetMap[file.id] ? () => setReclassifySheetTarget({ fileId: file.id, filename: file.filename }) : undefined}
+                  onReclassify={() => {
+                    if (isSpreadsheetFile(file)) {
+                      setReclassifySheetTarget({ fileId: file.id, filename: file.filename })
+                    } else {
+                      setReclassifyTarget({ fileId: file.id, filename: file.filename })
+                    }
+                  }}
                   onContextIntent={() => handleFileContextIntent(file.id)}
                 >
                   <div

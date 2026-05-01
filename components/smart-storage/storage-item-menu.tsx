@@ -25,7 +25,6 @@ interface StorageItemMenuProps {
   onDeleteSelection?: () => void | Promise<void>
   onMoveUp?: () => void | Promise<void>
   onReclassify?: () => void
-  onReclassifySheet?: () => void
   onContextIntent?: () => void
   children: ReactNode
 }
@@ -43,7 +42,6 @@ export function StorageItemMenu({
   onDeleteSelection,
   onMoveUp,
   onReclassify,
-  onReclassifySheet,
   onContextIntent,
   children,
 }: StorageItemMenuProps) {
@@ -100,12 +98,12 @@ export function StorageItemMenu({
                 </ContextMenuItem>
               </>
             )}
-            {(onReclassifySheet || onReclassify) && (
+            {onReclassify && (
               <>
                 <ContextMenuSeparator />
-                <ContextMenuItem inset onSelect={onReclassifySheet ?? onReclassify}>
+                <ContextMenuItem inset onSelect={onReclassify}>
                   <Tag className="h-3.5 w-3.5" />
-                  {onReclassifySheet ? "Reclassify Sheet" : "Reclassify"}
+                  Reclassify
                 </ContextMenuItem>
               </>
             )}

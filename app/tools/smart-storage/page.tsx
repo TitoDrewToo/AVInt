@@ -164,6 +164,7 @@ export default function SmartStoragePage() {
   // Files state
   const [files, setFiles] = useState<UploadedFile[]>([])
   const [detectedTypes, setDetectedTypes] = useState<string[]>([])
+  const recentlyDeletedFileIdsRef = useRef<Set<string>>(new Set())
   const processingExpiryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const checkProcessingStateRef = useRef<(() => Promise<boolean | undefined>) | null>(null)
 
@@ -371,6 +372,7 @@ export default function SmartStoragePage() {
         async (payload) => {
           const fileId = (payload.new as any)?.file_id ?? (payload.old as any)?.file_id
           if (!fileId) return
+          if (recentlyDeletedFileIdsRef.current.has(fileId)) return
           const { data: ownsFile } = await supabase
             .from("files")
             .select("id")
@@ -863,6 +865,10 @@ export default function SmartStoragePage() {
     const file = files.find(f => f.id === fileId)
     if (!file) return
     const userToken = (await supabase.auth.getSession()).data.session?.access_token
+    recentlyDeletedFileIdsRef.current.add(fileId)
+    const clearRecentlyDeleted = window.setTimeout(() => {
+      recentlyDeletedFileIdsRef.current.delete(fileId)
+    }, 5000)
     const res = await fetch("/api/delete-file", {
       method: "POST",
       headers: {
@@ -873,6 +879,8 @@ export default function SmartStoragePage() {
     })
 
     if (!res.ok) {
+      window.clearTimeout(clearRecentlyDeleted)
+      recentlyDeletedFileIdsRef.current.delete(fileId)
       const payload = await res.json().catch(() => ({}))
       throw new Error(payload.error ?? "Failed to delete file")
     }

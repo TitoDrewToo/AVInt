@@ -8,6 +8,10 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 )
 
+function throwIfDeleteFailed(stage: string, error: { message: string } | null) {
+  if (error) throw new Error(`${stage}: ${error.message}`)
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { file_id } = await req.json()
@@ -36,19 +40,62 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "File not found" }, { status: 404 })
     }
 
+    const { error: documentFieldsError } = await supabaseAdmin
+      .from("document_fields")
+      .delete()
+      .eq("file_id", file_id)
+    throwIfDeleteFailed("delete_document_fields", documentFieldsError)
+
+    const { error: processingJobsError } = await supabaseAdmin
+      .from("processing_jobs")
+      .delete()
+      .eq("file_id", file_id)
+    throwIfDeleteFailed("delete_processing_jobs", processingJobsError)
+
+    const { error: paymentObligationsError } = await supabaseAdmin
+      .from("payment_obligations")
+      .delete()
+      .eq("file_id", file_id)
+    throwIfDeleteFailed("delete_payment_obligations", paymentObligationsError)
+
     if (fileRow.storage_path) {
-      await supabaseAdmin.storage.from("documents").remove([fileRow.storage_path])
+      const { error: storageError } = await supabaseAdmin.storage
+        .from("documents")
+        .remove([fileRow.storage_path])
+      throwIfDeleteFailed("delete_storage_object", storageError)
     }
 
-    await supabaseAdmin.from("payment_obligations").delete().eq("file_id", file_id)
-    await supabaseAdmin.from("document_fields").delete().eq("file_id", file_id)
-    await supabaseAdmin.from("processing_jobs").delete().eq("file_id", file_id)
-    await supabaseAdmin.from("files").delete().eq("id", file_id)
+    const { error: filesError } = await supabaseAdmin
+      .from("files")
+      .delete()
+      .eq("id", file_id)
+    throwIfDeleteFailed("delete_file_row", filesError)
 
     // These are user-level derived views over the document set. Clearing them
     // ensures the UI does not continue showing stale summaries after a file is removed.
-    await supabaseAdmin.from("context_summaries").delete().eq("user_id", user.id)
-    await supabaseAdmin.from("advanced_widgets").delete().eq("user_id", user.id)
+    const { error: contextSummariesError } = await supabaseAdmin
+      .from("context_summaries")
+      .delete()
+      .eq("user_id", user.id)
+    if (contextSummariesError) {
+      console.error("delete-file derived cleanup failed:", {
+        stage: "delete_context_summaries",
+        user_id: user.id,
+        message: contextSummariesError.message,
+      })
+    }
+
+    const { error: advancedWidgetsError } = await supabaseAdmin
+      .from("advanced_widgets")
+      .delete()
+      .eq("user_id", user.id)
+    if (advancedWidgetsError) {
+      console.error("delete-file derived cleanup failed:", {
+        stage: "delete_advanced_widgets",
+        user_id: user.id,
+        message: advancedWidgetsError.message,
+      })
+    }
 
     return NextResponse.json({ success: true })
   } catch (err) {

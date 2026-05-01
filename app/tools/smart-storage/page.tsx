@@ -109,7 +109,7 @@ function fileIcon(fileType: string) {
   return <File className="h-4 w-4 shrink-0 text-muted-foreground" />
 }
 
-export function isSpreadsheetFile(file: { file_type?: string | null; filename?: string | null }): boolean {
+function isSpreadsheetFile(file: { file_type?: string | null; filename?: string | null }): boolean {
   const mime = file.file_type ?? ""
   const name = file.filename ?? ""
   return (

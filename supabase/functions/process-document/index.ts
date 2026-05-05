@@ -133,6 +133,28 @@ function openAiInputPart(mimeType: string, base64: string, bytes: Uint8Array) {
   return null
 }
 
+function toBase64(bytes: Uint8Array): string {
+  let binary = ""
+  const chunkSize = 8192
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
+  }
+  return btoa(binary)
+}
+
+function parseExtractionRows(rawText: string): any[] {
+  const stripped = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim()
+
+  if (stripped.startsWith("[")) {
+    const parsed = JSON.parse(stripped)
+    return Array.isArray(parsed) ? parsed : [parsed]
+  }
+
+  const objectMatch = stripped.match(/\{[\s\S]*\}/)
+  if (!objectMatch) throw new Error("No JSON object found in response")
+  return [JSON.parse(objectMatch[0])]
+}
+
 async function callGeminiExtraction(mimeType: string, base64: string): Promise<string> {
   const res = await fetchWithTimeout(
     `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
@@ -151,7 +173,8 @@ async function callGeminiExtraction(mimeType: string, base64: string): Promise<s
           maxOutputTokens: 8192,
         }
       })
-    }
+    },
+    60_000,
   )
 
   if (!res.ok) {
@@ -168,25 +191,29 @@ async function callOpenAIExtraction(mimeType: string, base64: string, bytes: Uin
   const filePart = openAiInputPart(mimeType, base64, bytes)
   if (!filePart) throw new Error(`OpenAI process does not support MIME type ${mimeType}`)
 
-  const res = await fetchWithTimeout("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${OPENAI_API_KEY}`,
+  const res = await fetchWithTimeout(
+    "https://api.openai.com/v1/responses",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        input: [{
+          role: "user",
+          content: [
+            filePart,
+            { type: "input_text", text: EXTRACTION_PROMPT },
+          ],
+        }],
+        temperature: 0.1,
+        max_output_tokens: 8192,
+      }),
     },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      input: [{
-        role: "user",
-        content: [
-          filePart,
-          { type: "input_text", text: EXTRACTION_PROMPT },
-        ],
-      }],
-      temperature: 0.1,
-      max_output_tokens: 8192,
-    }),
-  })
+    60_000,
+  )
 
   if (!res.ok) {
     throw new Error(`OpenAI process API error: ${await res.text()}`)
@@ -359,45 +386,79 @@ serve(async (req) => {
       }
     }
 
-    let binary = ""
-    const chunkSize = 8192
-    for (let i = 0; i < uint8Array.length; i += chunkSize) {
-      binary += String.fromCharCode(...uint8Array.subarray(i, i + chunkSize))
-    }
-    const base64 = btoa(binary)
+    const decodedInputText = mimeType === "text/csv" ? new TextDecoder().decode(uint8Array) : ""
+    const sheetMarkerCount = decodedInputText.match(/^# Sheet: .+$/gm)?.length ?? 0
+    const isMultiSheet = mimeType === "text/csv" && sheetMarkerCount >= 2
+    const base64 = toBase64(uint8Array)
 
     // 6. Call document extraction provider chain.
-    const { rawText, provider: extractionProvider } = await callExtractionWithFallback(mimeType, base64, uint8Array)
+    // Multi-sheet XLSX conversions are split per sheet so each Gemini response is bounded.
+    let extractedRows: any[] = []
+    let extractionProvider: AiProvider = "gemini"
 
-    // 7. Parse extraction JSON output
-    // Providers sometimes wrap output in ```json ... ``` blocks — strip those first.
-    // Top-level array = CSV export (multiple document rows). Top-level object = single document.
-    // IMPORTANT: use startsWith('[') to detect top-level arrays — NOT a regex search,
-    // because a valid document object like {"line_items": [...]} also contains '['.
-    let extractedRows: any[]
-    try {
-      // Strip markdown code fences if present
-      const stripped = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim()
+    if (isMultiSheet) {
+      const chunks = decodedInputText
+        .split(/^# Sheet: /m)
+        .filter((chunk) => chunk.trim().length > 0)
 
-      if (stripped.startsWith("[")) {
-        // Top-level array — treat as multi-row CSV export
-        const parsed = JSON.parse(stripped)
-        extractedRows = Array.isArray(parsed) ? parsed : [parsed]
-      } else {
-        // Single JSON object — standard document
-        const objectMatch = stripped.match(/\{[\s\S]*\}/)
-        if (!objectMatch) throw new Error("No JSON object found in response")
-        extractedRows = [JSON.parse(objectMatch[0])]
+      const perSheetResults = await Promise.allSettled(
+        chunks.map(async (chunk) => {
+          const newlineIdx = chunk.indexOf("\n")
+          if (newlineIdx < 0) return []
+
+          const sheetName = chunk.slice(0, newlineIdx).trim()
+          const sheetCsv = chunk.slice(newlineIdx + 1)
+          if (sheetCsv.trim().length === 0) return []
+
+          const sheetBytes = new TextEncoder().encode(sheetCsv)
+          const sheetBase64 = toBase64(sheetBytes)
+          const { rawText, provider } = await callExtractionWithFallback("text/csv", sheetBase64, sheetBytes)
+          const parsedRows = parseExtractionRows(rawText)
+
+          return parsedRows.map((row: any, rowIndex: number) => ({
+            ...row,
+            _source_sheet: sheetName,
+            _source_row_index: rowIndex,
+            _extraction_provider: provider,
+          }))
+        }),
+      )
+
+      for (const result of perSheetResults) {
+        if (result.status === "fulfilled") {
+          extractedRows.push(...result.value)
+          if (result.value[0]?._extraction_provider) extractionProvider = result.value[0]._extraction_provider
+        } else {
+          logError(FN, "per_sheet_extraction_failed", result.reason, { file_id })
+        }
       }
-    } catch {
-      throw new Error(`Failed to parse extraction output: ${rawText}`)
+
+      logEvent(FN, "multi_sheet_extracted", {
+        file_id,
+        sheet_count: sheetMarkerCount,
+        extracted_rows: extractedRows.length,
+      })
+    } else {
+      const { rawText, provider } = await callExtractionWithFallback(mimeType, base64, uint8Array)
+      extractionProvider = provider
+
+      try {
+        // Top-level array = CSV export; top-level object = single document.
+        // IMPORTANT: use startsWith('[') to detect arrays because document objects
+        // can contain arrays inside line_items.
+        extractedRows = parseExtractionRows(rawText)
+      } catch {
+        throw new Error(`Failed to parse extraction output: ${rawText}`)
+      }
+    }
+
+    if (extractedRows.length === 0) {
+      throw new Error("No rows extracted from document")
     }
 
     const extracted = extractedRows[0]
-    const isCsv = extractedRows.length > 1
-    const decodedInputText = mimeType === "text/csv" ? new TextDecoder().decode(uint8Array) : ""
-    const sheetMarkerCount = decodedInputText.match(/^# Sheet:/gm)?.length ?? 0
-    const wasMultiSheet = mimeType === "text/csv" && sheetMarkerCount >= 2
+    const isCsv = isMultiSheet || extractedRows.length > 1
+    const wasMultiSheet = isMultiSheet
 
     if (wasMultiSheet && !isCsv) {
       logEvent(FN, "multi_sheet_collapsed_to_object", {
@@ -418,26 +479,35 @@ serve(async (req) => {
       .eq("id", file_id)
 
     // 9. Insert all rows into document_fields
-    const rowsToInsert = extractedRows.map((row: any, index: number) => ({
-      file_id,
-      vendor_name:          row.vendor_name      ?? null,
-      employer_name:        row.employer_name    ?? null,
-      document_date:        row.document_date    ?? null,
-      currency:             row.currency         ?? null,
-      total_amount:         row.total_amount     ?? null,
-      gross_income:         row.gross_income     ?? null,
-      net_income:           row.net_income       ?? null,
-      expense_category:     row.expense_category ?? null,
-      confidence_score:     row.confidence       ?? null,
-      // gemini_raw is the legacy compatibility key consumed by normalization prompts.
-      raw_json:             {
-        gemini_raw: row,
-        extraction_provider: extractionProvider,
-        source_index: sourceRows?.[index] ? index : null,
-        source_row: sourceRows?.[index] ?? null,
-      },
-      normalization_status: "raw",
-    }))
+    const rowsToInsert = extractedRows.map((row: any, index: number) => {
+      const sameSheetSourceRows = row._source_sheet && Array.isArray(sourceRows)
+        ? sourceRows.filter((sourceRow: any) => sourceRow?.sheet_name === row._source_sheet)
+        : null
+      const sourceRow = sameSheetSourceRows?.[row._source_row_index] ?? sourceRows?.[index] ?? null
+      const sourceIndex = sourceRow && Array.isArray(sourceRows) ? sourceRows.indexOf(sourceRow) : null
+
+      return {
+        file_id,
+        vendor_name:          row.vendor_name      ?? null,
+        employer_name:        row.employer_name    ?? null,
+        document_date:        row.document_date    ?? null,
+        currency:             row.currency         ?? null,
+        total_amount:         row.total_amount     ?? null,
+        gross_income:         row.gross_income     ?? null,
+        net_income:           row.net_income       ?? null,
+        expense_category:     row.expense_category ?? null,
+        confidence_score:     row.confidence       ?? null,
+        // gemini_raw is the legacy compatibility key consumed by normalization prompts.
+        raw_json:             {
+          gemini_raw: row,
+          extraction_provider: row._extraction_provider ?? extractionProvider,
+          source_sheet: row._source_sheet ?? sourceRow?.sheet_name ?? null,
+          source_index: sourceIndex,
+          source_row: sourceRow,
+        },
+        normalization_status: "raw",
+      }
+    })
 
     const { data: insertedRows } = await supabase
       .from("document_fields")

@@ -133,6 +133,12 @@ function processingBadgeState(file: UploadedFile): ProcessingBadgeState | null {
   return null
 }
 
+function fileDocumentTypeLabel(file: UploadedFile): { label: string; isFailed: boolean } {
+  if (file.processing_job?.status === "failed") return { label: "Failed", isFailed: true }
+  if (file.document_type === "unknown") return { label: "Processing…", isFailed: false }
+  return { label: file.document_type.replace(/_/g, " "), isFailed: false }
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function SmartStoragePage() {
@@ -1820,6 +1826,7 @@ export default function SmartStoragePage() {
                     const left = isDragging && dragGhostPos ? dragGhostPos.x : GRID_PAD + pos.col * CELL_W
                     const top  = isDragging && dragGhostPos ? dragGhostPos.y : GRID_PAD + pos.row * CELL_H
                     const dragCount = dragSelectionIds.includes(file.id) ? dragSelectionIds.length : 0
+                    const documentTypeLabel = fileDocumentTypeLabel(file)
                     return (
                       <StorageItemMenu
                         key={file.id}
@@ -1907,8 +1914,10 @@ export default function SmartStoragePage() {
                               Blocked
                             </span>
                           ) : (
-                            <span className="w-full truncate text-center text-[10px] text-muted-foreground/60 capitalize leading-tight">
-                              {file.document_type === "unknown" ? "Processing…" : file.document_type.replace(/_/g, " ")}
+                            <span className={`w-full truncate text-center text-[10px] capitalize leading-tight ${
+                              documentTypeLabel.isFailed ? "text-destructive" : "text-muted-foreground/60"
+                            }`}>
+                              {documentTypeLabel.label}
                             </span>
                           )}
                           {renderProcessingJobBadge(file)}
@@ -1982,9 +1991,16 @@ export default function SmartStoragePage() {
                           Blocked
                         </span>
                       ) : (
-                        <span className="max-w-full truncate text-muted-foreground capitalize">
-                          {file.document_type === "unknown" ? "Processing…" : file.document_type.replace(/_/g, " ")}
-                        </span>
+                        (() => {
+                          const documentTypeLabel = fileDocumentTypeLabel(file)
+                          return (
+                            <span className={`max-w-full truncate capitalize ${
+                              documentTypeLabel.isFailed ? "text-destructive" : "text-muted-foreground"
+                            }`}>
+                              {documentTypeLabel.label}
+                            </span>
+                          )
+                        })()
                       )}
                       {renderProcessingJobBadge(file)}
                     </span>

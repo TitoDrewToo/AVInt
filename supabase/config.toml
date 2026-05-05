@@ -1,7 +1,7 @@
 
 [functions.process-document]
 enabled = true
-verify_jwt = true
+verify_jwt = false
 import_map = "./functions/process-document/deno.json"
 # Uncomment to specify a custom file path to the entrypoint.
 # Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
@@ -12,7 +12,7 @@ entrypoint = "./functions/process-document/index.ts"
 
 [functions.normalize-document]
 enabled = true
-verify_jwt = true
+verify_jwt = false
 import_map = "./functions/normalize-document/deno.json"
 # Uncomment to specify a custom file path to the entrypoint.
 # Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
@@ -20,3 +20,33 @@ entrypoint = "./functions/normalize-document/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/normalize-document/*.html" ]
+
+[functions.analyze-spreadsheet]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/analyze-spreadsheet/index.ts"
+
+[functions.generate-advanced-analytics]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/generate-advanced-analytics/index.ts"
+
+[functions.generate-context-summary]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/generate-context-summary/index.ts"
+
+[functions.generate-rd-analytics]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/generate-rd-analytics/index.ts"
+
+[functions.prescan-document]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/prescan-document/index.ts"
+
+[functions.reprocess-documents]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/reprocess-documents/index.ts"

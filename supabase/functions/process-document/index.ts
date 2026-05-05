@@ -145,6 +145,16 @@ function isGarbageRow(cells: Record<string, any>): boolean {
   const values = Object.values(cells).filter((value) => !isBlankCell(value))
   if (values.length === 0) return true
 
+  if (values.length === 1) {
+    const onlyValue = values[0]
+    if (
+      typeof onlyValue === "string" &&
+      /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{4}$/i.test(onlyValue.trim())
+    ) {
+      return true
+    }
+  }
+
   const hasSubtotalMarker = values.some((value) =>
     typeof value === "string" && /\b(sub-?total|grand\s*total|total)\b/i.test(value)
   )
@@ -360,12 +370,20 @@ async function extractSpreadsheetRows(
     const sheet = workbook.Sheets[sheetName]
     const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null }) as any[][]
 
-    if (rawRows.length < 2) continue
-
     const headerEntries = (rawRows[0] ?? [])
       .map((header: any, index: number) => ({ header: String(header ?? "").trim(), index }))
       .filter((entry: { header: string; index: number }) => entry.header.length > 0)
     const headers = headerEntries.map((entry: { header: string }) => entry.header)
+
+    logEvent(FN, "sheet_extracted", {
+      file_id: fileId,
+      sheet_name: sheetName,
+      raw_row_count: rawRows.length,
+      header_count: headers.length,
+      headers,
+    })
+
+    if (rawRows.length < 2) continue
     if (headers.length === 0) continue
 
     const dataRows = rawRows.slice(1)
@@ -376,6 +394,7 @@ async function extractSpreadsheetRows(
 
     let mapping: Record<string, string> = {}
     let documentType = "general_document"
+    let mappingMethod = "ai"
     try {
       const result = await mapHeadersForSheet(sheetName, headers, sampleForMapping)
       mapping = result.mapping
@@ -383,7 +402,19 @@ async function extractSpreadsheetRows(
     } catch (err: any) {
       logError(FN, "header_mapping_failed", err, { file_id: fileId, sheet: sheetName })
       mapping = fallbackKeywordMapping(headers)
+      mappingMethod = "fallback"
     }
+
+    logEvent(FN, "header_mapping_result", {
+      file_id: fileId,
+      sheet_name: sheetName,
+      mapping,
+      document_type: documentType,
+      mapping_method: mappingMethod,
+    })
+
+    const extractedRowsBeforeSheet = extractedRows.length
+    let garbageFiltered = 0
 
     for (let rowIndex = 0; rowIndex < dataRows.length; rowIndex++) {
       const row = dataRows[rowIndex]
@@ -392,7 +423,10 @@ async function extractSpreadsheetRows(
         cells[entry.header] = row[entry.index] ?? null
       }
 
-      if (isGarbageRow(cells)) continue
+      if (isGarbageRow(cells)) {
+        garbageFiltered++
+        continue
+      }
 
       const canonical = applyMapping(cells, mapping, documentType)
       canonical._source_sheet = sheetName
@@ -405,7 +439,21 @@ async function extractSpreadsheetRows(
       })
       sourceIndex++
     }
+
+    logEvent(FN, "sheet_processed", {
+      file_id: fileId,
+      sheet_name: sheetName,
+      data_rows_seen: dataRows.length,
+      extracted_rows_added: extractedRows.length - extractedRowsBeforeSheet,
+      garbage_filtered: garbageFiltered,
+    })
   }
+
+  logEvent(FN, "extraction_summary", {
+    file_id: fileId,
+    total_extracted_rows: extractedRows.length,
+    total_source_rows: sourceRows.length,
+  })
 
   if (extractedRows.length === 0) {
     throw new Error("No data rows extracted from any sheet. Header mapping or row detection failed across all sheets.")
@@ -617,10 +665,14 @@ serve(async (req) => {
         extractionProvider = "deterministic"
         isCsv = true
 
-        await supabase
+        const { error: sourceRowsUpdateError } = await supabase
           .from("files")
           .update({ source_rows_json: sourceRows })
           .eq("id", file_id)
+
+        if (sourceRowsUpdateError) {
+          throw new Error(`source_rows_json update failed: ${sourceRowsUpdateError.message}`)
+        }
 
         logEvent(FN, "spreadsheet_extracted_deterministically", {
           file_id,
@@ -652,16 +704,6 @@ serve(async (req) => {
     const extracted = extractedRows[0]
     isCsv = isCsv || extractedRows.length > 1
 
-    // 8. Update files.document_type
-    // For CSVs use the first row's type; mark as csv_export for clarity
-    await supabase
-      .from("files")
-      .update({
-        document_type: isCsv ? "csv_export" : normalizeExtractedDocumentType(extracted, mimeType),
-        upload_status: "done",
-      })
-      .eq("id", file_id)
-
     // 9. Insert all rows into document_fields
     const rowsToInsert = extractedRows.map((row: any, index: number) => {
       const sourceIndex = row._source_index ?? index
@@ -691,10 +733,40 @@ serve(async (req) => {
       }
     })
 
-    const { data: insertedRows } = await supabase
+    logEvent(FN, "rows_to_insert", {
+      file_id,
+      rows_to_insert_count: rowsToInsert.length,
+      sample_first_row: rowsToInsert[0] ?? null,
+    })
+
+    const { data: insertedRows, error: insertError } = await supabase
       .from("document_fields")
       .insert(rowsToInsert)
       .select("*")
+
+    logEvent(FN, "insert_result", {
+      file_id,
+      inserted_count: insertedRows?.length ?? 0,
+      insert_error: insertError?.message ?? null,
+    })
+
+    if (insertError) {
+      throw new Error(`document_fields insert failed: ${insertError.message}`)
+    }
+
+    if (!insertedRows || insertedRows.length === 0) {
+      throw new Error("document_fields insert returned no rows")
+    }
+
+    // 8. Update files.document_type after rows are safely persisted.
+    // For CSVs use the first row's type; mark as csv_export for clarity.
+    await supabase
+      .from("files")
+      .update({
+        document_type: isCsv ? "csv_export" : normalizeExtractedDocumentType(extracted, mimeType),
+        upload_status: "done",
+      })
+      .eq("id", file_id)
 
     // 10. Call normalize-document for each row
     // CSVs have multiple rows — normalize each individually using inline fields

@@ -94,6 +94,65 @@ If the document is a contract or agreement that contains a payment schedule tabl
   - bank_name: the bank name printed on the check or schedule if present (string), otherwise null
 Philippine PDC (post-dated check) schedules are common — scan all pages for these tables.`
 
+const HEADER_MAPPING_PROMPT = `You are a spreadsheet header mapper for a financial document system.
+
+Given column headers from one sheet of a spreadsheet, map each header to one of these canonical fields, then infer the document_type for the sheet.
+
+Canonical fields:
+- vendor_name, employer_name, document_date, currency, total_amount
+- gross_income, net_income, tax_amount, discount_amount, expense_category
+- payment_method, invoice_number, period_start, period_end, counterparty_name
+- line_item_description, line_item_amount, line_item_due_date, line_item_check_number, line_item_bank_name
+
+Special directives:
+- "ignore"  -> header should not be captured (row numbers, internal IDs, blank columns)
+- "custom"  -> header is preserved in raw_json but doesn't map to canonical schema (e.g., "GL Code", "Cost Center", "Project ID")
+
+document_type values: receipt | invoice | payslip | income_statement | bank_statement | transaction_record | contract | agreement | tax_document | general_document
+
+Return ONLY a JSON object, no markdown, no explanation:
+{
+  "mapping": { "<header>": "<canonical_field|ignore|custom>", ... },
+  "document_type": "<one of the values above>"
+}`
+
+const DOCUMENT_TYPES = new Set([
+  "receipt",
+  "invoice",
+  "payslip",
+  "income_statement",
+  "bank_statement",
+  "transaction_record",
+  "contract",
+  "agreement",
+  "tax_document",
+  "general_document",
+])
+
+const NUMERIC_FIELDS = ["total_amount", "gross_income", "net_income", "tax_amount", "discount_amount"]
+
+function isSpreadsheetInput(mimeType: string, filename: string): boolean {
+  return mimeType === "text/csv" ||
+         mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+         /\.(xlsx|csv)$/i.test(filename ?? "")
+}
+
+function isBlankCell(value: unknown): boolean {
+  return value === null || value === undefined || value === ""
+}
+
+function isGarbageRow(cells: Record<string, any>): boolean {
+  const values = Object.values(cells).filter((value) => !isBlankCell(value))
+  if (values.length === 0) return true
+
+  const hasSubtotalMarker = values.some((value) =>
+    typeof value === "string" && /\b(sub-?total|grand\s*total|total)\b/i.test(value)
+  )
+  if (hasSubtotalMarker && values.length < 4) return true
+
+  return false
+}
+
 function normalizeExtractedDocumentType(row: any, mimeType: string): string {
   const documentType = row?.document_type ?? "general_document"
   const looksLikeReceiptScreenshot =
@@ -153,6 +212,206 @@ function parseExtractionRows(rawText: string): any[] {
   const objectMatch = stripped.match(/\{[\s\S]*\}/)
   if (!objectMatch) throw new Error("No JSON object found in response")
   return [JSON.parse(objectMatch[0])]
+}
+
+function parseHeaderMappingResponse(rawText: string): any {
+  const stripped = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim()
+  try {
+    return JSON.parse(stripped)
+  } catch {
+    const objectMatch = stripped.match(/\{[\s\S]*\}/)
+    if (!objectMatch) throw new Error("No JSON object found in header mapping response")
+    return JSON.parse(objectMatch[0])
+  }
+}
+
+function fallbackKeywordMapping(headers: string[]): Record<string, string> {
+  const map: Record<string, string> = {}
+  for (const header of headers) {
+    const lower = header.toLowerCase()
+    if (/date/.test(lower) && !/due|period/.test(lower)) map[header] = "document_date"
+    else if (/period.*start|start.*date/.test(lower)) map[header] = "period_start"
+    else if (/period.*end|end.*date/.test(lower)) map[header] = "period_end"
+    else if (/due/.test(lower)) map[header] = "line_item_due_date"
+    else if (/vendor|supplier|merchant|payee/.test(lower)) map[header] = "vendor_name"
+    else if (/employer|company/.test(lower)) map[header] = "employer_name"
+    else if (/counterparty|landlord|lessor|client/.test(lower)) map[header] = "counterparty_name"
+    else if (/(total|amount|cost|price)/.test(lower) && !/tax|discount|gross|net/.test(lower)) map[header] = "total_amount"
+    else if (/gross/.test(lower)) map[header] = "gross_income"
+    else if (/net/.test(lower)) map[header] = "net_income"
+    else if (/tax/.test(lower)) map[header] = "tax_amount"
+    else if (/discount/.test(lower)) map[header] = "discount_amount"
+    else if (/currency/.test(lower)) map[header] = "currency"
+    else if (/category|expense.*type|gl.*code/.test(lower)) map[header] = "expense_category"
+    else if (/payment.*method|method/.test(lower)) map[header] = "payment_method"
+    else if (/invoice.*(number|#|ref)|reference|receipt/.test(lower)) map[header] = "invoice_number"
+    else if (/check.*(number|no|#)/.test(lower)) map[header] = "line_item_check_number"
+    else if (/bank/.test(lower)) map[header] = "line_item_bank_name"
+    else if (/description|particular|item|note/.test(lower)) map[header] = "line_item_description"
+    else map[header] = "custom"
+  }
+  return map
+}
+
+function applyMapping(
+  cells: Record<string, any>,
+  mapping: Record<string, string>,
+  documentType: string,
+): any {
+  const canonical: any = {
+    document_type: DOCUMENT_TYPES.has(documentType) ? documentType : "general_document",
+    line_items: [],
+  }
+  const customFields: Record<string, any> = {}
+
+  for (const [header, value] of Object.entries(cells)) {
+    if (isBlankCell(value)) continue
+    const target = mapping[header]
+    if (!target || target === "ignore") continue
+    if (target === "custom") {
+      customFields[header] = value
+      continue
+    }
+    if (target.startsWith("line_item_")) {
+      if (canonical.line_items.length === 0) canonical.line_items.push({})
+      canonical.line_items[0][target.replace("line_item_", "")] = value
+      continue
+    }
+    canonical[target] = value
+  }
+
+  for (const numField of NUMERIC_FIELDS) {
+    if (canonical[numField] != null && typeof canonical[numField] === "string") {
+      const cleaned = canonical[numField].replace(/[,$£€₱\s]/g, "")
+      const parsed = parseFloat(cleaned)
+      if (!Number.isNaN(parsed)) canonical[numField] = parsed
+    }
+  }
+
+  canonical.confidence = 0.95
+  if (Object.keys(customFields).length > 0) canonical._custom_fields = customFields
+
+  return canonical
+}
+
+async function mapHeadersForSheet(
+  sheetName: string,
+  headers: string[],
+  sampleRows: any[][],
+): Promise<{ mapping: Record<string, string>; document_type: string }> {
+  const userInput = JSON.stringify({
+    sheet_name: sheetName,
+    headers,
+    sample_rows: sampleRows.slice(0, 3),
+  })
+
+  const res = await fetchWithTimeout(
+    `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { text: HEADER_MAPPING_PROMPT },
+            { text: "\n\nINPUT:\n" + userInput },
+          ],
+        }],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 2048,
+        },
+      }),
+    },
+    30_000,
+  )
+
+  if (!res.ok) throw new Error(`Header mapping API error: ${await res.text()}`)
+
+  const data = await res.json()
+  const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ""
+  if (!rawText) throw new Error("No response from Gemini header mapping")
+
+  const parsed = parseHeaderMappingResponse(rawText)
+  const documentType = DOCUMENT_TYPES.has(parsed.document_type) ? parsed.document_type : "general_document"
+  return {
+    mapping: parsed.mapping ?? {},
+    document_type: documentType,
+  }
+}
+
+async function extractSpreadsheetRows(
+  bytes: Uint8Array,
+  mimeType: string,
+  filename: string,
+  fileId: string,
+): Promise<{ extractedRows: any[]; sourceRows: any[] }> {
+  const XLSX = await import("https://esm.sh/xlsx@0.18.5")
+  const isCsv = mimeType === "text/csv" || /\.csv$/i.test(filename ?? "")
+  const workbook = isCsv
+    ? XLSX.read(new TextDecoder().decode(bytes), { type: "string" })
+    : XLSX.read(bytes, { type: "array" })
+
+  const extractedRows: any[] = []
+  const sourceRows: any[] = []
+  let sourceIndex = 0
+
+  for (const sheetName of workbook.SheetNames) {
+    const sheet = workbook.Sheets[sheetName]
+    const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null }) as any[][]
+
+    if (rawRows.length < 2) continue
+
+    const headerEntries = (rawRows[0] ?? [])
+      .map((header: any, index: number) => ({ header: String(header ?? "").trim(), index }))
+      .filter((entry: { header: string; index: number }) => entry.header.length > 0)
+    const headers = headerEntries.map((entry: { header: string }) => entry.header)
+    if (headers.length === 0) continue
+
+    const dataRows = rawRows.slice(1)
+    const sampleForMapping = dataRows
+      .filter((row) => row.some((cell) => !isBlankCell(cell)))
+      .slice(0, 3)
+      .map((row) => headerEntries.map((entry: { index: number }) => row[entry.index] ?? null))
+
+    let mapping: Record<string, string> = {}
+    let documentType = "general_document"
+    try {
+      const result = await mapHeadersForSheet(sheetName, headers, sampleForMapping)
+      mapping = result.mapping
+      documentType = result.document_type
+    } catch (err: any) {
+      logError(FN, "header_mapping_failed", err, { file_id: fileId, sheet: sheetName })
+      mapping = fallbackKeywordMapping(headers)
+    }
+
+    for (let rowIndex = 0; rowIndex < dataRows.length; rowIndex++) {
+      const row = dataRows[rowIndex]
+      const cells: Record<string, any> = {}
+      for (const entry of headerEntries) {
+        cells[entry.header] = row[entry.index] ?? null
+      }
+
+      if (isGarbageRow(cells)) continue
+
+      const canonical = applyMapping(cells, mapping, documentType)
+      canonical._source_sheet = sheetName
+      canonical._source_index = sourceIndex
+      extractedRows.push(canonical)
+      sourceRows.push({
+        sheet_name: sheetName,
+        row_index: rowIndex + 2,
+        cells,
+      })
+      sourceIndex++
+    }
+  }
+
+  if (extractedRows.length === 0) {
+    throw new Error("No data rows extracted from any sheet. Header mapping or row detection failed across all sheets.")
+  }
+
+  return { extractedRows, sourceRows }
 }
 
 async function callGeminiExtraction(mimeType: string, base64: string): Promise<string> {
@@ -339,106 +598,40 @@ serve(async (req) => {
 
     if (downloadError || !fileData) throw new Error("Failed to download file")
 
-    // 4. Convert to base64 (chunked to avoid call stack overflow on large files)
+    // 4. Read file bytes.
     const arrayBuffer = await fileData.arrayBuffer()
-    let uint8Array = new Uint8Array(arrayBuffer)
-    let sourceRows: any[] | null = null
-
-    // 4b. Spreadsheet → CSV conversion.
-    // XLSX files are ZIP binaries Gemini cannot read directly. Convert to CSV
-    // text using SheetJS, then feed as text/csv inline_data. Downstream multi-row
-    // array handler already covers CSV exports.
+    const uint8Array = new Uint8Array(arrayBuffer)
     let mimeType = file.file_type || "application/pdf"
-    const isXlsx = mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
-                   /\.xlsx$/i.test(file.filename ?? "")
-    if (isXlsx) {
+    let extractedRows: any[] = []
+    let sourceRows: any[] | null = null
+    let extractionProvider: AiProvider | "deterministic" = "gemini"
+    let isCsv = false
+
+    // 4b. Spreadsheet extraction.
+    // SheetJS deterministically splits spreadsheet rows; AI only maps headers.
+    if (isSpreadsheetInput(mimeType, file.filename ?? "")) {
       try {
-        const XLSX = await import("https://esm.sh/xlsx@0.18.5")
-        const wb = XLSX.read(uint8Array, { type: "array" })
-        const csvChunks: string[] = []
-        const capturedSourceRows: any[] = []
-        for (const name of wb.SheetNames) {
-          const sheet = wb.Sheets[name]
-          const jsonRows = XLSX.utils.sheet_to_json(sheet, { defval: null })
-          jsonRows.forEach((source_row: any, rowIndex: number) => {
-            capturedSourceRows.push({
-              sheet_name: name,
-              row_index: rowIndex + 2,
-              source_row,
-            })
-          })
-          const csv = XLSX.utils.sheet_to_csv(sheet)
-          if (csv.trim().length > 0) {
-            csvChunks.push(`# Sheet: ${name}\n${csv}`)
-          }
-        }
-        const joined = csvChunks.join("\n\n")
-        uint8Array = new TextEncoder().encode(joined)
-        mimeType = "text/csv"
-        sourceRows = capturedSourceRows
+        const spreadsheetResult = await extractSpreadsheetRows(uint8Array, mimeType, file.filename ?? "", file_id)
+        extractedRows = spreadsheetResult.extractedRows
+        sourceRows = spreadsheetResult.sourceRows
+        extractionProvider = "deterministic"
+        isCsv = true
+
         await supabase
           .from("files")
           .update({ source_rows_json: sourceRows })
           .eq("id", file_id)
-        logEvent(FN, "xlsx_converted", { file_id, sheets: wb.SheetNames.length, bytes: uint8Array.length })
+
+        logEvent(FN, "spreadsheet_extracted_deterministically", {
+          file_id,
+          extracted_rows: extractedRows.length,
+          source_rows: sourceRows.length,
+        })
       } catch (e: any) {
-        throw new Error(`xlsx conversion failed: ${e.message}`)
+        throw new Error(`spreadsheet extraction failed: ${e.message}`)
       }
-    }
-
-    const decodedInputText = mimeType === "text/csv" ? new TextDecoder().decode(uint8Array) : ""
-    const sheetMarkerCount = decodedInputText.match(/^# Sheet: .+$/gm)?.length ?? 0
-    const isMultiSheet = mimeType === "text/csv" && sheetMarkerCount >= 2
-    const base64 = toBase64(uint8Array)
-
-    // 6. Call document extraction provider chain.
-    // Multi-sheet XLSX conversions are split per sheet so each Gemini response is bounded.
-    let extractedRows: any[] = []
-    let extractionProvider: AiProvider = "gemini"
-
-    if (isMultiSheet) {
-      const chunks = decodedInputText
-        .split(/^# Sheet: /m)
-        .filter((chunk) => chunk.trim().length > 0)
-
-      const perSheetResults = await Promise.allSettled(
-        chunks.map(async (chunk) => {
-          const newlineIdx = chunk.indexOf("\n")
-          if (newlineIdx < 0) return []
-
-          const sheetName = chunk.slice(0, newlineIdx).trim()
-          const sheetCsv = chunk.slice(newlineIdx + 1)
-          if (sheetCsv.trim().length === 0) return []
-
-          const sheetBytes = new TextEncoder().encode(sheetCsv)
-          const sheetBase64 = toBase64(sheetBytes)
-          const { rawText, provider } = await callExtractionWithFallback("text/csv", sheetBase64, sheetBytes)
-          const parsedRows = parseExtractionRows(rawText)
-
-          return parsedRows.map((row: any, rowIndex: number) => ({
-            ...row,
-            _source_sheet: sheetName,
-            _source_row_index: rowIndex,
-            _extraction_provider: provider,
-          }))
-        }),
-      )
-
-      for (const result of perSheetResults) {
-        if (result.status === "fulfilled") {
-          extractedRows.push(...result.value)
-          if (result.value[0]?._extraction_provider) extractionProvider = result.value[0]._extraction_provider
-        } else {
-          logError(FN, "per_sheet_extraction_failed", result.reason, { file_id })
-        }
-      }
-
-      logEvent(FN, "multi_sheet_extracted", {
-        file_id,
-        sheet_count: sheetMarkerCount,
-        extracted_rows: extractedRows.length,
-      })
     } else {
+      const base64 = toBase64(uint8Array)
       const { rawText, provider } = await callExtractionWithFallback(mimeType, base64, uint8Array)
       extractionProvider = provider
 
@@ -457,16 +650,7 @@ serve(async (req) => {
     }
 
     const extracted = extractedRows[0]
-    const isCsv = isMultiSheet || extractedRows.length > 1
-    const wasMultiSheet = isMultiSheet
-
-    if (wasMultiSheet && !isCsv) {
-      logEvent(FN, "multi_sheet_collapsed_to_object", {
-        file_id,
-        sheet_count: sheetMarkerCount,
-        extracted_doc_type: extracted?.document_type ?? null,
-      })
-    }
+    isCsv = isCsv || extractedRows.length > 1
 
     // 8. Update files.document_type
     // For CSVs use the first row's type; mark as csv_export for clarity
@@ -480,11 +664,8 @@ serve(async (req) => {
 
     // 9. Insert all rows into document_fields
     const rowsToInsert = extractedRows.map((row: any, index: number) => {
-      const sameSheetSourceRows = row._source_sheet && Array.isArray(sourceRows)
-        ? sourceRows.filter((sourceRow: any) => sourceRow?.sheet_name === row._source_sheet)
-        : null
-      const sourceRow = sameSheetSourceRows?.[row._source_row_index] ?? sourceRows?.[index] ?? null
-      const sourceIndex = sourceRow && Array.isArray(sourceRows) ? sourceRows.indexOf(sourceRow) : null
+      const sourceIndex = row._source_index ?? index
+      const sourceRow = sourceRows?.[sourceIndex] ?? null
 
       return {
         file_id,
@@ -496,7 +677,7 @@ serve(async (req) => {
         gross_income:         row.gross_income     ?? null,
         net_income:           row.net_income       ?? null,
         expense_category:     row.expense_category ?? null,
-        confidence_score:     row.confidence       ?? null,
+        confidence_score:     row.confidence       ?? 0.95,
         // gemini_raw is the legacy compatibility key consumed by normalization prompts.
         raw_json:             {
           gemini_raw: row,
@@ -504,6 +685,7 @@ serve(async (req) => {
           source_sheet: row._source_sheet ?? sourceRow?.sheet_name ?? null,
           source_index: sourceIndex,
           source_row: sourceRow,
+          custom_fields: row._custom_fields ?? null,
         },
         normalization_status: "raw",
       }

@@ -263,6 +263,41 @@ function fallbackKeywordMapping(headers: string[]): Record<string, string> {
   return map
 }
 
+function safeDate(value: any): string | null {
+  if (value === null || value === undefined || value === "") return null
+  if (value instanceof Date) {
+    return isNaN(value.getTime()) ? null : value.toISOString().slice(0, 10)
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim()
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      const date = new Date(trimmed + "T00:00:00Z")
+      if (isNaN(date.getTime())) return null
+      if (date.toISOString().slice(0, 10) !== trimmed) return null
+      return trimmed
+    }
+    const date = new Date(trimmed)
+    return isNaN(date.getTime()) ? null : date.toISOString().slice(0, 10)
+  }
+  if (typeof value === "number") {
+    const excelEpoch = Date.UTC(1899, 11, 30)
+    const date = new Date(excelEpoch + value * 86400000)
+    return isNaN(date.getTime()) ? null : date.toISOString().slice(0, 10)
+  }
+  return null
+}
+
+function safeNumber(value: any): number | null {
+  if (value === null || value === undefined || value === "") return null
+  if (typeof value === "number") return isFinite(value) ? value : null
+  if (typeof value === "string") {
+    const cleaned = value.replace(/[,$£€₱\s]/g, "")
+    const parsed = parseFloat(cleaned)
+    return isNaN(parsed) ? null : parsed
+  }
+  return null
+}
+
 function applyMapping(
   cells: Record<string, any>,
   mapping: Record<string, string>,
@@ -290,11 +325,34 @@ function applyMapping(
     canonical[target] = value
   }
 
+  for (const dateField of ["document_date", "period_start", "period_end"]) {
+    if (canonical[dateField] != null) {
+      const original = canonical[dateField]
+      const sanitized = safeDate(original)
+      if (sanitized === null && original !== null && original !== "") {
+        if (!canonical._sanitized_fields) canonical._sanitized_fields = []
+        canonical._sanitized_fields.push({ field: dateField, original_value: String(original) })
+      }
+      canonical[dateField] = sanitized
+    }
+  }
+
   for (const numField of NUMERIC_FIELDS) {
-    if (canonical[numField] != null && typeof canonical[numField] === "string") {
-      const cleaned = canonical[numField].replace(/[,$£€₱\s]/g, "")
-      const parsed = parseFloat(cleaned)
-      if (!Number.isNaN(parsed)) canonical[numField] = parsed
+    if (canonical[numField] != null) {
+      const original = canonical[numField]
+      const sanitized = safeNumber(original)
+      if (sanitized === null && original !== null && original !== "") {
+        if (!canonical._sanitized_fields) canonical._sanitized_fields = []
+        canonical._sanitized_fields.push({ field: numField, original_value: String(original) })
+      }
+      canonical[numField] = sanitized
+    }
+  }
+
+  if (Array.isArray(canonical.line_items)) {
+    for (const item of canonical.line_items) {
+      if (item.due_date != null) item.due_date = safeDate(item.due_date)
+      if (item.amount != null) item.amount = safeNumber(item.amount)
     }
   }
 
@@ -429,6 +487,16 @@ async function extractSpreadsheetRows(
       }
 
       const canonical = applyMapping(cells, mapping, documentType)
+      if (canonical._sanitized_fields?.length > 0) {
+        logEvent(FN, "field_sanitized", {
+          file_id: fileId,
+          sheet_name: sheetName,
+          row_index: rowIndex + 2,
+          sanitized: canonical._sanitized_fields,
+        })
+        canonical.raw_json_extras = { sanitized_fields: canonical._sanitized_fields }
+        delete canonical._sanitized_fields
+      }
       canonical._source_sheet = sheetName
       canonical._source_index = sourceIndex
       extractedRows.push(canonical)
@@ -728,6 +796,7 @@ serve(async (req) => {
           source_index: sourceIndex,
           source_row: sourceRow,
           custom_fields: row._custom_fields ?? null,
+          ...(row.raw_json_extras ?? {}),
         },
         normalization_status: "raw",
       }

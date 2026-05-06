@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/theme-provider'
 import { MarketingScrollReset } from '@/components/marketing-scroll-reset'
+import { Toaster } from '@/components/ui/toaster'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -42,6 +43,7 @@ export default function RootLayout({
         >
           <MarketingScrollReset />
           {children}
+          <Toaster />
         </ThemeProvider>
         <Analytics />
       </body>

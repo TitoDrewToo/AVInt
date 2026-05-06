@@ -16,6 +16,7 @@ import {
 import { supabase } from "@/lib/supabase"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { toast } from "@/hooks/use-toast"
 
 const EXPENSE_CATEGORIES = [
   "Advertising",
@@ -93,10 +94,13 @@ type FileMeta = {
 
 type PendingChange = {
   id: string
-  rowIds: string[]
-  action: "exclude" | "set_field"
-  field?: string
-  value?: string
+  finding_id?: string
+  affected_row_ids: string[]
+  action: {
+    kind: "exclude" | "set_field"
+    field?: string
+    value?: string
+  }
   label: string
 }
 
@@ -378,11 +382,11 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
   const selectedRows = selected.size
   const rowById = useMemo(() => new Map(rows.map((row, index) => [row.id, { row, index }])), [rows])
   const renormalizableChanges = useMemo(
-    () => pendingChanges.filter((change) => change.action === "set_field" && Boolean(change.field) && !RENORMALIZE_SKIP_FIELDS.has(change.field ?? "")),
+    () => pendingChanges.filter((change) => change.action.kind === "set_field" && Boolean(change.action.field) && !RENORMALIZE_SKIP_FIELDS.has(change.action.field ?? "")),
     [pendingChanges],
   )
   const affectedByRenormalize = useMemo(
-    () => new Set(renormalizableChanges.flatMap((change) => change.rowIds)).size,
+    () => new Set(renormalizableChanges.flatMap((change) => change.affected_row_ids)).size,
     [renormalizableChanges],
   )
   const shouldShowRenormalize = affectedByRenormalize > 0
@@ -469,10 +473,8 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
     if (rowIds.length === 0) return
     queueChange({
       id: `bulk-${field}-${Date.now()}`,
-      rowIds,
-      action: "set_field",
-      field,
-      value,
+      affected_row_ids: rowIds,
+      action: { kind: "set_field", field, value },
       label: `Set ${field} to ${value}`,
     })
   }
@@ -481,8 +483,8 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
     if (rowIds.length === 0) return
     queueChange({
       id: `exclude-${Date.now()}`,
-      rowIds,
-      action: "exclude",
+      affected_row_ids: rowIds,
+      action: { kind: "exclude" },
       label: `Exclude ${rowIds.length} rows`,
     })
   }
@@ -505,10 +507,13 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
     flashRows(curatedRowIds)
     queueChange({
       id: `finding-${finding.id}`,
-      rowIds: curatedRowIds,
-      action: finding.proposed_action.kind,
-      field: finding.proposed_action.field,
-      value,
+      finding_id: finding.id,
+      affected_row_ids: curatedRowIds,
+      action: {
+        kind: finding.proposed_action.kind,
+        field: finding.proposed_action.field,
+        value,
+      },
       label: finding.title,
     })
     setAcceptedFindingIds((prev) => new Set(prev).add(finding.id))
@@ -516,8 +521,8 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
   }
 
   function summarizeSavedChanges(changes: PendingChange[]) {
-    const rowsExcluded = new Set(changes.filter((change) => change.action === "exclude").flatMap((change) => change.rowIds)).size
-    const findingsApplied = changes.filter((change) => change.id.startsWith("finding-")).length
+    const rowsExcluded = new Set(changes.filter((change) => change.action.kind === "exclude").flatMap((change) => change.affected_row_ids)).size
+    const findingsApplied = changes.filter((change) => Boolean(change.finding_id)).length
     if (rowsExcluded > 0 || findingsApplied > 0) {
       return [
         rowsExcluded > 0 ? `${rowsExcluded} row${rowsExcluded === 1 ? "" : "s"} excluded` : null,
@@ -553,10 +558,8 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
   function commitInlineEdit(rowId: string) {
     queueChange({
       id: `inline-vendor-${rowId}`,
-      rowIds: [rowId],
-      action: "set_field",
-      field: "vendor_name",
-      value: editValue,
+      affected_row_ids: [rowId],
+      action: { kind: "set_field", field: "vendor_name", value: editValue },
       label: "Edit vendor",
     })
     setRows((prev) => prev.map((row) => row.id === rowId ? { ...row, vendor_name: editValue } : row))
@@ -615,70 +618,63 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
     if (!fileId || pendingChanges.length === 0) return
     setSaving(true)
     setError(null)
-    const savedCount = pendingChanges.length
     const changesToSave = pendingChanges
-    const affectedRowIds = [...new Set(changesToSave.flatMap((change) => change.rowIds))]
-    const fieldChangedRowIds = [...new Set(changesToSave.filter((change) => change.action === "set_field").flatMap((change) => change.rowIds))]
-    const savedFindingIds = changesToSave
-      .filter((change) => change.id.startsWith("finding-"))
-      .map((change) => change.id.replace(/^finding-/, ""))
+    const pendingCount = changesToSave.length
+    const affectedRowIds = [...new Set(changesToSave.flatMap((change) => change.affected_row_ids))]
+    const fieldChangedRowIds = [...new Set(changesToSave.filter((change) => change.action.kind === "set_field").flatMap((change) => change.affected_row_ids))]
+    const savedFindingIds = changesToSave.flatMap((change) => change.finding_id ? [change.finding_id] : [])
     try {
+      console.log("[save] starting", { pendingCount, fileId })
       for (const change of changesToSave) {
-        if (change.rowIds.length === 0) continue
-        if (change.action === "exclude") {
-          const { error } = await supabase
+        if (change.affected_row_ids.length === 0) continue
+        const kind = change.action.kind
+        const field = change.action.field
+        const value = change.action.value
+        const affectedCount = change.affected_row_ids.length
+        console.log("[save] processing change", { kind, affectedCount, field, value })
+        if (kind === "exclude") {
+          const { data, error } = await supabase
             .from("document_fields")
             .update({ normalization_status: "excluded" })
-            .in("id", change.rowIds)
+            .in("id", change.affected_row_ids)
+            .select("id")
+          console.log("[save] update result", { data, error, rowsAffected: data?.length })
           if (error) throw new Error(error.message)
-        } else if (change.field) {
-          const { error } = await supabase
-            .from("document_fields")
-            .update({ [change.field]: change.value ?? null })
-            .in("id", change.rowIds)
-          if (error) throw new Error(error.message)
-        }
-      }
-
-      setRows((prev) => prev.map((row) => {
-        let next = row
-        for (const change of changesToSave) {
-          if (!change.rowIds.includes(row.id)) continue
-          if (change.action === "exclude") {
-            next = { ...next, normalization_status: "excluded" }
-          } else if (change.field) {
-            next = { ...next, [change.field]: change.value ?? null }
+          if ((data?.length ?? 0) !== affectedCount) {
+            throw new Error(`Expected to exclude ${affectedCount} row${affectedCount === 1 ? "" : "s"}, but database updated ${data?.length ?? 0}.`)
           }
+        } else if (field) {
+          const { data, error } = await supabase
+            .from("document_fields")
+            .update({ [field]: value ?? null })
+            .in("id", change.affected_row_ids)
+            .select("id")
+          console.log("[save] update result", { data, error, rowsAffected: data?.length })
+          if (error) throw new Error(error.message)
+          if ((data?.length ?? 0) !== affectedCount) {
+            throw new Error(`Expected to update ${affectedCount} row${affectedCount === 1 ? "" : "s"}, but database updated ${data?.length ?? 0}.`)
+          }
+        } else {
+          throw new Error("Set-field change is missing a field name.")
         }
-        return next
-      }))
-      flashRows(affectedRowIds)
-      if (fieldChangedRowIds.length > 0) flashFieldRows(fieldChangedRowIds)
-      setAppliedFindingIds((prev) => {
-        const next = new Set(prev)
-        savedFindingIds.forEach((id) => next.add(id))
-        return next
-      })
-      setAcceptedFindingIds((prev) => {
-        const next = new Set(prev)
-        savedFindingIds.forEach((id) => next.add(id))
-        return next
-      })
-
-      if (savedFindingIds.length > 0 && fileMeta) {
-        const mergedApplied = [...new Set([...(fileMeta.analysis_json?.applied_finding_ids ?? []), ...savedFindingIds])]
-        const nextAnalysis = { ...(fileMeta.analysis_json ?? {}), applied_finding_ids: mergedApplied }
-        const { error: analysisUpdateError } = await supabase
-          .from("files")
-          .update({ analysis_json: nextAnalysis })
-          .eq("id", fileId)
-        if (analysisUpdateError) throw new Error(analysisUpdateError.message)
-        setFileMeta((prev) => prev ? { ...prev, analysis_json: nextAnalysis } : prev)
       }
+
+      const currentAnalysisJson = fileMeta?.analysis_json ?? {}
+      const newAppliedIds = [
+        ...(currentAnalysisJson.applied_finding_ids ?? []),
+        ...savedFindingIds,
+      ]
+      const nextAnalysis = { ...currentAnalysisJson, applied_finding_ids: [...new Set(newAppliedIds)] }
+      console.log("[save] updating analysis_json", { newAppliedIds: nextAnalysis.applied_finding_ids })
+      const { error: analysisUpdateError } = await supabase
+        .from("files")
+        .update({ analysis_json: nextAnalysis })
+        .eq("id", fileId)
+      if (analysisUpdateError) throw new Error(analysisUpdateError.message)
 
       if (shouldRenormalize && affectedByRenormalize > 0) {
         const userToken = (await supabase.auth.getSession()).data.session?.access_token
-        const rowIdsToRenormalize = [...new Set(renormalizableChanges.flatMap((change) => change.rowIds))]
+        const rowIdsToRenormalize = [...new Set(renormalizableChanges.flatMap((change) => change.affected_row_ids))]
         await Promise.allSettled(
           rowIdsToRenormalize.map((rowId) => {
               const row = rows.find((item) => item.id === rowId)
@@ -695,15 +691,47 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
         )
       }
 
+      const [{ data: fileData, error: fileError }, { data: fieldRows, error: rowsError }] = await Promise.all([
+        supabase
+          .from("files")
+          .select("analysis_json, analyzed_at, source_rows_json, storage_path")
+          .eq("id", fileId)
+          .single(),
+        supabase
+          .from("document_fields")
+          .select("id, file_id, vendor_name, employer_name, document_date, currency, total_amount, gross_income, net_income, expense_category, income_source, payment_method, confidence_score, normalization_status, raw_json, created_at")
+          .eq("file_id", fileId)
+          .order("created_at", { ascending: true }),
+      ])
+      if (fileError) throw new Error(fileError.message)
+      if (rowsError) throw new Error(rowsError.message)
+      const nextFileMeta = fileData as FileMeta
+      const nextRows = (fieldRows ?? []) as DocumentFieldRow[]
+
+      setFileMeta(nextFileMeta)
+      setRows(nextRows)
+      setAppliedFindingIds(persistedAppliedFindingIds(nextFileMeta.analysis_json, nextRows))
+      setAcceptedFindingIds((prev) => {
+        const next = new Set(prev)
+        savedFindingIds.forEach((id) => next.add(id))
+        return next
+      })
+      flashRows(affectedRowIds)
+      if (fieldChangedRowIds.length > 0) flashFieldRows(fieldChangedRowIds)
       onSaved(fileId)
-      await loadSheet({ resetWorkflow: false })
       setPendingChanges([])
       setSelected(new Set())
-      setSaveNotice(summarizeSavedChanges(changesToSave) || `${savedCount} change${savedCount === 1 ? "" : "s"} saved`)
+      setSaveNotice(summarizeSavedChanges(changesToSave) || `${pendingCount} change${pendingCount === 1 ? "" : "s"} saved`)
       if (saveNoticeTimeoutRef.current) window.clearTimeout(saveNoticeTimeoutRef.current)
       saveNoticeTimeoutRef.current = window.setTimeout(() => setSaveNotice(null), 2000)
+      console.log("[save] complete")
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save sheet changes.")
+      const message = err instanceof Error ? err.message : "Failed to save sheet changes."
+      setError(`Save failed: ${message}`)
+      toast({
+        variant: "destructive",
+        title: `Save failed: ${message}`,
+      })
     } finally {
       setSaving(false)
     }

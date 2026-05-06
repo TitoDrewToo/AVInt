@@ -61,6 +61,7 @@ type SheetAnalysis = {
   best_fit_report?: string
   totals?: { ready?: number; needs_review?: number; excluded?: number }
   findings?: AnalysisFinding[]
+  applied_finding_ids?: string[]
   analyzed_at?: string
 }
 
@@ -136,6 +137,26 @@ function rowNeedsReview(row: DocumentFieldRow) {
   return row.normalization_status !== "excluded" && Number(row.confidence_score ?? 1) < 0.7
 }
 
+function findingMatchesRows(finding: AnalysisFinding, rows: DocumentFieldRow[]) {
+  const rowById = new Map(rows.map((row) => [row.id, row]))
+  const affectedRows = finding.affected_row_ids.map((rowId) => rowById.get(rowId)).filter(Boolean) as DocumentFieldRow[]
+  if (affectedRows.length === 0 || affectedRows.length !== finding.affected_row_ids.length) return false
+  if (finding.proposed_action.kind === "exclude") {
+    return affectedRows.every((row) => row.normalization_status === "excluded")
+  }
+  const field = finding.proposed_action.field
+  if (!field) return false
+  return affectedRows.every((row) => String((row as any)[field] ?? "") === String(finding.proposed_action.value ?? ""))
+}
+
+function persistedAppliedFindingIds(analysis: SheetAnalysis | null, rows: DocumentFieldRow[]) {
+  const explicit = new Set(analysis?.applied_finding_ids ?? [])
+  for (const finding of analysis?.findings ?? []) {
+    if (findingMatchesRows(finding, rows)) explicit.add(finding.id)
+  }
+  return explicit
+}
+
 function ConfidenceMeter({ value }: { value: number }) {
   const filled = value >= 0.9 ? 3 : value >= 0.7 ? 2 : 1
   return (
@@ -164,10 +185,34 @@ function Tip({ children, text }: { children: ReactElement; text: string }) {
 }
 
 function StatPill({ value, label, toneClass, tooltip }: { value: number; label: string; toneClass: string; tooltip: string }) {
+  const [displayValue, setDisplayValue] = useState(value)
+  const [pulsing, setPulsing] = useState(false)
+  const previousValueRef = useRef(value)
+
+  useEffect(() => {
+    const from = previousValueRef.current
+    if (from === value) return
+    previousValueRef.current = value
+    const startedAt = performance.now()
+    let frame = 0
+    setPulsing(true)
+    const step = () => {
+      const progress = Math.min(1, (performance.now() - startedAt) / 400)
+      setDisplayValue(Math.round(from + (value - from) * progress))
+      if (progress < 1) {
+        frame = requestAnimationFrame(step)
+      } else {
+        window.setTimeout(() => setPulsing(false), 600)
+      }
+    }
+    frame = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(frame)
+  }, [value])
+
   return (
     <Tip text={tooltip}>
-      <div className="flex cursor-help items-baseline gap-1.5">
-        <span className={`font-mono text-base font-semibold tabular-nums ${toneClass}`}>{value}</span>
+      <div className={`flex cursor-help items-baseline gap-1.5 rounded-md px-1.5 py-1 transition-shadow ${pulsing ? "shadow-[0_0_0_1px_rgba(239,68,68,0.35),0_0_18px_rgba(239,68,68,0.18)]" : ""}`}>
+        <span className={`font-mono text-base font-semibold tabular-nums ${toneClass}`}>{displayValue}</span>
         <span className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</span>
       </div>
     </Tip>
@@ -207,7 +252,9 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
   const [highlightedRowIds, setHighlightedRowIds] = useState<Set<string>>(new Set())
   const [pulseRowIds, setPulseRowIds] = useState<Set<string>>(new Set())
   const [acceptedFindingIds, setAcceptedFindingIds] = useState<Set<string>>(new Set())
+  const [appliedFindingIds, setAppliedFindingIds] = useState<Set<string>>(new Set())
   const [dismissedFindingIds, setDismissedFindingIds] = useState<Set<string>>(new Set())
+  const [fieldFlashRowIds, setFieldFlashRowIds] = useState<Set<string>>(new Set())
   const [editingFinding, setEditingFinding] = useState<FindingEditState | null>(null)
   const [filter, setFilter] = useState<"needs_review" | "all">("all")
   const [loading, setLoading] = useState(false)
@@ -224,6 +271,7 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const autoAnalyzeStartedRef = useRef<string | null>(null)
   const pulseTimeoutRef = useRef<number | null>(null)
+  const fieldFlashTimeoutRef = useRef<number | null>(null)
   const saveNoticeTimeoutRef = useRef<number | null>(null)
 
   const analysis = fileMeta?.analysis_json ?? null
@@ -250,6 +298,7 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
       if (rowsError) throw new Error(rowsError.message)
       setFileMeta(fileData as FileMeta)
       setRows((fieldRows ?? []) as DocumentFieldRow[])
+      setAppliedFindingIds(persistedAppliedFindingIds((fileData as FileMeta).analysis_json, (fieldRows ?? []) as DocumentFieldRow[]))
       if (resetWorkflow) {
         setSelected(new Set())
         setPendingChanges([])
@@ -345,6 +394,7 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
   useEffect(() => {
     return () => {
       if (pulseTimeoutRef.current) window.clearTimeout(pulseTimeoutRef.current)
+      if (fieldFlashTimeoutRef.current) window.clearTimeout(fieldFlashTimeoutRef.current)
       if (saveNoticeTimeoutRef.current) window.clearTimeout(saveNoticeTimeoutRef.current)
     }
   }, [])
@@ -443,6 +493,12 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
     pulseTimeoutRef.current = window.setTimeout(() => setPulseRowIds(new Set()), 1500)
   }
 
+  function flashFieldRows(rowIds: string[]) {
+    if (fieldFlashTimeoutRef.current) window.clearTimeout(fieldFlashTimeoutRef.current)
+    setFieldFlashRowIds(new Set(rowIds))
+    fieldFlashTimeoutRef.current = window.setTimeout(() => setFieldFlashRowIds(new Set()), 800)
+  }
+
   function applyFinding(finding: AnalysisFinding, rowIds = finding.affected_row_ids, value = finding.proposed_action.value) {
     const curatedRowIds = rowIds.filter((rowId) => rowById.has(rowId))
     if (curatedRowIds.length === 0) return
@@ -457,6 +513,18 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
     })
     setAcceptedFindingIds((prev) => new Set(prev).add(finding.id))
     setEditingFinding(null)
+  }
+
+  function summarizeSavedChanges(changes: PendingChange[]) {
+    const rowsExcluded = new Set(changes.filter((change) => change.action === "exclude").flatMap((change) => change.rowIds)).size
+    const findingsApplied = changes.filter((change) => change.id.startsWith("finding-")).length
+    if (rowsExcluded > 0 || findingsApplied > 0) {
+      return [
+        rowsExcluded > 0 ? `${rowsExcluded} row${rowsExcluded === 1 ? "" : "s"} excluded` : null,
+        findingsApplied > 0 ? `${findingsApplied} finding${findingsApplied === 1 ? "" : "s"} applied` : null,
+      ].filter(Boolean).join(" · ")
+    }
+    return `${changes.length} change${changes.length === 1 ? "" : "s"} saved`
   }
 
   function startFindingEdit(finding: AnalysisFinding) {
@@ -548,8 +616,14 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
     setSaving(true)
     setError(null)
     const savedCount = pendingChanges.length
+    const changesToSave = pendingChanges
+    const affectedRowIds = [...new Set(changesToSave.flatMap((change) => change.rowIds))]
+    const fieldChangedRowIds = [...new Set(changesToSave.filter((change) => change.action === "set_field").flatMap((change) => change.rowIds))]
+    const savedFindingIds = changesToSave
+      .filter((change) => change.id.startsWith("finding-"))
+      .map((change) => change.id.replace(/^finding-/, ""))
     try {
-      for (const change of pendingChanges) {
+      for (const change of changesToSave) {
         if (change.rowIds.length === 0) continue
         if (change.action === "exclude") {
           const { error } = await supabase
@@ -564,6 +638,42 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
             .in("id", change.rowIds)
           if (error) throw new Error(error.message)
         }
+      }
+
+      setRows((prev) => prev.map((row) => {
+        let next = row
+        for (const change of changesToSave) {
+          if (!change.rowIds.includes(row.id)) continue
+          if (change.action === "exclude") {
+            next = { ...next, normalization_status: "excluded" }
+          } else if (change.field) {
+            next = { ...next, [change.field]: change.value ?? null }
+          }
+        }
+        return next
+      }))
+      flashRows(affectedRowIds)
+      if (fieldChangedRowIds.length > 0) flashFieldRows(fieldChangedRowIds)
+      setAppliedFindingIds((prev) => {
+        const next = new Set(prev)
+        savedFindingIds.forEach((id) => next.add(id))
+        return next
+      })
+      setAcceptedFindingIds((prev) => {
+        const next = new Set(prev)
+        savedFindingIds.forEach((id) => next.add(id))
+        return next
+      })
+
+      if (savedFindingIds.length > 0 && fileMeta) {
+        const mergedApplied = [...new Set([...(fileMeta.analysis_json?.applied_finding_ids ?? []), ...savedFindingIds])]
+        const nextAnalysis = { ...(fileMeta.analysis_json ?? {}), applied_finding_ids: mergedApplied }
+        const { error: analysisUpdateError } = await supabase
+          .from("files")
+          .update({ analysis_json: nextAnalysis })
+          .eq("id", fileId)
+        if (analysisUpdateError) throw new Error(analysisUpdateError.message)
+        setFileMeta((prev) => prev ? { ...prev, analysis_json: nextAnalysis } : prev)
       }
 
       if (shouldRenormalize && affectedByRenormalize > 0) {
@@ -589,7 +699,7 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
       await loadSheet({ resetWorkflow: false })
       setPendingChanges([])
       setSelected(new Set())
-      setSaveNotice(`${savedCount} change${savedCount === 1 ? "" : "s"} saved`)
+      setSaveNotice(summarizeSavedChanges(changesToSave) || `${savedCount} change${savedCount === 1 ? "" : "s"} saved`)
       if (saveNoticeTimeoutRef.current) window.clearTimeout(saveNoticeTimeoutRef.current)
       saveNoticeTimeoutRef.current = window.setTimeout(() => setSaveNotice(null), 2000)
     } catch (err) {
@@ -599,10 +709,15 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
     }
   }
 
-  if (!isOpen) return null
-
-  const findings = (analysis?.findings ?? []).filter((finding) => !dismissedFindingIds.has(finding.id))
+  const findings = useMemo(() => {
+    const visible = (analysis?.findings ?? []).filter((finding) => !dismissedFindingIds.has(finding.id))
+    return [...visible].sort((a, b) => Number(appliedFindingIds.has(a.id)) - Number(appliedFindingIds.has(b.id)))
+  }, [analysis?.findings, appliedFindingIds, dismissedFindingIds])
+  const appliedFindingCount = findings.filter((finding) => appliedFindingIds.has(finding.id)).length
+  const pendingFindingCount = findings.length - appliedFindingCount
   const highlightedActive = highlightedRowIds.size > 0
+
+  if (!isOpen) return null
 
   return (
     <TooltipProvider delayDuration={500}>
@@ -749,6 +864,7 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
                     const lowConfidence = rowNeedsReview(row)
                     const highlighted = highlightedRowIds.has(row.id)
                     const pulsed = pulseRowIds.has(row.id)
+                    const fieldFlashing = fieldFlashRowIds.has(row.id)
                     const dimmed = highlightedActive && !highlighted
                     const sourceIndex = row.raw_json?.source_index ?? rowNumber - 1
                     const sourceEntry = fileMeta?.source_rows_json?.[sourceIndex] ?? row.raw_json?.source_row ?? null
@@ -762,6 +878,7 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
                           lowConfidence && !excluded ? "bg-primary/[0.03]" : "",
                           highlighted ? "ring-1 ring-inset ring-primary/40 bg-primary/[0.06]" : "",
                           pulsed ? "ring-2 ring-inset ring-red-400/40 bg-red-500/[0.05]" : "",
+                          fieldFlashing ? "bg-primary/[0.08]" : "",
                           dimmed ? "opacity-30" : "",
                         ].join(" ")}
                       >
@@ -794,10 +911,10 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
                             </button>
                           )}
                         </td>
-                        <td className="px-3 py-2.5 font-mono text-xs tabular-nums text-muted-foreground">{row.document_date ?? "-"}</td>
-                        <td className="px-3 py-2.5 text-right font-mono text-xs tabular-nums text-foreground">{formatAmount(amountForRow(row))}</td>
-                        <td className="px-3 py-2.5 font-mono text-xs tabular-nums text-muted-foreground">{row.currency ?? "-"}</td>
-                        <td className="px-3 py-2.5"><CategoryChip value={row.expense_category ?? row.income_source} confidence={Number(row.confidence_score ?? 0)} /></td>
+                        <td className={`px-3 py-2.5 font-mono text-xs tabular-nums text-muted-foreground transition-colors ${fieldFlashing ? "bg-primary/10" : ""}`}>{row.document_date ?? "-"}</td>
+                        <td className={`px-3 py-2.5 text-right font-mono text-xs tabular-nums text-foreground transition-colors ${fieldFlashing ? "bg-primary/10" : ""}`}>{formatAmount(amountForRow(row))}</td>
+                        <td className={`px-3 py-2.5 font-mono text-xs tabular-nums text-muted-foreground transition-colors ${fieldFlashing ? "bg-primary/10" : ""}`}>{row.currency ?? "-"}</td>
+                        <td className={`px-3 py-2.5 transition-colors ${fieldFlashing ? "bg-primary/10" : ""}`}><CategoryChip value={row.expense_category ?? row.income_source} confidence={Number(row.confidence_score ?? 0)} /></td>
                         <td className="px-3 py-2.5">
                           <Popover>
                             <Tooltip delayDuration={500}>
@@ -895,7 +1012,9 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
             <div className="min-h-0 flex-1 overflow-auto px-6 py-4">
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground" style={aldrichStyle()}>
-                  Findings · {findings.length}
+                  {appliedFindingCount > 0
+                    ? `${pendingFindingCount} pending · ${appliedFindingCount} applied`
+                    : `Findings · ${findings.length}`}
                 </h3>
                 <button className="text-[11px] text-muted-foreground hover:text-foreground" onClick={() => findings.forEach((finding) => applyFinding(finding))}>
                   Apply all ({findings.length})
@@ -908,6 +1027,7 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
                 ) : findings.map((finding, index) => {
                   const isPending = pendingChanges.some((change) => change.id === `finding-${finding.id}`)
                   const isAccepted = isPending || acceptedFindingIds.has(finding.id)
+                  const isApplied = appliedFindingIds.has(finding.id)
                   const editedFinding = editingFinding?.findingId === finding.id ? editingFinding : null
                   const affectedRows = finding.affected_row_ids
                     .map((rowId) => rowById.get(rowId))
@@ -916,7 +1036,13 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
                   return (
                     <div
                       key={finding.id}
-                      className={`group relative rounded-lg border bg-card p-4 transition-all ${isAccepted ? "border-primary/40 bg-primary/[0.03]" : "border-border hover:border-primary/30 hover:shadow-sm"}`}
+                      className={`group relative rounded-lg border bg-card p-4 transition-all ${
+                        isApplied
+                          ? "border-primary/20 bg-primary/[0.02] opacity-50"
+                          : isAccepted
+                          ? "border-primary/40 bg-primary/[0.03]"
+                          : "border-border hover:border-primary/30 hover:shadow-sm"
+                      }`}
                       onMouseEnter={() => setHighlightedRowIds(new Set(finding.affected_row_ids))}
                       onMouseLeave={() => setHighlightedRowIds(new Set())}
                     >
@@ -933,22 +1059,30 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
                         <button className="text-primary hover:underline" onClick={() => setHighlightedRowIds(new Set(finding.affected_row_ids))}>Show in table</button>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Tip text={`Apply this suggestion to ${finding.affected_row_ids.length} affected rows`}>
-                          <button onClick={() => applyFinding(finding)} className="flex-1 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90">Apply</button>
-                        </Tip>
-                        <Tip text="Review and modify before applying">
-                          <button onClick={() => startFindingEdit(finding)} className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted">Edit</button>
-                        </Tip>
-                        <Tip text="Skip this suggestion (won't apply)">
-                          <button
-                            onClick={() => setDismissedFindingIds((prev) => new Set(prev).add(finding.id))}
-                            className="rounded-md px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
-                          >
-                            Dismiss
-                          </button>
-                        </Tip>
+                        {isApplied ? (
+                          <span className="flex-1 rounded-md border border-primary/20 bg-primary/[0.04] px-3 py-1.5 text-center text-xs font-medium text-primary">
+                            ✓ Applied
+                          </span>
+                        ) : (
+                          <>
+                            <Tip text={`Apply this suggestion to ${finding.affected_row_ids.length} affected rows`}>
+                              <button onClick={() => applyFinding(finding)} className="flex-1 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90">Apply</button>
+                            </Tip>
+                            <Tip text="Review and modify before applying">
+                              <button onClick={() => startFindingEdit(finding)} className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted">Edit</button>
+                            </Tip>
+                            <Tip text="Skip this suggestion (won't apply)">
+                              <button
+                                onClick={() => setDismissedFindingIds((prev) => new Set(prev).add(finding.id))}
+                                className="rounded-md px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+                              >
+                                Dismiss
+                              </button>
+                            </Tip>
+                          </>
+                        )}
                       </div>
-                      {editedFinding && (
+                      {editedFinding && !isApplied && (
                         <div className="mt-4 rounded-lg border border-border bg-muted/30 p-3">
                           {canEditValue && (
                             <label className="mb-3 block text-xs text-muted-foreground">

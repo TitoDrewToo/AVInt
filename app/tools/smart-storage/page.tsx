@@ -72,6 +72,17 @@ import {
   type VirtualFolder,
   type ViewMode,
 } from "@/lib/smart-storage"
+import {
+  fetchSmartStorageFilesByIds,
+  fetchSmartStorageFilesPage,
+  fetchSmartStorageProcessingState,
+  fetchSmartStorageReportAvailability,
+  getCachedSmartStorageData,
+  prefetchSmartStorageData,
+  setCachedSmartStorageData,
+  type SmartStorageProcessingState,
+  type SmartStorageWarmData,
+} from "@/lib/smart-storage-cache"
 
 const HOVER_PREVIEW_WIDTH = 208
 const HOVER_PREVIEW_ESTIMATED_HEIGHT = 248
@@ -79,7 +90,6 @@ const HOVER_PREVIEW_CURSOR_GAP = 28
 const HOVER_PREVIEW_VIEWPORT_PAD = 8
 const ACTIVE_PROCESSING_WINDOW_MS = 2 * 60 * 1000
 const ACTIONABLE_JOB_WINDOW_MS = 60 * 60 * 1000
-const ACTIVE_PROCESSING_STATUSES = ["uploaded", "pending_scan", "scanning", "processing"]
 const SLOW_PROCESSING_STATUSES = ["uploaded", "processing"]
 
 type HoverPreviewState = {
@@ -186,6 +196,9 @@ export default function SmartStoragePage() {
 
   // Files state
   const [files, setFiles] = useState<UploadedFile[]>([])
+  const [loadedFileCount, setLoadedFileCount] = useState(0)
+  const [hasMoreFiles, setHasMoreFiles] = useState(false)
+  const [isLoadingMoreFiles, setIsLoadingMoreFiles] = useState(false)
   const [detectedTypes, setDetectedTypes] = useState<string[]>([])
   const recentlyDeletedFileIdsRef = useRef<Set<string>>(new Set())
   const processingExpiryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -275,26 +288,36 @@ export default function SmartStoragePage() {
     return () => subscription.unsubscribe()
   }, [])
 
-  // ── Processing indicator + realtime ───────────────────────────────────────
-  const checkProcessingState = useCallback(async () => {
-    if (!session?.user?.id) return
+  const applyFiles = useCallback((nextFiles: UploadedFile[], nextHasMoreFiles: boolean) => {
+    setFiles(nextFiles)
+    setLoadedFileCount(nextFiles.length)
+    setHasMoreFiles(nextHasMoreFiles)
+    const types = [...new Set(nextFiles.map((file) => file.document_type).filter((type) => type !== "unknown"))]
+    setDetectedTypes(types)
+  }, [])
+
+  const upsertLoadedFiles = useCallback((incomingFiles: UploadedFile[]) => {
+    if (incomingFiles.length === 0) return
+    setFiles((prev) => {
+      const incomingIds = new Set(incomingFiles.map((file) => file.id))
+      const nextFiles = [...incomingFiles, ...prev.filter((file) => !incomingIds.has(file.id))]
+        .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
+      const types = [...new Set(nextFiles.map((file) => file.document_type).filter((type) => type !== "unknown"))]
+      setLoadedFileCount(nextFiles.length)
+      setDetectedTypes(types)
+      return nextFiles
+    })
+  }, [])
+
+  const applyProcessingState = useCallback((processing: SmartStorageProcessingState) => {
     if (processingExpiryTimeoutRef.current) {
       clearTimeout(processingExpiryTimeoutRef.current)
       processingExpiryTimeoutRef.current = null
     }
-    const { data: userFiles } = await supabase.from("files").select("id").eq("user_id", session.user.id)
-    if (!userFiles?.length) { setIsProcessing(false); return false }
-    const activeCutoff = new Date(Date.now() - ACTIVE_PROCESSING_WINDOW_MS).toISOString()
-    const { data: activeJobs } = await supabase
-      .from("processing_jobs").select("status, created_at")
-      .in("file_id", userFiles.map((f) => f.id))
-      .in("status", ACTIVE_PROCESSING_STATUSES)
-      .gte("created_at", activeCutoff)
-    const stillActive = (activeJobs?.length ?? 0) > 0
-    setIsProcessing(stillActive)
-    if (stillActive) {
+    setIsProcessing(processing.isProcessing)
+    if (processing.isProcessing) {
       const now = Date.now()
-      const delays = (activeJobs ?? [])
+      const delays = processing.activeJobs
         .map((job) => Date.parse(job.created_at ?? "") + ACTIVE_PROCESSING_WINDOW_MS - now)
         .filter((delay) => Number.isFinite(delay) && delay > 0)
       if (delays.length > 0) {
@@ -303,8 +326,29 @@ export default function SmartStoragePage() {
         }, Math.max(1000, Math.min(...delays) + 250))
       }
     }
-    return stillActive
-  }, [session])
+  }, [])
+
+  const applyWarmData = useCallback((data: SmartStorageWarmData) => {
+    applyFiles(data.files, data.hasMoreFiles)
+    setFolders(data.folders)
+    applyProcessingState({ isProcessing: data.isProcessing, activeJobs: data.activeJobs })
+    setReportAvailability(data.reportAvailability)
+  }, [applyFiles, applyProcessingState])
+
+  const updateWarmCache = useCallback((userId: string, updates: Partial<SmartStorageWarmData>) => {
+    const current = getCachedSmartStorageData(userId)
+    if (!current) return
+    setCachedSmartStorageData(userId, { ...current, ...updates })
+  }, [])
+
+  // ── Processing indicator + realtime ───────────────────────────────────────
+  const checkProcessingState = useCallback(async () => {
+    if (!session?.user?.id) return
+    const processing = await fetchSmartStorageProcessingState(session.user.id)
+    applyProcessingState(processing)
+    updateWarmCache(session.user.id, { isProcessing: processing.isProcessing, activeJobs: processing.activeJobs })
+    return processing.isProcessing
+  }, [applyProcessingState, session, updateWarmCache])
 
   useEffect(() => {
     checkProcessingStateRef.current = checkProcessingState
@@ -319,82 +363,38 @@ export default function SmartStoragePage() {
   // ── Load files ─────────────────────────────────────────────────────────────
   const loadFiles = useCallback(async () => {
     if (!session?.user?.id) return
-    const { data } = await supabase
-      .from("files")
-      .select("id, filename, file_type, file_size, document_type, created_at, storage_path, folder_id, upload_status, scan_reason, analysis_json, analyzed_at, source_rows_json")
-      .eq("user_id", session.user.id)
-      .order("created_at", { ascending: false })
-    if (data) {
-      const fileIds = data.map((file) => file.id)
-      const latestJobByFileId = new Map<string, NonNullable<UploadedFile["processing_job"]>>()
-      const documentFieldCountByFileId = new Map<string, number>()
-      if (fileIds.length > 0) {
-        const [{ data: jobs }, { data: documentFields }] = await Promise.all([
-          supabase
-            .from("processing_jobs")
-            .select("file_id, status, created_at, error_message")
-            .in("file_id", fileIds)
-            .order("created_at", { ascending: false }),
-          supabase
-            .from("document_fields")
-            .select("file_id")
-            .in("file_id", fileIds),
-        ])
-        for (const job of jobs ?? []) {
-          if (!latestJobByFileId.has(job.file_id)) {
-            latestJobByFileId.set(job.file_id, {
-              status: job.status,
-              created_at: job.created_at,
-              error_message: job.error_message,
-            })
-          }
-        }
-        for (const field of documentFields ?? []) {
-          documentFieldCountByFileId.set(field.file_id, (documentFieldCountByFileId.get(field.file_id) ?? 0) + 1)
-        }
-      }
-      setFiles(data.map((file) => ({
-        ...file,
-        document_fields_count: documentFieldCountByFileId.get(file.id) ?? 0,
-        processing_job: latestJobByFileId.get(file.id) ?? null,
-      })))
-      const types = [...new Set(data.map((f) => f.document_type).filter((t) => t !== "unknown"))]
-      setDetectedTypes(types)
+    const page = await fetchSmartStorageFilesPage(session.user.id)
+    applyFiles(page.files, page.hasMoreFiles)
+    updateWarmCache(session.user.id, page)
+  }, [applyFiles, session, updateWarmCache])
+
+  const loadMoreFiles = useCallback(async () => {
+    if (!session?.user?.id || isLoadingMoreFiles || !hasMoreFiles) return
+    setIsLoadingMoreFiles(true)
+    try {
+      const page = await fetchSmartStorageFilesPage(session.user.id, loadedFileCount)
+      const existingIds = new Set(files.map((file) => file.id))
+      const nextFiles = [...files, ...page.files.filter((file) => !existingIds.has(file.id))]
+      applyFiles(nextFiles, page.hasMoreFiles)
+      updateWarmCache(session.user.id, { files: nextFiles, hasMoreFiles: page.hasMoreFiles })
+    } finally {
+      setIsLoadingMoreFiles(false)
     }
-  }, [session])
+  }, [applyFiles, files, hasMoreFiles, isLoadingMoreFiles, loadedFileCount, session, updateWarmCache])
+
+  const handleFilesScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    const element = event.currentTarget
+    const remaining = element.scrollHeight - element.scrollTop - element.clientHeight
+    if (remaining < 480) void loadMoreFiles()
+  }, [loadMoreFiles])
 
   // ── Report availability ────────────────────────────────────────────────────
   const checkReportAvailability = useCallback(async () => {
     if (!session?.user?.id) return
-    const { data: userFiles } = await supabase.from("files").select("id, document_type").eq("user_id", session.user.id)
-    const availability: Record<string, boolean> = {}
-    if (!userFiles?.length) { REPORTS.forEach((r) => { availability[r.id] = false }); setReportAvailability(availability); return }
-    const fileIds = userFiles.map((f) => f.id)
-    const typeByFileId = new Map(userFiles.map((f) => [f.id, f.document_type]))
-    const { data: fields } = await supabase
-      .from("document_fields")
-      .select("file_id, total_amount, gross_income, net_income, vendor_name, employer_name, counterparty_name")
-      .in("file_id", fileIds)
-      .neq("normalization_status", "excluded")
-    const f = fields ?? []
-    const isExpense = (x: { file_id: string }) => ["receipt", "invoice"].includes(typeByFileId.get(x.file_id) ?? "")
-    const isIncome = (x: { file_id: string }) => ["payslip", "income_statement"].includes(typeByFileId.get(x.file_id) ?? "")
-    const isContract = (x: { file_id: string }) => ["contract", "agreement"].includes(typeByFileId.get(x.file_id) ?? "")
-    const hasExpense = f.some((x) => isExpense(x) && x.total_amount != null)
-    const hasIncome = f.some((x) => isIncome(x) && (x.gross_income != null || x.net_income != null || x.total_amount != null))
-    for (const report of REPORTS) {
-      if (!report.coreEnabled) { availability[report.id] = false; continue }
-      switch (report.requires) {
-        case "any_file":           availability[report.id] = fileIds.length > 0; break
-        case "expense_amount":     availability[report.id] = hasExpense; break
-        case "income_amount":      availability[report.id] = hasIncome; break
-        case "expense_or_income":  availability[report.id] = hasExpense || hasIncome; break
-        case "income_and_expense": availability[report.id] = hasIncome && hasExpense; break
-        case "contract_fields":    availability[report.id] = f.some((x) => isContract(x) && (x.vendor_name || x.employer_name || x.counterparty_name)); break
-      }
-    }
+    const availability = await fetchSmartStorageReportAvailability(session.user.id)
     setReportAvailability(availability)
-  }, [session])
+    updateWarmCache(session.user.id, { reportAvailability: availability })
+  }, [session, updateWarmCache])
 
   useEffect(() => {
     if (!session?.user?.id) return
@@ -416,7 +416,8 @@ export default function SmartStoragePage() {
           if (!ownsFile) return
           const stillActive = await checkProcessingState()
           if (!stillActive) {
-            await loadFiles()
+            const refreshedFiles = await fetchSmartStorageFilesByIds(session.user.id, [fileId])
+            upsertLoadedFiles(refreshedFiles)
             await checkReportAvailability()
           }
         },
@@ -425,32 +426,19 @@ export default function SmartStoragePage() {
     return () => {
       void supabase.removeChannel(channel)
     }
-  }, [session, checkProcessingState, loadFiles, checkReportAvailability])
-
-  const loadFolders = useCallback(async () => {
-    if (!session?.user?.id) return
-    const { data } = await supabase
-      .from("folders")
-      .select("id, name, parent_id, user_id")
-      .eq("user_id", session.user.id)
-      .order("created_at", { ascending: true })
-    if (data) {
-      setFolders(
-        data.map((f) => ({
-          id: f.id,
-          name: f.name,
-          parentId: f.parent_id,
-        }))
-      )
-    }
-  }, [session])
+  }, [session, checkProcessingState, upsertLoadedFiles, checkReportAvailability])
 
   useEffect(() => {
-    checkProcessingState()
-    loadFiles()
-    checkReportAvailability()
-    loadFolders()
-  }, [checkProcessingState, loadFiles, checkReportAvailability, loadFolders])
+    if (!session?.user?.id) return
+    const cached = getCachedSmartStorageData(session.user.id)
+    if (cached) {
+      applyWarmData(cached)
+      return
+    }
+    void prefetchSmartStorageData(session.user.id).then(applyWarmData).catch((error) => {
+      console.error("smart storage initial load failed:", error)
+    })
+  }, [applyWarmData, session])
 
   // Files — classification view shows all matching types across all folders, sorted by date
   // Declared here (before keyboard shortcut useEffect) to avoid TS2448 forward-reference error.
@@ -701,16 +689,28 @@ export default function SmartStoragePage() {
         },
         body: JSON.stringify({ file_id: fileRecord.id }),
       }).catch((err) => console.error("prescan-document fetch error:", err))
+
+      return {
+        ...fileRecord,
+        document_fields_count: 0,
+        processing_job: {
+          status: jobRecord.status,
+          created_at: jobRecord.created_at,
+          error_message: jobRecord.error_message,
+        },
+      } as UploadedFile
     }
 
-    // Upload all files, then refresh — ensures state updates happen after ALL uploads complete
+    // Upload all files, then prepend the new records instead of refetching the full file history.
     try {
       const results = await Promise.allSettled(uploadList.map(uploadOne))
+      const uploadedFiles: UploadedFile[] = []
       for (const r of results) {
         if (r.status === "rejected") console.error("Upload failed:", r.reason)
+        if (r.status === "fulfilled" && r.value) uploadedFiles.push(r.value)
       }
+      upsertLoadedFiles(uploadedFiles)
 
-      await loadFiles()
       const stillActive = await checkProcessingState()
       if (!stillActive) setIsProcessing(false)
       await checkReportAvailability()
@@ -919,7 +919,13 @@ export default function SmartStoragePage() {
       throw new Error(payload.error ?? "Failed to delete file")
     }
 
-    setFiles(prev => prev.filter(f => f.id !== fileId))
+    setFiles(prev => {
+      const nextFiles = prev.filter(f => f.id !== fileId)
+      setLoadedFileCount(nextFiles.length)
+      const types = [...new Set(nextFiles.map((file) => file.document_type).filter((type) => type !== "unknown"))]
+      setDetectedTypes(types)
+      return nextFiles
+    })
     setSelectedFiles(prev => {
       const next = new Set(prev)
       next.delete(fileId)
@@ -1661,7 +1667,7 @@ export default function SmartStoragePage() {
             </div>
 
             {/* File/folder list */}
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className="flex-1 overflow-y-auto p-4" onScroll={handleFilesScroll}>
 
               {/* New folder input */}
               {isCreatingFolder && (
@@ -2075,6 +2081,20 @@ export default function SmartStoragePage() {
                   </div>
                 </div>
               )}
+
+              {hasMoreFiles && (
+                <div className="flex justify-center py-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="rounded-lg"
+                    disabled={isLoadingMoreFiles}
+                    onClick={() => void loadMoreFiles()}
+                  >
+                    {isLoadingMoreFiles ? <><Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />Loading…</> : "Load more"}
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -2283,7 +2303,7 @@ export default function SmartStoragePage() {
         userId={session?.user?.id ?? ""}
         onClose={() => setManualEntryOpen(false)}
         onCreated={(file) => {
-          setFiles(prev => [file as any, ...prev])
+          upsertLoadedFiles([file as UploadedFile])
           setManualEntryOpen(false)
         }}
       />

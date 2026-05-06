@@ -169,7 +169,9 @@ function findingMatchesRows(finding: AnalysisFinding, rows: DocumentFieldRow[]) 
   }
   const field = finding.proposed_action.field
   if (!field) return false
-  return affectedRows.every((row) => String((row as any)[field] ?? "") === String(finding.proposed_action.value ?? ""))
+  const normalizedField = normalizeFieldName(field)
+  if (!(normalizedField in (affectedRows[0] ?? {}))) return false
+  return affectedRows.every((row) => String((row as any)[normalizedField] ?? "") === String(finding.proposed_action.value ?? ""))
 }
 
 function persistedAppliedFindingIds(analysis: SheetAnalysis | null, rows: DocumentFieldRow[]) {
@@ -178,6 +180,14 @@ function persistedAppliedFindingIds(analysis: SheetAnalysis | null, rows: Docume
     if (findingMatchesRows(finding, rows)) explicit.add(finding.id)
   }
   return explicit
+}
+
+function filterAnalysisAppliedFindingIds(analysis: SheetAnalysis): SheetAnalysis {
+  const findingIds = new Set((analysis.findings ?? []).map((finding) => finding.id))
+  return {
+    ...analysis,
+    applied_finding_ids: (analysis.applied_finding_ids ?? []).filter((id) => findingIds.has(id)),
+  }
 }
 
 function ConfidenceMeter({ value }: { value: number }) {
@@ -602,18 +612,29 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
       })
       if (!res.ok) throw new Error(await res.text())
       const payload = await res.json()
+      const nextAnalysis = filterAnalysisAppliedFindingIds(payload)
+      if (JSON.stringify(nextAnalysis.applied_finding_ids ?? []) !== JSON.stringify(payload.applied_finding_ids ?? [])) {
+        const { error: staleAppliedError } = await supabase
+          .from("files")
+          .update({ analysis_json: nextAnalysis })
+          .eq("id", fileId)
+        if (staleAppliedError) throw new Error(staleAppliedError.message)
+      }
       setFileMeta((prev) => ({
-        analysis_json: payload,
-        analyzed_at: payload.analyzed_at ?? new Date().toISOString(),
+        analysis_json: nextAnalysis,
+        analyzed_at: nextAnalysis.analyzed_at ?? new Date().toISOString(),
         source_rows_json: prev?.source_rows_json ?? null,
         storage_path: prev?.storage_path ?? null,
       }))
+      setAppliedFindingIds(persistedAppliedFindingIds(nextAnalysis, rows))
+      setAcceptedFindingIds(new Set())
+      setPendingChanges([])
     } catch (err) {
       setError(err instanceof Error ? err.message : "Analysis failed.")
     } finally {
       setAnalyzing(false)
     }
-  }, [fileId])
+  }, [fileId, rows])
 
   useEffect(() => {
     if (!isOpen) {

@@ -58,6 +58,7 @@ import {
   TIME_GRAIN_UNIT,
   WIDGET_LIBRARY,
   buildCurrencyModel,
+  currencyDisplayName,
   currencyToSymbol,
   displayWidgetTitle,
   emptyBandedSeries,
@@ -65,11 +66,11 @@ import {
   emptyStackedSeries,
   emptyTimeSeries,
   nextTimeGrain,
-  withConvertedCurrencyBucket,
   type AdvancedWidget,
   type BandedRow,
   type CategoryData,
   type ComposedRow,
+  type DashboardCurrencyBucket,
   type DashboardCurrencyModel,
   type KPIData,
   type LayoutItem,
@@ -80,22 +81,20 @@ import {
   type Widget,
 } from "@/lib/smart-dashboard"
 
-async function loadFxRates(base: string, quotes: string[]): Promise<{ source: string; date: string | null; rates: Record<string, number> } | null> {
-  if (!quotes.length) return { source: "Frankfurter", date: null, rates: {} }
-  try {
-    const params = new URLSearchParams({ base, quotes: quotes.join(",") })
-    const res = await fetch(`/api/fx/rates?${params.toString()}`)
-    if (!res.ok) return null
-    const data = await res.json()
-    return {
-      source: data.source ?? "Frankfurter",
-      date: data.date ?? null,
-      rates: data.rates ?? {},
-    }
-  } catch {
-    return null
-  }
-}
+const CURRENCY_SCOPED_WIDGET_TYPES = new Set([
+  "kpi-income",
+  "kpi-expenses",
+  "kpi-net",
+  "kpi-tax-exposure",
+  "kpi-tax-ratio",
+  "area-chart",
+  "line-chart",
+  "bar-chart",
+  "bar-deductible",
+  "stacked-bar",
+  "composed-chart",
+  "banded-area",
+])
 
 // ── Animated number ───────────────────────────────────────────────────────────
 
@@ -235,7 +234,6 @@ function WidgetContent({
   onGenerateSummary: () => void
   onCycleTimeGrain: (widgetId: string) => void
 }) {
-  const symbol = currencyToSymbol(kpi.currency)
   const { resolvedTheme } = useTheme()
   const themeMode: ThemeMode = resolvedTheme === "dark" ? "dark" : "light"
   // Per-widget override: widget.colors.primary if set, else dashboard accent.
@@ -247,6 +245,17 @@ function WidgetContent({
   // repeat colors at 8+ series. extendPalette continues the HSL rotation.
   const MULTI_COLORS = extendPalette(effectiveAccent, 16, themeMode)
   const [activePieIndex, setActivePieIndex] = useState<number | null>(null)
+  const [activeCurrency, setActiveCurrency] = useState(currencyModel.primaryCurrency)
+  const isCurrencyScopedWidget = CURRENCY_SCOPED_WIDGET_TYPES.has(widget.type) && !widget.rdConfig
+  useEffect(() => {
+    if (isCurrencyScopedWidget) setActiveCurrency(currencyModel.primaryCurrency)
+  }, [currencyModel.primaryCurrency, isCurrencyScopedWidget])
+  useEffect(() => {
+    if (!isCurrencyScopedWidget) return
+    if (!currencyModel.currencies.includes(activeCurrency)) {
+      setActiveCurrency(currencyModel.primaryCurrency)
+    }
+  }, [activeCurrency, currencyModel.currencies, currencyModel.primaryCurrency, isCurrencyScopedWidget])
   // Active-shape renderer factory. Currency symbol is optional — doc-count
   // pies (Document Distribution) have no symbol; value-driven pies pass one.
   const makeActiveSlice = (opts: { symbol?: string } = {}) => (props: any) => {
@@ -285,129 +294,146 @@ function WidgetContent({
     </button>
   ) : null
 
-  // Multi-currency bucket order for stacked rows: primary first, then the rest
-  // sorted by activity. Keeps the user's dominant currency anchored at the top.
-  const orderedCurrencies = currencyModel.hasMultipleCurrencies
-    ? [
-        currencyModel.primaryCurrency,
-        ...currencyModel.currencies
-          .filter((c) => c !== currencyModel.primaryCurrency)
-          .sort((a, b) => {
-            const ba = currencyModel.buckets[a]
-            const bb = currencyModel.buckets[b]
-            const aAct = (ba?.totalIncome ?? 0) + (ba?.totalExpenses ?? 0)
-            const bAct = (bb?.totalIncome ?? 0) + (bb?.totalExpenses ?? 0)
-            return bAct - aAct
-          }),
-      ]
-    : []
-  const convertedBucket = currencyModel.convertedBucket
+  const activeBucket: DashboardCurrencyBucket | null = isCurrencyScopedWidget
+    ? (currencyModel.buckets[activeCurrency] ?? currencyModel.buckets[currencyModel.primaryCurrency] ?? null)
+    : null
+  const scopedKpi: KPIData = activeBucket
+    ? {
+        totalIncome: activeBucket.totalIncome,
+        totalExpenses: activeBucket.totalExpenses,
+        netPosition: activeBucket.netPosition,
+        savingsRate: activeBucket.savingsRate,
+        taxExposure: activeBucket.taxExposure,
+        taxRatio: activeBucket.taxRatio,
+        currency: activeBucket.currency,
+      }
+    : kpi
+  const symbol = currencyToSymbol(scopedKpi.currency)
+  const scopedMonthlyData = activeBucket?.monthlyData ?? monthlyData
+  const scopedCategoryData = activeBucket?.categoryData ?? categoryData
+  const scopedStackedCompositionData = activeBucket?.stackedComposition ?? stackedCompositionData
+  const scopedComposedData = activeBucket?.composedData ?? composedData
+  const scopedBandedSpendData = activeBucket?.bandedData ?? bandedSpendData
+  const scopedTimeSeriesData = activeBucket?.timeSeriesData ?? timeSeriesData
+  const scopedStackedCompositionByGrain = activeBucket?.stackedCompositionByGrain ?? stackedCompositionByGrain
+  const scopedComposedDataByGrain = activeBucket?.composedDataByGrain ?? composedDataByGrain
+  const scopedBandedSpendDataByGrain = activeBucket?.bandedDataByGrain ?? bandedSpendDataByGrain
+  const stackCompactCurrencyKpi = currencyModel.hasMultipleCurrencies &&
+    currencyModel.currencies.length <= 3 &&
+    (widget.type === "kpi-income" || widget.type === "kpi-expenses")
+  const currencyTabs = currencyModel.hasMultipleCurrencies && isCurrencyScopedWidget && !stackCompactCurrencyKpi ? (
+    <div className="flex max-w-full items-center gap-1 overflow-x-auto">
+      {currencyModel.currencies.map((currency) => (
+        <button
+          key={currency}
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setActiveCurrency(currency) }}
+          className={`shrink-0 rounded-md border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider transition-colors ${
+            (activeBucket?.currency ?? activeCurrency) === currency
+              ? "border-primary/50 bg-primary/10 text-primary"
+              : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+          }`}
+          title={`Show ${currencyDisplayName(currency)} amounts without conversion`}
+        >
+          {currencyDisplayName(currency)}
+        </button>
+      ))}
+    </div>
+  ) : null
 
   if (widget.type === "kpi-income") return (
     <div className="flex h-full flex-col justify-between">
       <div className="flex items-start justify-between">
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Total Income</p>
+        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Total Income{activeBucket ? ` (${currencyDisplayName(activeBucket.currency)})` : ""}</p>
         <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: colors.primary + "20" }}>
           <TrendingUp className="h-4 w-4" style={{ color: colors.primary }} />
         </div>
       </div>
-      {currencyModel.hasMultipleCurrencies && convertedBucket ? (
-        <div className="mt-3">
-          <p className="text-3xl font-semibold tracking-tight text-foreground">
-            <AnimatedNumber value={convertedBucket.totalIncome} prefix={currencyToSymbol(currencyModel.primaryCurrency)} />
-          </p>
-          <p className="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-            Converted to {currencyModel.primaryCurrency}
-          </p>
-        </div>
-      ) : currencyModel.hasMultipleCurrencies ? (
+      {stackCompactCurrencyKpi ? (
         <div className="mt-3 space-y-1.5">
-          {orderedCurrencies.map((cur) => {
-            const b = currencyModel.buckets[cur]
-            if (!b) return null
+          {currencyModel.currencies.map((currency) => {
+            const bucket = currencyModel.buckets[currency]
+            if (!bucket) return null
             return (
-              <div key={cur} className="flex items-baseline justify-between gap-3">
-                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{cur}</span>
+              <div key={currency} className="flex items-baseline justify-between gap-3">
+                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{currencyDisplayName(currency)}</span>
                 <span className="text-xl font-semibold tracking-tight text-foreground">
-                  {currencyToSymbol(cur)}{Math.round(b.totalIncome).toLocaleString()}
+                  {currencyToSymbol(currency)}{Math.round(bucket.totalIncome).toLocaleString()}
                 </span>
               </div>
             )
           })}
         </div>
-      ) : (
+      ) : <div className="mt-2">{currencyTabs}</div>}
+      {!stackCompactCurrencyKpi && <div>
         <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
-          <AnimatedNumber value={kpi.totalIncome} prefix={symbol} />
+          <AnimatedNumber value={scopedKpi.totalIncome} prefix={symbol} />
         </p>
-      )}
+        {activeBucket?.currency === "Unspecified" && <p className="text-xs text-muted-foreground">Currency not specified</p>}
+      </div>}
     </div>
   )
 
   if (widget.type === "kpi-expenses") return (
     <div className="flex h-full flex-col justify-between">
       <div className="flex items-start justify-between">
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Total Expenses</p>
+        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Total Expenses{activeBucket ? ` (${currencyDisplayName(activeBucket.currency)})` : ""}</p>
         <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: colors.secondary + "20" }}>
           <Receipt className="h-4 w-4" style={{ color: colors.secondary }} />
         </div>
       </div>
-      {currencyModel.hasMultipleCurrencies && convertedBucket ? (
-        <div className="mt-3">
-          <p className="text-3xl font-semibold tracking-tight text-foreground">
-            <AnimatedNumber value={convertedBucket.totalExpenses} prefix={currencyToSymbol(currencyModel.primaryCurrency)} />
-          </p>
-          <p className="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-            Converted to {currencyModel.primaryCurrency}
-          </p>
-        </div>
-      ) : currencyModel.hasMultipleCurrencies ? (
+      {stackCompactCurrencyKpi ? (
         <div className="mt-3 space-y-1.5">
-          {orderedCurrencies.map((cur) => {
-            const b = currencyModel.buckets[cur]
-            if (!b) return null
+          {currencyModel.currencies.map((currency) => {
+            const bucket = currencyModel.buckets[currency]
+            if (!bucket) return null
             return (
-              <div key={cur} className="flex items-baseline justify-between gap-3">
-                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{cur}</span>
+              <div key={currency} className="flex items-baseline justify-between gap-3">
+                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{currencyDisplayName(currency)}</span>
                 <span className="text-xl font-semibold tracking-tight text-foreground">
-                  {currencyToSymbol(cur)}{Math.round(b.totalExpenses).toLocaleString()}
+                  {currencyToSymbol(currency)}{Math.round(bucket.totalExpenses).toLocaleString()}
                 </span>
               </div>
             )
           })}
         </div>
-      ) : (
+      ) : <div className="mt-2">{currencyTabs}</div>}
+      {!stackCompactCurrencyKpi && <div>
         <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
-          <AnimatedNumber value={kpi.totalExpenses} prefix={symbol} />
+          <AnimatedNumber value={scopedKpi.totalExpenses} prefix={symbol} />
         </p>
-      )}
+        {activeBucket?.currency === "Unspecified" && <p className="text-xs text-muted-foreground">Currency not specified</p>}
+      </div>}
     </div>
   )
 
   if (widget.type === "kpi-net") return (
     <div className="flex h-full flex-col justify-between">
       <div className="flex items-start justify-between">
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Net Position</p>
+        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Net Position{activeBucket ? ` (${currencyDisplayName(activeBucket.currency)})` : ""}</p>
         <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: colors.primary + "20" }}>
           <Wallet className="h-4 w-4" style={{ color: colors.primary }} />
         </div>
       </div>
+      <div className="mt-2">{currencyTabs}</div>
       <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
-        <AnimatedNumber value={kpi.netPosition} prefix={symbol} />
+        <AnimatedNumber value={scopedKpi.netPosition} prefix={symbol} />
       </p>
-      <p className="text-xs text-muted-foreground">{kpi.totalIncome > 0 ? `${kpi.savingsRate.toFixed(1)}% ${kpi.savingsRate >= 0 ? "savings rate" : "overspend"}` : "No income data"}</p>
+      <p className="text-xs text-muted-foreground">{scopedKpi.totalIncome > 0 ? `${scopedKpi.savingsRate.toFixed(1)}% ${scopedKpi.savingsRate >= 0 ? "savings rate" : "overspend"}` : "No income data"}</p>
     </div>
   )
 
   if (widget.type === "kpi-tax-exposure") return (
     <div className="flex h-full flex-col justify-between">
       <div className="flex items-start justify-between">
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Est. Tax Exposure</p>
+        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Est. Tax Exposure{activeBucket ? ` (${currencyDisplayName(activeBucket.currency)})` : ""}</p>
         <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: colors.tertiary + "20" }}>
           <TrendingUp className="h-4 w-4" style={{ color: colors.tertiary }} />
         </div>
       </div>
+      <div className="mt-2">{currencyTabs}</div>
       <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
-        <AnimatedNumber value={kpi.taxExposure} prefix={symbol} />
+        <AnimatedNumber value={scopedKpi.taxExposure} prefix={symbol} />
       </p>
       <p className="text-xs text-muted-foreground">Gross income minus expenses</p>
     </div>
@@ -416,13 +442,14 @@ function WidgetContent({
   if (widget.type === "kpi-tax-ratio") return (
     <div className="flex h-full flex-col justify-between">
       <div className="flex items-start justify-between">
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Tax Burden Rate</p>
+        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Tax Burden Rate{activeBucket ? ` (${currencyDisplayName(activeBucket.currency)})` : ""}</p>
         <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: colors.quaternary + "20" }}>
           <Wallet className="h-4 w-4" style={{ color: colors.quaternary }} />
         </div>
       </div>
+      <div className="mt-2">{currencyTabs}</div>
       <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
-        {kpi.taxRatio.toFixed(1)}%
+        {scopedKpi.taxRatio.toFixed(1)}%
       </p>
       <p className="text-xs text-muted-foreground">Of gross income</p>
     </div>
@@ -494,7 +521,7 @@ function WidgetContent({
 
   if (widget.type === "area-chart") {
     const variant = widget.chartVariant ?? "area"
-    const activeMonthlyData = timeSeriesData[timeGrain] ?? monthlyData
+    const activeMonthlyData = scopedTimeSeriesData[timeGrain] ?? scopedMonthlyData
     const axisProps = {
       xAxis: <XAxis dataKey="month" tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} />,
       yAxis: <YAxis tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${symbol}${(v/1000).toFixed(0)}k`} />,
@@ -505,7 +532,8 @@ function WidgetContent({
     return (
       <div className="flex h-full flex-col">
         <div className="mb-3 flex items-center justify-between gap-3">
-          <p className="min-w-0 text-xs text-muted-foreground">{TIME_GRAIN_LABEL[timeGrain]} income vs expenses from your documents</p>
+          <p className="min-w-0 text-xs text-muted-foreground">{TIME_GRAIN_LABEL[timeGrain]} income vs expenses ({currencyDisplayName(scopedKpi.currency)})</p>
+          {currencyTabs}
           {drillButton}
         </div>
         <div className="flex-1 min-h-0">
@@ -544,11 +572,12 @@ function WidgetContent({
   }
 
   if (widget.type === "line-chart") {
-    const activeMonthlyData = timeSeriesData[timeGrain] ?? monthlyData
+    const activeMonthlyData = scopedTimeSeriesData[timeGrain] ?? scopedMonthlyData
     return (
       <div className="flex h-full flex-col">
         <div className="mb-3 flex items-center justify-between gap-3">
-          <p className="min-w-0 text-xs text-muted-foreground">{TIME_GRAIN_LABEL[timeGrain]} {widget.title ?? "trend over time"}</p>
+          <p className="min-w-0 text-xs text-muted-foreground">{TIME_GRAIN_LABEL[timeGrain]} {widget.title ?? "trend over time"} ({currencyDisplayName(scopedKpi.currency)})</p>
+          {currencyTabs}
           {drillButton}
         </div>
         <div className="flex-1 min-h-0">
@@ -571,12 +600,15 @@ function WidgetContent({
   if (widget.type === "bar-chart" || widget.type === "bar-deductible") {
     const variant = widget.chartVariant ?? "bar"
     const data = widget.type === "bar-deductible"
-      ? (currencyModel.buckets[currencyModel.primaryCurrency]?.categoryData ?? categoryData)
-      : categoryData
+      ? (activeBucket?.categoryData ?? scopedCategoryData)
+      : scopedCategoryData
     const label = widget.type === "bar-deductible" ? "Expense categories reducing tax exposure" : "Total spend per category"
     return (
       <div className="flex h-full flex-col">
-        <p className="mb-3 text-xs text-muted-foreground">{label}</p>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <p className="min-w-0 text-xs text-muted-foreground">{label} ({currencyDisplayName(scopedKpi.currency)})</p>
+          {currencyTabs}
+        </div>
         <div className="flex-1 min-h-0">
           <ResponsiveContainer width="100%" height="100%">
             {variant === "pie" ? (
@@ -663,12 +695,13 @@ function WidgetContent({
   }
 
   if (widget.type === "stacked-bar") {
-    const activeStackedData = stackedCompositionByGrain[timeGrain] ?? stackedCompositionData
+    const activeStackedData = scopedStackedCompositionByGrain[timeGrain] ?? scopedStackedCompositionData
     const groupLabel = activeStackedData.groupBy === "merchant_domain" ? "merchant domain" : "expense category"
     return (
       <div className="flex h-full flex-col">
         <div className="mb-3 flex items-center justify-between gap-3">
-          <p className="min-w-0 text-xs text-muted-foreground">{TIME_GRAIN_LABEL[timeGrain]} spend share by {groupLabel}</p>
+          <p className="min-w-0 text-xs text-muted-foreground">{TIME_GRAIN_LABEL[timeGrain]} spend share by {groupLabel} ({currencyDisplayName(scopedKpi.currency)})</p>
+          {currencyTabs}
           {drillButton}
         </div>
         <div className="flex-1 min-h-0">
@@ -691,11 +724,12 @@ function WidgetContent({
   }
 
   if (widget.type === "composed-chart") {
-    const activeComposedData = composedDataByGrain[timeGrain] ?? composedData
+    const activeComposedData = scopedComposedDataByGrain[timeGrain] ?? scopedComposedData
     return (
       <div className="flex h-full flex-col">
         <div className="mb-3 flex items-center justify-between gap-3">
-          <p className="min-w-0 text-xs text-muted-foreground">Income, expenses, and net position by {TIME_GRAIN_UNIT[timeGrain]}</p>
+          <p className="min-w-0 text-xs text-muted-foreground">Income, expenses, and net position by {TIME_GRAIN_UNIT[timeGrain]} ({currencyDisplayName(scopedKpi.currency)})</p>
+          {currencyTabs}
           {drillButton}
         </div>
         <div className="flex-1 min-h-0">
@@ -722,11 +756,12 @@ function WidgetContent({
   }
 
   if (widget.type === "banded-area") {
-    const activeBandedData = bandedSpendDataByGrain[timeGrain] ?? bandedSpendData
+    const activeBandedData = scopedBandedSpendDataByGrain[timeGrain] ?? scopedBandedSpendData
     return (
       <div className="flex h-full flex-col">
         <div className="mb-3 flex items-center justify-between gap-3">
-          <p className="min-w-0 text-xs text-muted-foreground">{TIME_GRAIN_LABEL[timeGrain]} spend vs trailing normal range (mean ± 1σ)</p>
+          <p className="min-w-0 text-xs text-muted-foreground">{TIME_GRAIN_LABEL[timeGrain]} spend vs trailing normal range (mean ± 1σ) ({currencyDisplayName(scopedKpi.currency)})</p>
+          {currencyTabs}
           {drillButton}
         </div>
         <div className="flex-1 min-h-0">
@@ -1021,6 +1056,7 @@ export default function SmartDashboardPage() {
   const [composedDataByGrain, setComposedDataByGrain] = useState<Record<TimeGrain, ComposedRow[]>>(emptyComposedSeries)
   const [bandedSpendDataByGrain, setBandedSpendDataByGrain] = useState<Record<TimeGrain, BandedRow[]>>(emptyBandedSeries)
   const [currencyModel, setCurrencyModel] = useState<DashboardCurrencyModel>(EMPTY_CURRENCY_MODEL)
+  const [preferredPrimaryCurrency, setPreferredPrimaryCurrency] = useState<string | null>(null)
   const [widgets, setWidgets] = useState<Widget[]>([])
   const [layout, setLayout] = useState<LayoutItem[]>([])
   const [dashboardAccent, setDashboardAccent] = useState<string>(DEFAULT_ACCENT)
@@ -1155,6 +1191,7 @@ export default function SmartDashboardPage() {
       const widgetById = new Map<string, Widget>(savedWidgets.map((widget) => [widget.id, widget]))
       setWidgets(savedWidgets)
       if (saved.palette?.accent) setDashboardAccent(saved.palette.accent)
+      setPreferredPrimaryCurrency(typeof saved.preferences?.primaryCurrency === "string" ? saved.preferences.primaryCurrency : null)
       if (saved.gridLayout?.length) {
         // Always apply current minH/minW — never restore stale saved constraints
         setLayout(saved.gridLayout.map((l: any) => ({
@@ -1202,40 +1239,31 @@ export default function SmartDashboardPage() {
 
     const safeNum = (v: unknown): number => { const n = parseFloat(String(v ?? "0")); return isNaN(n) ? 0 : n }
 
-    // Currency-bucketed model. Primary bucket drives KPI/chart states so the
-    // single-currency render path stays identical. Income/Expenses tiles read
-    // the full model to stack per-currency rows when more than one exists.
-    const nativeModel = buildCurrencyModel(fields as any[], safeNum)
-    const fx = nativeModel.hasMultipleCurrencies
-      ? await loadFxRates(
-          nativeModel.primaryCurrency,
-          nativeModel.currencies.filter((cur) => cur !== nativeModel.primaryCurrency),
-        )
-      : null
-    const model = withConvertedCurrencyBucket(nativeModel, fields as any[], fx, safeNum)
+    // Currency-bucketed model. We never auto-convert across currencies; the
+    // primary bucket only controls default ordering/tab selection.
+    const model = buildCurrencyModel(fields as any[], safeNum, preferredPrimaryCurrency)
     setCurrencyModel(model)
     const primary = model.buckets[model.primaryCurrency]
-    const aggregate = model.convertedBucket ?? primary
 
-    if (primary && aggregate) {
+    if (primary) {
       setKpi({
-        totalIncome:   aggregate.totalIncome,
-        totalExpenses: aggregate.totalExpenses,
-        netPosition:   aggregate.netPosition,
-        savingsRate:   aggregate.savingsRate,
+        totalIncome:   primary.totalIncome,
+        totalExpenses: primary.totalExpenses,
+        netPosition:   primary.netPosition,
+        savingsRate:   primary.savingsRate,
         taxExposure:   primary.taxExposure,
         taxRatio:      primary.taxRatio,
         currency:      primary.currency,
       })
-      setMonthlyData(aggregate.monthlyData)
-      setCategoryData(aggregate.categoryData)
-      setStackedCompositionData(aggregate.stackedComposition)
-      setComposedData(aggregate.composedData)
-      setBandedSpendData(aggregate.bandedData)
-      setTimeSeriesData(aggregate.timeSeriesData)
-      setStackedCompositionByGrain(aggregate.stackedCompositionByGrain)
-      setComposedDataByGrain(aggregate.composedDataByGrain)
-      setBandedSpendDataByGrain(aggregate.bandedDataByGrain)
+      setMonthlyData(primary.monthlyData)
+      setCategoryData(primary.categoryData)
+      setStackedCompositionData(primary.stackedComposition)
+      setComposedData(primary.composedData)
+      setBandedSpendData(primary.bandedData)
+      setTimeSeriesData(primary.timeSeriesData)
+      setStackedCompositionByGrain(primary.stackedCompositionByGrain)
+      setComposedDataByGrain(primary.composedDataByGrain)
+      setBandedSpendDataByGrain(primary.bandedDataByGrain)
     }
 
     // Document Distribution is count-based and stays cross-currency global.
@@ -1244,7 +1272,7 @@ export default function SmartDashboardPage() {
     setDocTypeData(Object.entries(typeMap).map(([name, value]) => ({ name: name.charAt(0).toUpperCase() + name.slice(1), value })))
 
     setLoading(false)
-  }, [session, dateFrom, dateTo])
+  }, [session, dateFrom, dateTo, preferredPrimaryCurrency])
 
   // Readiness evaluation: computed from the full corpus (no date filter) so the
   // Advanced Analytics trigger state is stable across filter changes. Compared
@@ -1478,7 +1506,12 @@ export default function SmartDashboardPage() {
     setIsSaving(true)
     await supabase.from("dashboard_layouts").upsert({
       user_id: session.user.id,
-      layout: { widgets: nextWidgets, gridLayout: nextLayout, palette: { accent: dashboardAccent } },
+      layout: {
+        widgets: nextWidgets,
+        gridLayout: nextLayout,
+        palette: { accent: dashboardAccent },
+        preferences: { primaryCurrency: preferredPrimaryCurrency },
+      },
       updated_at: new Date().toISOString(),
     }, { onConflict: "user_id" })
     setIsSaving(false)
@@ -1496,6 +1529,21 @@ export default function SmartDashboardPage() {
 
   const saveLayout = async () => {
     await persistLayout(widgets, layout, { closeEditor: true, showConfirm: true })
+  }
+
+  const updatePrimaryCurrencyPreference = async (currency: string) => {
+    setPreferredPrimaryCurrency(currency)
+    if (!session?.user?.id) return
+    await supabase.from("dashboard_layouts").upsert({
+      user_id: session.user.id,
+      layout: {
+        widgets,
+        gridLayout: layout,
+        palette: { accent: dashboardAccent },
+        preferences: { primaryCurrency: currency },
+      },
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "user_id" })
   }
 
   // ── Widget management ──────────────────────────────────────────────────────
@@ -1578,11 +1626,29 @@ export default function SmartDashboardPage() {
   if (!sessionLoaded) return null
   if (!session) return <AuthGuardModal isVisible={true} />
 
-  const symbol = currencyToSymbol(kpi.currency)
   const resolvedLayout = (isMobile ? toMobileLayout(layout) : layout).map((item) => ({
     ...item,
     static: isMobile || !isEditingLayout,
   }))
+
+  const selectedPrimaryCurrency = currencyModel.currencies.includes(preferredPrimaryCurrency ?? "")
+    ? preferredPrimaryCurrency!
+    : currencyModel.primaryCurrency
+  const currencyPreferenceControl = currencyModel.currencies.length > 1 ? (
+    <label className="flex h-7 items-center gap-1.5 rounded-lg border border-border px-2 text-xs text-muted-foreground">
+      <span className="whitespace-nowrap">Primary</span>
+      <select
+        value={selectedPrimaryCurrency}
+        onChange={(event) => void updatePrimaryCurrencyPreference(event.target.value)}
+        className="max-w-[112px] bg-transparent text-xs font-medium text-foreground outline-none"
+        title="Choose which native currency appears first. Amounts are not converted."
+      >
+        {currencyModel.currencies.map((currency) => (
+          <option key={currency} value={currency}>{currencyDisplayName(currency)}</option>
+        ))}
+      </select>
+    </label>
+  ) : null
 
   const dashboardToolbar = (
     <div className="flex min-w-0 items-center justify-between gap-2">
@@ -1638,6 +1704,8 @@ export default function SmartDashboardPage() {
             </div>
           </div>
         </div>
+
+        {currencyPreferenceControl}
 
         {!isMobile && (() => {
           const betaEmail = process.env.NEXT_PUBLIC_AA_BETA_EMAIL
@@ -1845,6 +1913,8 @@ export default function SmartDashboardPage() {
               </div>
             </div>
 
+            {currencyPreferenceControl}
+
             {/* Advanced Analytics — desktop only */}
             {!isMobile && (() => {
               const betaEmail = process.env.NEXT_PUBLIC_AA_BETA_EMAIL
@@ -2014,9 +2084,7 @@ export default function SmartDashboardPage() {
               <>
               {currencyModel.hasMultipleCurrencies && (
                 <div className="mb-3 rounded-lg border border-border bg-muted/40 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
-                  {currencyModel.convertedBucket
-                    ? `Multiple currencies detected. Aggregate analytics are converted to ${currencyModel.primaryCurrency} using ${currencyModel.fx?.source ?? "Frankfurter"}${currencyModel.fx?.date ? ` reference rates from ${currencyModel.fx.date}` : " reference rates"}. Tax and deductible views stay on native primary-currency data.`
-                    : `Multiple currencies detected. Some aggregate analytics use your primary currency (${currencyModel.primaryCurrency}); FX conversion is unavailable${currencyModel.fx?.missingCurrencies?.length ? ` for ${currencyModel.fx.missingCurrencies.join(", ")}` : ""}.`}
+                  Multiple currencies detected. Dashboard widgets show native {currencyModel.currencies.map(currencyDisplayName).join(", ")} amounts separately; no FX conversion is applied. Primary currency controls the first tab only.
                 </div>
               )}
               <GridLayout

@@ -90,13 +90,9 @@ export interface DashboardCurrencyModel {
   primaryCurrency: string
   buckets: Record<string, DashboardCurrencyBucket>
   hasMultipleCurrencies: boolean
-  convertedBucket?: DashboardCurrencyBucket | null
-  fx?: {
-    source: string
-    date: string | null
-    missingCurrencies: string[]
-  } | null
 }
+
+export const UNSPECIFIED_CURRENCY = "Unspecified"
 
 export const TIME_GRAINS: TimeGrain[] = ["monthly", "weekly", "daily"]
 export const TIME_GRAIN_LABEL: Record<TimeGrain, string> = {
@@ -131,25 +127,11 @@ const MONEY_WIDGET_TYPES = new Set([
   "banded-area",
 ])
 
-const CONVERTED_WIDGET_TYPES = new Set([
-  "kpi-income",
-  "kpi-expenses",
-  "kpi-net",
-  "area-chart",
-  "line-chart",
-  "bar-chart",
-  "stacked-bar",
-  "composed-chart",
-  "banded-area",
-])
-
 export const EMPTY_CURRENCY_MODEL: DashboardCurrencyModel = {
   currencies: [],
-  primaryCurrency: "USD",
+  primaryCurrency: UNSPECIFIED_CURRENCY,
   buckets: {},
   hasMultipleCurrencies: false,
-  convertedBucket: null,
-  fx: null,
 }
 
 export const WIDGET_LIBRARY = [
@@ -180,10 +162,18 @@ export const CHART_DEFAULT: Record<string, string> = {
 
 export function currencyToSymbol(code: string | null | undefined): string {
   const c = (code ?? "").toUpperCase()
+  if (!c || c === UNSPECIFIED_CURRENCY.toUpperCase()) return ""
   if (c === "PHP") return "₱"
   if (c === "EUR") return "€"
   if (c === "GBP") return "£"
-  return "$"
+  if (c === "USD" || c === "AUD" || c === "CAD" || c === "SGD") return "$"
+  if (c === "JPY") return "¥"
+  return `${c} `
+}
+
+export function currencyDisplayName(code: string | null | undefined): string {
+  const c = (code ?? "").trim()
+  return c || UNSPECIFIED_CURRENCY
 }
 
 function dateFromIso(date: string): Date {
@@ -375,33 +365,19 @@ function computeBucket(cur: string, rows: any[], safeNum: (v: unknown) => number
   }
 }
 
-export function buildCurrencyModel(fields: any[], safeNum: (v: unknown) => number): DashboardCurrencyModel {
+export function buildCurrencyModel(fields: any[], safeNum: (v: unknown) => number, preferredCurrency?: string | null): DashboardCurrencyModel {
   if (!fields?.length) return EMPTY_CURRENCY_MODEL
 
   const labeled: Record<string, any[]> = {}
-  const unlabeled: any[] = []
   for (const f of fields) {
+    const docType = f?.files?.document_type
+    const amount = docType === "payslip" || docType === "income_statement"
+      ? (f.gross_income ?? f.total_amount)
+      : f.total_amount
+    if (amount === null || amount === undefined) continue
     const raw = typeof f?.currency === "string" ? f.currency.trim().toUpperCase() : ""
-    if (raw) (labeled[raw] ??= []).push(f)
-    else unlabeled.push(f)
-  }
-
-  const haveLabels = Object.keys(labeled).length > 0
-  if (!haveLabels) {
-    labeled["USD"] = unlabeled
-  } else if (unlabeled.length) {
-    const activity: Record<string, number> = {}
-    for (const [cur, rows] of Object.entries(labeled)) {
-      let a = 0
-      for (const r of rows) {
-        const dt = r?.files?.document_type
-        if (dt === "payslip" || dt === "income_statement") a += safeNum(r.gross_income ?? r.total_amount)
-        else a += safeNum(r.total_amount)
-      }
-      activity[cur] = a
-    }
-    const dest = Object.entries(activity).sort(([, a], [, b]) => b - a)[0]?.[0] ?? Object.keys(labeled)[0]
-    labeled[dest].push(...unlabeled)
+    const currency = raw || UNSPECIFIED_CURRENCY
+    ;(labeled[currency] ??= []).push(f)
   }
 
   const buckets: Record<string, DashboardCurrencyBucket> = {}
@@ -410,88 +386,50 @@ export function buildCurrencyModel(fields: any[], safeNum: (v: unknown) => numbe
   }
   const currencies = Object.keys(buckets)
 
-  let primary = currencies[0] ?? "USD"
-  if (currencies.length > 1) {
-    const stats: Record<string, { count: number; activity: number; latest: string }> = {}
-    for (const [cur, rows] of Object.entries(labeled)) {
-      let activity = 0
-      let latest = ""
-      for (const r of rows) {
-        const dt = r?.files?.document_type
-        if (dt === "payslip" || dt === "income_statement") activity += safeNum(r.gross_income ?? r.total_amount)
-        else activity += safeNum(r.total_amount)
-        if (typeof r?.document_date === "string" && r.document_date > latest) latest = r.document_date
-      }
-      stats[cur] = { count: rows.length, activity, latest }
+  const stats: Record<string, { count: number; activity: number; latest: string }> = {}
+  for (const [cur, rows] of Object.entries(labeled)) {
+    let activity = 0
+    let latest = ""
+    for (const r of rows) {
+      const dt = r?.files?.document_type
+      if (dt === "payslip" || dt === "income_statement") activity += safeNum(r.gross_income ?? r.total_amount)
+      else activity += safeNum(r.total_amount)
+      if (typeof r?.document_date === "string" && r.document_date > latest) latest = r.document_date
     }
-    primary = [...currencies].sort((a, b) =>
-      stats[b].count - stats[a].count ||
-      stats[b].activity - stats[a].activity ||
-      stats[b].latest.localeCompare(stats[a].latest),
-    )[0]
+    stats[cur] = { count: rows.length, activity, latest }
   }
 
+  const normalizedPreference = preferredCurrency?.trim() || ""
+  const inferredPrimary = [...currencies].sort((a, b) =>
+    stats[b].count - stats[a].count ||
+    stats[b].activity - stats[a].activity ||
+    stats[b].latest.localeCompare(stats[a].latest),
+  )[0] ?? UNSPECIFIED_CURRENCY
+  const primary = normalizedPreference && currencies.includes(normalizedPreference)
+    ? normalizedPreference
+    : inferredPrimary
+  const orderedCurrencies = [
+    primary,
+    ...currencies
+      .filter((cur) => cur !== primary)
+      .sort((a, b) =>
+        stats[b].count - stats[a].count ||
+        stats[b].activity - stats[a].activity ||
+        stats[b].latest.localeCompare(stats[a].latest),
+      ),
+  ]
+
   return {
-    currencies,
+    currencies: orderedCurrencies,
     primaryCurrency: primary,
     buckets,
     hasMultipleCurrencies: currencies.length > 1,
-    convertedBucket: null,
-    fx: null,
-  }
-}
-
-function convertMoney(value: unknown, sourceCurrency: string, primaryCurrency: string, rates: Record<string, number>, safeNum: (v: unknown) => number) {
-  const amount = safeNum(value)
-  if (sourceCurrency === primaryCurrency) return amount
-  const rate = rates[sourceCurrency]
-  if (!rate || rate <= 0) return null
-  return amount / rate
-}
-
-export function withConvertedCurrencyBucket(
-  model: DashboardCurrencyModel,
-  fields: any[],
-  fx: { source: string; date: string | null; rates: Record<string, number> } | null,
-  safeNum: (v: unknown) => number,
-): DashboardCurrencyModel {
-  if (!model.hasMultipleCurrencies || !fx) return model
-
-  const missingCurrencies = model.currencies
-    .filter((cur) => cur !== model.primaryCurrency)
-    .filter((cur) => !fx.rates[cur])
-
-  if (missingCurrencies.length) {
-    return { ...model, fx: { source: fx.source, date: fx.date, missingCurrencies } }
-  }
-
-  const convertedRows = fields.map((row) => {
-    const sourceCurrency = typeof row?.currency === "string" && row.currency.trim()
-      ? row.currency.trim().toUpperCase()
-      : model.primaryCurrency
-    const converted = { ...row, currency: model.primaryCurrency }
-    for (const key of ["total_amount", "gross_income", "net_income", "tax_amount", "discount_amount"]) {
-      if (row[key] !== null && row[key] !== undefined) {
-        const value = convertMoney(row[key], sourceCurrency, model.primaryCurrency, fx.rates, safeNum)
-        converted[key] = value ?? row[key]
-      }
-    }
-    return converted
-  })
-
-  return {
-    ...model,
-    convertedBucket: computeBucket(model.primaryCurrency, convertedRows, safeNum),
-    fx: { source: fx.source, date: fx.date, missingCurrencies: [] },
   }
 }
 
 export function displayWidgetTitle(widget: Widget, model: DashboardCurrencyModel): string {
   if (!model.hasMultipleCurrencies) return widget.title
-  if (model.convertedBucket && CONVERTED_WIDGET_TYPES.has(widget.type)) {
-    return `${widget.title} · converted to ${model.primaryCurrency}`
-  }
-  if (MONEY_WIDGET_TYPES.has(widget.type)) return `${widget.title} · ${model.primaryCurrency}`
+  if (MONEY_WIDGET_TYPES.has(widget.type)) return `${widget.title} · ${currencyDisplayName(model.primaryCurrency)}`
   return widget.title
 }
 

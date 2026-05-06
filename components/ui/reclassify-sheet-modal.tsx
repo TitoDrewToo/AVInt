@@ -109,10 +109,6 @@ function aldrichStyle() {
   return { fontFamily: 'var(--font-aldrich), "Aldrich", sans-serif' }
 }
 
-function instrumentStyle() {
-  return { fontFamily: 'var(--font-display), "Instrument Serif", Georgia, serif' }
-}
-
 function formatAmount(value: number | string | null) {
   if (value === null || value === undefined || value === "") return "-"
   const n = Number(value)
@@ -202,6 +198,7 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
   const [shouldRenormalize, setShouldRenormalize] = useState(false)
   const [copiedJson, setCopiedJson] = useState(false)
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const autoAnalyzeStartedRef = useRef<string | null>(null)
 
   const analysis = fileMeta?.analysis_json ?? null
 
@@ -324,13 +321,12 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
         rationale: finding.rationale,
         confidence: finding.confidence,
         affected_row_count: finding.affected_row_ids.length,
-        action: finding.proposed_action,
       })),
       rows: rows.map((row, index) => {
         const sourceIndex = row.raw_json?.source_index ?? index
         const sourceEntry = fileMeta?.source_rows_json?.[sourceIndex] ?? row.raw_json?.source_row ?? null
         return {
-          row_index: index + 1,
+          row_index: sourceEntry?.row_index ?? index + 1,
           vendor: displayVendor(row),
           date: row.document_date,
           amount: amountForRow(row),
@@ -418,7 +414,7 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
     setEditingCell(null)
   }
 
-  async function runAnalysis() {
+  const runAnalysis = useCallback(async () => {
     if (!fileId) return
     setAnalyzing(true)
     setError(null)
@@ -446,7 +442,19 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
     } finally {
       setAnalyzing(false)
     }
-  }
+  }, [fileId])
+
+  useEffect(() => {
+    if (!isOpen) {
+      autoAnalyzeStartedRef.current = null
+      return
+    }
+    if (!fileId || loading || analyzing || !fileMeta || rows.length === 0) return
+    if (fileMeta.analysis_json) return
+    if (autoAnalyzeStartedRef.current === fileId) return
+    autoAnalyzeStartedRef.current = fileId
+    void runAnalysis()
+  }, [analyzing, fileId, fileMeta, isOpen, loading, rows.length, runAnalysis])
 
   async function openFile() {
     if (!fileMeta?.storage_path) return
@@ -757,19 +765,23 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
                 <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground" style={aldrichStyle()}>Briefing</span>
               </div>
               {analysis?.summary ? (
-                <p className="text-sm leading-relaxed text-foreground" style={instrumentStyle()}>{analysis.summary}</p>
+                <p className="text-sm leading-relaxed text-foreground">{analysis.summary}</p>
+              ) : analyzing ? (
+                <p className="text-sm text-muted-foreground">
+                  Analyzing spreadsheet…
+                </p>
               ) : (
-                <p className="text-sm italic text-muted-foreground" style={instrumentStyle()}>
-                  No briefing yet. Run an analysis to see findings.
+                <p className="text-sm italic text-muted-foreground">
+                  No briefing yet.
                 </p>
               )}
               <button
                 onClick={() => void runAnalysis()}
                 disabled={analyzing}
-                className={`mt-3 inline-flex items-center gap-1.5 text-xs ${analysis ? "text-muted-foreground hover:text-foreground" : "rounded-md bg-primary px-3 py-1.5 text-primary-foreground hover:bg-primary/90"}`}
+                className="mt-3 inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
               >
                 <RefreshCw className={`h-3 w-3 ${analyzing ? "animate-spin" : ""}`} />
-                {analysis ? "Re-analyze" : "Analyze with AI"}
+                Re-analyze
               </button>
               {analysis && updatedLabel(fileMeta?.analyzed_at ?? analysis.analyzed_at) && (
                 <span className="ml-2 font-mono text-[11px] text-muted-foreground">

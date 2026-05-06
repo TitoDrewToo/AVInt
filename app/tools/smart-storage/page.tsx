@@ -2297,6 +2297,7 @@ export default function SmartStoragePage() {
         const file = files.find(f => f.id === hoverPreview.fileId)
         if (!file) return null
         const isImage = file.file_type.startsWith("image/")
+        const documentTypeLabel = fileDocumentTypeLabel(file)
         const viewportWidth = typeof window === "undefined" ? 0 : window.innerWidth
         const viewportHeight = typeof window === "undefined" ? 0 : window.innerHeight
         const hasViewport = viewportWidth > 0 && viewportHeight > 0
@@ -2335,7 +2336,9 @@ export default function SmartStoragePage() {
             )}
             <div className="px-3 py-2 space-y-0.5">
               <p className="truncate text-xs font-medium text-foreground">{file.filename}</p>
-              <p className="text-[11px] text-muted-foreground capitalize">{file.document_type.replace(/_/g, " ")}</p>
+              <p className={`text-[11px] capitalize ${documentTypeLabel.isFailed ? "text-destructive" : "text-muted-foreground"}`}>
+                {documentTypeLabel.label}
+              </p>
               <p className="text-[11px] text-muted-foreground/60">{formatBytes(file.file_size)}</p>
               <p className="mt-1 text-[10px] text-primary/60">Double-click to open</p>
             </div>

@@ -148,6 +148,11 @@ function formatAmount(value: number | string | null) {
   return n.toLocaleString(undefined, { maximumFractionDigits: 2 })
 }
 
+function formatCurrencyCell(value: string | null | undefined) {
+  if (!value || value.trim().toLowerCase() === "unspecified") return "-"
+  return value
+}
+
 function amountForRow(row: DocumentFieldRow) {
   return row.total_amount ?? row.gross_income ?? row.net_income ?? null
 }
@@ -996,7 +1001,7 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
                         </td>
                         <td className={`px-3 py-2.5 font-mono text-xs tabular-nums text-muted-foreground transition-colors ${fieldFlashing ? "bg-primary/10" : ""}`}>{row.document_date ?? "-"}</td>
                         <td className={`px-3 py-2.5 text-right font-mono text-xs tabular-nums text-foreground transition-colors ${fieldFlashing ? "bg-primary/10" : ""}`}>{formatAmount(amountForRow(row))}</td>
-                        <td className={`px-3 py-2.5 font-mono text-xs tabular-nums text-muted-foreground transition-colors ${fieldFlashing ? "bg-primary/10" : ""}`}>{row.currency ?? "-"}</td>
+                        <td className={`px-3 py-2.5 font-mono text-xs tabular-nums text-muted-foreground transition-colors ${fieldFlashing ? "bg-primary/10" : ""}`}>{formatCurrencyCell(row.currency)}</td>
                         <td className={`px-3 py-2.5 transition-colors ${fieldFlashing ? "bg-primary/10" : ""}`}><CategoryChip value={row.expense_category ?? row.income_source} confidence={Number(row.confidence_score ?? 0)} /></td>
                         <td className="px-3 py-2.5">
                           <Popover>
@@ -1189,7 +1194,7 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
                                 <span className="w-8 font-mono text-muted-foreground tabular-nums">{rowIndex + 1}</span>
                                 <span className="min-w-0 flex-1 truncate text-foreground">{displayVendor(row)}</span>
                                 <span className="w-20 text-right font-mono text-muted-foreground">{formatAmount(amountForRow(row))}</span>
-                                <span className="w-10 font-mono text-muted-foreground">{row.currency ?? "-"}</span>
+                                <span className="w-10 font-mono text-muted-foreground">{formatCurrencyCell(row.currency)}</span>
                                 <span className="w-24 truncate text-muted-foreground">{row.expense_category ?? row.income_source ?? "-"}</span>
                               </label>
                             ))}

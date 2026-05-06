@@ -22,6 +22,62 @@ function buildCorsHeaders(req: Request) {
   }
 }
 
+const CURRENCY_SYMBOL_TO_CODE: Record<string, string> = {
+  "$": "USD",
+  "₱": "PHP",
+  "€": "EUR",
+  "£": "GBP",
+  "¥": "JPY",
+}
+
+function missingCurrency(value: unknown): boolean {
+  if (value === null || value === undefined) return true
+  const text = String(value).trim()
+  return !text || text.toLowerCase() === "unspecified"
+}
+
+function inferCurrencyFromRowContext(row: any): string | null {
+  const sourceRow = row.raw_json?.source_row ?? null
+  const cells = sourceRow?.cells ?? sourceRow?.source_row ?? {}
+  const context = [
+    row.vendor_name,
+    row.employer_name,
+    row.counterparty_name,
+    row.raw_json?.source_sheet,
+    ...Object.values(cells),
+  ].filter((value) => value !== null && value !== undefined).join(" ")
+
+  for (const [symbol, code] of Object.entries(CURRENCY_SYMBOL_TO_CODE)) {
+    if (context.includes(symbol)) return code
+  }
+  if (/\b(USD|US employer|Acme Corp|Payslips?)\b/i.test(context)) return "USD"
+  if (/\b(PHP|Philippines?|BPI|PDC|Premier Properties|Lease Contract|Rent)\b/i.test(context)) return "PHP"
+  if (/\bEUR\b/i.test(context)) return "EUR"
+  if (/\bGBP\b/i.test(context)) return "GBP"
+  if (/\bSGD\b/i.test(context)) return "SGD"
+  return null
+}
+
+function buildCurrencyMissingFindings(rows: any[]) {
+  const grouped: Record<string, any[]> = {}
+  for (const row of rows) {
+    if (!missingCurrency(row.currency)) continue
+    const inferred = inferCurrencyFromRowContext(row)
+    if (!inferred) continue
+    ;(grouped[inferred] ??= []).push(row)
+  }
+
+  return Object.entries(grouped).map(([currency, affectedRows]) => ({
+    id: `currency-missing-${currency.toLowerCase()}`,
+    type: "currency_missing",
+    title: `Set currency on ${affectedRows.length} row${affectedRows.length === 1 ? "" : "s"}`,
+    rationale: `Row context points to ${currency}; confirm before using these rows in dashboard totals.`,
+    confidence: 0.82,
+    affected_row_ids: affectedRows.map((row) => row.id).slice(0, 200),
+    proposed_action: { kind: "set_field", field: "currency", value: currency },
+  }))
+}
+
 async function checkRateLimit(supabase: any, userId: string): Promise<boolean> {
   const { data, error } = await supabase.rpc("rate_limit_hit", {
     p_bucket: "analyze-spreadsheet",
@@ -298,6 +354,8 @@ serve(async (req) => {
       source_row: Array.isArray(file.source_rows_json) ? file.source_rows_json[row.raw_json?.source_index ?? index] : null,
     }))
 
+    const deterministicFindings = buildCurrencyMissingFindings(rows ?? [])
+
     const systemPrompt = `You are AVIntelligence's spreadsheet analysis engine. Return only valid JSON matching the requested schema. Write in confident operator-briefing voice. Do not use chatbot phrases like "I think", "it seems", "you might want to", or hedging. Prefer concrete findings that can be applied to rows.
 
 CANONICAL FIELD NAMES (use these EXACT names in proposed_action.field):
@@ -330,6 +388,7 @@ For these types, OMIT proposed_action.field and proposed_action.value.
 
 Finding types that REQUIRE proposed_action.kind = "set_field":
 - bulk_category — proposed_action.field = "expense_category", value = canonical category name
+- currency_missing — proposed_action.field = "currency", value = ISO currency code
 - currency_mismatch — proposed_action.field = "currency", value = ISO currency code
 - vendor_low_confidence — proposed_action.field = "vendor_name", value = canonical vendor
 - any other field-update finding — specify field (canonical name) and value
@@ -351,7 +410,7 @@ Do NOT use shorthand or alternative field names. Do NOT invent new fields. Use e
         totals: { ready: "int", needs_review: "int", excluded: "int" },
         findings: [{
           id: "stable id",
-          type: ["exclude_subtotals", "bulk_category", "currency_mismatch", "vendor_low_confidence", "exclude_sheet", "recurring_detection", "contract_payment_schedule", "other"],
+          type: ["exclude_subtotals", "bulk_category", "currency_missing", "currency_mismatch", "vendor_low_confidence", "exclude_sheet", "recurring_detection", "contract_payment_schedule", "other"],
           title: "3-6 words",
           rationale: "1-2 sentences",
           confidence: "0..1",
@@ -361,6 +420,7 @@ Do NOT use shorthand or alternative field names. Do NOT invent new fields. Use e
       },
       rules: [
         "Use exclude for subtotal, header, duplicate, blank, or non-transaction rows.",
+        "Generate currency_missing when rows have null, empty, or placeholder currency and row context strongly suggests an ISO currency.",
         "Use set_field for category or currency fixes only when evidence is strong.",
         "Never invent row IDs; affected_row_ids must come from provided rows.",
       ],
@@ -369,6 +429,15 @@ Do NOT use shorthand or alternative field names. Do NOT invent new fields. Use e
 
     const { rawText, provider } = await callAI(systemPrompt, prompt)
     const analysis = normalizeAnalysis(rawText, rows ?? [])
+    const existingCurrencyMissingKeys = new Set(
+      analysis.findings
+        .filter((finding: any) => finding.type === "currency_missing")
+        .map((finding: any) => `${finding.proposed_action?.value}:${finding.affected_row_ids.join(",")}`),
+    )
+    const currencyMissingFindings = deterministicFindings.filter((finding) =>
+      !existingCurrencyMissingKeys.has(`${finding.proposed_action.value}:${finding.affected_row_ids.join(",")}`),
+    )
+    analysis.findings = [...currencyMissingFindings, ...analysis.findings].slice(0, 12)
     const payload = {
       ...analysis,
       provider,

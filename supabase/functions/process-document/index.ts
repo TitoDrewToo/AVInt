@@ -130,6 +130,15 @@ const DOCUMENT_TYPES = new Set([
 ])
 
 const NUMERIC_FIELDS = ["total_amount", "gross_income", "net_income", "tax_amount", "discount_amount"]
+const KNOWN_CURRENCY_CODES = ["USD", "PHP", "EUR", "GBP", "SGD", "JPY", "AUD", "CAD"]
+const CURRENCY_SYMBOL_TO_CODE: Record<string, string> = {
+  "$": "USD",
+  "₱": "PHP",
+  "€": "EUR",
+  "£": "GBP",
+  "¥": "JPY",
+}
+const AMOUNT_FIELD_TARGETS = new Set([...NUMERIC_FIELDS, "line_item_amount"])
 
 function isSpreadsheetInput(mimeType: string, filename: string): boolean {
   return mimeType === "text/csv" ||
@@ -298,6 +307,47 @@ function safeNumber(value: any): number | null {
   return null
 }
 
+function normalizeCurrencyCode(value: unknown): string | null {
+  if (value === null || value === undefined) return null
+  const trimmed = String(value).trim()
+  if (!trimmed || trimmed.toLowerCase() === "unspecified") return null
+  const upper = trimmed.toUpperCase()
+  if (KNOWN_CURRENCY_CODES.includes(upper)) return upper
+  const symbol = Object.keys(CURRENCY_SYMBOL_TO_CODE).find((candidate) => trimmed.includes(candidate))
+  return symbol ? CURRENCY_SYMBOL_TO_CODE[symbol] : null
+}
+
+function inferCurrencyFromText(value: unknown): string | null {
+  if (value === null || value === undefined) return null
+  const text = String(value)
+  for (const code of KNOWN_CURRENCY_CODES) {
+    if (new RegExp(`(^|[^A-Z])${code}([^A-Z]|$)`, "i").test(text)) return code
+  }
+  const symbol = Object.keys(CURRENCY_SYMBOL_TO_CODE).find((candidate) => text.includes(candidate))
+  return symbol ? CURRENCY_SYMBOL_TO_CODE[symbol] : null
+}
+
+function inferCurrencyFromAmountCells(cells: Record<string, any>, mapping: Record<string, string>): string | null {
+  for (const [header, value] of Object.entries(cells)) {
+    if (!AMOUNT_FIELD_TARGETS.has(mapping[header])) continue
+    if (typeof value !== "string") continue
+    const trimmed = value.trim()
+    const symbol = Object.keys(CURRENCY_SYMBOL_TO_CODE).find((candidate) => trimmed.startsWith(candidate))
+    if (symbol) return CURRENCY_SYMBOL_TO_CODE[symbol]
+  }
+  return null
+}
+
+function majorityCurrency(counts: Record<string, number>, threshold = 0): string | null {
+  const entries = Object.entries(counts).sort(([, a], [, b]) => b - a)
+  if (entries.length === 0) return null
+  if (entries.length > 1 && entries[0][1] === entries[1][1]) return null
+  const total = entries.reduce((sum, [, count]) => sum + count, 0)
+  if (total === 0) return null
+  if (threshold > 0 && entries[0][1] / total < threshold) return null
+  return entries[0][0]
+}
+
 function applyMapping(
   cells: Record<string, any>,
   mapping: Record<string, string>,
@@ -422,6 +472,7 @@ async function extractSpreadsheetRows(
 
   const extractedRows: any[] = []
   const sourceRows: any[] = []
+  const explicitCurrencyCounts: Record<string, number> = {}
   let sourceIndex = 0
 
   for (const sheetName of workbook.SheetNames) {
@@ -473,6 +524,13 @@ async function extractSpreadsheetRows(
 
     const extractedRowsBeforeSheet = extractedRows.length
     let garbageFiltered = 0
+    const sheetCurrency = inferCurrencyFromText(sheetName)
+    const amountSymbolCounts: Record<string, number> = {}
+    const rowsForSheet: Array<{
+      canonical: any
+      source: any
+      explicitBlankCurrency: boolean
+    }> = []
 
     for (let rowIndex = 0; rowIndex < dataRows.length; rowIndex++) {
       const row = dataRows[rowIndex]
@@ -497,15 +555,62 @@ async function extractSpreadsheetRows(
         canonical.raw_json_extras = { sanitized_fields: canonical._sanitized_fields }
         delete canonical._sanitized_fields
       }
+      const explicitCurrency = normalizeCurrencyCode(canonical.currency)
+      const hasCurrencyMapping = Object.values(mapping).includes("currency")
+      const explicitBlankCurrency = hasCurrencyMapping && !explicitCurrency
+      const amountSymbolCurrency = inferCurrencyFromAmountCells(cells, mapping)
+      if (amountSymbolCurrency && !explicitCurrency) {
+        amountSymbolCounts[amountSymbolCurrency] = (amountSymbolCounts[amountSymbolCurrency] ?? 0) + 1
+      }
+      if (explicitCurrency) {
+        canonical.currency = explicitCurrency
+        explicitCurrencyCounts[explicitCurrency] = (explicitCurrencyCounts[explicitCurrency] ?? 0) + 1
+      }
       canonical._source_sheet = sheetName
       canonical._source_index = sourceIndex
-      extractedRows.push(canonical)
-      sourceRows.push({
-        sheet_name: sheetName,
-        row_index: rowIndex + 2,
-        cells,
+      rowsForSheet.push({
+        canonical,
+        source: {
+          sheet_name: sheetName,
+          row_index: rowIndex + 2,
+          cells,
+        },
+        explicitBlankCurrency,
       })
       sourceIndex++
+    }
+
+    const sheetAmountCurrency = majorityCurrency(amountSymbolCounts)
+    const sheetInferenceCounts: Record<string, number> = {}
+    for (const item of rowsForSheet) {
+      if (normalizeCurrencyCode(item.canonical.currency)) continue
+      const inferredCurrency = sheetCurrency ?? sheetAmountCurrency
+      if (!inferredCurrency) continue
+      const method = sheetCurrency ? "sheet_name" : "amount_symbol"
+      item.canonical.currency = inferredCurrency
+      item.canonical.raw_json_extras = {
+        ...(item.canonical.raw_json_extras ?? {}),
+        inferred_currency_method: method,
+        inferred_currency: inferredCurrency,
+      }
+      sheetInferenceCounts[`${method}:${inferredCurrency}`] = (sheetInferenceCounts[`${method}:${inferredCurrency}`] ?? 0) + 1
+    }
+
+    for (const [key, affectedCount] of Object.entries(sheetInferenceCounts)) {
+      const [method, inferredCurrency] = key.split(":")
+      logEvent(FN, "currency_inferred", {
+        file_id: fileId,
+        sheet_name: sheetName,
+        method,
+        inferred_currency: inferredCurrency,
+        affected_count: affectedCount,
+      })
+    }
+
+    for (const item of rowsForSheet) {
+      item.canonical._explicit_blank_currency = item.explicitBlankCurrency
+      extractedRows.push(item.canonical)
+      sourceRows.push(item.source)
     }
 
     logEvent(FN, "sheet_processed", {
@@ -515,6 +620,36 @@ async function extractSpreadsheetRows(
       extracted_rows_added: extractedRows.length - extractedRowsBeforeSheet,
       garbage_filtered: garbageFiltered,
     })
+  }
+
+  const fileMajorityCurrency = majorityCurrency(explicitCurrencyCounts, 0.8)
+  if (fileMajorityCurrency) {
+    const fileMajorityBySheet: Record<string, number> = {}
+    for (const row of extractedRows) {
+      if (normalizeCurrencyCode(row.currency)) continue
+      if (row._explicit_blank_currency) continue
+      row.currency = fileMajorityCurrency
+      row.raw_json_extras = {
+        ...(row.raw_json_extras ?? {}),
+        inferred_currency_method: "file_majority",
+        inferred_currency: fileMajorityCurrency,
+      }
+      const sheetName = row._source_sheet ?? "unknown"
+      fileMajorityBySheet[sheetName] = (fileMajorityBySheet[sheetName] ?? 0) + 1
+    }
+    for (const [sheetName, affectedCount] of Object.entries(fileMajorityBySheet)) {
+      logEvent(FN, "currency_inferred", {
+        file_id: fileId,
+        sheet_name: sheetName,
+        method: "file_majority",
+        inferred_currency: fileMajorityCurrency,
+        affected_count: affectedCount,
+      })
+    }
+  }
+
+  for (const row of extractedRows) {
+    delete row._explicit_blank_currency
   }
 
   logEvent(FN, "extraction_summary", {

@@ -130,7 +130,7 @@ function buildFixtureRows(): FixtureRow[] {
     rows.push({
       sheetName: "Payslips",
       rowIndex: i + 2,
-      cells: { "Period Start": isoDate(month, 1), "Period End": isoDate(month, 28), Employer: "Acme Corp", Gross: gross, Net: gross - tax, Tax: tax, "Net Pay Date": isoDate(month, 30) },
+      cells: { "Period Start": isoDate(month, 1), "Period End": isoDate(month, 28), Employer: "Acme Corp", Gross: gross, Net: gross - tax, Tax: tax, Currency: "USD", "Net Pay Date": isoDate(month, 30) },
       extracted: { employer_name: "Acme Corp", document_date: isoDate(month, 30), currency: "USD", gross_income: gross, net_income: gross - tax, tax_amount: tax, income_source: "wage" },
       confidence: 0.94,
       normalizationStatus: "normalized",
@@ -140,7 +140,7 @@ function buildFixtureRows(): FixtureRow[] {
   rows.push({
     sheetName: "Payslips",
     rowIndex: 8,
-    cells: { "Period Start": isoDate(6, 1), "Period End": isoDate(6, 30), Employer: "Refund", Gross: 450, Net: 450, Tax: 0, "Net Pay Date": isoDate(6, 15) },
+    cells: { "Period Start": isoDate(6, 1), "Period End": isoDate(6, 30), Employer: "Refund", Gross: 450, Net: 450, Tax: 0, Currency: "USD", "Net Pay Date": isoDate(6, 15) },
     extracted: { vendor_name: "Refund", document_date: isoDate(6, 15), currency: "USD", total_amount: 450, expense_category: null },
     confidence: 0.48,
     normalizationStatus: "normalized",
@@ -177,8 +177,8 @@ function buildFixtureRows(): FixtureRow[] {
   rows.push({
     sheetName: "Lease Contract",
     rowIndex: 2,
-    cells: { Description: "Lease agreement - Premier Properties Inc", "Due Date": isoDate(1, 1), Amount: null, "Check Number": null, Bank: null },
-    extracted: { vendor_name: "Premier Properties Inc", counterparty_name: "Premier Properties Inc", document_date: isoDate(1, 1), currency: "USD", total_amount: null, line_items: [] },
+    cells: { Description: "Lease agreement - Premier Properties Inc", "Due Date": isoDate(1, 1), Amount: null, Currency: "PHP", "Check Number": null, Bank: null },
+    extracted: { vendor_name: "Premier Properties Inc", counterparty_name: "Premier Properties Inc", document_date: isoDate(1, 1), currency: "PHP", total_amount: null, line_items: [] },
     confidence: 0.9,
     normalizationStatus: "normalized",
     normalizationAttempts: 0,
@@ -187,8 +187,8 @@ function buildFixtureRows(): FixtureRow[] {
     rows.push({
       sheetName: "Lease Contract",
       rowIndex: i + 3,
-      cells: { Description: `Rent ${String(i + 1).padStart(2, "0")}/2025`, "Due Date": isoDate(i + 1, 1), Amount: 1500, "Check Number": `PDC-${202500 + i + 1}`, Bank: "BPI" },
-      extracted: { vendor_name: "Premier Properties Inc", counterparty_name: "Premier Properties Inc", document_date: isoDate(i + 1, 1), currency: "USD", total_amount: 1500, expense_category: "Rent", line_items: [{ description: `Rent ${i + 1}/2025`, amount: 1500, due_date: isoDate(i + 1, 1), check_number: `PDC-${202500 + i + 1}`, bank_name: "BPI" }] },
+      cells: { Description: `Rent ${String(i + 1).padStart(2, "0")}/2025`, "Due Date": isoDate(i + 1, 1), Amount: 1500, Currency: "PHP", "Check Number": `PDC-${202500 + i + 1}`, Bank: "BPI" },
+      extracted: { vendor_name: "Premier Properties Inc", counterparty_name: "Premier Properties Inc", document_date: isoDate(i + 1, 1), currency: "PHP", total_amount: 1500, expense_category: "Rent", line_items: [{ description: `Rent ${i + 1}/2025`, amount: 1500, due_date: isoDate(i + 1, 1), check_number: `PDC-${202500 + i + 1}`, bank_name: "BPI" }] },
       confidence: 0.93,
       normalizationStatus: "normalized",
       normalizationAttempts: 0,
@@ -204,8 +204,8 @@ function buildFixtureRows(): FixtureRow[] {
     rows.push({
       sheetName: "Lease Contract",
       rowIndex: idx + 15,
-      cells: { Description: entry[0], "Due Date": entry[1], Amount: entry[2], "Check Number": `PDC-S${idx + 1}`, Bank: "BPI" },
-      extracted: { vendor_name: "Premier Properties Inc", counterparty_name: "Premier Properties Inc", document_date: entry[1], currency: "USD", total_amount: entry[2], expense_category: "Rent" },
+      cells: { Description: entry[0], "Due Date": entry[1], Amount: entry[2], Currency: "PHP", "Check Number": `PDC-S${idx + 1}`, Bank: "BPI" },
+      extracted: { vendor_name: "Premier Properties Inc", counterparty_name: "Premier Properties Inc", document_date: entry[1], currency: "PHP", total_amount: entry[2], expense_category: "Rent" },
       confidence: 0.88,
       normalizationStatus: "normalized",
       normalizationAttempts: 0,

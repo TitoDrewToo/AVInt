@@ -90,6 +90,7 @@ export interface DashboardCurrencyModel {
   primaryCurrency: string
   buckets: Record<string, DashboardCurrencyBucket>
   hasMultipleCurrencies: boolean
+  unspecifiedRowCount: number
 }
 
 export const UNSPECIFIED_CURRENCY = "Unspecified"
@@ -132,6 +133,7 @@ export const EMPTY_CURRENCY_MODEL: DashboardCurrencyModel = {
   primaryCurrency: UNSPECIFIED_CURRENCY,
   buckets: {},
   hasMultipleCurrencies: false,
+  unspecifiedRowCount: 0,
 }
 
 export const WIDGET_LIBRARY = [
@@ -171,9 +173,10 @@ export function currencyToSymbol(code: string | null | undefined): string {
   return `${c} `
 }
 
-export function currencyDisplayName(code: string | null | undefined): string {
+export function currencyDisplayName(code: string | null | undefined): string | null {
   const c = (code ?? "").trim()
-  return c || UNSPECIFIED_CURRENCY
+  if (!c || c.toUpperCase() === UNSPECIFIED_CURRENCY.toUpperCase()) return null
+  return c
 }
 
 function dateFromIso(date: string): Date {
@@ -369,6 +372,7 @@ export function buildCurrencyModel(fields: any[], safeNum: (v: unknown) => numbe
   if (!fields?.length) return EMPTY_CURRENCY_MODEL
 
   const labeled: Record<string, any[]> = {}
+  let unspecifiedRowCount = 0
   for (const f of fields) {
     const docType = f?.files?.document_type
     const amount = docType === "payslip" || docType === "income_statement"
@@ -377,6 +381,7 @@ export function buildCurrencyModel(fields: any[], safeNum: (v: unknown) => numbe
     if (amount === null || amount === undefined) continue
     const raw = typeof f?.currency === "string" ? f.currency.trim().toUpperCase() : ""
     const currency = raw || UNSPECIFIED_CURRENCY
+    if (currency === UNSPECIFIED_CURRENCY) unspecifiedRowCount++
     ;(labeled[currency] ??= []).push(f)
   }
 
@@ -384,7 +389,7 @@ export function buildCurrencyModel(fields: any[], safeNum: (v: unknown) => numbe
   for (const [cur, rows] of Object.entries(labeled)) {
     buckets[cur] = computeBucket(cur, rows, safeNum)
   }
-  const currencies = Object.keys(buckets)
+  const currencies = Object.keys(buckets).filter((currency) => currency !== UNSPECIFIED_CURRENCY)
 
   const stats: Record<string, { count: number; activity: number; latest: string }> = {}
   for (const [cur, rows] of Object.entries(labeled)) {
@@ -408,7 +413,7 @@ export function buildCurrencyModel(fields: any[], safeNum: (v: unknown) => numbe
   const primary = normalizedPreference && currencies.includes(normalizedPreference)
     ? normalizedPreference
     : inferredPrimary
-  const orderedCurrencies = [
+  const orderedCurrencies = currencies.length === 0 ? [] : [
     primary,
     ...currencies
       .filter((cur) => cur !== primary)
@@ -424,12 +429,14 @@ export function buildCurrencyModel(fields: any[], safeNum: (v: unknown) => numbe
     primaryCurrency: primary,
     buckets,
     hasMultipleCurrencies: currencies.length > 1,
+    unspecifiedRowCount,
   }
 }
 
 export function displayWidgetTitle(widget: Widget, model: DashboardCurrencyModel): string {
   if (!model.hasMultipleCurrencies) return widget.title
-  if (MONEY_WIDGET_TYPES.has(widget.type)) return `${widget.title} · ${currencyDisplayName(model.primaryCurrency)}`
+  const displayCurrency = currencyDisplayName(model.primaryCurrency)
+  if (MONEY_WIDGET_TYPES.has(widget.type) && displayCurrency) return `${widget.title} · ${displayCurrency}`
   return widget.title
 }
 

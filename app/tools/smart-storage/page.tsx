@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react"
+import { type ReactElement, useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { Navbar } from "@/components/navbar"
 import { Button } from "@/components/ui/button"
 import {
@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { ProcessingIndicator } from "@/components/ui/processing-indicator"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 import { supabase } from "@/lib/supabase"
 import { useEntitlement } from "@/hooks/use-entitlement"
@@ -86,6 +87,15 @@ type HoverPreviewState = {
   url: string | null
   x: number
   y: number
+}
+
+function Tip({ children, text }: { children: ReactElement; text: string }) {
+  return (
+    <Tooltip delayDuration={500}>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent sideOffset={6}>{text}</TooltipContent>
+    </Tooltip>
+  )
 }
 
 type ProcessingBadgeState = "working_slow" | "failed"
@@ -1315,33 +1325,35 @@ export default function SmartStoragePage() {
     const label = badge === "failed" ? "Failed - retry" : "Still working..."
 
     return (
-      <span
-        className={`inline-flex max-w-full items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] leading-none ${
-          badge === "failed"
-            ? "border-red-200 bg-red-50 text-red-700"
-            : "border-amber-200 bg-amber-50 text-amber-700"
-        }`}
-        title={title}
-        onPointerDown={(e) => e.stopPropagation()}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <button
-          type="button"
-          className="truncate text-left underline-offset-2 hover:underline"
-          onClick={() => { void handleRetryProcessing(file) }}
+      <Tip text="Click to retry processing">
+        <span
+          className={`inline-flex max-w-full items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] leading-none ${
+            badge === "failed"
+              ? "border-red-200 bg-red-50 text-red-700"
+              : "border-amber-200 bg-amber-50 text-amber-700"
+          }`}
+          title={title}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
         >
-          {label}
-        </button>
-        {badge === "working_slow" && (
           <button
             type="button"
-            className="shrink-0 underline-offset-2 hover:underline"
+            className="truncate text-left underline-offset-2 hover:underline"
             onClick={() => { void handleRetryProcessing(file) }}
           >
-            Retry
+            {label}
           </button>
-        )}
-      </span>
+          {badge === "working_slow" && (
+            <button
+              type="button"
+              className="shrink-0 underline-offset-2 hover:underline"
+              onClick={() => { void handleRetryProcessing(file) }}
+            >
+              Retry
+            </button>
+          )}
+        </span>
+      </Tip>
     )
   }
 
@@ -1373,7 +1385,11 @@ export default function SmartStoragePage() {
             <div className="flex-[0.6] overflow-y-auto border-b border-border p-2">
               {/* Processing indicator */}
               <div className="mb-2 flex justify-end px-2">
-                <ProcessingIndicator active={isProcessing} />
+                <Tip text="Files being processed - usually completes in 1-3 minutes">
+                  <span>
+                    <ProcessingIndicator active={isProcessing} />
+                  </span>
+                </Tip>
               </div>
 
               {/* Documents tree — mirrors workspace structure */}
@@ -2175,7 +2191,11 @@ export default function SmartStoragePage() {
           {/* Documents section */}
           <div className="flex-[0.6] overflow-y-auto border-b border-border p-2">
             <div className="mb-2 flex justify-end px-2">
-              <ProcessingIndicator active={isProcessing} />
+              <Tip text="Files being processed - usually completes in 1-3 minutes">
+                <span>
+                  <ProcessingIndicator active={isProcessing} />
+                </span>
+              </Tip>
             </div>
             <LeftFolderItem
               name="Documents"
@@ -2288,7 +2308,6 @@ export default function SmartStoragePage() {
         onSaved={() => {
           void loadFiles()
           void checkReportAvailability()
-          setReclassifySheetTarget(null)
         }}
       />
 

@@ -1,6 +1,6 @@
 "use client"
 
-import type { ReactNode } from "react"
+import type { ReactElement, ReactNode } from "react"
 import { Download, FolderOutput, Pencil, Tag, X } from "lucide-react"
 import {
   ContextMenu,
@@ -11,6 +11,7 @@ import {
   ContextMenuShortcut,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 interface StorageItemMenuProps {
   kind: "file" | "folder"
@@ -27,6 +28,15 @@ interface StorageItemMenuProps {
   onReclassify?: () => void
   onContextIntent?: () => void
   children: ReactNode
+}
+
+function Tip({ children, text }: { children: ReactElement; text: string }) {
+  return (
+    <Tooltip delayDuration={500}>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent sideOffset={6}>{text}</TooltipContent>
+    </Tooltip>
+  )
 }
 
 export function StorageItemMenu({
@@ -101,10 +111,12 @@ export function StorageItemMenu({
             {onReclassify && (
               <>
                 <ContextMenuSeparator />
-                <ContextMenuItem inset onSelect={onReclassify}>
-                  <Tag className="h-3.5 w-3.5" />
-                  Reclassify
-                </ContextMenuItem>
+                <Tip text="Edit extracted fields and apply AI suggestions">
+                  <ContextMenuItem inset onSelect={onReclassify}>
+                    <Tag className="h-3.5 w-3.5" />
+                    Reclassify
+                  </ContextMenuItem>
+                </Tip>
               </>
             )}
             {onDownload && (

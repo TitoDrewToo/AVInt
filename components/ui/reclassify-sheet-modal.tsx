@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { type ReactElement, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ArrowUpRight,
   ChevronDown,
@@ -15,6 +15,7 @@ import {
 } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 const EXPENSE_CATEGORIES = [
   "Advertising",
@@ -39,6 +40,7 @@ const EXPENSE_CATEGORIES = [
 const CURRENCIES = ["PHP", "USD", "EUR", "GBP", "SGD", "JPY", "AUD"]
 const ROW_HEIGHT = 48
 const OVERSCAN = 8
+const RENORMALIZE_SKIP_FIELDS = new Set(["expense_category", "currency", "normalization_status"])
 
 type AnalysisFinding = {
   id: string
@@ -97,6 +99,12 @@ type PendingChange = {
   label: string
 }
 
+type FindingEditState = {
+  findingId: string
+  selectedRowIds: Set<string>
+  value: string
+}
+
 interface ReclassifySheetModalProps {
   isOpen: boolean
   fileId: string | null
@@ -146,12 +154,23 @@ function ConfidenceMeter({ value }: { value: number }) {
   )
 }
 
-function StatPill({ value, label, toneClass }: { value: number; label: string; toneClass: string }) {
+function Tip({ children, text }: { children: ReactElement; text: string }) {
   return (
-    <div className="flex items-baseline gap-1.5">
-      <span className={`font-mono text-base font-semibold tabular-nums ${toneClass}`}>{value}</span>
-      <span className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</span>
-    </div>
+    <Tooltip delayDuration={500}>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent sideOffset={6}>{text}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+function StatPill({ value, label, toneClass, tooltip }: { value: number; label: string; toneClass: string; tooltip: string }) {
+  return (
+    <Tip text={tooltip}>
+      <div className="flex cursor-help items-baseline gap-1.5">
+        <span className={`font-mono text-base font-semibold tabular-nums ${toneClass}`}>{value}</span>
+        <span className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</span>
+      </div>
+    </Tip>
   )
 }
 
@@ -186,6 +205,10 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [pendingChanges, setPendingChanges] = useState<PendingChange[]>([])
   const [highlightedRowIds, setHighlightedRowIds] = useState<Set<string>>(new Set())
+  const [pulseRowIds, setPulseRowIds] = useState<Set<string>>(new Set())
+  const [acceptedFindingIds, setAcceptedFindingIds] = useState<Set<string>>(new Set())
+  const [dismissedFindingIds, setDismissedFindingIds] = useState<Set<string>>(new Set())
+  const [editingFinding, setEditingFinding] = useState<FindingEditState | null>(null)
   const [filter, setFilter] = useState<"needs_review" | "all">("all")
   const [loading, setLoading] = useState(false)
   const [analyzing, setAnalyzing] = useState(false)
@@ -197,13 +220,17 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
   const [editValue, setEditValue] = useState("")
   const [shouldRenormalize, setShouldRenormalize] = useState(false)
   const [copiedJson, setCopiedJson] = useState(false)
+  const [saveNotice, setSaveNotice] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const autoAnalyzeStartedRef = useRef<string | null>(null)
+  const pulseTimeoutRef = useRef<number | null>(null)
+  const saveNoticeTimeoutRef = useRef<number | null>(null)
 
   const analysis = fileMeta?.analysis_json ?? null
 
-  const loadSheet = useCallback(async () => {
+  const loadSheet = useCallback(async (options: { resetWorkflow?: boolean } = {}) => {
     if (!fileId) return
+    const resetWorkflow = options.resetWorkflow ?? true
     setLoading(true)
     setError(null)
     try {
@@ -223,8 +250,13 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
       if (rowsError) throw new Error(rowsError.message)
       setFileMeta(fileData as FileMeta)
       setRows((fieldRows ?? []) as DocumentFieldRow[])
-      setSelected(new Set())
-      setPendingChanges([])
+      if (resetWorkflow) {
+        setSelected(new Set())
+        setPendingChanges([])
+        setAcceptedFindingIds(new Set())
+        setDismissedFindingIds(new Set())
+        setEditingFinding(null)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load sheet rows.")
     } finally {
@@ -234,7 +266,7 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
 
   useEffect(() => {
     if (!isOpen) return
-    void loadSheet()
+    void loadSheet({ resetWorkflow: true })
   }, [isOpen, loadSheet])
 
   useEffect(() => {
@@ -295,7 +327,27 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
   }, [rows])
 
   const selectedRows = selected.size
-  const affectedByRenormalize = pendingChanges.filter((change) => change.action === "set_field").reduce((sum, change) => sum + change.rowIds.length, 0)
+  const rowById = useMemo(() => new Map(rows.map((row, index) => [row.id, { row, index }])), [rows])
+  const renormalizableChanges = useMemo(
+    () => pendingChanges.filter((change) => change.action === "set_field" && Boolean(change.field) && !RENORMALIZE_SKIP_FIELDS.has(change.field ?? "")),
+    [pendingChanges],
+  )
+  const affectedByRenormalize = useMemo(
+    () => new Set(renormalizableChanges.flatMap((change) => change.rowIds)).size,
+    [renormalizableChanges],
+  )
+  const shouldShowRenormalize = affectedByRenormalize > 0
+
+  useEffect(() => {
+    setShouldRenormalize(shouldShowRenormalize)
+  }, [shouldShowRenormalize])
+
+  useEffect(() => {
+    return () => {
+      if (pulseTimeoutRef.current) window.clearTimeout(pulseTimeoutRef.current)
+      if (saveNoticeTimeoutRef.current) window.clearTimeout(saveNoticeTimeoutRef.current)
+    }
+  }, [])
 
   const copyAsJson = useCallback(async () => {
     if (!fileId) return
@@ -385,14 +437,43 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
     })
   }
 
-  function applyFinding(finding: AnalysisFinding) {
+  function flashRows(rowIds: string[]) {
+    if (pulseTimeoutRef.current) window.clearTimeout(pulseTimeoutRef.current)
+    setPulseRowIds(new Set(rowIds))
+    pulseTimeoutRef.current = window.setTimeout(() => setPulseRowIds(new Set()), 1500)
+  }
+
+  function applyFinding(finding: AnalysisFinding, rowIds = finding.affected_row_ids, value = finding.proposed_action.value) {
+    const curatedRowIds = rowIds.filter((rowId) => rowById.has(rowId))
+    if (curatedRowIds.length === 0) return
+    flashRows(curatedRowIds)
     queueChange({
       id: `finding-${finding.id}`,
-      rowIds: finding.affected_row_ids,
+      rowIds: curatedRowIds,
       action: finding.proposed_action.kind,
       field: finding.proposed_action.field,
-      value: finding.proposed_action.value,
+      value,
       label: finding.title,
+    })
+    setAcceptedFindingIds((prev) => new Set(prev).add(finding.id))
+    setEditingFinding(null)
+  }
+
+  function startFindingEdit(finding: AnalysisFinding) {
+    setEditingFinding({
+      findingId: finding.id,
+      selectedRowIds: new Set(finding.affected_row_ids.filter((rowId) => rowById.has(rowId))),
+      value: finding.proposed_action.value ?? "",
+    })
+  }
+
+  function toggleFindingEditRow(rowId: string) {
+    setEditingFinding((prev) => {
+      if (!prev) return prev
+      const selectedRowIds = new Set(prev.selectedRowIds)
+      if (selectedRowIds.has(rowId)) selectedRowIds.delete(rowId)
+      else selectedRowIds.add(rowId)
+      return { ...prev, selectedRowIds }
     })
   }
 
@@ -466,6 +547,7 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
     if (!fileId || pendingChanges.length === 0) return
     setSaving(true)
     setError(null)
+    const savedCount = pendingChanges.length
     try {
       for (const change of pendingChanges) {
         if (change.rowIds.length === 0) continue
@@ -486,11 +568,9 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
 
       if (shouldRenormalize && affectedByRenormalize > 0) {
         const userToken = (await supabase.auth.getSession()).data.session?.access_token
+        const rowIdsToRenormalize = [...new Set(renormalizableChanges.flatMap((change) => change.rowIds))]
         await Promise.allSettled(
-          pendingChanges
-            .filter((change) => change.action === "set_field")
-            .flatMap((change) => change.rowIds)
-            .map((rowId) => {
+          rowIdsToRenormalize.map((rowId) => {
               const row = rows.find((item) => item.id === rowId)
               return fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/normalize-document`, {
                 method: "POST",
@@ -506,7 +586,12 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
       }
 
       onSaved(fileId)
-      onClose()
+      await loadSheet({ resetWorkflow: false })
+      setPendingChanges([])
+      setSelected(new Set())
+      setSaveNotice(`${savedCount} change${savedCount === 1 ? "" : "s"} saved`)
+      if (saveNoticeTimeoutRef.current) window.clearTimeout(saveNoticeTimeoutRef.current)
+      saveNoticeTimeoutRef.current = window.setTimeout(() => setSaveNotice(null), 2000)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save sheet changes.")
     } finally {
@@ -516,10 +601,11 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
 
   if (!isOpen) return null
 
-  const findings = analysis?.findings ?? []
+  const findings = (analysis?.findings ?? []).filter((finding) => !dismissedFindingIds.has(finding.id))
   const highlightedActive = highlightedRowIds.size > 0
 
   return (
+    <TooltipProvider delayDuration={500}>
     <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/60 backdrop-blur-sm">
       <div className="m-4 flex flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl lg:m-8">
         <div className="flex items-center gap-4 border-b border-border px-6 py-5">
@@ -558,10 +644,10 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
         </div>
 
         <div className="flex items-center gap-6 border-b border-border bg-muted/40 px-6 py-3 text-sm">
-          <StatPill value={stats.rows} label="Rows" toneClass="text-foreground" />
-          <StatPill value={analysis?.totals?.ready ?? stats.ready} label="Ready" toneClass="text-foreground" />
-          <StatPill value={analysis?.totals?.needs_review ?? stats.needsReview} label="Needs review" toneClass="text-primary" />
-          <StatPill value={analysis?.totals?.excluded ?? stats.excluded} label="Excluded" toneClass="text-muted-foreground" />
+          <StatPill value={stats.rows} label="Rows" toneClass="text-foreground" tooltip="Total rows extracted from spreadsheet" />
+          <StatPill value={analysis?.totals?.ready ?? stats.ready} label="Ready" toneClass="text-foreground" tooltip="Rows with vendor and amount populated, ready for reports" />
+          <StatPill value={analysis?.totals?.needs_review ?? stats.needsReview} label="Needs review" toneClass="text-primary" tooltip="Rows missing core fields (vendor, amount) - review recommended" />
+          <StatPill value={analysis?.totals?.excluded ?? stats.excluded} label="Excluded" toneClass="text-muted-foreground" tooltip="Rows excluded from reports and analytics" />
           <div className="h-4 w-px bg-border" />
           <span className="font-mono text-xs text-muted-foreground">{lastAnalyzedLabel(fileMeta?.analyzed_at ?? analysis?.analyzed_at)}</span>
           <div className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
@@ -585,34 +671,40 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
                 </button>
               )}
               <div className="h-4 w-px bg-border" />
-              <select
-                disabled={selectedRows === 0}
-                className="h-8 rounded-md border border-border bg-background px-2 text-xs disabled:opacity-40"
-                defaultValue=""
-                onChange={(e) => { if (e.target.value) queueBulkSet("expense_category", e.target.value); e.currentTarget.value = "" }}
-              >
-                <option value="">Set category</option>
-                {EXPENSE_CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}
-              </select>
+              <Tip text={selectedRows > 0 ? `Apply to ${selectedRows} selected rows` : "Select rows first"}>
+                <select
+                  disabled={selectedRows === 0}
+                  className="h-8 rounded-md border border-border bg-background px-2 text-xs disabled:opacity-40"
+                  defaultValue=""
+                  onChange={(e) => { if (e.target.value) queueBulkSet("expense_category", e.target.value); e.currentTarget.value = "" }}
+                >
+                  <option value="">Set category</option>
+                  {EXPENSE_CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}
+                </select>
+              </Tip>
               <Tag className="h-3.5 w-3.5 text-muted-foreground" />
-              <select
-                disabled={selectedRows === 0}
-                className="h-8 rounded-md border border-border bg-background px-2 text-xs disabled:opacity-40"
-                defaultValue=""
-                onChange={(e) => { if (e.target.value) queueBulkSet("currency", e.target.value); e.currentTarget.value = "" }}
-              >
-                <option value="">Set currency</option>
-                {CURRENCIES.map((currency) => <option key={currency} value={currency}>{currency}</option>)}
-              </select>
+              <Tip text={selectedRows > 0 ? `Apply to ${selectedRows} selected rows` : "Select rows first"}>
+                <select
+                  disabled={selectedRows === 0}
+                  className="h-8 rounded-md border border-border bg-background px-2 text-xs disabled:opacity-40"
+                  defaultValue=""
+                  onChange={(e) => { if (e.target.value) queueBulkSet("currency", e.target.value); e.currentTarget.value = "" }}
+                >
+                  <option value="">Set currency</option>
+                  {CURRENCIES.map((currency) => <option key={currency} value={currency}>{currency}</option>)}
+                </select>
+              </Tip>
               <Coins className="h-3.5 w-3.5 text-muted-foreground" />
-              <button
-                disabled={selectedRows === 0}
-                onClick={() => queueBulkExclude()}
-                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-2 text-xs hover:bg-muted disabled:opacity-40"
-              >
-                <EyeOff className="h-3.5 w-3.5" />
-                Exclude
-              </button>
+              <Tip text={selectedRows > 0 ? `Apply to ${selectedRows} selected rows` : "Select rows first"}>
+                <button
+                  disabled={selectedRows === 0}
+                  onClick={() => queueBulkExclude()}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-2 text-xs hover:bg-muted disabled:opacity-40"
+                >
+                  <EyeOff className="h-3.5 w-3.5" />
+                  Exclude
+                </button>
+              </Tip>
               <div className="ml-auto flex items-center gap-1">
                 <button
                   onClick={() => setFilter("needs_review")}
@@ -656,6 +748,7 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
                     const excluded = row.normalization_status === "excluded"
                     const lowConfidence = rowNeedsReview(row)
                     const highlighted = highlightedRowIds.has(row.id)
+                    const pulsed = pulseRowIds.has(row.id)
                     const dimmed = highlightedActive && !highlighted
                     const sourceIndex = row.raw_json?.source_index ?? rowNumber - 1
                     const sourceEntry = fileMeta?.source_rows_json?.[sourceIndex] ?? row.raw_json?.source_row ?? null
@@ -668,6 +761,7 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
                           excluded ? "opacity-40 line-through decoration-muted-foreground/40" : "",
                           lowConfidence && !excluded ? "bg-primary/[0.03]" : "",
                           highlighted ? "ring-1 ring-inset ring-primary/40 bg-primary/[0.06]" : "",
+                          pulsed ? "ring-2 ring-inset ring-red-400/40 bg-red-500/[0.05]" : "",
                           dimmed ? "opacity-30" : "",
                         ].join(" ")}
                       >
@@ -706,11 +800,16 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
                         <td className="px-3 py-2.5"><CategoryChip value={row.expense_category ?? row.income_source} confidence={Number(row.confidence_score ?? 0)} /></td>
                         <td className="px-3 py-2.5">
                           <Popover>
-                            <PopoverTrigger asChild>
-                              <button className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100" aria-label="Open source row">
-                                <ArrowUpRight className="h-3.5 w-3.5" />
-                              </button>
-                            </PopoverTrigger>
+                            <Tooltip delayDuration={500}>
+                              <TooltipTrigger asChild>
+                                <PopoverTrigger asChild>
+                                  <button className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100" aria-label="Open source row">
+                                    <ArrowUpRight className="h-3.5 w-3.5" />
+                                  </button>
+                                </PopoverTrigger>
+                              </TooltipTrigger>
+                              <TooltipContent sideOffset={6}>Show original spreadsheet row data</TooltipContent>
+                            </Tooltip>
                             <PopoverContent align="end" className="w-80 rounded-lg border border-border bg-popover p-4 shadow-xl">
                               <div className="mb-2 text-[10px] uppercase tracking-wider text-muted-foreground" style={aldrichStyle()}>Source row</div>
                               <div className="mb-3 font-mono text-xs text-muted-foreground">
@@ -775,14 +874,16 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
                   No briefing yet.
                 </p>
               )}
-              <button
-                onClick={() => void runAnalysis()}
-                disabled={analyzing}
-                className="mt-3 inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
-              >
-                <RefreshCw className={`h-3 w-3 ${analyzing ? "animate-spin" : ""}`} />
-                Re-analyze
-              </button>
+              <Tip text="Re-run AI analysis on this spreadsheet (~5-15s)">
+                <button
+                  onClick={() => void runAnalysis()}
+                  disabled={analyzing}
+                  className="mt-3 inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-3 w-3 ${analyzing ? "animate-spin" : ""}`} />
+                  Re-analyze
+                </button>
+              </Tip>
               {analysis && updatedLabel(fileMeta?.analyzed_at ?? analysis.analyzed_at) && (
                 <span className="ml-2 font-mono text-[11px] text-muted-foreground">
                   {updatedLabel(fileMeta?.analyzed_at ?? analysis.analyzed_at)}
@@ -796,7 +897,7 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
                 <h3 className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground" style={aldrichStyle()}>
                   Findings · {findings.length}
                 </h3>
-                <button className="text-[11px] text-muted-foreground hover:text-foreground" onClick={() => findings.forEach(applyFinding)}>
+                <button className="text-[11px] text-muted-foreground hover:text-foreground" onClick={() => findings.forEach((finding) => applyFinding(finding))}>
                   Apply all ({findings.length})
                 </button>
               </div>
@@ -806,17 +907,25 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
                   <div className="glass-surface-sm rounded-lg p-4 text-xs text-muted-foreground">Analysis findings will appear here after the briefing completes.</div>
                 ) : findings.map((finding, index) => {
                   const isPending = pendingChanges.some((change) => change.id === `finding-${finding.id}`)
+                  const isAccepted = isPending || acceptedFindingIds.has(finding.id)
+                  const editedFinding = editingFinding?.findingId === finding.id ? editingFinding : null
+                  const affectedRows = finding.affected_row_ids
+                    .map((rowId) => rowById.get(rowId))
+                    .filter((entry): entry is { row: DocumentFieldRow; index: number } => Boolean(entry))
+                  const canEditValue = finding.proposed_action.kind === "set_field"
                   return (
                     <div
                       key={finding.id}
-                      className={`group relative rounded-lg border bg-card p-4 transition-all ${isPending ? "border-primary/40 bg-primary/[0.03]" : "border-border hover:border-primary/30 hover:shadow-sm"}`}
+                      className={`group relative rounded-lg border bg-card p-4 transition-all ${isAccepted ? "border-primary/40 bg-primary/[0.03]" : "border-border hover:border-primary/30 hover:shadow-sm"}`}
                       onMouseEnter={() => setHighlightedRowIds(new Set(finding.affected_row_ids))}
                       onMouseLeave={() => setHighlightedRowIds(new Set())}
                     >
                       <div className="mb-2 flex items-baseline gap-3">
                         <span className="text-xs font-medium tracking-wider text-primary tabular-nums" style={aldrichStyle()}>{String(index + 1).padStart(2, "0")} ·</span>
                         <h4 className="flex-1 text-sm font-medium text-foreground">{finding.title}</h4>
-                        <ConfidenceMeter value={finding.confidence} />
+                        <Tip text={`AI confidence: ${Math.round(finding.confidence * 100)}%`}>
+                          <ConfidenceMeter value={finding.confidence} />
+                        </Tip>
                       </div>
                       <p className="mb-3 text-xs leading-relaxed text-muted-foreground">{finding.rationale}</p>
                       <div className="mb-3 flex items-center gap-2 text-[11px]">
@@ -824,10 +933,62 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
                         <button className="text-primary hover:underline" onClick={() => setHighlightedRowIds(new Set(finding.affected_row_ids))}>Show in table</button>
                       </div>
                       <div className="flex items-center gap-2">
-                        <button onClick={() => applyFinding(finding)} className="flex-1 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90">Apply</button>
-                        <button onClick={() => applyFinding(finding)} className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted">Edit</button>
-                        <button className="rounded-md px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground">Dismiss</button>
+                        <Tip text={`Apply this suggestion to ${finding.affected_row_ids.length} affected rows`}>
+                          <button onClick={() => applyFinding(finding)} className="flex-1 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90">Apply</button>
+                        </Tip>
+                        <Tip text="Review and modify before applying">
+                          <button onClick={() => startFindingEdit(finding)} className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted">Edit</button>
+                        </Tip>
+                        <Tip text="Skip this suggestion (won't apply)">
+                          <button
+                            onClick={() => setDismissedFindingIds((prev) => new Set(prev).add(finding.id))}
+                            className="rounded-md px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+                          >
+                            Dismiss
+                          </button>
+                        </Tip>
                       </div>
+                      {editedFinding && (
+                        <div className="mt-4 rounded-lg border border-border bg-muted/30 p-3">
+                          {canEditValue && (
+                            <label className="mb-3 block text-xs text-muted-foreground">
+                              Proposed value
+                              <input
+                                value={editedFinding.value}
+                                onChange={(e) => setEditingFinding((prev) => prev ? { ...prev, value: e.target.value } : prev)}
+                                className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground outline-none focus:border-primary"
+                              />
+                            </label>
+                          )}
+                          <div className="max-h-44 space-y-1 overflow-auto pr-1">
+                            {affectedRows.map(({ row, index: rowIndex }) => (
+                              <label key={row.id} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-background/70">
+                                <input
+                                  type="checkbox"
+                                  checked={editedFinding.selectedRowIds.has(row.id)}
+                                  onChange={() => toggleFindingEditRow(row.id)}
+                                  className="h-3.5 w-3.5 accent-primary"
+                                />
+                                <span className="w-8 font-mono text-muted-foreground tabular-nums">{rowIndex + 1}</span>
+                                <span className="min-w-0 flex-1 truncate text-foreground">{displayVendor(row)}</span>
+                                <span className="w-20 text-right font-mono text-muted-foreground">{formatAmount(amountForRow(row))}</span>
+                                <span className="w-10 font-mono text-muted-foreground">{row.currency ?? "-"}</span>
+                                <span className="w-24 truncate text-muted-foreground">{row.expense_category ?? row.income_source ?? "-"}</span>
+                              </label>
+                            ))}
+                          </div>
+                          <div className="mt-3 flex items-center justify-end gap-2">
+                            <button onClick={() => setEditingFinding(null)} className="rounded-md px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground">Cancel</button>
+                            <button
+                              onClick={() => applyFinding(finding, [...editedFinding.selectedRowIds], canEditValue ? editedFinding.value : finding.proposed_action.value)}
+                              disabled={editedFinding.selectedRowIds.size === 0}
+                              className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                            >
+                              Apply with edits
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )
                 })}
@@ -836,29 +997,41 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
           </aside>
         </div>
 
-        <div className="flex items-center gap-3 border-t border-border bg-muted/30 px-6 py-3">
-          <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted">Cancel</button>
+        <div className="relative flex items-center gap-3 border-t border-border bg-muted/30 px-6 py-3">
+          {saveNotice && (
+            <div className="absolute bottom-full left-1/2 mb-3 -translate-x-1/2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800 shadow-lg">
+              {saveNotice}
+            </div>
+          )}
           <div className="flex-1" />
           {pendingChanges.length > 0 && (
             <span className="text-xs text-muted-foreground">
               <span className="font-mono tabular-nums text-foreground">{pendingChanges.length}</span> change(s) pending
             </span>
           )}
-          {affectedByRenormalize > 0 && (
+          {shouldShowRenormalize && (
             <label className="flex items-center gap-2 text-xs text-muted-foreground">
               <input type="checkbox" checked={shouldRenormalize} onChange={(e) => setShouldRenormalize(e.target.checked)} className="accent-primary" />
-              Re-normalize <span className="font-mono">{affectedByRenormalize}</span> affected row{affectedByRenormalize === 1 ? "" : "s"}
+              Re-normalize <span className="font-mono">{affectedByRenormalize}</span> affected row{affectedByRenormalize === 1 ? "" : "s"} - refreshes AI-derived fields
             </label>
           )}
-          <button
-            onClick={() => void saveChanges()}
-            disabled={saving || pendingChanges.length === 0}
-            className="hover-bloom rounded-lg bg-primary px-5 py-2 text-sm font-medium text-primary-foreground transition-all hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {saving ? "Saving…" : `Save ${pendingChanges.length} change${pendingChanges.length === 1 ? "" : "s"}`}
-          </button>
+          <Tip text={pendingChanges.length > 0 ? "Close without committing pending changes" : "Close"}>
+            <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted">Done</button>
+          </Tip>
+          <Tip text={`Commit ${pendingChanges.length} pending changes to database`}>
+            <span className="inline-flex">
+              <button
+                onClick={() => void saveChanges()}
+                disabled={saving || pendingChanges.length === 0}
+                className="hover-bloom rounded-lg bg-primary px-5 py-2 text-sm font-medium text-primary-foreground transition-all hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {saving ? "Saving…" : `Save ${pendingChanges.length} change${pendingChanges.length === 1 ? "" : "s"}`}
+              </button>
+            </span>
+          </Tip>
         </div>
       </div>
     </div>
+    </TooltipProvider>
   )
 }

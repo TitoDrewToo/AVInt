@@ -240,24 +240,6 @@ serve(async (req) => {
   const authHeader = req.headers.get("authorization") ?? ""
   const token = authHeader.replace(/^Bearer\s+/i, "")
   if (token !== SUPABASE_SERVICE_ROLE_KEY) {
-    const expectedPrefix = SUPABASE_SERVICE_ROLE_KEY?.substring(0, 15) ?? "<empty>"
-    const expectedLength = SUPABASE_SERVICE_ROLE_KEY?.length ?? 0
-    const receivedPrefix = token?.substring(0, 15) ?? "<empty>"
-    const receivedLength = token?.length ?? 0
-    console.log(JSON.stringify({
-      fn: "reprocess-documents",
-      stage: "auth_debug",
-      env_prefix: expectedPrefix,
-      env_length: expectedLength,
-      received_prefix: receivedPrefix,
-      received_length: receivedLength,
-    }))
-    console.log(JSON.stringify({
-      fn: "reprocess-documents",
-      stage: "secret_keys_check",
-      has_supabase_secret_keys: !!Deno.env.get("SUPABASE_SECRET_KEYS"),
-      secret_keys_length: Deno.env.get("SUPABASE_SECRET_KEYS")?.length ?? 0,
-    }))
     return new Response(JSON.stringify({ error: "Service role required" }), {
       status: 401,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

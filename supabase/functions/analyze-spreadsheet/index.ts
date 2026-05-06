@@ -49,7 +49,7 @@ async function callAIProvider(provider: AiProvider, systemPrompt: string, prompt
         },
         body: JSON.stringify({
           model: "claude-haiku-4-5-20251001",
-          max_tokens: 1800,
+          max_tokens: 16384,
           temperature: 0.1,
           system: systemPrompt,
           messages: [{ role: "user", content: prompt }],
@@ -76,7 +76,7 @@ async function callAIProvider(provider: AiProvider, systemPrompt: string, prompt
             { role: "system", content: systemPrompt },
             { role: "user", content: prompt },
           ],
-          max_tokens: 1800,
+          max_tokens: 16384,
         }),
       },
       90_000,
@@ -105,10 +105,74 @@ async function callAI(systemPrompt: string, prompt: string): Promise<{ rawText: 
   throw lastError instanceof Error ? lastError : new Error("All analysis providers failed")
 }
 
+function extractJsonCandidate(rawText: string): string {
+  const stripped = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim()
+  const objectStart = stripped.indexOf("{")
+  if (objectStart < 0) return stripped
+  const objectEnd = stripped.lastIndexOf("}")
+  return objectEnd > objectStart ? stripped.slice(objectStart, objectEnd + 1) : stripped.slice(objectStart)
+}
+
+function tryParseAnalysis(rawText: string): any {
+  const candidate = extractJsonCandidate(rawText)
+  try {
+    return JSON.parse(candidate)
+  } catch (firstErr) {
+    const recovered = attemptJsonRecovery(candidate)
+    if (recovered) {
+      logEvent(FN, "json_recovered", { original_length: candidate.length })
+      return recovered
+    }
+    throw firstErr
+  }
+}
+
+function attemptJsonRecovery(text: string): any | null {
+  const findingsArrayStart = text.indexOf('"findings"')
+  if (findingsArrayStart < 0) return null
+  const arrayBracketIdx = text.indexOf("[", findingsArrayStart)
+  if (arrayBracketIdx < 0) return null
+
+  let depth = 0
+  let lastValidEnd = -1
+  let inString = false
+  let escaped = false
+
+  for (let i = arrayBracketIdx + 1; i < text.length; i++) {
+    const char = text[i]
+    if (escaped) {
+      escaped = false
+      continue
+    }
+    if (char === "\\") {
+      escaped = true
+      continue
+    }
+    if (char === '"') {
+      inString = !inString
+      continue
+    }
+    if (inString) continue
+
+    if (char === "{") depth++
+    if (char === "}" && depth > 0) {
+      depth--
+      if (depth === 0) lastValidEnd = i
+    }
+  }
+
+  if (lastValidEnd < 0) return null
+
+  const recovered = `${text.slice(0, lastValidEnd + 1)}]}`
+  try {
+    return JSON.parse(recovered)
+  } catch {
+    return null
+  }
+}
+
 function normalizeAnalysis(rawText: string, rows: any[]) {
-  const jsonMatch = rawText.match(/\{[\s\S]*\}/)
-  if (!jsonMatch) throw new Error(`No JSON object found in analysis output: ${rawText}`)
-  const parsed = JSON.parse(jsonMatch[0])
+  const parsed = tryParseAnalysis(rawText)
   const rowIds = new Set(rows.map((row) => row.id))
   const findings = Array.isArray(parsed.findings) ? parsed.findings : []
   const normalizedFindings = findings.slice(0, 12).map((finding: any, index: number) => ({

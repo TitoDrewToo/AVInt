@@ -38,41 +38,49 @@ async function checkRateLimit(supabase: any, userId: string): Promise<boolean> {
 
 async function callAIProvider(provider: AiProvider, systemPrompt: string, prompt: string): Promise<string> {
   if (provider === "anthropic") {
-    const res = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
+    const res = await fetchWithTimeout(
+      "https://api.anthropic.com/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5-20250929",
+          max_tokens: 1800,
+          temperature: 0.1,
+          system: systemPrompt,
+          messages: [{ role: "user", content: prompt }],
+        }),
       },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-5-20250929",
-        max_tokens: 1800,
-        temperature: 0.1,
-        system: systemPrompt,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    })
+      90_000,
+    )
     if (!res.ok) throw new Error(`Anthropic API error: ${await res.text()}`)
     const data = await res.json()
     return data.content?.[0]?.text ?? ""
   }
 
   if (provider === "openai") {
-    const res = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${OPENAI_API_KEY}` },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        temperature: 0.1,
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: prompt },
-        ],
-        max_tokens: 1800,
-      }),
-    })
+    const res = await fetchWithTimeout(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${OPENAI_API_KEY}` },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          temperature: 0.1,
+          response_format: { type: "json_object" },
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: prompt },
+          ],
+          max_tokens: 1800,
+        }),
+      },
+      90_000,
+    )
     if (!res.ok) throw new Error(`OpenAI API error: ${await res.text()}`)
     const data = await res.json()
     return data.choices?.[0]?.message?.content ?? ""

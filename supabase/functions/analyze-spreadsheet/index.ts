@@ -319,6 +319,28 @@ CANONICAL FIELD NAMES (use these EXACT names in proposed_action.field):
 
 For exclusion findings, set proposed_action.kind = "exclude" and omit the field. The save handler will set normalization_status to 'excluded'.
 
+PROPOSED ACTION RULES (the proposed_action.kind MUST match the finding type):
+
+Finding types that REQUIRE proposed_action.kind = "exclude":
+- exclude_subtotals
+- exclude_sheet
+- exclude (generic)
+These actions remove rows from analytics by setting normalization_status='excluded'.
+For these types, OMIT proposed_action.field and proposed_action.value.
+
+Finding types that REQUIRE proposed_action.kind = "set_field":
+- bulk_category — proposed_action.field = "expense_category", value = canonical category name
+- currency_mismatch — proposed_action.field = "currency", value = ISO currency code
+- vendor_low_confidence — proposed_action.field = "vendor_name", value = canonical vendor
+- any other field-update finding — specify field (canonical name) and value
+
+Finding types that may use either kind depending on intent:
+- recurring_detection — typically informational; if marking, use set_field on a metadata field; if no clear field, omit proposed_action entirely
+- contract_payment_schedule — typically informational; same guidance
+
+Do NOT generate set_field with empty value as a way to "soft-exclude" rows.
+If the finding's intent is to remove rows from reports, use kind="exclude".
+
 Do NOT use shorthand or alternative field names. Do NOT invent new fields. Use exactly the names above.`
     const prompt = JSON.stringify({
       task: "Analyze spreadsheet-derived financial rows and propose safe refinement actions.",

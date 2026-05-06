@@ -298,7 +298,28 @@ serve(async (req) => {
       source_row: Array.isArray(file.source_rows_json) ? file.source_rows_json[row.raw_json?.source_index ?? index] : null,
     }))
 
-    const systemPrompt = `You are AVIntelligence's spreadsheet analysis engine. Return only valid JSON matching the requested schema. Write in confident operator-briefing voice. Do not use chatbot phrases like "I think", "it seems", "you might want to", or hedging. Prefer concrete findings that can be applied to rows.`
+    const systemPrompt = `You are AVIntelligence's spreadsheet analysis engine. Return only valid JSON matching the requested schema. Write in confident operator-briefing voice. Do not use chatbot phrases like "I think", "it seems", "you might want to", or hedging. Prefer concrete findings that can be applied to rows.
+
+CANONICAL FIELD NAMES (use these EXACT names in proposed_action.field):
+- vendor_name (NOT "vendor", NOT "supplier")
+- employer_name (NOT "employer")
+- document_date (NOT "date", NOT "transaction_date")
+- currency
+- total_amount (NOT "amount", NOT "total")
+- gross_income
+- net_income
+- tax_amount (NOT "tax")
+- discount_amount (NOT "discount")
+- expense_category (NOT "category", NOT "expense_type")
+- payment_method
+- invoice_number (NOT "invoice", NOT "ref")
+- period_start
+- period_end
+- counterparty_name
+
+For exclusion findings, set proposed_action.kind = "exclude" and omit the field. The save handler will set normalization_status to 'excluded'.
+
+Do NOT use shorthand or alternative field names. Do NOT invent new fields. Use exactly the names above.`
     const prompt = JSON.stringify({
       task: "Analyze spreadsheet-derived financial rows and propose safe refinement actions.",
       file: { filename: file.filename, document_type: file.document_type },

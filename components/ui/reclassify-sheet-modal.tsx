@@ -42,6 +42,25 @@ const CURRENCIES = ["PHP", "USD", "EUR", "GBP", "SGD", "JPY", "AUD"]
 const ROW_HEIGHT = 48
 const OVERSCAN = 8
 const RENORMALIZE_SKIP_FIELDS = new Set(["expense_category", "currency", "normalization_status"])
+const FIELD_NAME_ALIASES: Record<string, string> = {
+  category: "expense_category",
+  expense_type: "expense_category",
+  vendor: "vendor_name",
+  supplier: "vendor_name",
+  employer: "employer_name",
+  date: "document_date",
+  transaction_date: "document_date",
+  amount: "total_amount",
+  total: "total_amount",
+  tax: "tax_amount",
+  discount: "discount_amount",
+  invoice: "invoice_number",
+  ref: "invoice_number",
+}
+
+function normalizeFieldName(field: string): string {
+  return FIELD_NAME_ALIASES[field] ?? field
+}
 
 type AnalysisFinding = {
   id: string
@@ -644,12 +663,19 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
             throw new Error(`Expected to exclude ${affectedCount} row${affectedCount === 1 ? "" : "s"}, but database updated ${data?.length ?? 0}.`)
           }
         } else if (field) {
+          const normalizedField = normalizeFieldName(field)
           const { data, error } = await supabase
             .from("document_fields")
-            .update({ [field]: value ?? null })
+            .update({ [normalizedField]: value ?? null })
             .in("id", change.affected_row_ids)
             .select("id")
-          console.log("[save] update result", { data, error, rowsAffected: data?.length })
+          console.log("[save] update result", {
+            data,
+            error,
+            rowsAffected: data?.length,
+            originalField: field,
+            normalizedField,
+          })
           if (error) throw new Error(error.message)
           if ((data?.length ?? 0) !== affectedCount) {
             throw new Error(`Expected to update ${affectedCount} row${affectedCount === 1 ? "" : "s"}, but database updated ${data?.length ?? 0}.`)

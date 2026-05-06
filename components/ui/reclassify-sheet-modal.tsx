@@ -4,10 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ArrowUpRight,
   ChevronDown,
+  Check,
   Coins,
+  Copy,
   EyeOff,
   LayoutGrid,
-  MoreHorizontal,
   RefreshCw,
   Tag,
   X,
@@ -175,6 +176,14 @@ function lastAnalyzedLabel(value: string | null | undefined) {
   return `Last analyzed ${Math.round(minutes / 60)} hr ago`
 }
 
+function updatedLabel(value: string | null | undefined) {
+  if (!value) return null
+  const minutes = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 60000))
+  if (minutes < 1) return "Updated now"
+  if (minutes < 60) return `Updated ${minutes} min ago`
+  return `Updated ${Math.round(minutes / 60)} hr ago`
+}
+
 export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSaved }: ReclassifySheetModalProps) {
   const [rows, setRows] = useState<DocumentFieldRow[]>([])
   const [fileMeta, setFileMeta] = useState<FileMeta | null>(null)
@@ -191,6 +200,7 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
   const [editingCell, setEditingCell] = useState<{ rowId: string; field: "vendor_name" } | null>(null)
   const [editValue, setEditValue] = useState("")
   const [shouldRenormalize, setShouldRenormalize] = useState(false)
+  const [copiedJson, setCopiedJson] = useState(false)
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
   const analysis = fileMeta?.analysis_json ?? null
@@ -289,6 +299,59 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
 
   const selectedRows = selected.size
   const affectedByRenormalize = pendingChanges.filter((change) => change.action === "set_field").reduce((sum, change) => sum + change.rowIds.length, 0)
+
+  const copyAsJson = useCallback(async () => {
+    if (!fileId) return
+    const payload = {
+      file_id: fileId,
+      filename,
+      stats: {
+        rows: stats.rows,
+        ready: analysis?.totals?.ready ?? stats.ready,
+        needs_review: analysis?.totals?.needs_review ?? stats.needsReview,
+        excluded: analysis?.totals?.excluded ?? stats.excluded,
+      },
+      best_fit_report: analysis?.best_fit_report ?? "Mixed",
+      briefing: {
+        summary: analysis?.summary ?? "",
+        analyzed_at: fileMeta?.analyzed_at ?? analysis?.analyzed_at ?? null,
+        exists: Boolean(analysis?.summary),
+      },
+      findings: (analysis?.findings ?? []).map((finding) => ({
+        id: finding.id,
+        type: finding.type,
+        title: finding.title,
+        rationale: finding.rationale,
+        confidence: finding.confidence,
+        affected_row_count: finding.affected_row_ids.length,
+        action: finding.proposed_action,
+      })),
+      rows: rows.map((row, index) => {
+        const sourceIndex = row.raw_json?.source_index ?? index
+        const sourceEntry = fileMeta?.source_rows_json?.[sourceIndex] ?? row.raw_json?.source_row ?? null
+        return {
+          row_index: index + 1,
+          vendor: displayVendor(row),
+          date: row.document_date,
+          amount: amountForRow(row),
+          currency: row.currency,
+          category: row.expense_category ?? row.income_source,
+          source_sheet: row.raw_json?.source_sheet ?? sourceEntry?.sheet_name ?? null,
+          custom_fields: row.raw_json?.custom_fields ?? row.raw_json?.gemini_raw?._custom_fields ?? null,
+          normalization_status: row.normalization_status,
+        }
+      }),
+      ui_state: {
+        selected_count: selected.size,
+        filter,
+        pending_changes_count: pendingChanges.length,
+      },
+    }
+
+    await navigator.clipboard.writeText(JSON.stringify(payload, null, 2))
+    setCopiedJson(true)
+    window.setTimeout(() => setCopiedJson(false), 2000)
+  }, [analysis, fileId, fileMeta, filename, filter, pendingChanges.length, rows, selected.size, stats])
 
   function toggleRow(rowId: string) {
     setSelected((prev) => {
@@ -461,13 +524,29 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
             </h2>
             <p className="truncate font-mono text-xs text-muted-foreground">{filename}</p>
           </div>
-          <button
-            onClick={onClose}
-            className="ml-auto flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            aria-label="Close"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <div className="ml-auto flex items-center gap-2">
+            <div className="relative">
+              <button
+                onClick={() => void copyAsJson()}
+                className="inline-flex h-9 items-center gap-2 rounded-lg border border-border px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                {copiedJson ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                Copy as JSON
+              </button>
+              {copiedJson && (
+                <span className="absolute right-0 top-10 rounded-md border border-border bg-popover px-2 py-1 text-[11px] text-foreground shadow-md">
+                  Copied
+                </span>
+              )}
+            </div>
+            <button
+              onClick={onClose}
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         <div className="flex items-center gap-6 border-b border-border bg-muted/40 px-6 py-3 text-sm">
@@ -691,9 +770,12 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
               >
                 <RefreshCw className={`h-3 w-3 ${analyzing ? "animate-spin" : ""}`} />
                 {analysis ? "Re-analyze" : "Analyze with AI"}
-                <span>{analysis ? "·" : ""}</span>
-                <span className="font-mono">~$0.04</span>
               </button>
+              {analysis && updatedLabel(fileMeta?.analyzed_at ?? analysis.analyzed_at) && (
+                <span className="ml-2 font-mono text-[11px] text-muted-foreground">
+                  {updatedLabel(fileMeta?.analyzed_at ?? analysis.analyzed_at)}
+                </span>
+              )}
               {error && <p className="mt-3 text-xs text-primary">{error}</p>}
             </div>
 

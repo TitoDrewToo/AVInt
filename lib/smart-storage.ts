@@ -53,6 +53,7 @@ export interface UploadedFile {
   analyzed_at?: string | null
   source_rows_json?: unknown
   field_count?: number
+  document_fields_count?: number
   processing_job?: {
     status: string | null
     created_at: string | null

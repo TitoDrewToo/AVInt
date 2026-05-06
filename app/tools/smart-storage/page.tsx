@@ -134,7 +134,14 @@ function processingBadgeState(file: UploadedFile): ProcessingBadgeState | null {
 }
 
 function fileDocumentTypeLabel(file: UploadedFile): { label: string; isFailed: boolean } {
-  if (file.processing_job?.status === "failed") return { label: "Failed", isFailed: true }
+  const documentFieldsCount = file.document_fields_count ?? file.field_count ?? 0
+  if (documentFieldsCount > 0) {
+    const documentType = file.document_type === "unknown"
+      ? (isSpreadsheetFile(file) ? "csv_export" : "ready")
+      : file.document_type
+    return { label: documentType.replace(/_/g, " "), isFailed: false }
+  }
+  if (documentFieldsCount === 0 && file.processing_job?.status === "failed") return { label: "Failed", isFailed: true }
   if (file.document_type === "unknown") return { label: "Processing…", isFailed: false }
   return { label: file.document_type.replace(/_/g, " "), isFailed: false }
 }
@@ -310,12 +317,19 @@ export default function SmartStoragePage() {
     if (data) {
       const fileIds = data.map((file) => file.id)
       const latestJobByFileId = new Map<string, NonNullable<UploadedFile["processing_job"]>>()
+      const documentFieldCountByFileId = new Map<string, number>()
       if (fileIds.length > 0) {
-        const { data: jobs } = await supabase
-          .from("processing_jobs")
-          .select("file_id, status, created_at, error_message")
-          .in("file_id", fileIds)
-          .order("created_at", { ascending: false })
+        const [{ data: jobs }, { data: documentFields }] = await Promise.all([
+          supabase
+            .from("processing_jobs")
+            .select("file_id, status, created_at, error_message")
+            .in("file_id", fileIds)
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("document_fields")
+            .select("file_id")
+            .in("file_id", fileIds),
+        ])
         for (const job of jobs ?? []) {
           if (!latestJobByFileId.has(job.file_id)) {
             latestJobByFileId.set(job.file_id, {
@@ -325,9 +339,13 @@ export default function SmartStoragePage() {
             })
           }
         }
+        for (const field of documentFields ?? []) {
+          documentFieldCountByFileId.set(field.file_id, (documentFieldCountByFileId.get(field.file_id) ?? 0) + 1)
+        }
       }
       setFiles(data.map((file) => ({
         ...file,
+        document_fields_count: documentFieldCountByFileId.get(file.id) ?? 0,
         processing_job: latestJobByFileId.get(file.id) ?? null,
       })))
       const types = [...new Set(data.map((f) => f.document_type).filter((t) => t !== "unknown"))]

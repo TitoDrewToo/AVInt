@@ -171,7 +171,15 @@ function findingMatchesRows(finding: AnalysisFinding, rows: DocumentFieldRow[]) 
   if (!field) return false
   const normalizedField = normalizeFieldName(field)
   if (!(normalizedField in (affectedRows[0] ?? {}))) return false
-  return affectedRows.every((row) => String((row as any)[normalizedField] ?? "") === String(finding.proposed_action.value ?? ""))
+  const proposedValue = finding.proposed_action.value
+  // Empty proposed values cannot prove a user applied this action. Only
+  // explicit applied_finding_ids should mark those findings as applied.
+  if (proposedValue === null || proposedValue === undefined || proposedValue === "") return false
+  return affectedRows.every((row) => {
+    const rowValue = (row as any)[normalizedField]
+    if (rowValue === null || rowValue === undefined) return false
+    return String(rowValue) === String(proposedValue)
+  })
 }
 
 function persistedAppliedFindingIds(analysis: SheetAnalysis | null, rows: DocumentFieldRow[]) {

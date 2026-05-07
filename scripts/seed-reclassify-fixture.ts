@@ -61,6 +61,11 @@ function isoDate(month: number, day: number) {
   return `2025-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`
 }
 
+function cappedIsoDate(month: number, day: number) {
+  const lastDay = new Date(2025, month, 0).getDate()
+  return isoDate(month, Math.min(day, lastDay))
+}
+
 function expense(sheetName: string, rowIndex: number, date: string | null, supplier: string, description: string, amount: number | null, currency: string | null, gl: string, category: string | null, confidence = 0.92, status: FixtureRow["normalizationStatus"] = "normalized", attempts = 0): FixtureRow {
   return {
     sheetName,
@@ -130,8 +135,8 @@ function buildFixtureRows(): FixtureRow[] {
     rows.push({
       sheetName: "Payslips",
       rowIndex: i + 2,
-      cells: { "Period Start": isoDate(month, 1), "Period End": isoDate(month, 28), Employer: "Acme Corp", Gross: gross, Net: gross - tax, Tax: tax, Currency: "USD", "Net Pay Date": isoDate(month, 30) },
-      extracted: { employer_name: "Acme Corp", document_date: isoDate(month, 30), currency: "USD", gross_income: gross, net_income: gross - tax, tax_amount: tax, income_source: "wage" },
+      cells: { "Period Start": isoDate(month, 1), "Period End": isoDate(month, 28), Employer: "Acme Corp", Gross: gross, Net: gross - tax, Tax: tax, Currency: "USD", "Net Pay Date": cappedIsoDate(month, 30) },
+      extracted: { employer_name: "Acme Corp", document_date: cappedIsoDate(month, 30), currency: "USD", gross_income: gross, net_income: gross - tax, tax_amount: tax, income_source: "wage" },
       confidence: 0.94,
       normalizationStatus: "normalized",
       normalizationAttempts: 0,

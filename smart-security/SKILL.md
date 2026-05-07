@@ -62,12 +62,14 @@ For any detection event:
 
 ## Model invocation
 
+Smart Security runs on **own-model inference** (Gemma 4 family, Apache 2.0). Third-party APIs are gap-fillers, not the inference path. Model progression: v0.5 (base Gemma 4 E4B + prompts), v1.0 (fine-tuned Gemma 4 E4B), v2.0 (fine-tuned Gemma 4 26B A4B for enterprise tier). Detail in `docs/smart-security-architecture.md` → *AI model strategy*.
+
 Every LLM call records in the decision record:
 
-- `actor_model`: the exact model id (e.g. `claude-haiku-4-5-20251001`).
-- `actor_model_version`: the provider's version string at call time.
+- `actor_model`: the exact model id (e.g. `gemma-4-e4b-ft-2026-05-12` for a fine-tuned checkpoint, `gemma-4-e4b-base` for the prompts-only v0.5 era, or the provider model id verbatim for any pre-v1.0 gap-filler call).
+- `actor_model_version`: version string at call time. For own-model: the fine-tune training-run id. For gap-filler: the provider's version string verbatim.
 
-This enables regression attribution when providers ship updates.
+This enables regression attribution when models or fine-tunes ship new versions, and makes pre-v1.0 third-party gap-filler calls unambiguous in the audit trail.
 
 ## Kill switch
 

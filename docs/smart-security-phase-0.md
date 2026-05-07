@@ -1,7 +1,9 @@
 # Smart Security — Phase 0 Implementation Spec
 
+> **Status: Phase 0 COMPLETE (committed to `main`).** This document is preserved as the historical implementation reference. The folder skeleton, all six JSON Schemas, seed policies, detection registry, knowledge manifest, SKILL contract, README, and health endpoint described below are all in place. New work continues in `docs/smart-security-phase-0.5.md` and `docs/smart-security-phase-1.md`. For the current strategic direction (model progression, two-service topology, commerce model, compliance posture), read `docs/smart-security-architecture.md` first — it has been updated 2026-05-07 with the current roadmap and supersedes any outdated framing in this doc.
+
 **Intended reader**: Codex CLI (or any implementer) executing this spec.
-**Reference context**: see `docs/smart-security-architecture.md` first, especially the *Existing baseline* section.
+**Reference context**: see `docs/smart-security-architecture.md` first, especially the *Existing baseline* and *AI model strategy* sections.
 
 ## 1. Scope
 

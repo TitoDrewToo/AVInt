@@ -21,14 +21,33 @@ Non-goals:
 - Offensive hack-back — legally prohibited and explicitly excluded.
 - General-purpose SIEM — adjacent space; not our focus.
 
-## Existing baseline (as of phase 0 start)
+## Existing baseline (as of phase 0 complete)
 
-Smart Security was scoped earlier in the project as a separate service. Two AVIntelligence integration points already call into it, both in observe mode. **Neither is to be modified in phases 0-3.** The wire contracts below are frozen at the boundary; Smart Security phase work builds the logic *behind* them.
+Smart Security is a deployed Cloud Run service. Two AVIntelligence integration points call into it in observe mode today. **Neither is modified in phases 0-3.** The wire contracts below are frozen at the boundary; Smart Security phase work builds logic *behind* them.
+
+**Deployment state (verified 2026-05-07)**:
+
+- **Service repo**: `github.com/TitoDrewToo/smart-security` (private, TypeScript / Node.js).
+- **Cloud Run service**: `smart-security` in `asia-southeast1`, GCP project `avint-core`, auto-scale 0–20.
+- **Resolved via**: `SMART_SECURITY_URL`.
+- **Real implementations live**:
+  - ClamAV signature scanning (freshclam on container start, real signature DB).
+  - Structural scanners for PDF active content, Office macros/ActiveX, CSV formula injection.
+  - Signed-URL handoff with Supabase origin/bucket validation.
+  - Observe-mode rollout pattern with fail-open/fail-closed env toggle.
+  - `learning_record` foundation in scan response (`system_decision` + `human_label` fields) — feedback loop for future ML training data.
+- **Service identity**: `smart-security-runner@avint-core.iam.gserviceaccount.com` with Artifact Registry Reader + Secret Manager Accessor.
+- **Secrets in Secret Manager** (created 2026-04-23): `SMART_SECURITY_API_KEY`, `SMART_SECURITY_SUPABASE_SERVICE_ROLE_KEY`, `SMART_SECURITY_SUPABASE_URL`.
+
+**Wired endpoints**:
 
 | Layer | Caller in AVI repo | Endpoint on Smart Security service | Response vocabulary | Observe/enforce toggle |
 |---|---|---|---|---|
 | Ingress (file) | `supabase/functions/prescan-document/index.ts:407` | `POST /v1/scan/file` | `clean / suspicious / infected / scan_error` | `SMART_SECURITY_REQUIRED` |
-| Session (request) | `proxy.ts:38` | `POST /v1/decide` | `allow / block / rate_limit / challenge` | `SMART_SECURITY_MIDDLEWARE_MODE` |
+| Session (request) | `proxy.ts:38` | `POST /v1/decide` | `allow / log_only / rate_limit / block / challenge` | `SMART_SECURITY_MIDDLEWARE_MODE` |
+| Telemetry (events) | not yet wired in AVI | `POST /v1/events` | n/a (write-only) | n/a |
+
+The third endpoint (`/v1/events`) exists on the deployed service for security-relevant activity logging from the protected app (rate-limit hits, suspicious paths, scanner events, abuse signals). AVIntelligence does not yet call it; a future phase wires it.
 
 **`POST /v1/scan/file`** request body (sent by prescan-document):
 
@@ -69,11 +88,13 @@ Response shape consumed by prescan-document:
 }
 ```
 
-Response shape consumed by proxy.ts:
+Response shape consumed by proxy.ts (on the deployed service the response also carries `risk_score`, `reason`, `fingerprint`, `ttl_seconds`, `mode`; AVIntelligence ignores these today, but Smart Security may rely on them for client-side caching in later phases):
 
 ```json
-{ "decision": "allow | block | rate_limit | challenge" }
+{ "decision": "allow | log_only | rate_limit | block | challenge" }
 ```
+
+The `log_only` value is internal to Smart Security and treated as `allow` by `proxy.ts` today. Adding wire vocabulary requires coordinated cross-repo edits.
 
 Headers on both: `Content-Type: application/json`, `x-smart-security-key: <SMART_SECURITY_API_KEY>`.
 
@@ -119,13 +140,16 @@ Environment variables already declared:
 
 ## Threat model
 
-Primary threats defended against:
+Primary threats defended against (AI-era-aware — incumbent vendors bolt AI onto pre-2020 detection engines; we design for an AI-saturated threat landscape from day 1):
 
 1. **Malicious document uploads** — malware-laden PDFs, macro-embedded Office files, polyglot files, archive bombs.
-2. **Account takeover** — credential stuffing, session hijacking, session fixation, impossible-travel patterns.
-3. **Data exfiltration via abnormal egress** — compromised edge functions making outbound calls to unusual destinations.
-4. **LLM/agentic attacks on document processing** — prompt injection in scanned documents, OCR poisoning, prompt-in-metadata.
-5. **Cross-tenant attacks** (year 2+) — hash reputation, attacker reuse of infrastructure across tenants.
+2. **Synthetic / forged documents** — AI-generated invoice forgeries, fabricated receipts, synthetic identity docs designed to pass surface-level checks.
+3. **Prompt injection on agentic workflows** — adversarial text in scanned documents that aims to subvert AVIntelligence's downstream LLM extraction (or Smart Security's own triage agent).
+4. **OCR poisoning / prompt-in-metadata** — visually-obscured instructions in document content or EXIF/PDF metadata.
+5. **AI-generated phishing / abuse content** — coherent, well-targeted phishing payloads at high volume; LLM-authored social-engineering text in document upload flows.
+6. **Account takeover** — credential stuffing, session hijacking, session fixation, impossible-travel patterns.
+7. **Data exfiltration via abnormal egress** — compromised edge functions making outbound calls to unusual destinations.
+8. **Cross-tenant attacks** (Phase 6+ when external tenants exist) — hash reputation reuse, attacker reuse of infrastructure across tenants.
 
 Explicitly out of scope for v1:
 
@@ -167,16 +191,70 @@ Edge function outbound traffic monitoring. Domain allowlists per function, anoma
 
 ## Agent roles
 
-| Role | Function | Primary model | Fallback chain | Phase introduced |
-|---|---|---|---|---|
-| Triage Agent | Read-only classification of detection events; cites doctrine. | Claude Haiku 4.5 | GPT-5 mini → Gemini Flash | 3 |
-| Responder Agent | Selects action from matrix; writes human-readable justification. | Claude Sonnet 4.6 | GPT-5 → Gemini 2.5 Pro | 4 |
-| Investigator Agent | Post-incident timeline + review + postmortem. | Claude Opus 4.7 (extended thinking) | Sonnet 4.6 | 4 |
-| Doctrine Agent | Ingests public frameworks, proposes rule updates. | Gemini 2.5 Pro (batch) | Sonnet 4.6 | 3 |
-| Orchestrator | Routes events, enforces action matrix, holds kill-switch, emits audit trail. | Deterministic TypeScript state machine — not an LLM. | — | 1 |
-| Analyzer | YARA-X + qpdf + pdfid + olevba + clamav, pinned container. | Deterministic binaries. | — | 2 |
+Smart Security runs on **own-model inference** (Gemma 4 family, Apache 2.0). Third-party APIs are gap-fillers used only where a self-hosted equivalent does not yet exist or where an internal-only batch task does not justify the inference cost. The model progression is staged across versions (see *AI model strategy* below).
 
-Every LLM invocation records the exact model and version in the decision record. This is the regression-detection mechanism when providers ship new versions.
+| Role | Function | Primary model (v0.5 → v1.0 → v2.0) | Gap-filler (pre-v1.0 only) | Phase introduced |
+|---|---|---|---|---|
+| Triage Agent | Read-only classification of detection events; cites doctrine. | base Gemma 4 E4B + prompts → fine-tuned Gemma 4 E4B → fine-tuned Gemma 4 E4B (unchanged at v2.0) | none | 3 |
+| Responder Agent | Selects action from matrix; writes human-readable justification. | base Gemma 4 E4B + prompts → fine-tuned Gemma 4 E4B (routine) → fine-tuned Gemma 4 26B A4B (complex / enterprise tier) | none | 4 |
+| Investigator Agent | Post-incident timeline + review + postmortem. | deferred → deferred → fine-tuned Gemma 4 26B A4B with extended-reasoning prompts | Anthropic API (Sonnet/Opus) on flat-fee internal use only, deprecated when v2.0 ships | 4 |
+| Doctrine Agent | Ingests public frameworks, proposes rule updates. | base Gemma 4 26B A4B (batch) at v2.0 | Gemini batch API for bulk ingestion pre-v2.0 — non-realtime, not customer-facing | 3 |
+| Orchestrator | Routes events, enforces action matrix, holds kill-switch, emits audit trail. | Deterministic TypeScript state machine — not an LLM. | — | 1 |
+| Analyzer | ClamAV + structural scanners (live today); YARA-X + qpdf + pdfid + olevba added in phase 2. | Deterministic binaries; phase 2+ adds an E4B sanity-check on YARA matches before quarantine. | — | 2 |
+
+Every LLM invocation records the exact model and version in the decision record (`actor_model`, `actor_model_version`). This is the regression-detection mechanism when models or fine-tunes ship new versions. Pre-v2.0 third-party gap-filler calls record the provider's model id verbatim so the audit trail makes the source unambiguous.
+
+## AI model strategy
+
+Smart Security ships its own fine-tuned model rather than depending on third-party LLM APIs at the inference path. The decision is durable; rationale and constraints below.
+
+### Why own-model
+
+- **License clarity**: Gemma 4 (Apache 2.0) supports clean commercial externalization. Llama-derived models (e.g. Foundation-sec-8B) carry Llama license terms that complicate Phase 3 SaaS launch.
+- **IP ownership**: trained model weights become a product asset, not a recurring licensing dependency.
+- **Cost economics at scale**: self-hosted inference cost flattens; per-call API costs scale linearly with usage. Crossover point is reached well below external-tenant volume.
+- **Customization moat**: AVIntelligence's production telemetry (and, later, customer telemetry) is the most valuable training data for this domain. Owning the model lets us fine-tune on it; using a closed API does not.
+- **Avoid third-party dependency for a security capability**: Smart Security's value proposition collapses if its inference path is rate-limited, deprecated, or repriced by a third party.
+
+### Model progression
+
+| Version | Base | Fine-tune | Tier served | Budget envelope | Status |
+|---|---|---|---|---|---|
+| v0.5 | Gemma 4 E4B | none (system prompts only) | Internal proof-of-concept; AVIntelligence dogfood | ~$0 (Cloud Run free tier + GCP $300 credit) | Phase 0.5 |
+| v1.0 | Gemma 4 E4B | LoRA / QLoRA, 1–3 rounds on curated corpus + early production telemetry | Free / Pro tier (all customers at launch) | ~$100–200 total | Phase 1 |
+| v2.0 | Gemma 4 26B A4B (MoE: 26B total / ~4B active per token) | LoRA on accumulated production telemetry + curated public corpus | Enterprise tier (deep reasoning, complex multi-step analysis) | ~$5K–15K when MRR allows | Phase 2 |
+
+### Scope discipline — match the model to the task
+
+User-facing latency must feel *intentional*, not strained. Do not push E4B past its sweet spot.
+
+**E4B sweet spot (v0.5 / v1.0 capabilities)**:
+- File-level triage and verdict
+- Pattern-match confirmation (YARA / structural rule + AI sanity check)
+- Single-document analysis (vendor ID, document type, basic fraud markers)
+- Standard PII detection
+- Per-file finding narratives (one-liner explanations)
+- Threat-intel summarization
+- Simple categorization
+
+**26B A4B domain (v2.0 features, gated until then)**:
+- Cross-document fraud correlation
+- Multi-step attack-chain reasoning
+- Complex contract-anomaly detection
+- Forensic incident reports with timelines
+- IaC vulnerability analysis with attack-path simulation
+- Strategic security recommendations
+- Long-context analysis
+
+Pro/Enterprise UI features that require 26B reasoning ship visible-but-disabled with "Available in v2.0" until the larger model's fine-tune is in production. Async queue UX is acceptable for slow analyses (intentional waits, not frozen pages). Low-confidence E4B cases surface as "needs analyst review" rather than forced guesses.
+
+### Two-track development
+
+- **Production track**: E4B-powered v0.5 → v1.0 generates real telemetry and ships customer value.
+- **R&D track**: parallel work toward 26B A4B (datasets, benchmarks, prompts) using R&D time freed by not pushing E4B beyond its scope.
+- Production telemetry from E4B feeds R&D training data for 26B.
+
+The two tracks reinforce each other.
 
 ## Autonomy boundary
 
@@ -199,16 +277,18 @@ Encoded in `smart-security/policies/action-matrix.yaml`, not in model prompts. T
 
 ## Phase plan
 
-| Phase | Scope | Exit signal | Status |
-|---|---|---|---|
-| 0 | Foundations: folder skeleton, schemas (internal + wire), seed policies, health endpoint. | Skeleton committed; health endpoint returns real signals. Wire schemas document existing contracts. | Current |
-| 1 | Evidence spine: inside Smart Security, write a decision record for every `/v1/scan/file` and `/v1/decide` call. | Every inbound request produces a persisted, queryable decision record. | Pending |
-| 2 | Analyzer service: Cloud Run container running YARA-X + structural tools; port current suspicious-PDF markers into real rules; `/v1/scan/file` handler wires them up. | Analyzer handles existing scan logic as real rule evaluations. | Pending |
-| 3 | Doctrine + Triage Agent: ingest NIST/CISA/OWASP/MITRE/D3FEND; every quarantine cites ≥2 doctrine sources. | First doctrine-cited quarantine decision recorded. | Pending |
-| 4 | Responder Agent + session boundary intelligence: quarantine/revoke/rate-limit enforced; `/v1/decide` serves intelligent decisions with rolling baselines. | First reversible enforced action demonstrated with reversal path. | Pending |
-| 5 | Internal feedback loop: weekly precision tracking, promotion governance, first observe→enforce promotion. | First rule promoted by formal precision criteria, not judgment. | Pending |
-| 6 | Egress boundary + cross-tenant threat intel. | Known-bad hash from tenant A blocks tenant B pre-ingest. | Pending (year 2) |
-| 7 | External API launch. | Conditional on year-2 trigger criteria below. | Pending |
+| Phase | Scope | Exit signal | Model | Status |
+|---|---|---|---|---|
+| 0 | Foundations: folder skeleton, schemas (internal + wire), seed policies, health endpoint. | Skeleton committed; health endpoint returns real signals. Wire schemas document existing contracts. | n/a | **Complete** |
+| 0.5 | End-to-end model pipeline validation on Google Cloud free tier: stand up `smart-security-llm` Python+vLLM Cloud Run service serving base Gemma 4 E4B; AVIntelligence prescan calls the live LLM via the existing TS service; first prompts-only triage and finding narratives in production. | Base-E4B service answers a real triage call from production with cited doctrine, no out-of-pocket spend. | base Gemma 4 E4B | Pending |
+| 1 | Evidence spine + first fine-tune: Supabase `smart_security_decision_log` table; every `/v1/scan/file`, `/v1/decide`, and `/v1/events` produces a queryable decision record; first LoRA / QLoRA round on accumulated telemetry + curated corpus; v1.0 ships. | Every inbound request produces a persisted decision record. v1.0 fine-tune evaluation beats base-E4B baseline on internal benchmark. | fine-tuned Gemma 4 E4B | Pending |
+| 2 | Analyzer expansion: add YARA-X + qpdf + pdfid + olevba to the existing TS service alongside ClamAV/structural; port current suspicious-PDF markers into real YARA rules; `/v1/scan/file` decisions cite the firing rule. | Quarantine decision references a real YARA / structural rule, not a hand-coded marker. | unchanged | Pending |
+| 3 | Doctrine + Triage Agent: ingest NIST/CISA/OWASP/MITRE/D3FEND; every quarantine cites ≥2 doctrine sources. | First doctrine-cited quarantine decision recorded. | unchanged | Pending |
+| 4 | Responder Agent + session boundary intelligence: quarantine/revoke/rate-limit enforced; `/v1/decide` serves intelligent decisions with rolling baselines. | First reversible enforced action demonstrated with reversal path. | unchanged | Pending |
+| 5 | Internal feedback loop: weekly precision tracking, promotion governance, first observe→enforce promotion. | First rule promoted by formal precision criteria, not judgment. | unchanged | Pending |
+| 6 | v2.0 model + enterprise tier: fine-tune Gemma 4 26B A4B on accumulated telemetry; route enterprise-tier traffic to the larger model; cross-document correlation features unlock. | First enterprise-tier customer served by 26B model with measurably better complex-reasoning outcomes. | fine-tuned Gemma 4 26B A4B | Pending (gated on MRR) |
+| 7 | Egress boundary + cross-tenant threat intel. | Known-bad hash from tenant A blocks tenant B pre-ingest. | unchanged | Pending |
+| 8 | External-API public launch. | Conditional on Year-2 trigger criteria below. | unchanged | Pending |
 
 ## Year-2 external launch trigger criteria
 
@@ -221,37 +301,146 @@ All four must be true before opening the external API:
 
 If these are not met when the window arrives, Smart Security remains an AVIntelligence feature. That is still a win: zero infrastructure spend to replace, hardened AVI, and unique content-marketing material.
 
+## Two-service deployment topology
+
+Smart Security runs as **two Cloud Run services**, language-matched to task:
+
+```text
+                                ┌────────────────────────────┐
+                                │  AVIntelligence (Vercel)   │
+                                │                            │
+                                │  prescan-document  ──┐     │
+                                │  proxy.ts          ──┤     │
+                                └──────────────────────┼─────┘
+                                                       │
+                                                       │  HTTPS + x-smart-security-key
+                                                       │  (POST /v1/scan/file, /v1/decide, /v1/events)
+                                                       ▼
+                          ┌──────────────────────────────────────────┐
+                          │  Cloud Run: smart-security  (TypeScript) │
+                          │  asia-southeast1, repo: TitoDrewToo      │
+                          │                                          │
+                          │  - ClamAV daemon                         │
+                          │  - Structural scanners                   │
+                          │  - Decision log writer (Phase 1)         │
+                          │  - Triage / Responder gateways           │
+                          │  - Wire translation layer                │
+                          └────────────────────┬─────────────────────┘
+                                               │
+                                               │  internal HTTPS
+                                               │  (POST /infer/triage, /infer/explain)
+                                               ▼
+                          ┌──────────────────────────────────────────┐
+                          │  Cloud Run: smart-security-llm  (Python) │
+                          │  vLLM + Gemma 4 E4B → fine-tune → 26B    │
+                          │                                          │
+                          │  - Stateless inference                   │
+                          │  - Model artifacts from Cloud Storage    │
+                          │  - GPU when active, scale-to-zero idle   │
+                          └──────────────────────────────────────────┘
+```
+
+**Why two services**:
+
+- **Language fit**: TypeScript for HTTP orchestration + scanner integration (Node ecosystem for ClamAV bindings, structural parsers, Supabase clients). Python for vLLM (mature, GPU-native, Hugging Face / Vertex tooling).
+- **Independent scaling**: scanner traffic is many small requests; inference traffic is fewer, larger requests with different memory / GPU profiles.
+- **Independent deploys**: a YARA rule update ships without re-deploying the LLM; a fine-tune ships without disturbing the scanner.
+- **Compliance scope clarity**: each service has its own audit trail, its own secrets, its own access posture.
+- **Failure isolation**: if the LLM service is degraded, the scanner can still return deterministic decisions (`clean` for unsigned-clean files, fail-open for AI triage with a degraded-mode flag).
+
+Both services share the doctrine + policies + schemas tree from `avint/smart-security/` via release-pinned snapshots — that folder is the source of truth, copied into each service's container at build time.
+
 ## Infrastructure choices
 
 | Concern | Choice | Rationale |
 |---|---|---|
-| Smart Security service host | Google Cloud Run | Always-free tier covers year 1 volume; scale-to-zero; pay-per-request. |
-| Analyzer container host | Google Cloud Run | Same service region; can be a separate Cloud Run service or in-process. |
-| Doctrine storage | Supabase Storage | No new vendor; existing stack. |
-| Decision log | Supabase Postgres (new tables) | Existing stack; RLS-ready for year-2 multi-tenancy. |
-| Evidence bucket | Supabase Storage bucket, access-restricted | Existing stack. Year 2 migrates to customer-held KMS. |
-| Model provider chains | Anthropic (primary) → OpenAI → Google | Extends existing `providerChain()` pattern from `supabase/functions/_shared/ai-providers.ts`. |
-| Repository layout | `smart-security/` at repo root | Self-contained; extraction to separate repo is trivial in year 2. |
+| Scanner service host (existing) | Google Cloud Run — `smart-security` (TypeScript) in `asia-southeast1` | Already deployed; ClamAV + structural live; auto-scale 0–20. |
+| LLM inference service host (new) | Google Cloud Run — `smart-security-llm` (Python + vLLM) | Separate container; language-appropriate per task; scales to zero. Phase 0.5 stands this up on free tier with base Gemma 4 E4B. |
+| Model training | Vertex AI Training (or GCE w/ GPU) | Antigravity Agent Manager submits jobs here. LoRA round ~$25–40 on E4B with current pricing; full fine-tune deferred to v2.0. |
+| Trained-artifact storage | Google Cloud Storage | Datasets, checkpoints, trained-artifact handoff to Cloud Run. |
+| Decision log | Cloud SQL Postgres (Smart Security's own DB) | Within the Smart Security boundary; RLS-ready for multi-tenancy from day 1. AVIntelligence's Supabase Postgres remains separate. |
+| Evidence bucket | Cloud Storage bucket per tenant, access-restricted | Within Smart Security's project. Year-2 / enterprise migrates to customer-held CMEK keys. |
+| Doctrine storage | Cloud Storage + Cloud SQL pgvector | Public corpus only; chunk text in Cloud Storage, vector index in pgvector. |
+| Threat-intel + telemetry warehouse | BigQuery | `learning_record` rows from the scanner stream here for training-data curation and analytics. |
+| Inference fallback (pre-v1.0 only) | Anthropic / Gemini API for Investigator and Doctrine ingestion | Used as gap-fillers, not user-facing. Removed when v1.0 / v2.0 ships. |
+| Repository layout | Two separate GitHub repos: `TitoDrewToo/smart-security` (TS scanner) + new `smart-security-llm` (Python LLM service). The local `avint/smart-security/` folder holds doctrine/policies/schemas as the canonical source for both. | Clean compliance scoping (SOC 2 / ISO 27001 audits scope to repo); architectural discipline; independent deploy cadence; the `avint/smart-security/` doctrine folder is consumed by both repos via release-versioned snapshots in later phases. |
+| Build orchestration | Antigravity Agent Manager (installed; billing TBD) | Native GCP integration (Cloud Run, IAM, Cloud Logging, Vertex AI). Composes specialized agents (architecture, API contract, dataset curation, detection rules, service build, prompt engineering, validation, compliance/docs). |
+| Status of `avint/smart-security/` folder | Doctrine + policies + schemas + agent SKILL contract, in-repo for year 1 | Source of truth for action matrix, schemas, and operational skill. Consumed by the Cloud Run services via release-pinned snapshots; survives any future repo extraction. |
 
-## Pricing structure (held in reserve — year 2+)
+## Commerce model — avintph.com as unified portal
 
-Recorded for continuity. Not active in year 1. Smart Security is bundled into AVIntelligence tiers.
+Smart Security customer-facing commerce runs through **avintph.com**, the same portal that sells AVIntelligence products. Smart Security is **not** a separate pricing site or customer dashboard. Same brand, same Creem integration, same customer dashboard.
 
-| Tier | Price | Role | Who it's for |
-|---|---|---|---|
-| Watch | $0 | Sensor network + marketing | Solo operators, indie SaaS |
-| Defend Starter | $29/mo (annual only) | Self-serve growth tier | Small teams |
-| Defend | $99/mo | Real revenue tier | Funded startups, early SaaS |
-| Defend Pro | $299/mo | Enterprise/regulated | SOC2-requiring customers |
+Why this is the correct shape:
+
+- One brand, one purchase flow, one customer dashboard.
+- Natural cross-sell — AVIntelligence customers see Smart Security API tiers in the same /pricing page.
+- Compliance scoping: customer-facing surfaces audited as one. Smart Security backend audited separately for SOC 2 / ISO 27001.
+- Less duplicate work — no second pricing page, no second dashboard, no second support channel.
+
+### Customer flow (Pattern B)
+
+1. Customer visits avintph.com → /pricing → sees AVIntelligence products + Smart Security API tiers in the same surface.
+2. Customer purchases a Smart Security tier via Creem (existing checkout flow).
+3. Creem webhook → avintph.com server → calls Smart Security `POST /v1/admin/keys` (new admin endpoint, phase 2) with tenant info.
+4. Smart Security generates an `ssk_xxx` API key, stores it tagged to `tenant_id`, returns the key.
+5. avintph.com customer dashboard displays the key once, shows integration docs, links to the API reference.
+6. Customer integrates: their app calls Smart Security directly with the key.
+7. avintph.com customer dashboard polls Smart Security `GET /v1/admin/usage` for display + billing reconciliation.
+
+### Two auth paths in Smart Security
+
+- **Customer-facing**: API key in `Authorization` header (or `x-smart-security-key`) for scan / decide / events calls.
+- **Internal admin**: service-to-service auth between avintph.com and Smart Security for provisioning + usage queries.
+
+AVIntelligence's `prescan-document` is itself a customer (tenant `avint-prod`) using a customer-style API key. There is no special path for AVIntelligence — the same API contract serves all tenants, AVIntelligence first.
+
+### Pricing tiers (held in reserve — Phase 6+ / external launch)
+
+Recorded for continuity. Not active before external launch. Tier mapping aligns with model capability:
+
+| Tier | Price | Model serving the tier | Role | Who it's for |
+|---|---|---|---|---|
+| Watch | $0 | base Gemma 4 E4B + prompts | Sensor network + marketing | Solo operators, indie SaaS |
+| Defend Starter | $29/mo (annual only) | fine-tuned Gemma 4 E4B | Self-serve growth tier | Small teams |
+| Defend | $99/mo | fine-tuned Gemma 4 E4B | Real revenue tier | Funded startups, early SaaS |
+| Defend Pro | $299/mo | fine-tuned Gemma 4 26B A4B (when v2.0 ships) | Enterprise / regulated | SOC 2-requiring customers |
+
+The customer-facing API contract is identical across tiers; routing happens server-side based on `tenant_id` → tier → model.
 
 ## Legal and compliance posture
 
-| Concern | Year 1 posture | Year 2 posture |
-|---|---|---|
-| Liability exposure | Internal — AVIntelligence service-quality only | External tenants require tech E&O + cyber liability |
-| SOC2 | Optional; start Type 1 when phase 4 approaches | Type 1 required before external launch; Type 2 in observation during year 2 |
-| Entity | AVIntelligence PH | Add Delaware C-Corp as contracting entity for US customers |
-| Insurance | Not required | $1M-$2M tech E&O + cyber liability, ~$3K-$7K/year |
+**Compliance is a P1 design objective, not a Phase 3 retrofit.** The system is built so that SOC 2 / ISO 27001 application is an evidence-collection exercise at audit time, not an architecture rewrite.
+
+### Architectural controls baked in from Phase 1 build
+
+1. **Comprehensive audit logging** — every action, every scan decision, every policy change logged with timestamp, actor, payload integrity. Cloud Logging + BigQuery archive.
+2. **Data residency clarity** — single region per tenant (`asia-southeast1` today; multi-region option for enterprise), documented in customer-facing pages and audit reports.
+3. **Granular access controls** — RLS in Cloud SQL Postgres, IAM in GCP, principle of least privilege, MFA on admin accounts.
+4. **Encryption** — TLS 1.2+ in transit, AES-256 at rest (default GCP), customer-managed keys (CMEK) wired for enterprise tier.
+5. **Backup + DR** — automated Cloud SQL backups, RPO ≤ 24h, RTO ≤ 4h, quarterly DR drills documented.
+6. **Incident response procedures** — runbook, escalation path, evidence preservation, customer-notification SLAs.
+7. **Change management** — PR review, deployment approvals, automated test gates, post-deployment verification.
+8. **Vendor risk management** — every third-party (Frankfurter, Anthropic gap-filler, Gemini gap-filler, Supabase, Creem) documented with DPA / data-flow analysis.
+9. **Vulnerability management** — automated dependency scans, CVE tracking, patch cadence.
+10. **Personnel security** — background checks, NDAs, access offboarding procedures (when team grows beyond solo).
+
+### Phased posture
+
+| Concern | Phase 1 build | Phase 2 mature internal | Phase 3 external launch prep |
+|---|---|---|---|
+| Liability exposure | Internal — AVIntelligence service-quality only | Same as Phase 1 | External tenants require tech E&O + cyber liability |
+| SOC 2 | All controls in place; collecting evidence | 6+ months of operating evidence | Formal Type II audit (~$30K–50K, 3–6 months) |
+| ISO 27001 (optional) | Not started | Optionally begin scoping | Audit (~$40K–60K, longer timeline) for international/enterprise customers |
+| Entity | AVIntelligence PH | Same | Add Delaware C-Corp as contracting entity for US customers |
+| Insurance | Not required | Not required | $1M–$2M tech E&O + cyber liability, ~$3K–$7K/year |
+
+### Why P1
+
+- Compliance reputation is a differentiator vs. "secure" claims without certs.
+- Faster enterprise sales when SOC 2 Type II is in hand.
+- Audit-ready architecture is harder to retrofit than to design in.
+- Builds dev-team credibility and inspires customer confidence.
 
 ## Doctrine sources (public corpus only)
 
@@ -294,6 +483,49 @@ Doctrine Agent runs on schedule against configured source list:
 
 Retrieval at inference time: for each detection, Triage retrieves top-k chunks filtered by `(attack_id, cwe_id, product_context)`. Uncited classifications are rejected by the orchestrator and re-run.
 
+## Build orchestration — Antigravity Agent Manager
+
+Smart Security's build is composed via **Antigravity Agent Manager** (installed locally; GCP billing to be confirmed before agents start training jobs). Antigravity is the *development* environment — it does not run training itself. It submits training jobs to Vertex AI / GCE-with-GPU.
+
+### Three-layer infrastructure
+
+| Layer | Role | Cost shape |
+|---|---|---|
+| Antigravity | Dev environment, agent orchestration, code authoring, deploy pipeline | Subscription (TBD pricing) |
+| Vertex AI Training (or GCE+GPU) | Where training jobs actually execute | $25–40 per LoRA round on E4B; $5K–15K on 26B A4B at v2.0 |
+| Cloud Run + GPU | Production inference serving | $0.50–3.00 / GPU-hour active time; scales to zero |
+
+Cloud Storage is the connective tissue — datasets, checkpoints, trained-artifact handoff between layers.
+
+### Agent team
+
+Specialized agents composed in Antigravity, each with a narrow mandate:
+
+| Agent | Mandate | Activation phase |
+|---|---|---|
+| Architecture Documentation | Inventory existing service AS-IS, design extension points, keep this doc current. | 0.5 |
+| API Contract | Extend existing OpenAPI spec on the TS scanner; design `smart-security-llm` API; surface contract diffs as PR review material. | 0.5 |
+| Code Inventory (one-time) | Capability inventory of the existing TS service (`defender.ts`, `scan.ts`, `scanners/`) so subsequent agents do not duplicate or contradict. | 0.5 |
+| Service Build | Build `smart-security-llm` Python service + integration code in the existing TS service. | 0.5 → 1 |
+| Dataset Curation | Pull public security corpora; structure for fine-tune; gate with provenance + license. | 1 |
+| Detection Rules | Generate YARA / Sigma candidates from threat intel; human review before merge. | 2 |
+| Prompt Engineering | Tune base-E4B + fine-tune prompts; record evaluations against benchmark harness. | 0.5 → 1 → 2 |
+| Reasoning Specialization | Multi-step reasoning fine-tune for v2.0 (26B A4B). | 6 |
+| Domain Adaptation | Retrain on AVIntelligence + first external customer telemetry as it accumulates. | 6 |
+| Validation / Testing | Precision + FP-rate measurement, sample testing, drift detection. | 1 |
+| Compliance / Docs | SOC 2 evidence trails, security policies, audit log review, customer-facing docs. | 1 |
+
+### Pre-flight
+
+Before any agent submits a training job:
+
+1. **GCP billing alerts + per-month spend caps** must be active on `avint-core` to prevent runaway costs.
+2. **Vertex AI Training API enabled** (`vertex-ai.googleapis.com`).
+3. **Cloud Run GPU quota requested** for inference (default quota is 0).
+4. **Service account roles** scoped per agent — least privilege.
+
+These are explicit prerequisites for Phase 0.5 to start.
+
 ## What is and isn't in this repository
 
 **Committed to git**:
@@ -309,9 +541,23 @@ Retrieval at inference time: for each detection, Triage retrieves top-k chunks f
 
 - `supabase/functions/prescan-document/index.ts:407` — Layer 1 wire call to `/v1/scan/file`. Observe mode in production.
 - `proxy.ts:38` — Layer 2 wire call to `/v1/decide`. Observe mode by default; enforce requires `SMART_SECURITY_MIDDLEWARE_MODE=enforce`.
-- `supabase/functions/_shared/ai-providers.ts` — existing provider-chain pattern that Smart Security extends.
+- `supabase/functions/_shared/ai-providers.ts` — provider-chain pattern; used today by AVIntelligence's own AI flows. Smart Security's own-model strategy means it does **not** extend this pattern.
+- `app/api/smart-security/health/route.ts` — health endpoint that reads doctrine + schemas from `smart-security/`; doubles as an integrity check on the doctrine snapshot.
+- `smart-security/SKILL.md` — operational contract for agents. Authoritative for the "never do" list and the loop.
+- `smart-security/policies/action-matrix.yaml` — autonomous-action source of truth.
+- `docs/smart-security-phase-0.md` — Phase 0 spec (status: complete).
+- `docs/smart-security-phase-0.5.md` — Phase 0.5 spec (current target — base-Gemma 4 E4B end-to-end on free tier).
 - `docs/build-reference/reference-architecture.md` — establishes Smart Security as a separate service and observe-before-enforce rollout policy.
+
+## Related external repos
+
+- `github.com/TitoDrewToo/smart-security` — deployed TypeScript scanner service (Cloud Run, `asia-southeast1`).
+- `smart-security-llm` (Python + vLLM) — to be created in Phase 0.5; serves Gemma 4 model family.
 
 ## Versioning
 
-This document tracks architectural decisions. When a decision changes (e.g., analyzer host, model assignment, tier pricing, wire contract), update this doc in the same commit as the change and reference the commit SHA in the phase spec that follows.
+This document tracks architectural decisions. When a decision changes (model assignment, infrastructure host, tier pricing, wire contract, commerce model, compliance posture), update this doc in the same commit as the change and reference the commit SHA in the phase spec that follows.
+
+### Change log
+
+- **2026-05-07** — Major roadmap update. Reframed agent-role models from third-party to own-model Gemma 4 progression (v0.5 / v1.0 / v2.0). Added two-service deployment topology, build orchestration via Antigravity, unified commerce via avintph.com (Smart Security tiers in the same portal as AVIntelligence products). Elevated compliance to P1. Confirmed deployed-state baseline of `github.com/TitoDrewToo/smart-security`. Phase plan extended to cover model progression and external-tenant gates.

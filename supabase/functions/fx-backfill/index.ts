@@ -9,14 +9,25 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 
 const CODE_RE = /^[A-Z]{3}$/
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") ?? "https://www.avintph.com,https://avintph.com").split(",").map(s => s.trim())
 
 type Tuple = { date: string; base: string; target: string }
 type ErrorTuple = Tuple & { message: string }
 
-function json(body: unknown, status = 200) {
+function buildCorsHeaders(req: Request) {
+  const origin = req.headers.get("origin") ?? ""
+  const allow = ALLOWED_ORIGINS.includes(origin) || /^https:\/\/[a-z0-9-]+\.vercel\.app$/.test(origin) ? origin : ALLOWED_ORIGINS[0]
+  return {
+    "Access-Control-Allow-Origin": allow,
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Vary": "Origin",
+  }
+}
+
+function json(body: unknown, status = 200, corsHeaders: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
   })
 }
 
@@ -110,12 +121,19 @@ async function fetchFrankfurterRate(tuple: Tuple): Promise<{ rateDate: string; r
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok")
+  const corsHeaders = buildCorsHeaders(req)
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
 
   const authHeader = req.headers.get("authorization") ?? ""
   const token = authHeader.replace(/^Bearer\s+/i, "")
-  if (token !== SUPABASE_SERVICE_ROLE_KEY) {
-    return json({ error: "Unauthorized" }, 401)
+  if (!token) {
+    return json({ error: "Missing authorization" }, 401, corsHeaders)
+  }
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+  const { data: userData, error: userErr } = await supabase.auth.getUser(token)
+  if (userErr || !userData?.user) {
+    return json({ error: "Invalid token" }, 401, corsHeaders)
   }
 
   let body: any = {}
@@ -123,12 +141,11 @@ serve(async (req) => {
     const text = await req.text()
     if (text) body = JSON.parse(text)
   } catch {
-    return json({ error: "Invalid request body" }, 400)
+    return json({ error: "Invalid request body" }, 400, corsHeaders)
   }
 
   const tuples = requestTuples(body)
   const unique = new Map(tuples.map((tuple) => [`${tuple.date}|${tuple.base}|${tuple.target}`, tuple]))
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
   const errors: ErrorTuple[] = []
   let inserted = 0
 
@@ -158,5 +175,5 @@ serve(async (req) => {
   }
 
   logEvent(FN, "completed", { requested: unique.size, inserted, errors: errors.length })
-  return json({ inserted, errors })
+  return json({ inserted, errors }, 200, corsHeaders)
 })

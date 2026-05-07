@@ -68,7 +68,6 @@ import {
   buildCurrencyModel,
   currencyDisplayName,
   currencyToSymbol,
-  displayWidgetTitle,
   emptyBandedSeries,
   emptyComposedSeries,
   emptyStackedSeries,
@@ -122,6 +121,17 @@ function currencyHasWidgetData(bucket: DashboardCurrencyBucket | undefined, widg
 
 function widgetSupportsMergedCurrency(widget: Widget) {
   return CURRENCY_SCOPED_WIDGET_TYPES.has(widget.type) && !widget.rdConfig && !widget.conversion_locked
+}
+
+function titleCurrencyForWidget(widget: Widget, model: DashboardCurrencyModel, activeCurrency?: string | null) {
+  if (!CURRENCY_SCOPED_WIDGET_TYPES.has(widget.type) || widget.rdConfig) return null
+  if (activeCurrency && model.buckets[activeCurrency]) return activeCurrency
+  return model.currencies.find((currency) => currencyHasWidgetData(model.buckets[currency], widget.type)) ?? null
+}
+
+function displayWidgetTitleWithCurrency(widget: Widget, currency: string | null) {
+  const display = displayCurrency(currency)
+  return display ? `${widget.title} · ${display}` : widget.title
 }
 
 const safeNum = (v: unknown): number => {
@@ -244,7 +254,7 @@ function WidgetContent({
   timeSeriesData, stackedCompositionByGrain, composedDataByGrain, bandedSpendDataByGrain,
   currencyModel, mergedCurrencyModel,
   dashboardAccent,
-  contextSummary, contextSummaryDate, isGeneratingSummary, isPro, onGenerateSummary, onCycleTimeGrain,
+  contextSummary, contextSummaryDate, isGeneratingSummary, isPro, onGenerateSummary, onCycleTimeGrain, onActiveCurrencyChange,
 }: {
   widget: Widget
   kpi: KPIData
@@ -267,6 +277,7 @@ function WidgetContent({
   isPro: boolean
   onGenerateSummary: () => void
   onCycleTimeGrain: (widgetId: string) => void
+  onActiveCurrencyChange: (widgetId: string, currency: string | null) => void
 }) {
   const { resolvedTheme } = useTheme()
   const themeMode: ThemeMode = resolvedTheme === "dark" ? "dark" : "light"
@@ -301,6 +312,10 @@ function WidgetContent({
       setActiveCurrency(selectedCurrency)
     }
   }, [activeCurrency, activeCurrencyModel.primaryCurrency, isCurrencyScopedWidget, selectedCurrency, widgetCurrencies])
+  useEffect(() => {
+    if (!isCurrencyScopedWidget) return
+    onActiveCurrencyChange(widget.id, selectedCurrency ?? null)
+  }, [isCurrencyScopedWidget, onActiveCurrencyChange, selectedCurrency, widget.id])
   // Active-shape renderer factory. Currency symbol is optional — doc-count
   // pies (Document Distribution) have no symbol; value-driven pies pass one.
   const makeActiveSlice = (opts: { symbol?: string } = {}) => (props: any) => {
@@ -1167,6 +1182,7 @@ export default function SmartDashboardPage() {
   const [fxRatesMap, setFxRatesMap] = useState<RatesMap>({})
   const [fxLoadingWidgetId, setFxLoadingWidgetId] = useState<string | null>(null)
   const [fxError, setFxError] = useState<string | null>(null)
+  const [activeWidgetCurrencies, setActiveWidgetCurrencies] = useState<Record<string, string>>({})
   const [preferredPrimaryCurrency, setPreferredPrimaryCurrency] = useState<string | null>(null)
   const [currencyBannerDismissed, setCurrencyBannerDismissed] = useState(false)
   const [widgets, setWidgets] = useState<Widget[]>([])
@@ -1669,13 +1685,23 @@ export default function SmartDashboardPage() {
   const updatePrimaryCurrencyPreference = async (currency: string) => {
     setPreferredPrimaryCurrency(currency)
     if (!session?.user?.id) return
+    const { data } = await supabase
+      .from("dashboard_layouts")
+      .select("layout")
+      .eq("user_id", session.user.id)
+      .maybeSingle()
+    const savedLayout = data?.layout && typeof data.layout === "object" ? data.layout as any : {}
     await supabase.from("dashboard_layouts").upsert({
       user_id: session.user.id,
       layout: {
-        widgets,
-        gridLayout: layout,
-        palette: { accent: dashboardAccent },
-        preferences: { primaryCurrency: currency },
+        widgets: savedLayout.widgets ?? widgets,
+        gridLayout: savedLayout.gridLayout ?? layout,
+        palette: savedLayout.palette ?? { accent: dashboardAccent },
+        ...savedLayout,
+        preferences: {
+          ...(savedLayout.preferences ?? {}),
+          primaryCurrency: currency,
+        },
       },
       updated_at: new Date().toISOString(),
     }, { onConflict: "user_id" })
@@ -1781,6 +1807,18 @@ export default function SmartDashboardPage() {
     setLayout(nextLayout)
     setIsDirty(true)
   }
+
+  const updateActiveWidgetCurrency = useCallback((widgetId: string, currency: string | null) => {
+    setActiveWidgetCurrencies((prev) => {
+      if (!currency) {
+        if (!(widgetId in prev)) return prev
+        const { [widgetId]: _removed, ...next } = prev
+        return next
+      }
+      if (prev[widgetId] === currency) return prev
+      return { ...prev, [widgetId]: currency }
+    })
+  }, [])
 
   const selectedPrimaryCurrency = currencyModel.currencies.includes(preferredPrimaryCurrency ?? "")
     ? preferredPrimaryCurrency!
@@ -2320,6 +2358,7 @@ export default function SmartDashboardPage() {
                   const isMerged = supportsMerged && widget.currencyMode === "merged" && mergedCurrencyModel.currencies.length > 0
                   const isPreparingFx = fxLoadingWidgetId === widget.id
                   const titleCurrencyModel = isMerged ? mergedCurrencyModel : currencyModel
+                  const titleCurrency = titleCurrencyForWidget(widget, titleCurrencyModel, activeWidgetCurrencies[widget.id])
 
                   return (
                     <div
@@ -2349,7 +2388,7 @@ export default function SmartDashboardPage() {
 
                       {/* Widget header */}
                       <div className="flex items-center gap-2 px-4 pt-3 pb-1 shrink-0">
-                        <h3 className="min-w-0 flex-1 truncate text-xs font-semibold text-foreground">{displayWidgetTitle(widget, titleCurrencyModel)}</h3>
+                        <h3 className="min-w-0 flex-1 truncate text-xs font-semibold text-foreground">{displayWidgetTitleWithCurrency(widget, titleCurrency)}</h3>
                         {supportsMerged && (
                           <div className="no-drag flex shrink-0 items-center rounded-lg border border-border p-0.5 text-[10px]">
                             <button
@@ -2395,6 +2434,7 @@ export default function SmartDashboardPage() {
                           isPro={isPro}
                           onGenerateSummary={generateContextSummary}
                           onCycleTimeGrain={cycleWidgetTimeGrain}
+                          onActiveCurrencyChange={updateActiveWidgetCurrency}
                         />
                       </div>
 

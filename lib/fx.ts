@@ -91,11 +91,15 @@ export async function ensureRatesExist(supabase: any, tuples: RateTuple[]): Prom
   if (missing.length === 0) return
 
   const { data: { session } } = await supabase.auth.getSession()
-  const res = await fetch("/api/fx/rates", {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  if (!supabaseUrl) throw new Error("Missing Supabase URL for FX backfill")
+
+  const res = await fetch(`${supabaseUrl}/functions/v1/fx-backfill`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${session?.access_token ?? ""}`,
+      "apikey": process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
     },
     body: JSON.stringify({ tuples: missing }),
   })

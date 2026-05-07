@@ -200,13 +200,6 @@ const currencyTabStyle: CSSProperties = {
   whiteSpace: "normal",
 }
 
-const conversionDisclosureStyle: CSSProperties = {
-  fontSize: "clamp(0.625rem, 1.8cqw, 0.75rem)",
-  lineHeight: "1.3",
-  whiteSpace: "normal",
-  wordBreak: "break-word",
-}
-
 const stackedKpiRowsClass = "mt-2 min-h-0 flex-1 space-y-1 overflow-y-auto pr-1"
 const stackedKpiRowClass = "flex min-w-0 items-baseline justify-between gap-2"
 
@@ -2610,12 +2603,6 @@ export default function SmartDashboardPage() {
                           onActiveCurrencyChange={updateActiveWidgetCurrency}
                         />
                       </div>
-
-                      {isMerged && (
-                        <p className="shrink-0 mx-4 mb-3 text-muted-foreground" style={conversionDisclosureStyle}>
-                          Converted to {displayCurrency(selectedPrimaryCurrency)} using transaction-date rates from Frankfurter
-                        </p>
-                      )}
 
                       {/* AI insight strip — only on advanced widgets */}
                       {widget.insight && (

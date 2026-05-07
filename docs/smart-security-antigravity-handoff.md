@@ -77,7 +77,17 @@ Before starting any task, read the required-reading list (12 files / paths in do
 
 When you encounter ambiguity in scope, prefer the more conservative interpretation and flag the ambiguity to the user. Do not invent direction.
 
-Your first action: read the required-reading list, then propose your agent-team composition (per the agent definitions in the handoff doc) and confirm understanding of the operating principles. Wait for human go-ahead before creating agents.
+Your first action — verify access, in this exact order, and report each one as PRESENT / MISSING / NEEDS_CONFIRMATION:
+
+a. GitHub write access to `TitoDrewToo/smart-security` (existing private repo — you will commit to a feature branch and open a PR; merges go through the user).
+b. GitHub permission to CREATE the repo `TitoDrewToo/smart-security-llm` (does not yet exist — Phase 0.5 task #5 creates it). If you cannot create repos under TitoDrewToo, stop and report; the user will create it manually and grant you write access.
+c. Read access to `TitoDrewToo/AVInt` (private repo — strategy + doctrine; READ ONLY, never write).
+d. GCP project access to `avint-core`: ability to deploy Cloud Run revisions, submit Vertex AI jobs, read/write Cloud Storage, read/write Secret Manager, write Cloud Logging. Confirm the service account or user identity Antigravity will act under.
+e. Cloud Run GPU quota status in `asia-southeast1` (1× GPU). If still pending, note it and continue with non-deploy work; deploy tasks will block until quota is granted.
+
+If any of (a)–(e) is MISSING or NEEDS_CONFIRMATION, stop and report to the user before proceeding. Do not attempt workarounds.
+
+Once access is confirmed, your second action: read the required-reading list, then propose your agent-team composition (per the agent definitions in this doc) and confirm understanding of the operating principles. Wait for human "go" before creating agents.
 ```
 
 ---

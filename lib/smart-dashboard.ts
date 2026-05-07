@@ -222,9 +222,33 @@ export function nextTimeGrain(grain: TimeGrain | undefined): TimeGrain {
   return "weekly"
 }
 
+const INCOME_DOCUMENT_TYPES = new Set(["payslip", "income_statement"])
+const EXPENSE_DOCUMENT_TYPES = new Set(["receipt", "invoice", "transaction_record"])
+
+function classifyRow(row: any): "income" | "expense" | null {
+  const fileType = row?.files?.document_type
+  const rowType = row?.document_type
+
+  if (INCOME_DOCUMENT_TYPES.has(fileType) || INCOME_DOCUMENT_TYPES.has(rowType)) return "income"
+  if (EXPENSE_DOCUMENT_TYPES.has(fileType) || EXPENSE_DOCUMENT_TYPES.has(rowType)) return "expense"
+
+  if (fileType === "csv_export") {
+    if (row.gross_income != null || row.net_income != null) return "income"
+    if (row.total_amount != null) return "expense"
+  }
+
+  return null
+}
+
+function dashboardAmount(row: any, safeNum: (v: unknown) => number): number {
+  return classifyRow(row) === "income"
+    ? safeNum(row.gross_income ?? row.total_amount)
+    : safeNum(row.total_amount)
+}
+
 function computeBucket(cur: string, rows: any[], safeNum: (v: unknown) => number): DashboardCurrencyBucket {
-  const incomeRows = rows.filter((f) => f.files && ["payslip", "income_statement"].includes(f.files.document_type))
-  const expenseRows = rows.filter((f) => f.files && ["receipt", "invoice"].includes(f.files.document_type))
+  const incomeRows = rows.filter((f) => classifyRow(f) === "income")
+  const expenseRows = rows.filter((f) => classifyRow(f) === "expense")
   const totalIncome = incomeRows.reduce((s, f) => s + safeNum(f.gross_income ?? f.total_amount), 0)
   const totalExpenses = expenseRows.reduce((s, f) => s + safeNum(f.total_amount), 0)
   const netPosition = totalIncome - totalExpenses
@@ -238,15 +262,15 @@ function computeBucket(cur: string, rows: any[], safeNum: (v: unknown) => number
     daily: {},
   }
   rows.forEach((f) => {
-    if (!f.document_date || !f.files) return
-    const amount = ["payslip", "income_statement"].includes(f.files.document_type)
+    const classification = classifyRow(f)
+    if (!f.document_date || !classification) return
+    const amount = classification === "income"
       ? safeNum(f.gross_income ?? f.total_amount)
       : safeNum(f.total_amount)
     for (const grain of TIME_GRAINS) {
       const bucket = timeBucketFor(f.document_date, grain)
       if (!timeMaps[grain][bucket.key]) timeMaps[grain][bucket.key] = { label: bucket.label, expenses: 0, income: 0 }
-      if (["payslip", "income_statement"].includes(f.files.document_type))
-        timeMaps[grain][bucket.key].income += amount
+      if (classification === "income") timeMaps[grain][bucket.key].income += amount
       else timeMaps[grain][bucket.key].expenses += amount
     }
   })
@@ -374,11 +398,11 @@ export function buildCurrencyModel(fields: any[], safeNum: (v: unknown) => numbe
   const labeled: Record<string, any[]> = {}
   let unspecifiedRowCount = 0
   for (const f of fields) {
-    const docType = f?.files?.document_type
-    const amount = docType === "payslip" || docType === "income_statement"
+    const classification = classifyRow(f)
+    const amount = classification === "income"
       ? (f.gross_income ?? f.total_amount)
       : f.total_amount
-    if (amount === null || amount === undefined) continue
+    if (!classification || amount === null || amount === undefined) continue
     const raw = typeof f?.currency === "string" ? f.currency.trim().toUpperCase() : ""
     const currency = raw || UNSPECIFIED_CURRENCY
     if (currency === UNSPECIFIED_CURRENCY) unspecifiedRowCount++
@@ -396,9 +420,7 @@ export function buildCurrencyModel(fields: any[], safeNum: (v: unknown) => numbe
     let activity = 0
     let latest = ""
     for (const r of rows) {
-      const dt = r?.files?.document_type
-      if (dt === "payslip" || dt === "income_statement") activity += safeNum(r.gross_income ?? r.total_amount)
-      else activity += safeNum(r.total_amount)
+      activity += dashboardAmount(r, safeNum)
       if (typeof r?.document_date === "string" && r.document_date > latest) latest = r.document_date
     }
     stats[cur] = { count: rows.length, activity, latest }

@@ -103,6 +103,23 @@ const CURRENCY_SCOPED_WIDGET_TYPES = new Set([
   "banded-area",
 ])
 
+const KPI_CURRENCY_VIEW_WIDGET_TYPES = new Set([
+  "kpi-income",
+  "kpi-expenses",
+  "kpi-net",
+  "kpi-tax-exposure",
+])
+
+const CHART_CURRENCY_VIEW_WIDGET_TYPES = new Set([
+  "area-chart",
+  "line-chart",
+  "bar-chart",
+  "bar-deductible",
+  "stacked-bar",
+  "composed-chart",
+  "banded-area",
+])
+
 function displayCurrency(code: string | null | undefined) {
   return currencyDisplayName(code) ?? code ?? ""
 }
@@ -120,11 +137,17 @@ function currencyHasWidgetData(bucket: DashboardCurrencyBucket | undefined, widg
 }
 
 function widgetSupportsMergedCurrency(widget: Widget) {
-  return CURRENCY_SCOPED_WIDGET_TYPES.has(widget.type) && !widget.rdConfig && !widget.conversion_locked
+  return (KPI_CURRENCY_VIEW_WIDGET_TYPES.has(widget.type) || CHART_CURRENCY_VIEW_WIDGET_TYPES.has(widget.type)) && !widget.rdConfig && !widget.conversion_locked
+}
+
+function widgetHasMultipleCurrencyViews(widget: Widget, model: DashboardCurrencyModel) {
+  if (!widgetSupportsMergedCurrency(widget)) return false
+  return model.currencies.filter((currency) => currencyHasWidgetData(model.buckets[currency], widget.type)).length > 1
 }
 
 function titleCurrencyForWidget(widget: Widget, model: DashboardCurrencyModel, activeCurrency?: string | null) {
   if (!CURRENCY_SCOPED_WIDGET_TYPES.has(widget.type) || widget.rdConfig) return null
+  if (KPI_CURRENCY_VIEW_WIDGET_TYPES.has(widget.type) && widget.currencyMode !== "merged") return null
   if (activeCurrency && model.buckets[activeCurrency]) return activeCurrency
   return model.currencies.find((currency) => currencyHasWidgetData(model.buckets[currency], widget.type)) ?? null
 }
@@ -137,6 +160,16 @@ function displayWidgetTitleWithCurrency(widget: Widget, currency: string | null)
 const safeNum = (v: unknown): number => {
   const n = parseFloat(String(v ?? "0"))
   return isNaN(n) ? 0 : n
+}
+
+function widgetCurrencyModesFor(widgets: Widget[]) {
+  const modes: Record<string, "split" | "merged"> = {}
+  for (const widget of widgets) {
+    if (widget.currencyMode === "split" || widget.currencyMode === "merged") {
+      modes[widget.id] = widget.currencyMode
+    }
+  }
+  return modes
 }
 
 // ── Animated number ───────────────────────────────────────────────────────────
@@ -378,10 +411,9 @@ function WidgetContent({
   const scopedStackedCompositionByGrain = activeBucket?.stackedCompositionByGrain ?? stackedCompositionByGrain
   const scopedComposedDataByGrain = activeBucket?.composedDataByGrain ?? composedDataByGrain
   const scopedBandedSpendDataByGrain = activeBucket?.bandedDataByGrain ?? bandedSpendDataByGrain
-  const stackCompactCurrencyKpi = widgetCurrencies.length > 1 &&
-    widgetCurrencies.length <= 3 &&
-    (widget.type === "kpi-income" || widget.type === "kpi-expenses")
-  const currencyTabs = widgetCurrencies.length > 1 && isCurrencyScopedWidget && !stackCompactCurrencyKpi ? (
+  const showStackedCurrencyKpi = KPI_CURRENCY_VIEW_WIDGET_TYPES.has(widget.type) && !isMergedMode && widgetCurrencies.length > 1
+  const scopedCurrencySuffix = activeBucket && !showStackedCurrencyKpi ? ` (${displayCurrency(activeBucket.currency)})` : ""
+  const currencyTabs = widgetCurrencies.length > 1 && isCurrencyScopedWidget && !showStackedCurrencyKpi ? (
     <div className="flex max-w-full items-center gap-1 overflow-x-auto">
       {widgetCurrencies.map((currency) => (
         <button
@@ -442,12 +474,12 @@ function WidgetContent({
   if (widget.type === "kpi-income") return (
     <div className="flex h-full flex-col justify-between">
       <div className="flex items-start justify-between">
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Total Income{activeBucket ? ` (${displayCurrency(activeBucket.currency)})` : ""}</p>
+        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Total Income{scopedCurrencySuffix}</p>
         <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: colors.primary + "20" }}>
           <TrendingUp className="h-4 w-4" style={{ color: colors.primary }} />
         </div>
       </div>
-      {stackCompactCurrencyKpi ? (
+      {showStackedCurrencyKpi ? (
         <div className="mt-3 space-y-1.5">
           {widgetCurrencies.map((currency) => {
             const bucket = activeCurrencyModel.buckets[currency]
@@ -463,7 +495,7 @@ function WidgetContent({
           })}
         </div>
       ) : <div className="mt-2">{currencyTabs}</div>}
-      {!stackCompactCurrencyKpi && <div>
+      {!showStackedCurrencyKpi && <div>
         {activeBucket ? (
           <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
             <AnimatedNumber value={scopedKpi.totalIncome} prefix={symbol} />
@@ -478,12 +510,12 @@ function WidgetContent({
   if (widget.type === "kpi-expenses") return (
     <div className="flex h-full flex-col justify-between">
       <div className="flex items-start justify-between">
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Total Expenses{activeBucket ? ` (${displayCurrency(activeBucket.currency)})` : ""}</p>
+        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Total Expenses{scopedCurrencySuffix}</p>
         <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: colors.secondary + "20" }}>
           <Receipt className="h-4 w-4" style={{ color: colors.secondary }} />
         </div>
       </div>
-      {stackCompactCurrencyKpi ? (
+      {showStackedCurrencyKpi ? (
         <div className="mt-3 space-y-1.5">
           {widgetCurrencies.map((currency) => {
             const bucket = activeCurrencyModel.buckets[currency]
@@ -499,7 +531,7 @@ function WidgetContent({
           })}
         </div>
       ) : <div className="mt-2">{currencyTabs}</div>}
-      {!stackCompactCurrencyKpi && <div>
+      {!showStackedCurrencyKpi && <div>
         {activeBucket ? (
           <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
             <AnimatedNumber value={scopedKpi.totalExpenses} prefix={symbol} />
@@ -514,44 +546,74 @@ function WidgetContent({
   if (widget.type === "kpi-net") return (
     <div className="flex h-full flex-col justify-between">
       <div className="flex items-start justify-between">
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Net Position{activeBucket ? ` (${displayCurrency(activeBucket.currency)})` : ""}</p>
+        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Net Position{scopedCurrencySuffix}</p>
         <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: colors.primary + "20" }}>
           <Wallet className="h-4 w-4" style={{ color: colors.primary }} />
         </div>
       </div>
-      <div className="mt-2">{currencyTabs}</div>
-      {activeBucket ? (
+      {showStackedCurrencyKpi ? (
+        <div className="mt-3 space-y-1.5">
+          {widgetCurrencies.map((currency) => {
+            const bucket = activeCurrencyModel.buckets[currency]
+            if (!bucket) return null
+            return (
+              <div key={currency} className="flex items-baseline justify-between gap-3">
+                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{displayCurrency(currency)}</span>
+                <span className={`text-xl font-semibold tracking-tight ${bucket.netPosition >= 0 ? "text-foreground" : "text-primary"}`}>
+                  {currencyToSymbol(currency)}{Math.round(bucket.netPosition).toLocaleString()}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      ) : <div className="mt-2">{currencyTabs}</div>}
+      {!showStackedCurrencyKpi && activeBucket ? (
         <>
           <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
             <AnimatedNumber value={scopedKpi.netPosition} prefix={symbol} />
           </p>
           <p className="text-xs text-muted-foreground">{scopedKpi.totalIncome > 0 ? `${scopedKpi.savingsRate.toFixed(1)}% ${scopedKpi.savingsRate >= 0 ? "savings rate" : "overspend"}` : "No income data"}</p>
         </>
-      ) : (
+      ) : !showStackedCurrencyKpi ? (
         <p className="mt-3 text-sm text-muted-foreground">No data in selected period</p>
-      )}
+      ) : null}
     </div>
   )
 
   if (widget.type === "kpi-tax-exposure") return (
     <div className="flex h-full flex-col justify-between">
       <div className="flex items-start justify-between">
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Est. Tax Exposure{activeBucket ? ` (${displayCurrency(activeBucket.currency)})` : ""}</p>
+        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Est. Tax Exposure{scopedCurrencySuffix}</p>
         <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: colors.tertiary + "20" }}>
           <TrendingUp className="h-4 w-4" style={{ color: colors.tertiary }} />
         </div>
       </div>
-      <div className="mt-2">{currencyTabs}</div>
-      {activeBucket ? (
+      {showStackedCurrencyKpi ? (
+        <div className="mt-3 space-y-1.5">
+          {widgetCurrencies.map((currency) => {
+            const bucket = activeCurrencyModel.buckets[currency]
+            if (!bucket) return null
+            return (
+              <div key={currency} className="flex items-baseline justify-between gap-3">
+                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{displayCurrency(currency)}</span>
+                <span className="text-xl font-semibold tracking-tight text-foreground">
+                  {currencyToSymbol(currency)}{Math.round(bucket.taxExposure).toLocaleString()}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      ) : <div className="mt-2">{currencyTabs}</div>}
+      {!showStackedCurrencyKpi && activeBucket ? (
         <>
           <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
             <AnimatedNumber value={scopedKpi.taxExposure} prefix={symbol} />
           </p>
           <p className="text-xs text-muted-foreground">Gross income minus expenses</p>
         </>
-      ) : (
+      ) : !showStackedCurrencyKpi ? (
         <p className="mt-3 text-sm text-muted-foreground">No data in selected period</p>
-      )}
+      ) : null}
     </div>
   )
 
@@ -1315,7 +1377,15 @@ export default function SmartDashboardPage() {
       .maybeSingle()
     if (data?.layout) {
       const saved = data.layout
-      const savedWidgets: Widget[] = saved.widgets?.length ? saved.widgets : []
+      const savedCurrencyModes = saved.preferences?.widgetCurrencyModes && typeof saved.preferences.widgetCurrencyModes === "object"
+        ? saved.preferences.widgetCurrencyModes as Record<string, "split" | "merged">
+        : {}
+      const savedWidgets: Widget[] = saved.widgets?.length
+        ? saved.widgets.map((widget: Widget) => {
+            const mode = savedCurrencyModes[widget.id]
+            return mode === "split" || mode === "merged" ? { ...widget, currencyMode: mode } : widget
+          })
+        : []
       const widgetById = new Map<string, Widget>(savedWidgets.map((widget) => [widget.id, widget]))
       setWidgets(savedWidgets)
       if (saved.palette?.accent) setDashboardAccent(saved.palette.accent)
@@ -1661,7 +1731,10 @@ export default function SmartDashboardPage() {
         widgets: nextWidgets,
         gridLayout: nextLayout,
         palette: { accent: dashboardAccent },
-        preferences: { primaryCurrency: preferredPrimaryCurrency },
+        preferences: {
+          primaryCurrency: preferredPrimaryCurrency,
+          widgetCurrencyModes: widgetCurrencyModesFor(nextWidgets),
+        },
       },
       updated_at: new Date().toISOString(),
     }, { onConflict: "user_id" })
@@ -1682,8 +1755,11 @@ export default function SmartDashboardPage() {
     await persistLayout(widgets, layout, { closeEditor: true, showConfirm: true })
   }
 
-  const updatePrimaryCurrencyPreference = async (currency: string) => {
-    setPreferredPrimaryCurrency(currency)
+  const persistDashboardPreferences = async (
+    preferencesPatch: Record<string, unknown>,
+    fallbackWidgets: Widget[] = widgets,
+    fallbackLayout: LayoutItem[] = layout,
+  ) => {
     if (!session?.user?.id) return
     const { data } = await supabase
       .from("dashboard_layouts")
@@ -1694,17 +1770,22 @@ export default function SmartDashboardPage() {
     await supabase.from("dashboard_layouts").upsert({
       user_id: session.user.id,
       layout: {
-        widgets: savedLayout.widgets ?? widgets,
-        gridLayout: savedLayout.gridLayout ?? layout,
-        palette: savedLayout.palette ?? { accent: dashboardAccent },
         ...savedLayout,
+        widgets: savedLayout.widgets ?? fallbackWidgets,
+        gridLayout: savedLayout.gridLayout ?? fallbackLayout,
+        palette: savedLayout.palette ?? { accent: dashboardAccent },
         preferences: {
           ...(savedLayout.preferences ?? {}),
-          primaryCurrency: currency,
+          ...preferencesPatch,
         },
       },
       updated_at: new Date().toISOString(),
     }, { onConflict: "user_id" })
+  }
+
+  const updatePrimaryCurrencyPreference = async (currency: string) => {
+    setPreferredPrimaryCurrency(currency)
+    await persistDashboardPreferences({ primaryCurrency: currency })
   }
 
   const updateWidgetCurrencyMode = async (widgetId: string, mode: "split" | "merged") => {
@@ -1725,11 +1806,7 @@ export default function SmartDashboardPage() {
 
     const nextWidgets = widgets.map((widget) => widget.id === widgetId ? { ...widget, currencyMode: mode } : widget)
     setWidgets(nextWidgets)
-    if (isEditingLayout) {
-      setIsDirty(true)
-    } else {
-      await persistLayout(nextWidgets, layout, { closeEditor: false, showConfirm: false })
-    }
+    await persistDashboardPreferences({ widgetCurrencyModes: widgetCurrencyModesFor(nextWidgets) }, nextWidgets, layout)
   }
 
   // ── Widget management ──────────────────────────────────────────────────────
@@ -2354,7 +2431,9 @@ export default function SmartDashboardPage() {
                 resizeHandles={isMobile ? [] : ["se", "sw", "ne", "nw", "e", "w", "s"]}
               >
                 {widgets.map((widget) => {
-                  const supportsMerged = widgetSupportsMergedCurrency(widget) && currencyModel.hasMultipleCurrencies
+                  const supportsKpiCurrencyMode = KPI_CURRENCY_VIEW_WIDGET_TYPES.has(widget.type) && widgetHasMultipleCurrencyViews(widget, currencyModel)
+                  const supportsChartMergeMode = CHART_CURRENCY_VIEW_WIDGET_TYPES.has(widget.type) && widgetHasMultipleCurrencyViews(widget, currencyModel)
+                  const supportsMerged = supportsKpiCurrencyMode || supportsChartMergeMode
                   const isMerged = supportsMerged && widget.currencyMode === "merged" && mergedCurrencyModel.currencies.length > 0
                   const isPreparingFx = fxLoadingWidgetId === widget.id
                   const titleCurrencyModel = isMerged ? mergedCurrencyModel : currencyModel
@@ -2389,14 +2468,14 @@ export default function SmartDashboardPage() {
                       {/* Widget header */}
                       <div className="flex items-center gap-2 px-4 pt-3 pb-1 shrink-0">
                         <h3 className="min-w-0 flex-1 truncate text-xs font-semibold text-foreground">{displayWidgetTitleWithCurrency(widget, titleCurrency)}</h3>
-                        {supportsMerged && (
+                        {supportsKpiCurrencyMode && (
                           <div className="no-drag flex shrink-0 items-center rounded-lg border border-border p-0.5 text-[10px]">
                             <button
                               type="button"
                               onClick={(e) => { e.stopPropagation(); void updateWidgetCurrencyMode(widget.id, "split") }}
                               className={`rounded-md px-2 py-0.5 transition-colors ${widget.currencyMode !== "merged" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
                             >
-                              Split
+                              Stacked
                             </button>
                             <button
                               type="button"
@@ -2407,6 +2486,22 @@ export default function SmartDashboardPage() {
                               {isPreparingFx ? "..." : "Merged"}
                             </button>
                           </div>
+                        )}
+                        {supportsChartMergeMode && (
+                          <button
+                            type="button"
+                            disabled={isPreparingFx}
+                            onClick={(e) => { e.stopPropagation(); void updateWidgetCurrencyMode(widget.id, widget.currencyMode === "merged" ? "split" : "merged") }}
+                            className={`no-drag shrink-0 rounded-lg border px-2 py-1 text-[10px] font-medium uppercase tracking-wider transition-colors disabled:cursor-wait disabled:opacity-60 ${
+                              widget.currencyMode === "merged"
+                                ? "border-primary/50 bg-primary/10 text-primary"
+                                : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                            }`}
+                            title={`Convert all currencies to ${displayCurrency(selectedPrimaryCurrency)}`}
+                            aria-pressed={widget.currencyMode === "merged"}
+                          >
+                            {isPreparingFx ? "..." : widget.currencyMode === "merged" ? "Merged" : "Merge"}
+                          </button>
                         )}
                       </div>
 

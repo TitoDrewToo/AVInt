@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef, type CSSProperties } from "react"
 import { useTheme } from "next-themes"
 import { Navbar } from "@/components/navbar"
 import { Footer } from "@/components/footer"
@@ -160,6 +160,49 @@ function displayWidgetTitleWithCurrency(widget: Widget, currency: string | null)
 const safeNum = (v: unknown): number => {
   const n = parseFloat(String(v ?? "0"))
   return isNaN(n) ? 0 : n
+}
+
+const kpiPrimaryValueStyle: CSSProperties = {
+  fontSize: "clamp(1rem, 7cqw, 2.25rem)",
+  lineHeight: "1.1",
+  wordBreak: "break-word",
+}
+
+const kpiSecondaryValueStyle: CSSProperties = {
+  fontSize: "clamp(0.75rem, 4cqw, 1.25rem)",
+  lineHeight: "1.15",
+  wordBreak: "break-word",
+}
+
+const kpiLabelStyle: CSSProperties = {
+  fontSize: "clamp(0.6875rem, 2.5cqw, 0.875rem)",
+  lineHeight: "1.2",
+  wordBreak: "break-word",
+}
+
+const widgetHeaderTitleStyle: CSSProperties = {
+  fontSize: "clamp(0.6875rem, 2.4cqw, 0.875rem)",
+  lineHeight: "1.2",
+  wordBreak: "break-word",
+}
+
+const chartTitleStyle: CSSProperties = {
+  fontSize: "clamp(0.6875rem, 2.2cqw, 0.8125rem)",
+  lineHeight: "1.25",
+  wordBreak: "break-word",
+}
+
+const currencyTabStyle: CSSProperties = {
+  fontSize: "clamp(0.625rem, 1.8cqw, 0.75rem)",
+  lineHeight: "1.15",
+  whiteSpace: "normal",
+}
+
+const conversionDisclosureStyle: CSSProperties = {
+  fontSize: "clamp(0.625rem, 1.8cqw, 0.75rem)",
+  lineHeight: "1.3",
+  whiteSpace: "normal",
+  wordBreak: "break-word",
 }
 
 function widgetCurrencyModesFor(widgets: Widget[]) {
@@ -381,6 +424,7 @@ function WidgetContent({
       type="button"
       onClick={(e) => { e.stopPropagation(); onCycleTimeGrain(widget.id) }}
       className="rounded-md border border-border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      style={currencyTabStyle}
       title="Cycle monthly, weekly, and daily view"
     >
       {TIME_GRAIN_LABEL[timeGrain]}
@@ -425,6 +469,7 @@ function WidgetContent({
               ? "border-primary/50 bg-primary/10 text-primary"
               : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
           }`}
+          style={currencyTabStyle}
           title={`Show ${displayCurrency(currency)} amounts without conversion`}
         >
           {displayCurrency(currency)}
@@ -441,7 +486,7 @@ function WidgetContent({
     return (
       <div className="flex h-full flex-col">
         <div className="mb-3 flex items-center justify-between">
-          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">All Currencies</p>
+          <p className="font-medium uppercase tracking-wider text-muted-foreground" style={kpiLabelStyle}>All Currencies</p>
           <Wallet className="h-4 w-4 text-muted-foreground" />
         </div>
         {rows.length === 0 ? (
@@ -451,14 +496,14 @@ function WidgetContent({
             {rows.map((bucket) => {
               const rowSymbol = currencyToSymbol(bucket.currency)
               return (
-                <div key={bucket.currency} className="grid grid-cols-[48px_1fr] gap-2 rounded-md border border-border/60 px-2 py-1.5 text-xs">
-                  <span className="font-semibold tracking-wider text-foreground" style={{ fontFamily: 'var(--font-aldrich), "Aldrich", sans-serif' }}>
+                <div key={bucket.currency} className="grid grid-cols-[minmax(36px,0.28fr)_1fr] gap-2 rounded-md border border-border/60 px-2 py-1.5">
+                  <span className="font-semibold tracking-wider text-foreground" style={{ ...kpiLabelStyle, fontFamily: 'var(--font-aldrich), "Aldrich", sans-serif' }}>
                     {bucket.currency}
                   </span>
                   <div className="grid grid-cols-3 gap-2 font-mono tabular-nums">
-                    <span className="text-emerald-600">+{rowSymbol}{Math.round(bucket.totalIncome).toLocaleString()}</span>
-                    <span className="text-muted-foreground">-{rowSymbol}{Math.round(bucket.totalExpenses).toLocaleString()}</span>
-                    <span className={bucket.netPosition >= 0 ? "text-emerald-600" : "text-primary"}>
+                    <span className="min-w-0 text-emerald-600" style={kpiSecondaryValueStyle}>+{rowSymbol}{Math.round(bucket.totalIncome).toLocaleString()}</span>
+                    <span className="min-w-0 text-muted-foreground" style={kpiSecondaryValueStyle}>-{rowSymbol}{Math.round(bucket.totalExpenses).toLocaleString()}</span>
+                    <span className={`min-w-0 ${bucket.netPosition >= 0 ? "text-emerald-600" : "text-primary"}`} style={kpiSecondaryValueStyle}>
                       Net {rowSymbol}{Math.round(bucket.netPosition).toLocaleString()}
                     </span>
                   </div>
@@ -474,7 +519,7 @@ function WidgetContent({
   if (widget.type === "kpi-income") return (
     <div className="flex h-full flex-col justify-between">
       <div className="flex items-start justify-between">
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Total Income{scopedCurrencySuffix}</p>
+        <p className="font-medium uppercase tracking-wider text-muted-foreground" style={kpiLabelStyle}>Total Income{scopedCurrencySuffix}</p>
         <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: colors.primary + "20" }}>
           <TrendingUp className="h-4 w-4" style={{ color: colors.primary }} />
         </div>
@@ -486,8 +531,8 @@ function WidgetContent({
             if (!bucket) return null
             return (
               <div key={currency} className="flex items-baseline justify-between gap-3">
-                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{displayCurrency(currency)}</span>
-                <span className="text-xl font-semibold tracking-tight text-foreground">
+                <span className="font-medium uppercase tracking-wider text-muted-foreground" style={kpiLabelStyle}>{displayCurrency(currency)}</span>
+                <span className="min-w-0 text-right font-semibold tracking-tight text-foreground" style={kpiSecondaryValueStyle}>
                   {currencyToSymbol(currency)}{Math.round(bucket.totalIncome).toLocaleString()}
                 </span>
               </div>
@@ -497,7 +542,7 @@ function WidgetContent({
       ) : <div className="mt-2">{currencyTabs}</div>}
       {!showStackedCurrencyKpi && <div>
         {activeBucket ? (
-          <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
+          <p className="mt-3 font-semibold tracking-tight text-foreground" style={kpiPrimaryValueStyle}>
             <AnimatedNumber value={scopedKpi.totalIncome} prefix={symbol} />
           </p>
         ) : (
@@ -510,7 +555,7 @@ function WidgetContent({
   if (widget.type === "kpi-expenses") return (
     <div className="flex h-full flex-col justify-between">
       <div className="flex items-start justify-between">
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Total Expenses{scopedCurrencySuffix}</p>
+        <p className="font-medium uppercase tracking-wider text-muted-foreground" style={kpiLabelStyle}>Total Expenses{scopedCurrencySuffix}</p>
         <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: colors.secondary + "20" }}>
           <Receipt className="h-4 w-4" style={{ color: colors.secondary }} />
         </div>
@@ -522,8 +567,8 @@ function WidgetContent({
             if (!bucket) return null
             return (
               <div key={currency} className="flex items-baseline justify-between gap-3">
-                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{displayCurrency(currency)}</span>
-                <span className="text-xl font-semibold tracking-tight text-foreground">
+                <span className="font-medium uppercase tracking-wider text-muted-foreground" style={kpiLabelStyle}>{displayCurrency(currency)}</span>
+                <span className="min-w-0 text-right font-semibold tracking-tight text-foreground" style={kpiSecondaryValueStyle}>
                   {currencyToSymbol(currency)}{Math.round(bucket.totalExpenses).toLocaleString()}
                 </span>
               </div>
@@ -533,7 +578,7 @@ function WidgetContent({
       ) : <div className="mt-2">{currencyTabs}</div>}
       {!showStackedCurrencyKpi && <div>
         {activeBucket ? (
-          <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
+          <p className="mt-3 font-semibold tracking-tight text-foreground" style={kpiPrimaryValueStyle}>
             <AnimatedNumber value={scopedKpi.totalExpenses} prefix={symbol} />
           </p>
         ) : (
@@ -546,7 +591,7 @@ function WidgetContent({
   if (widget.type === "kpi-net") return (
     <div className="flex h-full flex-col justify-between">
       <div className="flex items-start justify-between">
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Net Position{scopedCurrencySuffix}</p>
+        <p className="font-medium uppercase tracking-wider text-muted-foreground" style={kpiLabelStyle}>Net Position{scopedCurrencySuffix}</p>
         <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: colors.primary + "20" }}>
           <Wallet className="h-4 w-4" style={{ color: colors.primary }} />
         </div>
@@ -558,8 +603,8 @@ function WidgetContent({
             if (!bucket) return null
             return (
               <div key={currency} className="flex items-baseline justify-between gap-3">
-                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{displayCurrency(currency)}</span>
-                <span className={`text-xl font-semibold tracking-tight ${bucket.netPosition >= 0 ? "text-foreground" : "text-primary"}`}>
+                <span className="font-medium uppercase tracking-wider text-muted-foreground" style={kpiLabelStyle}>{displayCurrency(currency)}</span>
+                <span className={`min-w-0 text-right font-semibold tracking-tight ${bucket.netPosition >= 0 ? "text-foreground" : "text-primary"}`} style={kpiSecondaryValueStyle}>
                   {currencyToSymbol(currency)}{Math.round(bucket.netPosition).toLocaleString()}
                 </span>
               </div>
@@ -569,7 +614,7 @@ function WidgetContent({
       ) : <div className="mt-2">{currencyTabs}</div>}
       {!showStackedCurrencyKpi && activeBucket ? (
         <>
-          <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
+          <p className="mt-3 font-semibold tracking-tight text-foreground" style={kpiPrimaryValueStyle}>
             <AnimatedNumber value={scopedKpi.netPosition} prefix={symbol} />
           </p>
           <p className="text-xs text-muted-foreground">{scopedKpi.totalIncome > 0 ? `${scopedKpi.savingsRate.toFixed(1)}% ${scopedKpi.savingsRate >= 0 ? "savings rate" : "overspend"}` : "No income data"}</p>
@@ -583,7 +628,7 @@ function WidgetContent({
   if (widget.type === "kpi-tax-exposure") return (
     <div className="flex h-full flex-col justify-between">
       <div className="flex items-start justify-between">
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Est. Tax Exposure{scopedCurrencySuffix}</p>
+        <p className="font-medium uppercase tracking-wider text-muted-foreground" style={kpiLabelStyle}>Est. Tax Exposure{scopedCurrencySuffix}</p>
         <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: colors.tertiary + "20" }}>
           <TrendingUp className="h-4 w-4" style={{ color: colors.tertiary }} />
         </div>
@@ -595,8 +640,8 @@ function WidgetContent({
             if (!bucket) return null
             return (
               <div key={currency} className="flex items-baseline justify-between gap-3">
-                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{displayCurrency(currency)}</span>
-                <span className="text-xl font-semibold tracking-tight text-foreground">
+                <span className="font-medium uppercase tracking-wider text-muted-foreground" style={kpiLabelStyle}>{displayCurrency(currency)}</span>
+                <span className="min-w-0 text-right font-semibold tracking-tight text-foreground" style={kpiSecondaryValueStyle}>
                   {currencyToSymbol(currency)}{Math.round(bucket.taxExposure).toLocaleString()}
                 </span>
               </div>
@@ -606,7 +651,7 @@ function WidgetContent({
       ) : <div className="mt-2">{currencyTabs}</div>}
       {!showStackedCurrencyKpi && activeBucket ? (
         <>
-          <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
+          <p className="mt-3 font-semibold tracking-tight text-foreground" style={kpiPrimaryValueStyle}>
             <AnimatedNumber value={scopedKpi.taxExposure} prefix={symbol} />
           </p>
           <p className="text-xs text-muted-foreground">Gross income minus expenses</p>
@@ -620,7 +665,7 @@ function WidgetContent({
   if (widget.type === "kpi-tax-ratio") return (
     <div className="flex h-full flex-col justify-between">
       <div className="flex items-start justify-between">
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Tax Burden Rate{activeBucket ? ` (${displayCurrency(activeBucket.currency)})` : ""}</p>
+        <p className="font-medium uppercase tracking-wider text-muted-foreground" style={kpiLabelStyle}>Tax Burden Rate{activeBucket ? ` (${displayCurrency(activeBucket.currency)})` : ""}</p>
         <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: colors.quaternary + "20" }}>
           <Wallet className="h-4 w-4" style={{ color: colors.quaternary }} />
         </div>
@@ -628,7 +673,7 @@ function WidgetContent({
       <div className="mt-2">{currencyTabs}</div>
       {activeBucket ? (
         <>
-          <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
+          <p className="mt-3 font-semibold tracking-tight text-foreground" style={kpiPrimaryValueStyle}>
             {scopedKpi.taxRatio.toFixed(1)}%
           </p>
           <p className="text-xs text-muted-foreground">Of gross income</p>
@@ -653,7 +698,7 @@ function WidgetContent({
     }
     return (
       <div className="flex h-full flex-col">
-        <p className="mb-3 text-xs text-muted-foreground">{widget.title}</p>
+        <p className="mb-3 text-muted-foreground" style={chartTitleStyle}>{widget.title}</p>
         <div className="flex-1 min-h-0">
           <ResponsiveContainer width="100%" height="100%">
             {rd.chart_type === "line-chart" ? (
@@ -715,8 +760,8 @@ function WidgetContent({
     }
     return (
       <div className="flex h-full flex-col">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <p className="min-w-0 text-xs text-muted-foreground">{TIME_GRAIN_LABEL[timeGrain]} income vs expenses ({displayCurrency(scopedKpi.currency)})</p>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <p className="min-w-0 text-muted-foreground" style={chartTitleStyle}>{TIME_GRAIN_LABEL[timeGrain]} income vs expenses ({displayCurrency(scopedKpi.currency)})</p>
           {currencyTabs}
           {drillButton}
         </div>
@@ -759,8 +804,8 @@ function WidgetContent({
     const activeMonthlyData = scopedTimeSeriesData[timeGrain] ?? scopedMonthlyData
     return (
       <div className="flex h-full flex-col">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <p className="min-w-0 text-xs text-muted-foreground">{TIME_GRAIN_LABEL[timeGrain]} {widget.title ?? "trend over time"} ({displayCurrency(scopedKpi.currency)})</p>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <p className="min-w-0 text-muted-foreground" style={chartTitleStyle}>{TIME_GRAIN_LABEL[timeGrain]} {widget.title ?? "trend over time"} ({displayCurrency(scopedKpi.currency)})</p>
           {currencyTabs}
           {drillButton}
         </div>
@@ -789,8 +834,8 @@ function WidgetContent({
     const label = widget.type === "bar-deductible" ? "Expense categories reducing tax exposure" : "Total spend per category"
     return (
       <div className="flex h-full flex-col">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <p className="min-w-0 text-xs text-muted-foreground">{label} ({displayCurrency(scopedKpi.currency)})</p>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <p className="min-w-0 text-muted-foreground" style={chartTitleStyle}>{label} ({displayCurrency(scopedKpi.currency)})</p>
           {currencyTabs}
         </div>
         <div className="flex-1 min-h-0">
@@ -836,7 +881,7 @@ function WidgetContent({
     const variant = widget.chartVariant ?? "pie"
     return (
     <div className="flex h-full flex-col">
-      <p className="mb-2 text-xs text-muted-foreground">Breakdown by document type</p>
+      <p className="mb-2 text-muted-foreground" style={chartTitleStyle}>Breakdown by document type</p>
       <div className="flex-1 min-h-0">
         <ResponsiveContainer width="100%" height="100%">
           {variant === "bar" ? (
@@ -883,8 +928,8 @@ function WidgetContent({
     const groupLabel = activeStackedData.groupBy === "merchant_domain" ? "merchant domain" : "expense category"
     return (
       <div className="flex h-full flex-col">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <p className="min-w-0 text-xs text-muted-foreground">{TIME_GRAIN_LABEL[timeGrain]} spend share by {groupLabel} ({displayCurrency(scopedKpi.currency)})</p>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <p className="min-w-0 text-muted-foreground" style={chartTitleStyle}>{TIME_GRAIN_LABEL[timeGrain]} spend share by {groupLabel} ({displayCurrency(scopedKpi.currency)})</p>
           {currencyTabs}
           {drillButton}
         </div>
@@ -911,8 +956,8 @@ function WidgetContent({
     const activeComposedData = scopedComposedDataByGrain[timeGrain] ?? scopedComposedData
     return (
       <div className="flex h-full flex-col">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <p className="min-w-0 text-xs text-muted-foreground">Income, expenses, and net position by {TIME_GRAIN_UNIT[timeGrain]} ({displayCurrency(scopedKpi.currency)})</p>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <p className="min-w-0 text-muted-foreground" style={chartTitleStyle}>Income, expenses, and net position by {TIME_GRAIN_UNIT[timeGrain]} ({displayCurrency(scopedKpi.currency)})</p>
           {currencyTabs}
           {drillButton}
         </div>
@@ -943,8 +988,8 @@ function WidgetContent({
     const activeBandedData = scopedBandedSpendDataByGrain[timeGrain] ?? scopedBandedSpendData
     return (
       <div className="flex h-full flex-col">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <p className="min-w-0 text-xs text-muted-foreground">{TIME_GRAIN_LABEL[timeGrain]} spend vs trailing normal range (mean ± 1σ) ({displayCurrency(scopedKpi.currency)})</p>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <p className="min-w-0 text-muted-foreground" style={chartTitleStyle}>{TIME_GRAIN_LABEL[timeGrain]} spend vs trailing normal range (mean ± 1σ) ({displayCurrency(scopedKpi.currency)})</p>
           {currencyTabs}
           {drillButton}
         </div>
@@ -2453,6 +2498,7 @@ export default function SmartDashboardPage() {
                               ? "cursor-pointer border-border hover:border-border/60 hover:shadow-md"
                               : "border-border"
                       }`}
+                      style={{ containerType: "inline-size" }}
                     >
                       {/* Corner grid markers — desktop selected state only */}
                       {!isMobile && isEditingLayout && selectedWidgetId === widget.id && (<>
@@ -2467,13 +2513,14 @@ export default function SmartDashboardPage() {
 
                       {/* Widget header */}
                       <div className="flex items-center gap-2 px-4 pt-3 pb-1 shrink-0">
-                        <h3 className="min-w-0 flex-1 truncate text-xs font-semibold text-foreground">{displayWidgetTitleWithCurrency(widget, titleCurrency)}</h3>
+                        <h3 className="min-w-0 flex-1 font-semibold text-foreground" style={widgetHeaderTitleStyle}>{displayWidgetTitleWithCurrency(widget, titleCurrency)}</h3>
                         {supportsKpiCurrencyMode && (
-                          <div className="no-drag flex shrink-0 items-center rounded-lg border border-border p-0.5 text-[10px]">
+                          <div className="no-drag flex shrink-0 items-center rounded-lg border border-border p-0.5">
                             <button
                               type="button"
                               onClick={(e) => { e.stopPropagation(); void updateWidgetCurrencyMode(widget.id, "split") }}
                               className={`rounded-md px-2 py-0.5 transition-colors ${widget.currencyMode !== "merged" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+                              style={currencyTabStyle}
                             >
                               Stacked
                             </button>
@@ -2482,6 +2529,7 @@ export default function SmartDashboardPage() {
                               disabled={isPreparingFx}
                               onClick={(e) => { e.stopPropagation(); void updateWidgetCurrencyMode(widget.id, "merged") }}
                               className={`rounded-md px-2 py-0.5 transition-colors disabled:cursor-wait disabled:opacity-60 ${widget.currencyMode === "merged" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+                              style={currencyTabStyle}
                             >
                               {isPreparingFx ? "..." : "Merged"}
                             </button>
@@ -2497,6 +2545,7 @@ export default function SmartDashboardPage() {
                                 ? "border-primary/50 bg-primary/10 text-primary"
                                 : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
                             }`}
+                            style={currencyTabStyle}
                             title={`Convert all currencies to ${displayCurrency(selectedPrimaryCurrency)}`}
                             aria-pressed={widget.currencyMode === "merged"}
                           >
@@ -2534,7 +2583,7 @@ export default function SmartDashboardPage() {
                       </div>
 
                       {isMerged && (
-                        <p className="shrink-0 mx-4 mb-3 text-[10px] leading-snug text-muted-foreground">
+                        <p className="shrink-0 mx-4 mb-3 text-muted-foreground" style={conversionDisclosureStyle}>
                           Converted to {displayCurrency(selectedPrimaryCurrency)} using transaction-date rates from Frankfurter
                         </p>
                       )}

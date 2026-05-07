@@ -225,12 +225,18 @@ export function nextTimeGrain(grain: TimeGrain | undefined): TimeGrain {
 const INCOME_DOCUMENT_TYPES = new Set(["payslip", "income_statement"])
 const EXPENSE_DOCUMENT_TYPES = new Set(["receipt", "invoice", "transaction_record"])
 
+function rowDocumentType(row: any): string | null {
+  const fromGemini = row?.raw_json?.gemini_raw?.document_type
+  if (typeof fromGemini === "string" && fromGemini.length) return fromGemini
+  return null
+}
+
 function classifyRow(row: any): "income" | "expense" | null {
   const fileType = row?.files?.document_type
-  const rowType = row?.document_type
+  const rowType = rowDocumentType(row)
 
-  if (INCOME_DOCUMENT_TYPES.has(fileType) || INCOME_DOCUMENT_TYPES.has(rowType)) return "income"
-  if (EXPENSE_DOCUMENT_TYPES.has(fileType) || EXPENSE_DOCUMENT_TYPES.has(rowType)) return "expense"
+  if (INCOME_DOCUMENT_TYPES.has(fileType ?? "") || INCOME_DOCUMENT_TYPES.has(rowType ?? "")) return "income"
+  if (EXPENSE_DOCUMENT_TYPES.has(fileType ?? "") || EXPENSE_DOCUMENT_TYPES.has(rowType ?? "")) return "expense"
 
   if (fileType === "csv_export") {
     if (row.gross_income != null || row.net_income != null) return "income"

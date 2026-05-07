@@ -1287,7 +1287,7 @@ export default function SmartDashboardPage() {
 
     let query = supabase
       .from("document_fields")
-      .select("file_id, document_date, total_amount, gross_income, net_income, expense_category, merchant_domain, currency, document_type, files!inner(document_type, filename)")
+      .select("file_id, document_date, total_amount, gross_income, net_income, expense_category, merchant_domain, currency, raw_json, files!inner(document_type, filename)")
       .in("file_id", fileIds)
       .neq("normalization_status", "excluded")
       .order("document_date", { ascending: true })

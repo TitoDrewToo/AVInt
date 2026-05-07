@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from "next/server"
+import { createClient } from "@supabase/supabase-js"
 
 import { serverError } from "@/lib/api-error"
 
 const SUPPORTED_CODE = /^[A-Z]{3}$/
 const SOURCE = "Frankfurter"
+
+function supabaseAdmin() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !serviceRoleKey) throw new Error("Missing Supabase service role configuration")
+  return createClient(url, serviceRoleKey)
+}
 
 function cleanCurrency(value: string | null) {
   const code = (value ?? "").trim().toUpperCase()
@@ -76,5 +84,42 @@ export async function GET(req: NextRequest) {
     )
   } catch (err) {
     return serverError(err, { route: "fx/rates", stage: "fetch" })
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "")
+    if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    const { data: { user }, error: authError } = await supabaseAdmin().auth.getUser(token)
+    if (authError || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    const body = await req.json()
+    const tuples = Array.isArray(body?.tuples) ? body.tuples : []
+    const cleaned = tuples.map((tuple: any) => ({
+      date: typeof tuple?.date === "string" ? tuple.date.slice(0, 10) : null,
+      base: cleanCurrency(tuple?.base ?? tuple?.from ?? null),
+      target: cleanCurrency(tuple?.target ?? tuple?.to ?? null),
+    })).filter((tuple: any) => tuple.date && tuple.base && tuple.target && tuple.base !== tuple.target)
+
+    if (!cleaned.length) return NextResponse.json({ inserted: 0, errors: [] })
+
+    const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/fx-backfill`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+      },
+      body: JSON.stringify({ tuples: cleaned }),
+    })
+
+    const payload = await res.json().catch(() => null)
+    if (!res.ok) {
+      return NextResponse.json(payload ?? { error: "FX backfill failed" }, { status: res.status })
+    }
+    return NextResponse.json(payload)
+  } catch (err) {
+    return serverError(err, { route: "fx/rates", stage: "backfill" })
   }
 }

@@ -29,6 +29,7 @@ export const WIDGET_MIN_SIZE: Record<string, { minW: number; minH: number }> = {
   "kpi-income":       { minW: 2, minH: 1 },
   "kpi-expenses":     { minW: 2, minH: 1 },
   "kpi-net":          { minW: 2, minH: 1 },
+  "kpi-currency-summary": { minW: 3, minH: 2 },
   "kpi-tax-exposure": { minW: 2, minH: 1 },
   "kpi-tax-ratio":    { minW: 2, minH: 1 },
   "kpi-savings":      { minW: 2, minH: 1 },

@@ -10,6 +10,8 @@ export interface Widget {
   colors?: WidgetColor
   chartVariant?: string
   timeGrain?: TimeGrain
+  currencyMode?: "split" | "merged"
+  conversion_locked?: boolean
   advancedId?: string
   insight?: string
   rdConfig?: RdWidgetConfig
@@ -140,6 +142,7 @@ export const WIDGET_LIBRARY = [
   { type: "kpi-income", title: "Income KPI", desc: "Total income detected across all documents", isPremium: false },
   { type: "kpi-expenses", title: "Expenses KPI", desc: "Sum of all classified expense transactions", isPremium: false },
   { type: "kpi-net", title: "Net Position KPI", desc: "Income minus expenses with savings rate", isPremium: false },
+  { type: "kpi-currency-summary", title: "All Currencies", desc: "Income, expenses, and net position for every currency in your data — native amounts, no conversion", isPremium: false },
   { type: "kpi-tax-exposure", title: "Tax Exposure KPI", desc: "Estimated tax liability based on net income", isPremium: false },
   { type: "kpi-tax-ratio", title: "Tax Burden Rate KPI", desc: "Tax as a percentage of gross income", isPremium: false },
   { type: "area-chart", title: "Income vs Expenses", desc: "Monthly trend of income and expenses over time", isPremium: false },

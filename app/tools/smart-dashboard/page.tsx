@@ -50,6 +50,14 @@ import {
   widgetMinSize,
 } from "@/lib/dashboard-layout"
 import {
+  convertAmount,
+  ensureRatesExist,
+  fetchRatesFromDb,
+  getRequiredRateTuples,
+  rateKey,
+  type RatesMap,
+} from "@/lib/fx"
+import {
   CHART_DEFAULT,
   CHART_TYPE_OPTIONS,
   DRILLABLE_WIDGET_TYPES,
@@ -107,7 +115,18 @@ function currencyHasWidgetData(bucket: DashboardCurrencyBucket | undefined, widg
   if (widgetType === "kpi-net") return bucket.netPosition !== 0 || bucket.totalIncome > 0 || bucket.totalExpenses > 0
   if (widgetType === "kpi-tax-exposure") return bucket.taxExposure > 0
   if (widgetType === "kpi-tax-ratio") return bucket.taxRatio > 0
+  if (widgetType === "area-chart" || widgetType === "line-chart" || widgetType === "composed-chart") return bucket.totalIncome > 0 && bucket.totalExpenses > 0
+  if (widgetType === "bar-chart" || widgetType === "bar-deductible" || widgetType === "stacked-bar" || widgetType === "banded-area") return bucket.totalExpenses > 0
   return bucket.totalIncome > 0 || bucket.totalExpenses > 0
+}
+
+function widgetSupportsMergedCurrency(widget: Widget) {
+  return CURRENCY_SCOPED_WIDGET_TYPES.has(widget.type) && !widget.rdConfig && !widget.conversion_locked
+}
+
+const safeNum = (v: unknown): number => {
+  const n = parseFloat(String(v ?? "0"))
+  return isNaN(n) ? 0 : n
 }
 
 // ── Animated number ───────────────────────────────────────────────────────────
@@ -223,7 +242,7 @@ function WidgetContent({
   widget, kpi, monthlyData, categoryData, docTypeData,
   stackedCompositionData, composedData, bandedSpendData,
   timeSeriesData, stackedCompositionByGrain, composedDataByGrain, bandedSpendDataByGrain,
-  currencyModel,
+  currencyModel, mergedCurrencyModel,
   dashboardAccent,
   contextSummary, contextSummaryDate, isGeneratingSummary, isPro, onGenerateSummary, onCycleTimeGrain,
 }: {
@@ -240,6 +259,7 @@ function WidgetContent({
   composedDataByGrain: Record<TimeGrain, ComposedRow[]>
   bandedSpendDataByGrain: Record<TimeGrain, BandedRow[]>
   currencyModel: DashboardCurrencyModel
+  mergedCurrencyModel: DashboardCurrencyModel
   dashboardAccent: string
   contextSummary: string | null
   contextSummaryDate: string | null
@@ -261,24 +281,26 @@ function WidgetContent({
   const [activePieIndex, setActivePieIndex] = useState<number | null>(null)
   const [activeCurrency, setActiveCurrency] = useState(currencyModel.primaryCurrency)
   const isCurrencyScopedWidget = CURRENCY_SCOPED_WIDGET_TYPES.has(widget.type) && !widget.rdConfig
+  const isMergedMode = widgetSupportsMergedCurrency(widget) && widget.currencyMode === "merged" && mergedCurrencyModel.currencies.length > 0
+  const activeCurrencyModel = isMergedMode ? mergedCurrencyModel : currencyModel
   const widgetCurrencies = useMemo(
-    () => isCurrencyScopedWidget && widget.type.startsWith("kpi-")
-      ? currencyModel.currencies.filter((currency) => currencyHasWidgetData(currencyModel.buckets[currency], widget.type))
-      : currencyModel.currencies,
-    [currencyModel.buckets, currencyModel.currencies, isCurrencyScopedWidget, widget.type],
+    () => isCurrencyScopedWidget
+      ? activeCurrencyModel.currencies.filter((currency) => currencyHasWidgetData(activeCurrencyModel.buckets[currency], widget.type))
+      : activeCurrencyModel.currencies,
+    [activeCurrencyModel.buckets, activeCurrencyModel.currencies, isCurrencyScopedWidget, widget.type],
   )
   const selectedCurrency = widgetCurrencies.includes(activeCurrency)
     ? activeCurrency
-    : (widgetCurrencies.includes(currencyModel.primaryCurrency) ? currencyModel.primaryCurrency : widgetCurrencies[0])
+    : (widgetCurrencies.includes(activeCurrencyModel.primaryCurrency) ? activeCurrencyModel.primaryCurrency : widgetCurrencies[0])
   useEffect(() => {
-    if (isCurrencyScopedWidget) setActiveCurrency(currencyModel.primaryCurrency)
-  }, [currencyModel.primaryCurrency, isCurrencyScopedWidget])
+    if (isCurrencyScopedWidget) setActiveCurrency(activeCurrencyModel.primaryCurrency)
+  }, [activeCurrencyModel.primaryCurrency, isCurrencyScopedWidget])
   useEffect(() => {
     if (!isCurrencyScopedWidget) return
     if (!widgetCurrencies.includes(activeCurrency) && selectedCurrency) {
       setActiveCurrency(selectedCurrency)
     }
-  }, [activeCurrency, currencyModel.primaryCurrency, isCurrencyScopedWidget, selectedCurrency, widgetCurrencies])
+  }, [activeCurrency, activeCurrencyModel.primaryCurrency, isCurrencyScopedWidget, selectedCurrency, widgetCurrencies])
   // Active-shape renderer factory. Currency symbol is optional — doc-count
   // pies (Document Distribution) have no symbol; value-driven pies pass one.
   const makeActiveSlice = (opts: { symbol?: string } = {}) => (props: any) => {
@@ -318,7 +340,7 @@ function WidgetContent({
   ) : null
 
   const activeBucket: DashboardCurrencyBucket | null = isCurrencyScopedWidget
-    ? (selectedCurrency ? currencyModel.buckets[selectedCurrency] ?? null : null)
+    ? (selectedCurrency ? activeCurrencyModel.buckets[selectedCurrency] ?? null : null)
     : null
   const scopedKpi: KPIData = activeBucket
     ? {
@@ -364,6 +386,44 @@ function WidgetContent({
     </div>
   ) : null
 
+  if (widget.type === "kpi-currency-summary") {
+    const rows = currencyModel.currencies
+      .map((currency) => currencyModel.buckets[currency])
+      .filter((bucket): bucket is DashboardCurrencyBucket => Boolean(bucket && (bucket.totalIncome > 0 || bucket.totalExpenses > 0)))
+
+    return (
+      <div className="flex h-full flex-col">
+        <div className="mb-3 flex items-center justify-between">
+          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">All Currencies</p>
+          <Wallet className="h-4 w-4 text-muted-foreground" />
+        </div>
+        {rows.length === 0 ? (
+          <p className="mt-3 text-sm text-muted-foreground">No data in selected period</p>
+        ) : (
+          <div className="min-h-0 flex-1 space-y-2 overflow-auto">
+            {rows.map((bucket) => {
+              const rowSymbol = currencyToSymbol(bucket.currency)
+              return (
+                <div key={bucket.currency} className="grid grid-cols-[48px_1fr] gap-2 rounded-md border border-border/60 px-2 py-1.5 text-xs">
+                  <span className="font-semibold tracking-wider text-foreground" style={{ fontFamily: 'var(--font-aldrich), "Aldrich", sans-serif' }}>
+                    {bucket.currency}
+                  </span>
+                  <div className="grid grid-cols-3 gap-2 font-mono tabular-nums">
+                    <span className="text-emerald-600">+{rowSymbol}{Math.round(bucket.totalIncome).toLocaleString()}</span>
+                    <span className="text-muted-foreground">-{rowSymbol}{Math.round(bucket.totalExpenses).toLocaleString()}</span>
+                    <span className={bucket.netPosition >= 0 ? "text-emerald-600" : "text-primary"}>
+                      Net {rowSymbol}{Math.round(bucket.netPosition).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   if (widget.type === "kpi-income") return (
     <div className="flex h-full flex-col justify-between">
       <div className="flex items-start justify-between">
@@ -375,7 +435,7 @@ function WidgetContent({
       {stackCompactCurrencyKpi ? (
         <div className="mt-3 space-y-1.5">
           {widgetCurrencies.map((currency) => {
-            const bucket = currencyModel.buckets[currency]
+            const bucket = activeCurrencyModel.buckets[currency]
             if (!bucket) return null
             return (
               <div key={currency} className="flex items-baseline justify-between gap-3">
@@ -411,7 +471,7 @@ function WidgetContent({
       {stackCompactCurrencyKpi ? (
         <div className="mt-3 space-y-1.5">
           {widgetCurrencies.map((currency) => {
-            const bucket = currencyModel.buckets[currency]
+            const bucket = activeCurrencyModel.buckets[currency]
             if (!bucket) return null
             return (
               <div key={currency} className="flex items-baseline justify-between gap-3">
@@ -1103,6 +1163,10 @@ export default function SmartDashboardPage() {
   const [composedDataByGrain, setComposedDataByGrain] = useState<Record<TimeGrain, ComposedRow[]>>(emptyComposedSeries)
   const [bandedSpendDataByGrain, setBandedSpendDataByGrain] = useState<Record<TimeGrain, BandedRow[]>>(emptyBandedSeries)
   const [currencyModel, setCurrencyModel] = useState<DashboardCurrencyModel>(EMPTY_CURRENCY_MODEL)
+  const [dashboardRows, setDashboardRows] = useState<any[]>([])
+  const [fxRatesMap, setFxRatesMap] = useState<RatesMap>({})
+  const [fxLoadingWidgetId, setFxLoadingWidgetId] = useState<string | null>(null)
+  const [fxError, setFxError] = useState<string | null>(null)
   const [preferredPrimaryCurrency, setPreferredPrimaryCurrency] = useState<string | null>(null)
   const [currencyBannerDismissed, setCurrencyBannerDismissed] = useState(false)
   const [widgets, setWidgets] = useState<Widget[]>([])
@@ -1264,6 +1328,7 @@ export default function SmartDashboardPage() {
     setLoading(true)
     const clearFinancialData = () => {
       setCurrencyModel(EMPTY_CURRENCY_MODEL)
+      setDashboardRows([])
       setKpi({ totalIncome: 0, totalExpenses: 0, netPosition: 0, savingsRate: 0, taxExposure: 0, taxRatio: 0, currency: "" })
       setMonthlyData([])
       setCategoryData([])
@@ -1305,10 +1370,9 @@ export default function SmartDashboardPage() {
       return
     }
 
-    const safeNum = (v: unknown): number => { const n = parseFloat(String(v ?? "0")); return isNaN(n) ? 0 : n }
-
     // Currency-bucketed model. We never auto-convert across currencies; the
     // primary bucket only controls default ordering/tab selection.
+    setDashboardRows(fields as any[])
     const model = buildCurrencyModel(fields as any[], safeNum, preferredPrimaryCurrency)
     setCurrencyModel(model)
     const primary = model.currencies.includes(model.primaryCurrency) ? model.buckets[model.primaryCurrency] : null
@@ -1617,6 +1681,31 @@ export default function SmartDashboardPage() {
     }, { onConflict: "user_id" })
   }
 
+  const updateWidgetCurrencyMode = async (widgetId: string, mode: "split" | "merged") => {
+    if (mode === "merged") {
+      setFxLoadingWidgetId(widgetId)
+      setFxError(null)
+      try {
+        await ensureRatesExist(supabase, requiredRateTuples)
+        const rates = await fetchRatesFromDb(supabase, requiredRateTuples)
+        setFxRatesMap((prev) => ({ ...prev, ...rates }))
+      } catch (error) {
+        setFxError(error instanceof Error ? error.message : "Failed to prepare FX rates")
+        setFxLoadingWidgetId(null)
+        return
+      }
+      setFxLoadingWidgetId(null)
+    }
+
+    const nextWidgets = widgets.map((widget) => widget.id === widgetId ? { ...widget, currencyMode: mode } : widget)
+    setWidgets(nextWidgets)
+    if (isEditingLayout) {
+      setIsDirty(true)
+    } else {
+      await persistLayout(nextWidgets, layout, { closeEditor: false, showConfirm: false })
+    }
+  }
+
   // ── Widget management ──────────────────────────────────────────────────────
   const addWidget = (type: string, title: string, isPremium: boolean) => {
     if (!isEditingLayout) return
@@ -1624,7 +1713,7 @@ export default function SmartDashboardPage() {
     if (widgets.some(w => w.type === type)) return
     const id = `${type}-${Date.now()}`
     const minSize = widgetMinSize(type)
-    setWidgets(prev => [...prev, { id, type, title }])
+    setWidgets(prev => [...prev, { id, type, title, conversion_locked: type === "kpi-currency-summary" ? true : undefined }])
     setLayout(prev => [...prev, { i: id, x: 0, y: Infinity, w: minSize.minW, h: minSize.minH, minW: minSize.minW, minH: minSize.minH }])
     setIsDirty(true)
   }
@@ -1693,6 +1782,40 @@ export default function SmartDashboardPage() {
     setIsDirty(true)
   }
 
+  const selectedPrimaryCurrency = currencyModel.currencies.includes(preferredPrimaryCurrency ?? "")
+    ? preferredPrimaryCurrency!
+    : currencyModel.primaryCurrency
+  const requiredRateTuples = useMemo(
+    () => getRequiredRateTuples(dashboardRows, selectedPrimaryCurrency),
+    [dashboardRows, selectedPrimaryCurrency],
+  )
+  const mergedCurrencyModel = useMemo(() => {
+    if (!dashboardRows.length || !selectedPrimaryCurrency || selectedPrimaryCurrency === "Unspecified") {
+      return EMPTY_CURRENCY_MODEL
+    }
+    const allRatesReady = requiredRateTuples.every((tuple) =>
+      Boolean(fxRatesMap[rateKey(tuple.date, tuple.from, tuple.to)]),
+    )
+    if (!allRatesReady) return EMPTY_CURRENCY_MODEL
+
+    const convertedRows = dashboardRows.flatMap((row) => {
+      const from = typeof row?.currency === "string" ? row.currency.trim().toUpperCase() : ""
+      if (!from) return []
+      if (from === selectedPrimaryCurrency) return [{ ...row, currency: selectedPrimaryCurrency }]
+      const date = typeof row?.document_date === "string" ? row.document_date.slice(0, 10) : ""
+      if (!date) return []
+      const converted = { ...row, currency: selectedPrimaryCurrency }
+      for (const field of ["total_amount", "gross_income", "net_income"] as const) {
+        const value = row?.[field]
+        if (value === null || value === undefined) continue
+        converted[field] = convertAmount(safeNum(value), from, selectedPrimaryCurrency, date, fxRatesMap)
+      }
+      return [converted]
+    })
+
+    return buildCurrencyModel(convertedRows, safeNum, selectedPrimaryCurrency)
+  }, [dashboardRows, fxRatesMap, requiredRateTuples, selectedPrimaryCurrency])
+
   // ── Auth guard ─────────────────────────────────────────────────────────────
   if (!sessionLoaded) return null
   if (!session) return <AuthGuardModal isVisible={true} />
@@ -1702,9 +1825,6 @@ export default function SmartDashboardPage() {
     static: isMobile || !isEditingLayout,
   }))
 
-  const selectedPrimaryCurrency = currencyModel.currencies.includes(preferredPrimaryCurrency ?? "")
-    ? preferredPrimaryCurrency!
-    : currencyModel.primaryCurrency
   const currencyPreferenceControl = currencyModel.currencies.length > 1 ? (
     <label className="flex h-7 items-center gap-1.5 rounded-lg border border-border px-2 text-xs text-muted-foreground">
       <span className="whitespace-nowrap">Primary</span>
@@ -2168,9 +2288,17 @@ export default function SmartDashboardPage() {
                   </button>
                 </div>
               )}
-              {currencyModel.hasMultipleCurrencies && (
-                <div className="mb-3 rounded-lg border border-border bg-muted/40 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
-                  Multiple currencies detected. Dashboard widgets show native {currencyModel.currencies.map(displayCurrency).join(", ")} amounts separately; no FX conversion is applied. Primary currency controls the first tab only.
+              {fxError && (
+                <div className="mb-3 flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-[11px] leading-relaxed text-destructive">
+                  <p className="min-w-0 flex-1">{fxError}</p>
+                  <button
+                    type="button"
+                    onClick={() => setFxError(null)}
+                    className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded text-destructive/70 hover:bg-destructive/10 hover:text-destructive"
+                    aria-label="Dismiss FX notice"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
                 </div>
               )}
               <GridLayout
@@ -2187,72 +2315,105 @@ export default function SmartDashboardPage() {
                 containerPadding={[0, 0]}
                 resizeHandles={isMobile ? [] : ["se", "sw", "ne", "nw", "e", "w", "s"]}
               >
-                {widgets.map((widget) => (
-                  <div
-                    key={widget.id}
-                    onClick={isMobile || !isEditingLayout ? undefined : (e) => { e.stopPropagation(); setSelectedWidgetId(widget.id); setShowColorPicker(false); setShowDateFilter(false); setContextMenu(null) }}
-                    onContextMenu={isMobile || !isEditingLayout ? undefined : (e) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ x: e.clientX, y: e.clientY, widgetId: widget.id }) }}
-                    className={`group relative flex flex-col rounded-2xl border bg-card shadow-sm transition-all ${
-                      isMobile
-                        ? "border-border"
-                        : isEditingLayout && selectedWidgetId === widget.id
-                          ? "border-primary ring-2 ring-primary/20 cursor-pointer"
-                          : isEditingLayout
-                            ? "cursor-pointer border-border hover:border-border/60 hover:shadow-md"
-                            : "border-border"
-                    }`}
-                  >
-                    {/* Corner grid markers — desktop selected state only */}
-                    {!isMobile && isEditingLayout && selectedWidgetId === widget.id && (<>
-                      <span className="pointer-events-none absolute -top-1 -left-1 h-2 w-2 rounded-full bg-primary" />
-                      <span className="pointer-events-none absolute -top-1 -right-1 h-2 w-2 rounded-full bg-primary" />
-                      <span className="pointer-events-none absolute -bottom-1 -left-1 h-2 w-2 rounded-full bg-primary" />
-                      <span className="pointer-events-none absolute -bottom-1 -right-1 h-2 w-2 rounded-full bg-primary" />
-                    </>)}
+                {widgets.map((widget) => {
+                  const supportsMerged = widgetSupportsMergedCurrency(widget) && currencyModel.hasMultipleCurrencies
+                  const isMerged = supportsMerged && widget.currencyMode === "merged" && mergedCurrencyModel.currencies.length > 0
+                  const isPreparingFx = fxLoadingWidgetId === widget.id
+                  const titleCurrencyModel = isMerged ? mergedCurrencyModel : currencyModel
 
-                    {/* Drag handle — desktop only */}
-                    {!isMobile && isEditingLayout && <div className="drag-handle absolute left-0 right-0 top-0 h-8 cursor-grab rounded-t-2xl opacity-0 transition-opacity group-hover:opacity-100" />}
+                  return (
+                    <div
+                      key={widget.id}
+                      onClick={isMobile || !isEditingLayout ? undefined : (e) => { e.stopPropagation(); setSelectedWidgetId(widget.id); setShowColorPicker(false); setShowDateFilter(false); setContextMenu(null) }}
+                      onContextMenu={isMobile || !isEditingLayout ? undefined : (e) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ x: e.clientX, y: e.clientY, widgetId: widget.id }) }}
+                      className={`group relative flex flex-col rounded-2xl border bg-card shadow-sm transition-all ${
+                        isMobile
+                          ? "border-border"
+                          : isEditingLayout && selectedWidgetId === widget.id
+                            ? "border-primary ring-2 ring-primary/20 cursor-pointer"
+                            : isEditingLayout
+                              ? "cursor-pointer border-border hover:border-border/60 hover:shadow-md"
+                              : "border-border"
+                      }`}
+                    >
+                      {/* Corner grid markers — desktop selected state only */}
+                      {!isMobile && isEditingLayout && selectedWidgetId === widget.id && (<>
+                        <span className="pointer-events-none absolute -top-1 -left-1 h-2 w-2 rounded-full bg-primary" />
+                        <span className="pointer-events-none absolute -top-1 -right-1 h-2 w-2 rounded-full bg-primary" />
+                        <span className="pointer-events-none absolute -bottom-1 -left-1 h-2 w-2 rounded-full bg-primary" />
+                        <span className="pointer-events-none absolute -bottom-1 -right-1 h-2 w-2 rounded-full bg-primary" />
+                      </>)}
 
-                    {/* Widget header */}
-                    <div className="flex items-center px-4 pt-3 pb-1 shrink-0">
-                      <h3 className="text-xs font-semibold text-foreground">{displayWidgetTitle(widget, currencyModel)}</h3>
-                    </div>
+                      {/* Drag handle — desktop only */}
+                      {!isMobile && isEditingLayout && <div className="drag-handle absolute left-0 right-0 top-0 h-8 cursor-grab rounded-t-2xl opacity-0 transition-opacity group-hover:opacity-100" />}
 
-                    {/* Widget content */}
-                    <div className="flex-1 min-h-0 overflow-hidden px-4 pb-3">
-                      <WidgetContent
-                        widget={widget}
-                        kpi={kpi}
-                        monthlyData={monthlyData}
-                        categoryData={categoryData}
-                        docTypeData={docTypeData}
-                        stackedCompositionData={stackedCompositionData}
-                        composedData={composedData}
-                        bandedSpendData={bandedSpendData}
-                        timeSeriesData={timeSeriesData}
-                        stackedCompositionByGrain={stackedCompositionByGrain}
-                        composedDataByGrain={composedDataByGrain}
-                        bandedSpendDataByGrain={bandedSpendDataByGrain}
-                        currencyModel={currencyModel}
-                        dashboardAccent={dashboardAccent}
-                        contextSummary={contextSummary}
-                        contextSummaryDate={contextSummaryDate}
-                        isGeneratingSummary={isGeneratingSummary}
-                        isPro={isPro}
-                        onGenerateSummary={generateContextSummary}
-                        onCycleTimeGrain={cycleWidgetTimeGrain}
-                      />
-                    </div>
-
-                    {/* AI insight strip — only on advanced widgets */}
-                    {widget.insight && (
-                      <div className="shrink-0 mx-4 mb-3 flex items-start gap-1.5 rounded-lg bg-primary/5 px-2.5 py-2">
-                        <Sparkles className="mt-0.5 h-3 w-3 flex-shrink-0 text-primary" />
-                        <p className="text-xs leading-snug text-muted-foreground">{widget.insight}</p>
+                      {/* Widget header */}
+                      <div className="flex items-center gap-2 px-4 pt-3 pb-1 shrink-0">
+                        <h3 className="min-w-0 flex-1 truncate text-xs font-semibold text-foreground">{displayWidgetTitle(widget, titleCurrencyModel)}</h3>
+                        {supportsMerged && (
+                          <div className="no-drag flex shrink-0 items-center rounded-lg border border-border p-0.5 text-[10px]">
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); void updateWidgetCurrencyMode(widget.id, "split") }}
+                              className={`rounded-md px-2 py-0.5 transition-colors ${widget.currencyMode !== "merged" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+                            >
+                              Split
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isPreparingFx}
+                              onClick={(e) => { e.stopPropagation(); void updateWidgetCurrencyMode(widget.id, "merged") }}
+                              className={`rounded-md px-2 py-0.5 transition-colors disabled:cursor-wait disabled:opacity-60 ${widget.currencyMode === "merged" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+                            >
+                              {isPreparingFx ? "..." : "Merged"}
+                            </button>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                ))}
+
+                      {/* Widget content */}
+                      <div className="flex-1 min-h-0 overflow-hidden px-4 pb-3">
+                        <WidgetContent
+                          widget={widget}
+                          kpi={kpi}
+                          monthlyData={monthlyData}
+                          categoryData={categoryData}
+                          docTypeData={docTypeData}
+                          stackedCompositionData={stackedCompositionData}
+                          composedData={composedData}
+                          bandedSpendData={bandedSpendData}
+                          timeSeriesData={timeSeriesData}
+                          stackedCompositionByGrain={stackedCompositionByGrain}
+                          composedDataByGrain={composedDataByGrain}
+                          bandedSpendDataByGrain={bandedSpendDataByGrain}
+                          currencyModel={currencyModel}
+                          mergedCurrencyModel={mergedCurrencyModel}
+                          dashboardAccent={dashboardAccent}
+                          contextSummary={contextSummary}
+                          contextSummaryDate={contextSummaryDate}
+                          isGeneratingSummary={isGeneratingSummary}
+                          isPro={isPro}
+                          onGenerateSummary={generateContextSummary}
+                          onCycleTimeGrain={cycleWidgetTimeGrain}
+                        />
+                      </div>
+
+                      {isMerged && (
+                        <p className="shrink-0 mx-4 mb-3 text-[10px] leading-snug text-muted-foreground">
+                          Converted to {displayCurrency(selectedPrimaryCurrency)} using transaction-date rates from Frankfurter
+                        </p>
+                      )}
+
+                      {/* AI insight strip — only on advanced widgets */}
+                      {widget.insight && (
+                        <div className="shrink-0 mx-4 mb-3 flex items-start gap-1.5 rounded-lg bg-primary/5 px-2.5 py-2">
+                          <Sparkles className="mt-0.5 h-3 w-3 flex-shrink-0 text-primary" />
+                          <p className="text-xs leading-snug text-muted-foreground">{widget.insight}</p>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </GridLayout>
               </>
             )}

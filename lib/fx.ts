@@ -61,8 +61,7 @@ export function getRequiredRateTuples(rows: any[], primaryCurrency: string): Rat
 }
 
 export async function fetchRatesFromDb(supabase: any, tuples: RateTuple[]): Promise<RatesMap> {
-  const rates: RatesMap = {}
-  for (const tuple of tuples) {
+  const results = await Promise.all(tuples.map(async (tuple) => {
     const { data, error } = await supabase
       .from("fx_rates")
       .select("rate, rate_date")
@@ -73,12 +72,20 @@ export async function fetchRatesFromDb(supabase: any, tuples: RateTuple[]): Prom
       .limit(1)
       .maybeSingle()
     if (error) throw error
-    if (data) {
-      rates[rateKey(tuple.date, tuple.from, tuple.to)] = {
-        rate: Number(data.rate),
-        actual_rate_date: data.rate_date,
-      }
-    }
+    return data
+      ? {
+          key: rateKey(tuple.date, tuple.from, tuple.to),
+          entry: {
+            rate: Number(data.rate),
+            actual_rate_date: data.rate_date,
+          },
+        }
+      : null
+  }))
+
+  const rates: RatesMap = {}
+  for (const result of results) {
+    if (result) rates[result.key] = result.entry
   }
   return rates
 }
@@ -88,7 +95,11 @@ export async function ensureRatesExist(supabase: any, tuples: RateTuple[]): Prom
 
   const existing = await fetchRatesFromDb(supabase, tuples)
   const missing = tuples.filter((tuple) => !existing[rateKey(tuple.date, tuple.from, tuple.to)])
-  if (missing.length === 0) return
+  if (missing.length === 0) {
+    console.log("[fx-cache] hit", tuples.length)
+    return
+  }
+  console.log("[fx-cache] miss", missing.length)
 
   const { data: { session } } = await supabase.auth.getSession()
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL

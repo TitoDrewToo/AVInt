@@ -169,13 +169,13 @@ const kpiPrimaryValueStyle: CSSProperties = {
 }
 
 const kpiSecondaryValueStyle: CSSProperties = {
-  fontSize: "clamp(0.75rem, 4cqw, 1.25rem)",
+  fontSize: "clamp(0.6875rem, 3.6cqw, 1.15rem)",
   lineHeight: "1.15",
   wordBreak: "break-word",
 }
 
 const kpiLabelStyle: CSSProperties = {
-  fontSize: "clamp(0.6875rem, 2.5cqw, 0.875rem)",
+  fontSize: "clamp(0.625rem, 2.4cqw, 0.875rem)",
   lineHeight: "1.2",
   wordBreak: "break-word",
 }
@@ -183,7 +183,9 @@ const kpiLabelStyle: CSSProperties = {
 const widgetHeaderTitleStyle: CSSProperties = {
   fontSize: "clamp(0.6875rem, 2.4cqw, 0.875rem)",
   lineHeight: "1.2",
-  wordBreak: "break-word",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
 }
 
 const chartTitleStyle: CSSProperties = {
@@ -204,6 +206,9 @@ const conversionDisclosureStyle: CSSProperties = {
   whiteSpace: "normal",
   wordBreak: "break-word",
 }
+
+const stackedKpiRowsClass = "mt-2 min-h-0 flex-1 space-y-1 overflow-y-auto pr-1"
+const stackedKpiRowClass = "flex min-w-0 items-baseline justify-between gap-2"
 
 function widgetCurrencyModesFor(widgets: Widget[]) {
   const modes: Record<string, "split" | "merged"> = {}
@@ -525,12 +530,12 @@ function WidgetContent({
         </div>
       </div>
       {showStackedCurrencyKpi ? (
-        <div className="mt-3 space-y-1.5">
+        <div className={stackedKpiRowsClass}>
           {widgetCurrencies.map((currency) => {
             const bucket = activeCurrencyModel.buckets[currency]
             if (!bucket) return null
             return (
-              <div key={currency} className="flex items-baseline justify-between gap-3">
+              <div key={currency} className={stackedKpiRowClass}>
                 <span className="font-medium uppercase tracking-wider text-muted-foreground" style={kpiLabelStyle}>{displayCurrency(currency)}</span>
                 <span className="min-w-0 text-right font-semibold tracking-tight text-foreground" style={kpiSecondaryValueStyle}>
                   {currencyToSymbol(currency)}{Math.round(bucket.totalIncome).toLocaleString()}
@@ -561,12 +566,12 @@ function WidgetContent({
         </div>
       </div>
       {showStackedCurrencyKpi ? (
-        <div className="mt-3 space-y-1.5">
+        <div className={stackedKpiRowsClass}>
           {widgetCurrencies.map((currency) => {
             const bucket = activeCurrencyModel.buckets[currency]
             if (!bucket) return null
             return (
-              <div key={currency} className="flex items-baseline justify-between gap-3">
+              <div key={currency} className={stackedKpiRowClass}>
                 <span className="font-medium uppercase tracking-wider text-muted-foreground" style={kpiLabelStyle}>{displayCurrency(currency)}</span>
                 <span className="min-w-0 text-right font-semibold tracking-tight text-foreground" style={kpiSecondaryValueStyle}>
                   {currencyToSymbol(currency)}{Math.round(bucket.totalExpenses).toLocaleString()}
@@ -597,12 +602,12 @@ function WidgetContent({
         </div>
       </div>
       {showStackedCurrencyKpi ? (
-        <div className="mt-3 space-y-1.5">
+        <div className={stackedKpiRowsClass}>
           {widgetCurrencies.map((currency) => {
             const bucket = activeCurrencyModel.buckets[currency]
             if (!bucket) return null
             return (
-              <div key={currency} className="flex items-baseline justify-between gap-3">
+              <div key={currency} className={stackedKpiRowClass}>
                 <span className="font-medium uppercase tracking-wider text-muted-foreground" style={kpiLabelStyle}>{displayCurrency(currency)}</span>
                 <span className={`min-w-0 text-right font-semibold tracking-tight ${bucket.netPosition >= 0 ? "text-foreground" : "text-primary"}`} style={kpiSecondaryValueStyle}>
                   {currencyToSymbol(currency)}{Math.round(bucket.netPosition).toLocaleString()}
@@ -634,12 +639,12 @@ function WidgetContent({
         </div>
       </div>
       {showStackedCurrencyKpi ? (
-        <div className="mt-3 space-y-1.5">
+        <div className={stackedKpiRowsClass}>
           {widgetCurrencies.map((currency) => {
             const bucket = activeCurrencyModel.buckets[currency]
             if (!bucket) return null
             return (
-              <div key={currency} className="flex items-baseline justify-between gap-3">
+              <div key={currency} className={stackedKpiRowClass}>
                 <span className="font-medium uppercase tracking-wider text-muted-foreground" style={kpiLabelStyle}>{displayCurrency(currency)}</span>
                 <span className="min-w-0 text-right font-semibold tracking-tight text-foreground" style={kpiSecondaryValueStyle}>
                   {currencyToSymbol(currency)}{Math.round(bucket.taxExposure).toLocaleString()}
@@ -1834,12 +1839,37 @@ export default function SmartDashboardPage() {
   }
 
   const updateWidgetCurrencyMode = async (widgetId: string, mode: "split" | "merged") => {
+    const nextWidgets = widgets.map((widget) => widget.id === widgetId ? { ...widget, currencyMode: mode } : widget)
+
     if (mode === "merged") {
+      const memoryCacheHit = requiredRateTuples.every((tuple) =>
+        Boolean(fxRatesMap[rateKey(tuple.date, tuple.from, tuple.to)]),
+      )
+      if (memoryCacheHit) {
+        console.log("[fx-cache] hit", requiredRateTuples.length)
+        setWidgets(nextWidgets)
+        void persistDashboardPreferences({ widgetCurrencyModes: widgetCurrencyModesFor(nextWidgets) }, nextWidgets, layout)
+        return
+      }
+
       setFxLoadingWidgetId(widgetId)
       setFxError(null)
       try {
-        await ensureRatesExist(supabase, requiredRateTuples)
-        const rates = await fetchRatesFromDb(supabase, requiredRateTuples)
+        const cachedRates = await fetchRatesFromDb(supabase, requiredRateTuples)
+        const missingTuples = requiredRateTuples.filter((tuple) => !cachedRates[rateKey(tuple.date, tuple.from, tuple.to)])
+        if (missingTuples.length === 0) {
+          console.log("[fx-cache] hit", requiredRateTuples.length)
+          setFxRatesMap((prev) => ({ ...prev, ...cachedRates }))
+          setWidgets(nextWidgets)
+          void persistDashboardPreferences({ widgetCurrencyModes: widgetCurrencyModesFor(nextWidgets) }, nextWidgets, layout)
+          setFxLoadingWidgetId(null)
+          return
+        }
+
+        console.log("[fx-cache] miss", missingTuples.length)
+        await ensureRatesExist(supabase, missingTuples)
+        const backfilledRates = await fetchRatesFromDb(supabase, missingTuples)
+        const rates = { ...cachedRates, ...backfilledRates }
         setFxRatesMap((prev) => ({ ...prev, ...rates }))
       } catch (error) {
         setFxError(error instanceof Error ? error.message : "Failed to prepare FX rates")
@@ -1849,7 +1879,6 @@ export default function SmartDashboardPage() {
       setFxLoadingWidgetId(null)
     }
 
-    const nextWidgets = widgets.map((widget) => widget.id === widgetId ? { ...widget, currencyMode: mode } : widget)
     setWidgets(nextWidgets)
     await persistDashboardPreferences({ widgetCurrencyModes: widgetCurrencyModesFor(nextWidgets) }, nextWidgets, layout)
   }

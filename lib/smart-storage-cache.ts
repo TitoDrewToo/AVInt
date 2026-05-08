@@ -26,7 +26,9 @@ export type SmartStorageWarmData = SmartStorageFilesPage & {
 export type SmartStorageLaunchData = Omit<SmartStorageWarmData, "reportAvailability">
 
 const cache = new Map<string, { expiresAt: number; fetchedAt: number; data: SmartStorageWarmData }>()
+const launchCache = new Map<string, { expiresAt: number; fetchedAt: number; data: SmartStorageLaunchData }>()
 const inFlight = new Map<string, Promise<SmartStorageWarmData>>()
+const launchInFlight = new Map<string, Promise<SmartStorageLaunchData>>()
 
 function cacheKey(userId: string) {
   return `smart-storage:${userId}`
@@ -42,10 +44,34 @@ export function getCachedSmartStorageData(userId: string): SmartStorageWarmData 
   return cached.data
 }
 
+export function getCachedSmartStorageLaunchData(userId: string): SmartStorageLaunchData | null {
+  const cached = launchCache.get(cacheKey(userId))
+  if (!cached) return null
+  if (cached.expiresAt <= Date.now()) {
+    launchCache.delete(cacheKey(userId))
+    return null
+  }
+  return cached.data
+}
+
 export function getSmartStorageCacheAgeMs(userId: string): number | null {
   const cached = cache.get(cacheKey(userId))
   if (!cached) return null
   return Date.now() - cached.fetchedAt
+}
+
+export function setCachedSmartStorageLaunchData(
+  userId: string,
+  data: SmartStorageLaunchData,
+  options?: { preserveFetchedAt?: boolean },
+) {
+  const key = cacheKey(userId)
+  const previous = launchCache.get(key)
+  launchCache.set(key, {
+    data,
+    fetchedAt: options?.preserveFetchedAt && previous ? previous.fetchedAt : Date.now(),
+    expiresAt: Date.now() + SMART_STORAGE_CACHE_TTL_MS,
+  })
 }
 
 export function setCachedSmartStorageData(
@@ -60,10 +86,7 @@ export function setCachedSmartStorageData(
     fetchedAt: options?.preserveFetchedAt && previous ? previous.fetchedAt : Date.now(),
     expiresAt: Date.now() + SMART_STORAGE_CACHE_TTL_MS,
   })
-}
-
-export function getInFlightSmartStorageData(userId: string): Promise<SmartStorageWarmData> | null {
-  return inFlight.get(cacheKey(userId)) ?? null
+  setCachedSmartStorageLaunchData(userId, data, options)
 }
 
 async function enrichFiles(files: any[]): Promise<UploadedFile[]> {
@@ -226,13 +249,29 @@ export async function fetchSmartStorageLaunchData(userId: string): Promise<Smart
   }
 }
 
+export async function refreshSmartStorageLaunchData(userId: string): Promise<SmartStorageLaunchData> {
+  const key = cacheKey(userId)
+  const existing = launchInFlight.get(key)
+  if (existing) return existing
+
+  const request = fetchSmartStorageLaunchData(userId).then((data) => {
+    setCachedSmartStorageLaunchData(userId, data)
+    return data
+  }).finally(() => {
+    launchInFlight.delete(key)
+  })
+
+  launchInFlight.set(key, request)
+  return request
+}
+
 export async function refreshSmartStorageData(userId: string): Promise<SmartStorageWarmData> {
   const key = cacheKey(userId)
   const existing = inFlight.get(key)
   if (existing) return existing
 
   const request = Promise.all([
-    fetchSmartStorageLaunchData(userId),
+    refreshSmartStorageLaunchData(userId),
     fetchSmartStorageReportAvailability(userId),
   ]).then(([launchData, reportAvailability]) => {
     const data: SmartStorageWarmData = {
@@ -253,4 +292,10 @@ export async function prefetchSmartStorageData(userId: string): Promise<SmartSto
   const cached = getCachedSmartStorageData(userId)
   if (cached) return cached
   return refreshSmartStorageData(userId)
+}
+
+export async function prefetchSmartStorageLaunchData(userId: string): Promise<SmartStorageLaunchData> {
+  const cached = getCachedSmartStorageLaunchData(userId)
+  if (cached) return cached
+  return refreshSmartStorageLaunchData(userId)
 }

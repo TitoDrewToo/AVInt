@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
-import { prefetchSmartStorageData } from "@/lib/smart-storage-cache"
+import { prefetchSmartStorageLaunchData } from "@/lib/smart-storage-cache"
 
 export function SmartStoragePrefetcher() {
   const router = useRouter()
@@ -38,10 +38,10 @@ export function SmartStoragePrefetcher() {
       if (isSmartStorageRoute) return
       scheduleWarmup(() => {
         if (!active) return
-        void prefetchSmartStorageData(userId).catch((error) => {
-          console.error("smart storage prefetch failed:", error)
+        void prefetchSmartStorageLaunchData(userId).catch((error) => {
+          console.error("smart storage launch prefetch failed:", error)
         })
-      })
+      }, 2400)
     }
 
     supabase.auth.getSession().then(({ data }) => {

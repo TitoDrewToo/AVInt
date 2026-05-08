@@ -74,12 +74,12 @@ import {
 import {
   fetchSmartStorageFilesByIds,
   fetchSmartStorageFilesPage,
-  fetchSmartStorageLaunchData,
   fetchSmartStorageProcessingState,
   fetchSmartStorageReportAvailability,
+  getCachedSmartStorageLaunchData,
   getCachedSmartStorageData,
-  getInFlightSmartStorageData,
   getSmartStorageCacheAgeMs,
+  prefetchSmartStorageLaunchData,
   refreshSmartStorageData,
   setCachedSmartStorageData,
   type SmartStorageLaunchData,
@@ -115,6 +115,38 @@ function Tip({ children, text }: { children: ReactElement; text: string }) {
 type ProcessingBadgeState = "working_slow" | "failed"
 
 const formatBytes = formatStorageBytes
+
+function SmartStorageLaunchFallback() {
+  return (
+    <div className="min-h-screen bg-background text-foreground">
+      <Navbar />
+      <main className="mx-auto flex min-h-[calc(100vh-5rem)] w-full max-w-7xl flex-col gap-4 px-4 py-6 md:px-6">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="h-4 w-28 animate-pulse rounded bg-muted" />
+            <div className="mt-3 h-7 w-44 animate-pulse rounded bg-muted" />
+          </div>
+          <div className="flex items-center gap-2 rounded-full border border-border/60 px-3 py-2 text-xs text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Loading workspace
+          </div>
+        </div>
+        <div className="grid min-h-[60vh] grid-cols-1 gap-4 md:grid-cols-[220px_minmax(0,1fr)_260px]">
+          <div className="hidden rounded-lg border border-border/60 bg-muted/20 md:block" />
+          <div className="rounded-lg border border-border/60 bg-muted/10 p-4">
+            <div className="mb-4 h-9 w-full animate-pulse rounded bg-muted" />
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+              {Array.from({ length: 10 }).map((_, index) => (
+                <div key={index} className="aspect-[0.86] animate-pulse rounded-lg bg-muted/80" />
+              ))}
+            </div>
+          </div>
+          <div className="hidden rounded-lg border border-border/60 bg-muted/20 lg:block" />
+        </div>
+      </main>
+    </div>
+  )
+}
 
 function isEditableTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false
@@ -452,6 +484,26 @@ export default function SmartStoragePage() {
     const applyLaunchIfActive = (data: SmartStorageLaunchData) => {
       if (active) applyLaunchData(data)
     }
+    const scheduleReportAvailability = (launchData: SmartStorageLaunchData) => {
+      const refreshReports = () => {
+        if (!active) return
+        void fetchSmartStorageReportAvailability(userId)
+          .then((reportAvailability) => {
+            if (!active) return
+            setReportAvailability(reportAvailability)
+            setCachedSmartStorageData(userId, { ...launchData, reportAvailability })
+          })
+          .catch((error) => {
+            console.error("smart storage report availability failed:", error)
+          })
+      }
+
+      if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+        idleHandle = window.requestIdleCallback(refreshReports, { timeout: 3000 })
+      } else {
+        refreshTimeout = setTimeout(refreshReports, 600)
+      }
+    }
 
     const cached = getCachedSmartStorageData(session.user.id)
     if (cached) {
@@ -480,27 +532,31 @@ export default function SmartStoragePage() {
         if (refreshTimeout) clearTimeout(refreshTimeout)
       }
     }
-    const inFlight = getInFlightSmartStorageData(userId)
-    if (inFlight) {
-      void inFlight.then(applyIfActive).catch((error) => {
-        console.error("smart storage initial load failed:", error)
-      })
-      return () => { active = false }
+
+    const cachedLaunch = getCachedSmartStorageLaunchData(userId)
+    if (cachedLaunch) {
+      applyLaunchData(cachedLaunch)
+      scheduleReportAvailability(cachedLaunch)
+      return () => {
+        active = false
+        if (idleHandle != null && "cancelIdleCallback" in window) window.cancelIdleCallback(idleHandle)
+        if (refreshTimeout) clearTimeout(refreshTimeout)
+      }
     }
 
-    void fetchSmartStorageLaunchData(userId)
-      .then(async (launchData) => {
+    void prefetchSmartStorageLaunchData(userId)
+      .then((launchData) => {
         applyLaunchIfActive(launchData)
-        const reportAvailability = await fetchSmartStorageReportAvailability(userId)
-        if (!active) return
-        const warmData = { ...launchData, reportAvailability }
-        setReportAvailability(reportAvailability)
-        setCachedSmartStorageData(userId, warmData)
+        scheduleReportAvailability(launchData)
       })
       .catch((error) => {
         console.error("smart storage initial load failed:", error)
       })
-    return () => { active = false }
+    return () => {
+      active = false
+      if (idleHandle != null && "cancelIdleCallback" in window) window.cancelIdleCallback(idleHandle)
+      if (refreshTimeout) clearTimeout(refreshTimeout)
+    }
   }, [applyLaunchData, applyWarmData, session])
 
   // Files — classification view shows all matching types across all folders, sorted by date
@@ -1226,7 +1282,7 @@ export default function SmartStoragePage() {
     : 0
 
   // ── Auth guard ─────────────────────────────────────────────────────────────
-  if (!sessionLoaded) return null
+  if (!sessionLoaded) return <SmartStorageLaunchFallback />
   if (!session) return <AuthGuardModal isVisible={true} />
 
   const visibleBreadcrumb = collapseBreadcrumb(breadcrumb)

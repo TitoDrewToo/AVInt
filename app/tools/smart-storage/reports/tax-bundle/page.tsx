@@ -187,7 +187,6 @@ function TaxBundleContent() {
     wageNet,
     wagePayrollDeductions,
     selfEmploymentGross,
-    selfEmploymentRows,
     otherIncomeRows,
     otherIncomeGross,
     otherIncomeByType,

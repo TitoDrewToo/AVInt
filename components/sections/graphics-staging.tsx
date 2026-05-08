@@ -569,8 +569,6 @@ export function FloatingCubeGraphic({
   const lift = 18 - progress * 26
   const rotateX = 6 + progress * 8
   const rotateY = -16 + progress * 10
-  const spread = 46 - progress * 18
-  const chartOpacity = 0.72 + progress * 0.22
 
   useEffect(() => {
     const ua = window.navigator.userAgent
@@ -612,7 +610,7 @@ export function FloatingCubeGraphic({
         el.style.opacity = computed.opacity
       })
 
-      orbitRefs.current.front?.offsetWidth
+      void orbitRefs.current.front?.offsetWidth
 
       window.requestAnimationFrame(() => {
         ;(Object.keys(orbitRefs.current) as OrbitPanelKey[]).forEach((key) => {

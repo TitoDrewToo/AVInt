@@ -103,9 +103,9 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
 
       for (let i = 0; i < count; i += 1) {
         const face = Math.random()
-        let x = 0
-        let y = 0
-        let z = 0
+        let x: number
+        let y: number
+        let z: number
 
         if (face < 0.72) {
           x = (Math.random() - 0.5) * width
@@ -165,9 +165,9 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
 
       for (let i = 0; i < count; i += 1) {
         const mode = Math.random()
-        let x = 0
-        let y = 0
-        let z = 0
+        let x: number
+        let y: number
+        let z: number
 
         if (mode < 0.7) {
           const lobe = lobes[Math.floor(Math.random() * lobes.length)]
@@ -342,8 +342,8 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
 
       for (let i = 0; i < count; i += 1) {
         const mode = Math.random()
-        let x = 0
-        let y = 0
+        let x: number
+        let y: number
 
         const angle = Math.random() * Math.PI * 2
         const cosA = Math.cos(angle)
@@ -399,9 +399,9 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
 
       for (let i = 0; i < count; i += 1) {
         const mode = Math.random()
-        let x = 0
-        let y = 0
-        let z = 0
+        let x: number
+        let y: number
+        let z: number
 
         if (mode < 0.68) {
           const lobe = lobes[Math.floor(Math.random() * lobes.length)]
@@ -663,7 +663,7 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
 
     const clock = new THREE.Clock()
     let frameId = 0
-    let currentSpinVelocity = 0.08
+    const currentSpinVelocity = 0.08
     let isMouseDown = false
     let lastMouseX = 0
     const morphDuration = 2.6
@@ -725,8 +725,8 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
         abstractHoldDuration +
         morphDuration
       const cycleTime = elapsed % cycleDuration
-      let source = spherePositions
-      let target = spherePositions
+      let source: Float32Array
+      let target: Float32Array
       let progress = 0
       const documentStart = holdDuration
       const documentHoldStart = documentStart + morphDuration

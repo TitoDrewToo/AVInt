@@ -74,11 +74,15 @@ import {
 import {
   fetchSmartStorageFilesByIds,
   fetchSmartStorageFilesPage,
+  fetchSmartStorageLaunchData,
   fetchSmartStorageProcessingState,
   fetchSmartStorageReportAvailability,
   getCachedSmartStorageData,
-  prefetchSmartStorageData,
+  getInFlightSmartStorageData,
+  getSmartStorageCacheAgeMs,
+  refreshSmartStorageData,
   setCachedSmartStorageData,
+  type SmartStorageLaunchData,
   type SmartStorageProcessingState,
   type SmartStorageWarmData,
 } from "@/lib/smart-storage-cache"
@@ -88,6 +92,7 @@ const HOVER_PREVIEW_ESTIMATED_HEIGHT = 248
 const HOVER_PREVIEW_CURSOR_GAP = 28
 const HOVER_PREVIEW_VIEWPORT_PAD = 8
 const ACTIVE_PROCESSING_WINDOW_MS = 2 * 60 * 1000
+const SMART_STORAGE_BACKGROUND_REFRESH_AFTER_MS = 30 * 1000
 const ACTIONABLE_JOB_WINDOW_MS = 60 * 60 * 1000
 const SLOW_PROCESSING_STATUSES = ["uploaded", "processing"]
 
@@ -326,17 +331,25 @@ export default function SmartStoragePage() {
     }
   }, [])
 
-  const applyWarmData = useCallback((data: SmartStorageWarmData) => {
-    applyFiles(data.files, data.hasMoreFiles)
+  const applyLaunchData = useCallback((data: SmartStorageLaunchData) => {
+    const recentlyDeletedIds = recentlyDeletedFileIdsRef.current
+    const nextFiles = recentlyDeletedIds.size > 0
+      ? data.files.filter((file) => !recentlyDeletedIds.has(file.id))
+      : data.files
+    applyFiles(nextFiles, data.hasMoreFiles)
     setFolders(data.folders)
     applyProcessingState({ isProcessing: data.isProcessing, activeJobs: data.activeJobs })
-    setReportAvailability(data.reportAvailability)
   }, [applyFiles, applyProcessingState])
+
+  const applyWarmData = useCallback((data: SmartStorageWarmData) => {
+    applyLaunchData(data)
+    setReportAvailability(data.reportAvailability)
+  }, [applyLaunchData])
 
   const updateWarmCache = useCallback((userId: string, updates: Partial<SmartStorageWarmData>) => {
     const current = getCachedSmartStorageData(userId)
     if (!current) return
-    setCachedSmartStorageData(userId, { ...current, ...updates })
+    setCachedSmartStorageData(userId, { ...current, ...updates }, { preserveFetchedAt: true })
   }, [])
 
   // ── Processing indicator + realtime ───────────────────────────────────────
@@ -428,15 +441,67 @@ export default function SmartStoragePage() {
 
   useEffect(() => {
     if (!session?.user?.id) return
+    let active = true
+    let idleHandle: number | null = null
+    let refreshTimeout: ReturnType<typeof setTimeout> | null = null
+    const userId = session.user.id
+
+    const applyIfActive = (data: SmartStorageWarmData) => {
+      if (active) applyWarmData(data)
+    }
+    const applyLaunchIfActive = (data: SmartStorageLaunchData) => {
+      if (active) applyLaunchData(data)
+    }
+
     const cached = getCachedSmartStorageData(session.user.id)
     if (cached) {
       applyWarmData(cached)
-      return
+      const cacheAge = getSmartStorageCacheAgeMs(userId)
+      if (cacheAge != null && cacheAge <= SMART_STORAGE_BACKGROUND_REFRESH_AFTER_MS) {
+        return () => { active = false }
+      }
+
+      const refresh = () => {
+        if (!active) return
+        void refreshSmartStorageData(userId).then(applyIfActive).catch((error) => {
+          console.error("smart storage background refresh failed:", error)
+        })
+      }
+
+      if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+        idleHandle = window.requestIdleCallback(refresh, { timeout: 1500 })
+      } else {
+        refreshTimeout = setTimeout(refresh, 250)
+      }
+
+      return () => {
+        active = false
+        if (idleHandle != null && "cancelIdleCallback" in window) window.cancelIdleCallback(idleHandle)
+        if (refreshTimeout) clearTimeout(refreshTimeout)
+      }
     }
-    void prefetchSmartStorageData(session.user.id).then(applyWarmData).catch((error) => {
-      console.error("smart storage initial load failed:", error)
-    })
-  }, [applyWarmData, session])
+    const inFlight = getInFlightSmartStorageData(userId)
+    if (inFlight) {
+      void inFlight.then(applyIfActive).catch((error) => {
+        console.error("smart storage initial load failed:", error)
+      })
+      return () => { active = false }
+    }
+
+    void fetchSmartStorageLaunchData(userId)
+      .then(async (launchData) => {
+        applyLaunchIfActive(launchData)
+        const reportAvailability = await fetchSmartStorageReportAvailability(userId)
+        if (!active) return
+        const warmData = { ...launchData, reportAvailability }
+        setReportAvailability(reportAvailability)
+        setCachedSmartStorageData(userId, warmData)
+      })
+      .catch((error) => {
+        console.error("smart storage initial load failed:", error)
+      })
+    return () => { active = false }
+  }, [applyLaunchData, applyWarmData, session])
 
   // Files — classification view shows all matching types across all folders, sorted by date
   // Declared here (before keyboard shortcut useEffect) to avoid TS2448 forward-reference error.

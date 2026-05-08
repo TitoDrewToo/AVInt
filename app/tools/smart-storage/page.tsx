@@ -239,6 +239,8 @@ export default function SmartStoragePage() {
   const recentlyDeletedFileIdsRef = useRef<Set<string>>(new Set())
   const processingExpiryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const checkProcessingStateRef = useRef<(() => Promise<boolean | undefined>) | null>(null)
+  const openFileHandlerRef = useRef<(fileId: string) => Promise<void>>(async () => {})
+  const deleteFileHandlerRef = useRef<(fileId: string) => Promise<void>>(async () => {})
 
   // Upload
   const [isUploading, setIsUploading] = useState(false)
@@ -611,12 +613,12 @@ export default function SmartStoragePage() {
       }
       if ((e.key === "Delete" || e.key === "Backspace") && selectedFiles.size > 0) {
         e.preventDefault()
-        void Promise.all([...selectedFiles].map((id) => handleDeleteFile(id)))
+        void Promise.all([...selectedFiles].map((id) => deleteFileHandlerRef.current(id)))
         return
       }
       if (e.key === "Enter" && selectedFiles.size === 1) {
         e.preventDefault()
-        void handleOpenFile([...selectedFiles][0])
+        void openFileHandlerRef.current([...selectedFiles][0])
         return
       }
       if (e.key === "Escape") {
@@ -641,7 +643,7 @@ export default function SmartStoragePage() {
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [displayedFiles, orderedDisplayedFiles, selectOnly, selectedFiles, files])
+  }, [displayedFiles, orderedDisplayedFiles, selectOnly, selectedFiles])
 
   // ── Auto-assign canvas positions ───────────────────────────────────────────
   useEffect(() => {
@@ -1056,6 +1058,9 @@ export default function SmartStoragePage() {
       return next
     })
   }
+
+  openFileHandlerRef.current = handleOpenFile
+  deleteFileHandlerRef.current = handleDeleteFile
 
   const handleRenameFile = async (fileId: string, newName: string) => {
     if (!newName.trim()) return

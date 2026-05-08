@@ -48,6 +48,11 @@ import {
   widgetMinSize,
 } from "@/lib/dashboard-layout"
 import {
+  applyWidgetCurrencyModes,
+  normalizeDashboardPreferences,
+  widgetCurrencyModesFor,
+} from "@/lib/dashboard-preferences"
+import {
   convertAmount,
   ensureRatesExist,
   fetchRatesFromDb,
@@ -201,22 +206,6 @@ const currencyTabStyle: CSSProperties = {
 
 const stackedKpiRowsClass = "mt-2 min-h-0 flex-1 space-y-1 overflow-y-auto pr-1"
 const stackedKpiRowClass = "flex min-w-0 items-baseline justify-between gap-2"
-
-function widgetCurrencyModesFor(widgets: Widget[]) {
-  const modes: Record<string, "split" | "merged"> = {}
-  for (const widget of widgets) {
-    if (widget.currencyMode === "split" || widget.currencyMode === "merged") {
-      modes[widget.id] = widget.currencyMode
-    }
-  }
-  return modes
-}
-
-function normalizeWidgetCurrencyMode(value: unknown): "split" | "merged" | undefined {
-  if (value === "merged") return "merged"
-  if (value === "split" || value === "stacked") return "split"
-  return undefined
-}
 
 function rateTupleSignature(tuples: RateTuple[]) {
   return tuples.map((tuple) => rateKey(tuple.date, tuple.from, tuple.to)).sort().join("||")
@@ -1430,19 +1419,14 @@ export default function SmartDashboardPage() {
       .maybeSingle()
     if (data?.layout) {
       const saved = data.layout
-      const savedCurrencyModes = saved.preferences?.widgetCurrencyModes && typeof saved.preferences.widgetCurrencyModes === "object"
-        ? saved.preferences.widgetCurrencyModes as Record<string, unknown>
-        : {}
+      const preferences = normalizeDashboardPreferences(saved.preferences)
       const savedWidgets: Widget[] = saved.widgets?.length
-        ? saved.widgets.map((widget: Widget) => {
-            const mode = normalizeWidgetCurrencyMode(savedCurrencyModes[widget.id])
-            return mode ? { ...widget, currencyMode: mode } : widget
-          })
+        ? applyWidgetCurrencyModes(saved.widgets, preferences.widgetCurrencyModes)
         : []
       const widgetById = new Map<string, Widget>(savedWidgets.map((widget) => [widget.id, widget]))
       setWidgets(savedWidgets)
       if (saved.palette?.accent) setDashboardAccent(saved.palette.accent)
-      setPreferredPrimaryCurrency(typeof saved.preferences?.primaryCurrency === "string" ? saved.preferences.primaryCurrency : null)
+      setPreferredPrimaryCurrency(preferences.primaryCurrency)
       if (saved.gridLayout?.length) {
         // Always apply current minH/minW — never restore stale saved constraints
         setLayout(saved.gridLayout.map((l: any) => ({

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 
 type Overall = "operational" | "degraded" | "outage"
@@ -89,6 +89,23 @@ export function SystemStatusIndicator() {
   const [health, setHealth] = useState<HealthResponse | null>(null)
   const [isOwner, setIsOwner] = useState(false)
   const [open, setOpen] = useState(false)
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const showPanel = () => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current)
+      closeTimerRef.current = null
+    }
+    setOpen(true)
+  }
+
+  const scheduleClosePanel = () => {
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current)
+    closeTimerRef.current = setTimeout(() => {
+      setOpen(false)
+      closeTimerRef.current = null
+    }, 260)
+  }
 
   // Detect owner
   useEffect(() => {
@@ -119,6 +136,12 @@ export function SystemStatusIndicator() {
     return () => { cancelled = true; clearInterval(id) }
   }, [])
 
+  useEffect(() => {
+    return () => {
+      if (closeTimerRef.current) clearTimeout(closeTimerRef.current)
+    }
+  }, [])
+
   const overall = health?.overall ?? "operational"
   const p = health?.providers
 
@@ -126,21 +149,25 @@ export function SystemStatusIndicator() {
   const aiStatus = p ? worstOf(p.openai, p.anthropic, p.gemini) : "operational"
 
   return (
-    <div className="relative">
+    <div
+      className="relative"
+      onMouseEnter={showPanel}
+      onMouseLeave={scheduleClosePanel}
+      onFocus={showPanel}
+      onBlur={scheduleClosePanel}
+    >
       <button
-        onClick={() => setOpen((v) => !v)}
         className="relative flex h-2 w-2 cursor-pointer focus:outline-none"
         title={LABEL[overall]}
         aria-label={LABEL[overall]}
+        aria-expanded={open}
       >
         <span className={`absolute inline-flex h-full w-full animate-ping rounded-full ${DOT[overall]} opacity-50`} />
         <span className={`relative inline-flex h-2 w-2 rounded-full ${DOT[overall]}`} />
       </button>
 
       {open && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-5 z-50 w-56 rounded-xl border border-border bg-card p-3 shadow-lg">
+        <div className="absolute right-0 top-5 z-50 w-56 rounded-xl border border-border bg-card p-3 shadow-lg">
             {/* Header */}
             <div className="flex items-center gap-2 mb-3">
               <span className={`inline-flex h-2 w-2 rounded-full ${DOT[overall]}`} />
@@ -178,8 +205,7 @@ export function SystemStatusIndicator() {
                 </div>
               </div>
             )}
-          </div>
-        </>
+        </div>
       )}
     </div>
   )

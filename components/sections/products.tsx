@@ -1,6 +1,6 @@
 import type { ReactNode } from "react"
 import Link from "next/link"
-import { ArrowUpRight } from "lucide-react"
+import { ArrowUpRight, ShieldCheck } from "lucide-react"
 import { FadeUp, StaggerContainer, StaggerItem } from "@/components/fade-up"
 
 type StatusType = "live" | "development" | "coming-soon"
@@ -13,6 +13,7 @@ interface ProductCardProps {
   external?: boolean
   disabled?: boolean
   icon?: ReactNode
+  badges?: string[]
 }
 
 function StatusBadge({ status }: { status: StatusType }) {
@@ -135,7 +136,7 @@ function DashboardIcon({ className }: { className?: string }) {
   )
 }
 
-function ProductCard({ name, description, status, href, external, disabled, icon }: ProductCardProps) {
+function ProductCard({ name, description, status, href, external, disabled, icon, badges }: ProductCardProps) {
   const content = (
     <div
       className={`group relative flex h-full flex-col rounded-2xl glass-surface p-6 ${
@@ -154,6 +155,18 @@ function ProductCard({ name, description, status, href, external, disabled, icon
         {status && <StatusBadge status={status} />}
       </div>
       <p className="mt-3 flex-1 text-sm text-muted-foreground">{description}</p>
+      {badges && badges.length > 0 && (
+        <div className="mt-4 flex flex-wrap gap-1.5">
+          {badges.map((badge) => (
+            <span
+              key={badge}
+              className="rounded-full border border-border/70 bg-background/50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground"
+            >
+              {badge}
+            </span>
+          ))}
+        </div>
+      )}
       {!disabled && href && (
         <div className="mt-4 flex items-center text-sm font-medium text-primary">
           Learn more
@@ -182,12 +195,20 @@ const products: ProductCardProps[] = [
     icon: <DashboardIcon className="h-5 w-5" />,
   },
   {
+    name: "Smart Security",
+    description: "AI-powered security layer extension for file storage, built first for AVIntelligence.",
+    status: "development",
+    disabled: true,
+    icon: <ShieldCheck className="h-5 w-5 text-primary" />,
+  },
+  {
     name: "PicklePal",
     description: "Social and venue management platform with analytics.",
     status: "live",
     href: "https://picklepalph.com",
     external: true,
     icon: <PicklePalIcon className="h-5 w-5" />,
+    badges: ["iOS", "Android"],
   },
   {
     name: "Hooper",
@@ -195,6 +216,7 @@ const products: ProductCardProps[] = [
     status: "development",
     disabled: true,
     icon: <HooperIcon className="h-5 w-5" />,
+    badges: ["iOS", "Android"],
   },
 ]
 
@@ -214,7 +236,7 @@ export function ProductsSection() {
             Applied intelligence for real-world systems.
           </p>
         </FadeUp>
-        <StaggerContainer className="mt-12 grid gap-6 sm:grid-cols-2">
+        <StaggerContainer className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {products.map((product) => (
             <StaggerItem key={product.name} className="h-full">
               <ProductCard {...product} />

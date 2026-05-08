@@ -55,6 +55,7 @@ import {
   fetchRatesFromDb,
   getRequiredRateTuples,
   rateKey,
+  type RateTuple,
   type RatesMap,
 } from "@/lib/fx"
 import {
@@ -211,6 +212,16 @@ function widgetCurrencyModesFor(widgets: Widget[]) {
     }
   }
   return modes
+}
+
+function normalizeWidgetCurrencyMode(value: unknown): "split" | "merged" | undefined {
+  if (value === "merged") return "merged"
+  if (value === "split" || value === "stacked") return "split"
+  return undefined
+}
+
+function rateTupleSignature(tuples: RateTuple[]) {
+  return tuples.map((tuple) => rateKey(tuple.date, tuple.from, tuple.to)).sort().join("||")
 }
 
 // ── Animated number ───────────────────────────────────────────────────────────
@@ -1323,6 +1334,7 @@ export default function SmartDashboardPage() {
   const dateFilterCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const advancedMenuCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const colorPickerCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const autoPreparedFxKeyRef = useRef<string | null>(null)
 
   const selectedWidget = widgets.find(w => w.id === selectedWidgetId)
 
@@ -1421,12 +1433,12 @@ export default function SmartDashboardPage() {
     if (data?.layout) {
       const saved = data.layout
       const savedCurrencyModes = saved.preferences?.widgetCurrencyModes && typeof saved.preferences.widgetCurrencyModes === "object"
-        ? saved.preferences.widgetCurrencyModes as Record<string, "split" | "merged">
+        ? saved.preferences.widgetCurrencyModes as Record<string, unknown>
         : {}
       const savedWidgets: Widget[] = saved.widgets?.length
         ? saved.widgets.map((widget: Widget) => {
-            const mode = savedCurrencyModes[widget.id]
-            return mode === "split" || mode === "merged" ? { ...widget, currencyMode: mode } : widget
+            const mode = normalizeWidgetCurrencyMode(savedCurrencyModes[widget.id])
+            return mode ? { ...widget, currencyMode: mode } : widget
           })
         : []
       const widgetById = new Map<string, Widget>(savedWidgets.map((widget) => [widget.id, widget]))
@@ -1587,7 +1599,7 @@ export default function SmartDashboardPage() {
       .from("context_summaries")
       .select("summary, generated_at")
       .eq("user_id", session.user.id)
-      .single()
+      .maybeSingle()
     if (data) {
       setContextSummary(data.summary)
       setContextSummaryDate(data.generated_at)
@@ -1833,15 +1845,14 @@ export default function SmartDashboardPage() {
 
   const updateWidgetCurrencyMode = async (widgetId: string, mode: "split" | "merged") => {
     const nextWidgets = widgets.map((widget) => widget.id === widgetId ? { ...widget, currencyMode: mode } : widget)
+    setWidgets(nextWidgets)
+    void persistDashboardPreferences({ widgetCurrencyModes: widgetCurrencyModesFor(nextWidgets) }, nextWidgets, layout)
 
     if (mode === "merged") {
       const memoryCacheHit = requiredRateTuples.every((tuple) =>
         Boolean(fxRatesMap[rateKey(tuple.date, tuple.from, tuple.to)]),
       )
       if (memoryCacheHit) {
-        console.log("[fx-cache] hit", requiredRateTuples.length)
-        setWidgets(nextWidgets)
-        void persistDashboardPreferences({ widgetCurrencyModes: widgetCurrencyModesFor(nextWidgets) }, nextWidgets, layout)
         return
       }
 
@@ -1851,15 +1862,11 @@ export default function SmartDashboardPage() {
         const cachedRates = await fetchRatesFromDb(supabase, requiredRateTuples)
         const missingTuples = requiredRateTuples.filter((tuple) => !cachedRates[rateKey(tuple.date, tuple.from, tuple.to)])
         if (missingTuples.length === 0) {
-          console.log("[fx-cache] hit", requiredRateTuples.length)
           setFxRatesMap((prev) => ({ ...prev, ...cachedRates }))
-          setWidgets(nextWidgets)
-          void persistDashboardPreferences({ widgetCurrencyModes: widgetCurrencyModesFor(nextWidgets) }, nextWidgets, layout)
           setFxLoadingWidgetId(null)
           return
         }
 
-        console.log("[fx-cache] miss", missingTuples.length)
         await ensureRatesExist(supabase, missingTuples)
         const backfilledRates = await fetchRatesFromDb(supabase, missingTuples)
         const rates = { ...cachedRates, ...backfilledRates }
@@ -1871,9 +1878,6 @@ export default function SmartDashboardPage() {
       }
       setFxLoadingWidgetId(null)
     }
-
-    setWidgets(nextWidgets)
-    await persistDashboardPreferences({ widgetCurrencyModes: widgetCurrencyModesFor(nextWidgets) }, nextWidgets, layout)
   }
 
   // ── Widget management ──────────────────────────────────────────────────────
@@ -1997,6 +2001,65 @@ export default function SmartDashboardPage() {
 
     return buildCurrencyModel(convertedRows, safeNum, selectedPrimaryCurrency)
   }, [dashboardRows, fxRatesMap, requiredRateTuples, selectedPrimaryCurrency])
+
+  const savedMergedWidget = useMemo(
+    () => widgets.find((widget) => widgetSupportsMergedCurrency(widget) && widget.currencyMode === "merged") ?? null,
+    [widgets],
+  )
+  const requiredRateSignature = useMemo(() => rateTupleSignature(requiredRateTuples), [requiredRateTuples])
+
+  useEffect(() => {
+    if (!session?.user?.id || !savedMergedWidget || requiredRateTuples.length === 0) return
+
+    const missingInMemory = requiredRateTuples.filter((tuple) =>
+      !fxRatesMap[rateKey(tuple.date, tuple.from, tuple.to)],
+    )
+    if (missingInMemory.length === 0) return
+
+    const missingSignature = `${selectedPrimaryCurrency}:${rateTupleSignature(missingInMemory)}`
+    if (autoPreparedFxKeyRef.current === missingSignature) return
+    autoPreparedFxKeyRef.current = missingSignature
+
+    let cancelled = false
+    const prepareSavedMergedRates = async () => {
+      setFxLoadingWidgetId((current) => current ?? savedMergedWidget.id)
+      setFxError(null)
+      try {
+        const cachedRates = await fetchRatesFromDb(supabase, requiredRateTuples)
+        if (cancelled) return
+        const missingTuples = requiredRateTuples.filter((tuple) => !cachedRates[rateKey(tuple.date, tuple.from, tuple.to)])
+        let rates = cachedRates
+        if (missingTuples.length > 0) {
+          await ensureRatesExist(supabase, missingTuples)
+          const backfilledRates = await fetchRatesFromDb(supabase, missingTuples)
+          if (cancelled) return
+          rates = { ...cachedRates, ...backfilledRates }
+        }
+        if (Object.keys(rates).length > 0) {
+          setFxRatesMap((prev) => ({ ...prev, ...rates }))
+        }
+      } catch (error) {
+        if (!cancelled) {
+          autoPreparedFxKeyRef.current = null
+          setFxError(error instanceof Error ? error.message : "Failed to prepare FX rates")
+        }
+      } finally {
+        if (!cancelled) {
+          setFxLoadingWidgetId((current) => current === savedMergedWidget.id ? null : current)
+        }
+      }
+    }
+
+    void prepareSavedMergedRates()
+    return () => { cancelled = true }
+  }, [
+    fxRatesMap,
+    requiredRateSignature,
+    requiredRateTuples,
+    savedMergedWidget,
+    selectedPrimaryCurrency,
+    session?.user?.id,
+  ])
 
   // ── Auth guard ─────────────────────────────────────────────────────────────
   if (!sessionLoaded) return null

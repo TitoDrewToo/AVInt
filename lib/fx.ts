@@ -95,11 +95,7 @@ export async function ensureRatesExist(supabase: any, tuples: RateTuple[]): Prom
 
   const existing = await fetchRatesFromDb(supabase, tuples)
   const missing = tuples.filter((tuple) => !existing[rateKey(tuple.date, tuple.from, tuple.to)])
-  if (missing.length === 0) {
-    console.log("[fx-cache] hit", tuples.length)
-    return
-  }
-  console.log("[fx-cache] miss", missing.length)
+  if (missing.length === 0) return
 
   const { data: { session } } = await supabase.auth.getSession()
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL

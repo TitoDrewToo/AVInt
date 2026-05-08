@@ -677,21 +677,18 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
     const fieldChangedRowIds = [...new Set(changesToSave.filter((change) => change.action.kind === "set_field").flatMap((change) => change.affected_row_ids))]
     const savedFindingIds = changesToSave.flatMap((change) => change.finding_id ? [change.finding_id] : [])
     try {
-      console.log("[save] starting", { pendingCount, fileId })
       for (const change of changesToSave) {
         if (change.affected_row_ids.length === 0) continue
         const kind = change.action.kind
         const field = change.action.field
         const value = change.action.value
         const affectedCount = change.affected_row_ids.length
-        console.log("[save] processing change", { kind, affectedCount, field, value })
         if (kind === "exclude") {
           const { data, error } = await supabase
             .from("document_fields")
             .update({ normalization_status: "excluded" })
             .in("id", change.affected_row_ids)
             .select("id")
-          console.log("[save] update result", { data, error, rowsAffected: data?.length })
           if (error) throw new Error(error.message)
           if ((data?.length ?? 0) !== affectedCount) {
             throw new Error(`Expected to exclude ${affectedCount} row${affectedCount === 1 ? "" : "s"}, but database updated ${data?.length ?? 0}.`)
@@ -703,13 +700,6 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
             .update({ [normalizedField]: value ?? null })
             .in("id", change.affected_row_ids)
             .select("id")
-          console.log("[save] update result", {
-            data,
-            error,
-            rowsAffected: data?.length,
-            originalField: field,
-            normalizedField,
-          })
           if (error) throw new Error(error.message)
           if ((data?.length ?? 0) !== affectedCount) {
             throw new Error(`Expected to update ${affectedCount} row${affectedCount === 1 ? "" : "s"}, but database updated ${data?.length ?? 0}.`)
@@ -725,7 +715,6 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
         ...savedFindingIds,
       ]
       const nextAnalysis = { ...currentAnalysisJson, applied_finding_ids: [...new Set(newAppliedIds)] }
-      console.log("[save] updating analysis_json", { newAppliedIds: nextAnalysis.applied_finding_ids })
       const { error: analysisUpdateError } = await supabase
         .from("files")
         .update({ analysis_json: nextAnalysis })
@@ -784,7 +773,6 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
       setSaveNotice(summarizeSavedChanges(changesToSave) || `${pendingCount} change${pendingCount === 1 ? "" : "s"} saved`)
       if (saveNoticeTimeoutRef.current) window.clearTimeout(saveNoticeTimeoutRef.current)
       saveNoticeTimeoutRef.current = window.setTimeout(() => setSaveNotice(null), 2000)
-      console.log("[save] complete")
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to save sheet changes."
       setError(`Save failed: ${message}`)

@@ -89,7 +89,7 @@ async function enrichFiles(files: any[]): Promise<UploadedFile[]> {
 export async function fetchSmartStorageFilesPage(userId: string, offset = 0, limit = SMART_STORAGE_PAGE_SIZE): Promise<SmartStorageFilesPage> {
   const { data, error } = await supabase
     .from("files")
-    .select("id, filename, file_type, file_size, document_type, created_at, storage_path, folder_id, upload_status, scan_reason, analysis_json, analyzed_at, source_rows_json")
+    .select("id, filename, file_type, file_size, document_type, created_at, storage_path, folder_id, upload_status, scan_reason, analysis_json, analyzed_at")
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1)
@@ -105,7 +105,7 @@ export async function fetchSmartStorageFilesByIds(userId: string, fileIds: strin
   if (fileIds.length === 0) return []
   const { data, error } = await supabase
     .from("files")
-    .select("id, filename, file_type, file_size, document_type, created_at, storage_path, folder_id, upload_status, scan_reason, analysis_json, analyzed_at, source_rows_json")
+    .select("id, filename, file_type, file_size, document_type, created_at, storage_path, folder_id, upload_status, scan_reason, analysis_json, analyzed_at")
     .eq("user_id", userId)
     .in("id", fileIds)
     .order("created_at", { ascending: false })

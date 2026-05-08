@@ -12,23 +12,29 @@ export function SmartStoragePrefetcher() {
 
   useEffect(() => {
     let active = true
-    let idleHandle: number | null = null
-    let timeoutHandle: ReturnType<typeof setTimeout> | null = null
+    const idleHandles: number[] = []
+    const timeoutHandles: ReturnType<typeof setTimeout>[] = []
     const isSmartStorageRoute = pathname?.startsWith("/tools/smart-storage")
+    const isSmartDashboardRoute = pathname?.startsWith("/tools/smart-dashboard")
 
-    const scheduleWarmup = (run: () => void) => {
+    const scheduleWarmup = (run: () => void, fallbackDelay = 1200) => {
       if (typeof window === "undefined") return
       if ("requestIdleCallback" in window) {
-        idleHandle = window.requestIdleCallback(run, { timeout: 3000 })
+        idleHandles.push(window.requestIdleCallback(run, { timeout: 3000 }))
         return
       }
-      timeoutHandle = setTimeout(run, 1200)
+      timeoutHandles.push(setTimeout(run, fallbackDelay))
     }
+
+    scheduleWarmup(() => {
+      if (!active) return
+      if (!isSmartStorageRoute) router.prefetch("/tools/smart-storage")
+      if (!isSmartDashboardRoute) router.prefetch("/tools/smart-dashboard")
+    }, 400)
 
     const prefetchForUser = (userId: string | undefined) => {
       if (!userId || prefetchedUserIdRef.current === userId) return
       prefetchedUserIdRef.current = userId
-      router.prefetch("/tools/smart-storage")
       if (isSmartStorageRoute) return
       scheduleWarmup(() => {
         if (!active) return
@@ -50,10 +56,10 @@ export function SmartStoragePrefetcher() {
 
     return () => {
       active = false
-      if (idleHandle !== null && "cancelIdleCallback" in window) {
-        window.cancelIdleCallback(idleHandle)
+      if ("cancelIdleCallback" in window) {
+        idleHandles.forEach((handle) => window.cancelIdleCallback(handle))
       }
-      if (timeoutHandle) clearTimeout(timeoutHandle)
+      timeoutHandles.forEach(clearTimeout)
       subscription.unsubscribe()
     }
   }, [pathname, router])

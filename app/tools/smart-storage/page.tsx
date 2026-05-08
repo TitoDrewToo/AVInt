@@ -1135,6 +1135,10 @@ export default function SmartStoragePage() {
   const usedStorageBytes = files.reduce((sum, file) => sum + (file.file_size || 0), 0)
   const includedStorageBytes = storageQuotaBytes(entitlement)
   const usedStoragePercent = storageUsagePercent(usedStorageBytes, includedStorageBytes)
+  const selectedStorageBytes = useMemo(() => {
+    if (selectedFiles.size === 0) return 0
+    return files.reduce((sum, file) => selectedFiles.has(file.id) ? sum + (file.file_size || 0) : sum, 0)
+  }, [files, selectedFiles])
 
   const currentSubfolders = classificationView || documentVirtualView ? [] : folders.filter((f) =>
     currentFolderId === "root" ? f.parentId === null : f.parentId === currentFolderId
@@ -1216,7 +1220,9 @@ export default function SmartStoragePage() {
 
       {selectedFiles.size > 0 && (
         <div className="flex shrink-0 items-center gap-1 border-r border-border pr-2">
-          <span className="text-xs text-muted-foreground">{selectedFiles.size} selected</span>
+          <span className="whitespace-nowrap text-xs text-muted-foreground">
+            {selectedFiles.size} selected <span className="text-muted-foreground/50">·</span> {formatBytes(selectedStorageBytes)}
+          </span>
           <button
             onClick={() => {
               const fileId = [...selectedFiles][0]
@@ -1552,7 +1558,9 @@ export default function SmartStoragePage() {
               {/* Selected file actions */}
               {selectedFiles.size > 0 && (
                 <div className="flex items-center gap-1 border-r border-border pr-2 mr-1">
-                  <span className="text-xs text-muted-foreground">{selectedFiles.size} selected</span>
+                  <span className="whitespace-nowrap text-xs text-muted-foreground">
+                    {selectedFiles.size} selected <span className="text-muted-foreground/50">·</span> {formatBytes(selectedStorageBytes)}
+                  </span>
                   <button
                     onClick={() => {
                       const fileId = [...selectedFiles][0]

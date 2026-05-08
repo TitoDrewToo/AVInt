@@ -197,8 +197,6 @@ function ProfitLossContent() {
   const totalExpenses = expenseRows.reduce((s, r) => s + (r.total_amount ?? 0), 0)
   const netPosition   = totalRevenue - totalExpenses
   const netMargin     = totalRevenue > 0 ? (netPosition / totalRevenue) * 100 : null
-  const businessNetPosition = businessRevenue - totalExpenses
-  const businessNetMargin = businessRevenue > 0 ? (businessNetPosition / businessRevenue) * 100 : null
   const businessOnlyScope = businessIncome.length > 0 && wageIncome.length === 0 && otherIncome.length === 0
   const mixedScope = wageIncome.length > 0 || otherIncome.length > 0
   const incomeScopeLabel = businessOnlyScope ? "Business-only dataset" : mixedScope ? "Mixed personal/business dataset" : "Non-business income dataset"

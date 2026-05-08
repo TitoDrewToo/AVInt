@@ -76,7 +76,8 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
   // 2. Keep it hidden for all users until the wiki-backed knowledge source is ready.
   // 3. When the real wiki mapping is ready, replace the hard `false` below with
   //    `session && hasActiveSubscription` to enable it only for active subscribers.
-  const showAssistantPreview = false
+  const assistantRolloutEnabled = false
+  const showAssistantPreview = assistantRolloutEnabled && Boolean(session && hasActiveSubscription)
 
   useEffect(() => {
     return () => {

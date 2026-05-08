@@ -8,7 +8,7 @@ import { useEntitlement } from "@/hooks/use-entitlement"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 import { summarizeCurrencies } from "@/lib/report-utils"
 import type { Session } from "@supabase/supabase-js"
-import { AlertTriangle, ArrowLeft, Download, ChevronDown, ChevronUp, RefreshCw, FolderOpen, Printer } from "lucide-react"
+import { AlertTriangle, ArrowLeft, ChevronDown, ChevronUp, RefreshCw, FolderOpen, Printer } from "lucide-react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 
@@ -263,11 +263,6 @@ function ContractSummaryContent() {
     (c) => c.period_end == null || c.period_end >= today
   ).length
 
-  const currencyCount = contracts.reduce((acc: Record<string, number>, c) => {
-    const cur = c.currency ?? "USD"
-    acc[cur] = (acc[cur] ?? 0) + 1
-    return acc
-  }, {})
   const { primaryCurrency: currency, currencies, mixedCurrency } = summarizeCurrencies([
     ...contracts,
     ...Object.values(obligations).flat().map((o) => ({ currency: o.currency, total_amount: o.amount })),

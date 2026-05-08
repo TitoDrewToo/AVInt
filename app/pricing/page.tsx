@@ -9,7 +9,6 @@ import Link from "next/link"
 import { supabase } from "@/lib/supabase"
 import { computeEntitlement, pricingStatusForEntitlement } from "@/lib/entitlement"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
-import { ProcessingIndicator } from "@/components/ui/processing-indicator"
 
 const CHECKOUT_URLS: Record<string, string> = {
   "Day Pass": "https://www.creem.io/payment/prod_RBLECFWVb9ObYTbyzHqRN",

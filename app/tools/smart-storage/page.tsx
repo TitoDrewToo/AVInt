@@ -37,7 +37,6 @@ import {
   HardDrive,
 } from "lucide-react"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
-import { useIsMobile } from "@/hooks/use-mobile"
 import { ManualEntryModal, ReclassifyModal } from "@/components/ui/document-modals"
 import { ReclassifySheetModal } from "@/components/ui/reclassify-sheet-modal"
 import { DateRangeSelector } from "@/components/smart-storage/date-range-selector"
@@ -225,7 +224,6 @@ export default function SmartStoragePage() {
   const [reclassifyTarget, setReclassifyTarget] = useState<{ fileId: string; filename: string } | null>(null)
   const [reclassifySheetTarget, setReclassifySheetTarget] = useState<{ fileId: string; filename: string } | null>(null)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
-  const isMobile = useIsMobile()
   const [renamingFileId, setRenamingFileId] = useState<string | null>(null)
   const [renameFileValue, setRenameFileValue] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -931,7 +929,7 @@ export default function SmartStoragePage() {
       next.delete(fileId)
       return next
     })
-    setReportAvailability(prev => {
+    setReportAvailability(() => {
       const next: Record<string, boolean> = {}
       for (const report of REPORTS) next[report.id] = false
       return next

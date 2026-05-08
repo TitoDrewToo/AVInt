@@ -8,10 +8,6 @@ const geistFontStyle = {
   fontFamily: 'var(--font-aldrich), "Aldrich", var(--font-geist), "Geist", "Geist Fallback", sans-serif',
 } as const
 
-function openAccountPanel(view: "privacy" | "terms") {
-  window.dispatchEvent(new CustomEvent("open-account-panel", { detail: { view } }))
-}
-
 export function Footer() {
   return (
     <footer className="relative mt-16 w-full">

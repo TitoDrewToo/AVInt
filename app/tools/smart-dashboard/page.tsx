@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef, type CSSProperties } from "react"
 import { useTheme } from "next-themes"
 import { Navbar } from "@/components/navbar"
-import { Footer } from "@/components/footer"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 import { supabase } from "@/lib/supabase"
 import { useEntitlement } from "@/hooks/use-entitlement"
@@ -18,7 +17,6 @@ import {
 import type { Session } from "@supabase/supabase-js"
 import GridLayoutBase, { Layout as RGLLayout } from "react-grid-layout"
 // react-grid-layout v2 changed its TS prop types — cast to any to keep v1-style props working at runtime
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const GridLayout = GridLayoutBase as any
 import "react-grid-layout/css/styles.css"
 import "react-resizable/css/styles.css"
@@ -27,7 +25,7 @@ import {
   ComposedChart, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from "recharts"
 import {
-  TrendingUp, Receipt, Wallet, FileText,
+  TrendingUp, Receipt, Wallet,
   Save, Calendar, ChevronDown, ChevronRight, Lock, Sparkles,
   LayoutGrid, X, Check, Plus, Zap, PanelRight, Star
 } from "lucide-react"

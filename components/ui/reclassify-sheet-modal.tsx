@@ -203,6 +203,53 @@ function filterAnalysisAppliedFindingIds(analysis: SheetAnalysis): SheetAnalysis
   }
 }
 
+function applyPendingChangesToRows(rows: DocumentFieldRow[], changes: PendingChange[]) {
+  const rowById = new Map(rows.map((row) => [row.id, { ...row }]))
+  for (const change of changes) {
+    if (change.action.kind === "exclude") {
+      for (const rowId of change.affected_row_ids) {
+        const row = rowById.get(rowId)
+        if (row) row.normalization_status = "excluded"
+      }
+      continue
+    }
+
+    const field = change.action.field
+    if (!field) continue
+    const normalizedField = normalizeFieldName(field)
+    for (const rowId of change.affected_row_ids) {
+      const row = rowById.get(rowId)
+      if (row && normalizedField in row) {
+        (row as any)[normalizedField] = change.action.value ?? null
+      }
+    }
+  }
+  return rowById
+}
+
+function groupedDocumentFieldUpdates(changes: PendingChange[]) {
+  const excludeIds = new Set<string>()
+  const setFieldGroups = new Map<string, { field: string; value: string | null; rowIds: Set<string> }>()
+
+  for (const change of changes) {
+    if (change.action.kind === "exclude") {
+      change.affected_row_ids.forEach((rowId) => excludeIds.add(rowId))
+      continue
+    }
+
+    const field = change.action.field
+    if (!field) throw new Error("Set-field change is missing a field name.")
+    const normalizedField = normalizeFieldName(field)
+    const value = change.action.value ?? null
+    const key = `${normalizedField}:${JSON.stringify(value)}`
+    const group = setFieldGroups.get(key) ?? { field: normalizedField, value, rowIds: new Set<string>() }
+    change.affected_row_ids.forEach((rowId) => group.rowIds.add(rowId))
+    setFieldGroups.set(key, group)
+  }
+
+  return { excludeIds, setFieldGroups: [...setFieldGroups.values()] }
+}
+
 function ConfidenceMeter({ value }: { value: number }) {
   const filled = value >= 0.9 ? 3 : value >= 0.7 ? 2 : 1
   return (
@@ -677,56 +724,55 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
     const fieldChangedRowIds = [...new Set(changesToSave.filter((change) => change.action.kind === "set_field").flatMap((change) => change.affected_row_ids))]
     const savedFindingIds = changesToSave.flatMap((change) => change.finding_id ? [change.finding_id] : [])
     try {
-      for (const change of changesToSave) {
-        if (change.affected_row_ids.length === 0) continue
-        const kind = change.action.kind
-        const field = change.action.field
-        const value = change.action.value
-        const affectedCount = change.affected_row_ids.length
-        if (kind === "exclude") {
-          const { data, error } = await supabase
-            .from("document_fields")
-            .update({ normalization_status: "excluded" })
-            .in("id", change.affected_row_ids)
-            .select("id")
-          if (error) throw new Error(error.message)
-          if ((data?.length ?? 0) !== affectedCount) {
-            throw new Error(`Expected to exclude ${affectedCount} row${affectedCount === 1 ? "" : "s"}, but database updated ${data?.length ?? 0}.`)
-          }
-        } else if (field) {
-          const normalizedField = normalizeFieldName(field)
-          const { data, error } = await supabase
-            .from("document_fields")
-            .update({ [normalizedField]: value ?? null })
-            .in("id", change.affected_row_ids)
-            .select("id")
-          if (error) throw new Error(error.message)
-          if ((data?.length ?? 0) !== affectedCount) {
-            throw new Error(`Expected to update ${affectedCount} row${affectedCount === 1 ? "" : "s"}, but database updated ${data?.length ?? 0}.`)
-          }
-        } else {
-          throw new Error("Set-field change is missing a field name.")
+      const { excludeIds, setFieldGroups } = groupedDocumentFieldUpdates(changesToSave)
+      if (excludeIds.size > 0) {
+        const rowIds = [...excludeIds]
+        const { data, error } = await supabase
+          .from("document_fields")
+          .update({ normalization_status: "excluded" })
+          .in("id", rowIds)
+          .select("id")
+        if (error) throw new Error(error.message)
+        if ((data?.length ?? 0) !== rowIds.length) {
+          throw new Error(`Expected to exclude ${rowIds.length} row${rowIds.length === 1 ? "" : "s"}, but database updated ${data?.length ?? 0}.`)
         }
       }
 
-      const currentAnalysisJson = fileMeta?.analysis_json ?? {}
-      const newAppliedIds = [
-        ...(currentAnalysisJson.applied_finding_ids ?? []),
-        ...savedFindingIds,
-      ]
-      const nextAnalysis = { ...currentAnalysisJson, applied_finding_ids: [...new Set(newAppliedIds)] }
-      const { error: analysisUpdateError } = await supabase
-        .from("files")
-        .update({ analysis_json: nextAnalysis })
-        .eq("id", fileId)
-      if (analysisUpdateError) throw new Error(analysisUpdateError.message)
+      for (const group of setFieldGroups) {
+        if (group.rowIds.size === 0) continue
+        const rowIds = [...group.rowIds]
+        const { data, error } = await supabase
+          .from("document_fields")
+          .update({ [group.field]: group.value })
+          .in("id", rowIds)
+          .select("id")
+        if (error) throw new Error(error.message)
+        if ((data?.length ?? 0) !== rowIds.length) {
+          throw new Error(`Expected to update ${rowIds.length} row${rowIds.length === 1 ? "" : "s"}, but database updated ${data?.length ?? 0}.`)
+        }
+      }
+
+      if (savedFindingIds.length > 0) {
+        const currentAnalysisJson = fileMeta?.analysis_json ?? {}
+        const newAppliedIds = [
+          ...(currentAnalysisJson.applied_finding_ids ?? []),
+          ...savedFindingIds,
+        ]
+        const nextAnalysis = { ...currentAnalysisJson, applied_finding_ids: [...new Set(newAppliedIds)] }
+        const { error: analysisUpdateError } = await supabase
+          .from("files")
+          .update({ analysis_json: nextAnalysis })
+          .eq("id", fileId)
+        if (analysisUpdateError) throw new Error(analysisUpdateError.message)
+      }
 
       if (shouldRenormalize && affectedByRenormalize > 0) {
         const userToken = (await supabase.auth.getSession()).data.session?.access_token
         const rowIdsToRenormalize = [...new Set(renormalizableChanges.flatMap((change) => change.affected_row_ids))]
+        const updatedRowById = applyPendingChangesToRows(rows, changesToSave)
         await Promise.allSettled(
           rowIdsToRenormalize.map((rowId) => {
-              const row = rows.find((item) => item.id === rowId)
+              const row = updatedRowById.get(rowId)
               return fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/normalize-document`, {
                 method: "POST",
                 headers: {

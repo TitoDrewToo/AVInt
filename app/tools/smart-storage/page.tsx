@@ -1,6 +1,7 @@
 "use client"
 
 import { type ReactElement, useState, useEffect, useCallback, useRef, useMemo } from "react"
+import dynamic from "next/dynamic"
 import { Navbar } from "@/components/navbar"
 import { Button } from "@/components/ui/button"
 import {
@@ -37,8 +38,6 @@ import {
   HardDrive,
 } from "lucide-react"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
-import { ManualEntryModal, ReclassifyModal } from "@/components/ui/document-modals"
-import { ReclassifySheetModal } from "@/components/ui/reclassify-sheet-modal"
 import { DateRangeSelector } from "@/components/smart-storage/date-range-selector"
 import { LeftFolderItem } from "@/components/smart-storage/left-folder-item"
 import { StorageItemMenu } from "@/components/smart-storage/storage-item-menu"
@@ -87,6 +86,19 @@ import {
   type SmartStorageWarmData,
 } from "@/lib/smart-storage-cache"
 
+const ManualEntryModal = dynamic(
+  () => import("@/components/ui/document-modals").then((mod) => mod.ManualEntryModal),
+  { ssr: false },
+)
+const ReclassifyModal = dynamic(
+  () => import("@/components/ui/document-modals").then((mod) => mod.ReclassifyModal),
+  { ssr: false },
+)
+const ReclassifySheetModal = dynamic(
+  () => import("@/components/ui/reclassify-sheet-modal").then((mod) => mod.ReclassifySheetModal),
+  { ssr: false },
+)
+
 const HOVER_PREVIEW_WIDTH = 208
 const HOVER_PREVIEW_ESTIMATED_HEIGHT = 248
 const HOVER_PREVIEW_CURSOR_GAP = 28
@@ -95,6 +107,9 @@ const ACTIVE_PROCESSING_WINDOW_MS = 2 * 60 * 1000
 const SMART_STORAGE_BACKGROUND_REFRESH_AFTER_MS = 30 * 1000
 const ACTIONABLE_JOB_WINDOW_MS = 60 * 60 * 1000
 const SLOW_PROCESSING_STATUSES = ["uploaded", "processing"]
+const CELL_W = 90
+const CELL_H = 104
+const GRID_PAD = 8
 
 type HoverPreviewState = {
   fileId: string
@@ -144,6 +159,54 @@ function SmartStorageLaunchFallback() {
           <div className="hidden rounded-lg border border-border/60 bg-muted/20 lg:block" />
         </div>
       </main>
+    </div>
+  )
+}
+
+function SmartStorageGridSkeleton() {
+  return (
+    <>
+      {Array.from({ length: 10 }).map((_, index) => {
+        const col = index % 5
+        const row = Math.floor(index / 5)
+        return (
+          <div
+            key={index}
+            style={{
+              position: "absolute",
+              left: GRID_PAD + col * CELL_W,
+              top: GRID_PAD + row * CELL_H,
+              width: CELL_W - 6,
+            }}
+            className="flex flex-col items-center gap-2 rounded-lg px-1 py-2"
+          >
+            <div className="h-10 w-10 animate-pulse rounded bg-muted" />
+            <div className="h-3 w-20 animate-pulse rounded bg-muted" />
+            <div className="h-2.5 w-14 animate-pulse rounded bg-muted/70" />
+          </div>
+        )
+      })}
+    </>
+  )
+}
+
+function SmartStorageListSkeleton() {
+  return (
+    <div className="space-y-1">
+      {Array.from({ length: 8 }).map((_, index) => (
+        <div
+          key={index}
+          className="grid grid-cols-[1fr_120px_140px_80px] items-center gap-2 rounded-lg px-3 py-1.5"
+        >
+          <div className="flex items-center gap-2">
+            <div className="h-4 w-4 animate-pulse rounded bg-muted" />
+            <div className="h-4 w-40 max-w-[70%] animate-pulse rounded bg-muted" />
+          </div>
+          <div className="h-4 w-20 animate-pulse rounded bg-muted" />
+          <div className="h-4 w-24 animate-pulse rounded bg-muted" />
+          <div className="ml-auto h-4 w-12 animate-pulse rounded bg-muted" />
+        </div>
+      ))}
     </div>
   )
 }
@@ -234,6 +297,7 @@ export default function SmartStoragePage() {
   const [files, setFiles] = useState<UploadedFile[]>([])
   const [loadedFileCount, setLoadedFileCount] = useState(0)
   const [hasMoreFiles, setHasMoreFiles] = useState(false)
+  const [isLoadingLaunchData, setIsLoadingLaunchData] = useState(true)
   const [isLoadingMoreFiles, setIsLoadingMoreFiles] = useState(false)
   const [detectedTypes, setDetectedTypes] = useState<string[]>([])
   const recentlyDeletedFileIdsRef = useRef<Set<string>>(new Set())
@@ -269,9 +333,6 @@ export default function SmartStoragePage() {
   const directoryInputRef = useRef<HTMLInputElement>(null)
 
   // Canvas drag state
-  const CELL_W = 90
-  const CELL_H = 104
-  const GRID_PAD = 8
   const canvasRef = useRef<HTMLDivElement>(null)
   const [itemPositions, setItemPositions] = useState<Record<string, GridPosition>>({})
   const [draggingId, setDraggingId] = useState<string | null>(null)
@@ -474,11 +535,15 @@ export default function SmartStoragePage() {
   }, [session, checkProcessingState, upsertLoadedFiles, checkReportAvailability])
 
   useEffect(() => {
-    if (!session?.user?.id) return
+    if (!session?.user?.id) {
+      setIsLoadingLaunchData(false)
+      return
+    }
     let active = true
     let idleHandle: number | null = null
     let refreshTimeout: ReturnType<typeof setTimeout> | null = null
     const userId = session.user.id
+    setIsLoadingLaunchData(true)
 
     const applyIfActive = (data: SmartStorageWarmData) => {
       if (active) applyWarmData(data)
@@ -510,6 +575,7 @@ export default function SmartStoragePage() {
     const cached = getCachedSmartStorageData(session.user.id)
     if (cached) {
       applyWarmData(cached)
+      setIsLoadingLaunchData(false)
       const cacheAge = getSmartStorageCacheAgeMs(userId)
       if (cacheAge != null && cacheAge <= SMART_STORAGE_BACKGROUND_REFRESH_AFTER_MS) {
         return () => { active = false }
@@ -538,6 +604,7 @@ export default function SmartStoragePage() {
     const cachedLaunch = getCachedSmartStorageLaunchData(userId)
     if (cachedLaunch) {
       applyLaunchData(cachedLaunch)
+      setIsLoadingLaunchData(false)
       scheduleReportAvailability(cachedLaunch)
       return () => {
         active = false
@@ -549,9 +616,11 @@ export default function SmartStoragePage() {
     void prefetchSmartStorageLaunchData(userId)
       .then((launchData) => {
         applyLaunchIfActive(launchData)
+        if (active) setIsLoadingLaunchData(false)
         scheduleReportAvailability(launchData)
       })
       .catch((error) => {
+        if (active) setIsLoadingLaunchData(false)
         console.error("smart storage initial load failed:", error)
       })
     return () => {
@@ -1285,6 +1354,7 @@ export default function SmartStoragePage() {
   const maxRow = Object.keys(itemPositions).length > 0
     ? Math.max(...Object.values(itemPositions).map(p => p.row))
     : 0
+  const isShowingInitialFileSkeleton = isLoadingLaunchData && currentSubfolders.length === 0 && displayedFiles.length === 0 && !isCreatingFolder
 
   // ── Auth guard ─────────────────────────────────────────────────────────────
   if (!sessionLoaded) return <SmartStorageLaunchFallback />
@@ -1946,7 +2016,9 @@ export default function SmartStoragePage() {
                   })}
 
                   {/* Canvas empty state */}
-                  {currentSubfolders.length === 0 && displayedFiles.length === 0 && (
+                  {isShowingInitialFileSkeleton && <SmartStorageGridSkeleton />}
+
+                  {currentSubfolders.length === 0 && displayedFiles.length === 0 && !isShowingInitialFileSkeleton && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-none select-none">
                       <div className="flex items-end justify-center gap-2 opacity-10">
                         <div className="flex h-16 w-14 items-center justify-center rounded-lg bg-muted">
@@ -2101,6 +2173,10 @@ export default function SmartStoragePage() {
               )}
 
               {/* Files — list view (or classification view) */}
+              {(viewMode === "list" || classificationView) && isShowingInitialFileSkeleton && (
+                <SmartStorageListSkeleton />
+              )}
+
               {(viewMode === "list" || classificationView) && displayedFiles.map((file) => (
                 <StorageItemMenu
                   key={file.id}
@@ -2190,7 +2266,7 @@ export default function SmartStoragePage() {
 
 
               {/* Empty state */}
-              {currentSubfolders.length === 0 && displayedFiles.length === 0 && !isCreatingFolder && viewMode === "list" && (
+              {currentSubfolders.length === 0 && displayedFiles.length === 0 && !isCreatingFolder && !isShowingInitialFileSkeleton && viewMode === "list" && (
                 <div className="flex h-full min-h-[300px] flex-col items-center justify-center gap-3">
                   <div className="flex items-end justify-center gap-2 opacity-20">
                     <div className="flex h-16 w-14 items-center justify-center rounded-lg bg-muted">
@@ -2430,38 +2506,44 @@ export default function SmartStoragePage() {
       </Sheet>
 
       {/* Manual Entry Modal */}
-      <ManualEntryModal
-        isOpen={manualEntryOpen}
-        userId={session?.user?.id ?? ""}
-        onClose={() => setManualEntryOpen(false)}
-        onCreated={(file) => {
-          upsertLoadedFiles([file as UploadedFile])
-          setManualEntryOpen(false)
-        }}
-      />
+      {manualEntryOpen && (
+        <ManualEntryModal
+          isOpen={manualEntryOpen}
+          userId={session?.user?.id ?? ""}
+          onClose={() => setManualEntryOpen(false)}
+          onCreated={(file) => {
+            upsertLoadedFiles([file as UploadedFile])
+            setManualEntryOpen(false)
+          }}
+        />
+      )}
 
       {/* Reclassify Modal */}
-      <ReclassifyModal
-        isOpen={reclassifyTarget !== null}
-        fileId={reclassifyTarget?.fileId ?? null}
-        filename={reclassifyTarget?.filename ?? ""}
-        onClose={() => setReclassifyTarget(null)}
-        onSaved={(fileId, newType) => {
-          setFiles(prev => prev.map(f => f.id === fileId ? { ...f, document_type: newType } : f))
-          setReclassifyTarget(null)
-        }}
-      />
+      {reclassifyTarget && (
+        <ReclassifyModal
+          isOpen={true}
+          fileId={reclassifyTarget.fileId}
+          filename={reclassifyTarget.filename}
+          onClose={() => setReclassifyTarget(null)}
+          onSaved={(fileId, newType) => {
+            setFiles(prev => prev.map(f => f.id === fileId ? { ...f, document_type: newType } : f))
+            setReclassifyTarget(null)
+          }}
+        />
+      )}
 
-      <ReclassifySheetModal
-        isOpen={reclassifySheetTarget !== null}
-        fileId={reclassifySheetTarget?.fileId ?? null}
-        filename={reclassifySheetTarget?.filename ?? ""}
-        onClose={() => setReclassifySheetTarget(null)}
-        onSaved={() => {
-          void loadFiles()
-          void checkReportAvailability()
-        }}
-      />
+      {reclassifySheetTarget && (
+        <ReclassifySheetModal
+          isOpen={true}
+          fileId={reclassifySheetTarget.fileId}
+          filename={reclassifySheetTarget.filename}
+          onClose={() => setReclassifySheetTarget(null)}
+          onSaved={() => {
+            void loadFiles()
+            void checkReportAvailability()
+          }}
+        />
+      )}
 
       {/* Hover preview card */}
       {hoverPreview && (() => {

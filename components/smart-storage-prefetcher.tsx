@@ -17,6 +17,11 @@ export function SmartStoragePrefetcher() {
     const isSmartStorageRoute = pathname?.startsWith("/tools/smart-storage")
     const isSmartDashboardRoute = pathname?.startsWith("/tools/smart-dashboard")
 
+    const scheduleSoon = (run: () => void, delay = 450) => {
+      if (typeof window === "undefined") return
+      timeoutHandles.push(setTimeout(run, delay))
+    }
+
     const scheduleWarmup = (run: () => void, fallbackDelay = 1200) => {
       if (typeof window === "undefined") return
       if ("requestIdleCallback" in window) {
@@ -26,7 +31,7 @@ export function SmartStoragePrefetcher() {
       timeoutHandles.push(setTimeout(run, fallbackDelay))
     }
 
-    scheduleWarmup(() => {
+    scheduleSoon(() => {
       if (!active) return
       if (!isSmartStorageRoute) router.prefetch("/tools/smart-storage")
       if (!isSmartDashboardRoute) router.prefetch("/tools/smart-dashboard")

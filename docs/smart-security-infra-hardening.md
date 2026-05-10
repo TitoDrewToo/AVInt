@@ -11,31 +11,33 @@ Pre-Phase-1 cloud infra hardening tasks derived from external review (cloud-infr
 **Owner:** TBD.
 **Gate:** before any CI tooling that can deploy production services.
 
-## 2. Edge-layer protection — confirm what's actually in front of the app
+## 2. Edge-layer protection — verified state and deferred-accept-gap decision
 
-**Current state (verified 2026-05-10):** `dig NS avintelligence.app` and `dig avintelligence.app` both returned `NXDOMAIN`. The architecture doc's prior "Network-layer DDoS — handled by Cloudflare" claim has been reconciled; Cloudflare is not verified for the `avintelligence.app` apex because the apex itself is not resolving.
-**First verify:** the actual production hostname and which edge layer (if any) is proxying its traffic.
+**Current state (verified 2026-05-10):**
 
-- Run `dig NS <production-hostname>` and `dig <production-hostname>` to inspect nameservers and A records.
-- Possible outcomes:
-  - Cloudflare nameservers + proxy active → Cloudflare in stack. Move to WAF/ruleset state evaluation.
-  - Cloudflare nameservers + proxy off (grey cloud) → DNS only, no edge protection. Reconcile architecture doc.
-  - Vercel direct → Vercel's built-in edge protection is the only layer. Reconcile architecture doc; Vercel-edge defaults are sufficient for current stage but lack OWASP managed ruleset.
-  - Other / direct DNS → no edge layer. Reconcile architecture doc; flag as gap.
-  - NXDOMAIN → hostname is not active. Confirm the canonical production hostname before evaluating edge protection.
+- Production hostname: `avintph.com` (apex `216.198.79.1`, www CNAME → `ab032a0185e5b82c.vercel-dns-017.com`).
+- Registrar + DNS hosting: **Porkbun** (nameservers `*.ns.porkbun.com`).
+- Edge / hosting layer: **Vercel** (verified via DNS resolution to Vercel edge IPs).
+- DDoS protection: Vercel's built-in L3/L4 mitigation, included on all Vercel plans.
+- WAF: Vercel Firewall on whatever current plan supports. **No Cloudflare in stack.** No third-party WAF.
+- The architecture doc's prior "Network-layer DDoS — handled by Cloudflare" claim was incorrect and has been reconciled to name Vercel as the verified edge.
 
-**Then evaluate (only if Cloudflare proxy active):** Cloudflare tier and what's enabled — managed OWASP ruleset, rate-limiting on `/api/*`, bot protection. Free tier does not include managed rulesets; upgrading to Pro/Business/Enterprise is a real-money decision.
+**Decision (2026-05-10): 🟡 deferred — explicit accept-gap.**
 
-**Possible outcomes after evaluation:**
+For the current stage, Vercel's built-in edge mitigation is sufficient. Adding Cloudflare in front of Vercel for OWASP managed ruleset coverage is technically supported but introduces real costs (Pro tier $20/mo minimum for managed rulesets, half-day configuration, two cache layers and two firewall surfaces to debug, potential Cloudflare-cache-vs-Vercel-deploy interactions) that are not justified by current threat exposure. Smart Security's `/v1/decide` endpoint is being built to provide application-layer inspection at exactly this level; the WAF gap Cloudflare would fill is partially the gap Smart Security itself is being built to fill, just one phase out.
 
-- ✅ Already protected at the level we want — close out, update architecture doc to be accurate.
-- 🟡 Action: enable available controls on current tier (free includes basic rate-limiting rules and security level toggles).
-- 🟡 Decide: upgrade Cloudflare tier vs. accept managed-ruleset gap.
-- ❌ No edge layer in stack — explicit gap to track in roadmap; Smart Security `/v1/decide` becomes the only inspection layer until edge gets built.
+**Reopen criteria (any one triggers reevaluation):**
 
-**Why:** the protected prefixes in `proxy.ts:7` are exactly the surface a managed OWASP ruleset is designed for. Smart Security's `/v1/decide` is a complementary inspection layer, not a replacement for an edge WAF.
-**Owner:** TBD.
-**Gate:** before observe-to-enforce promotion at any layer.
+1. Smart Security `/v1/decide` observe-mode reveals attack patterns the Vercel edge isn't suppressing.
+2. Traffic / abuse scales beyond Vercel Firewall's effective coverage on the current plan.
+3. Compliance or customer requirement specifically asks for OWASP-managed-ruleset coverage.
+4. A specific incident motivates it.
+5. Vercel deprecates or materially changes its edge mitigation posture.
+
+**If reopened, configuration cost:** ~half a day. Steps: change Porkbun NS to Cloudflare's, configure Cloudflare DNS pointing at Vercel, enable proxy (orange cloud), set TLS mode (Full strict), upgrade to Pro for OWASP managed ruleset, configure rate-limiting rules per protected prefix in `proxy.ts:7`, configure cache rules to not interfere with Vercel cache.
+
+**Owner:** TBD on reopen.
+**Gate:** none for Phase 0.5; revisit at observe-to-enforce promotion gate.
 
 ## 3. Secret rotation cadence
 

@@ -17,7 +17,7 @@ Design goals:
 Non-goals:
 
 - Endpoint security (laptops/servers) — out of category.
-- Network-layer DDoS / edge WAF — outside Smart Security's application-layer mandate. The actual production edge layer must be verified before observe-to-enforce promotion; see `docs/smart-security-infra-hardening.md`.
+- Network-layer DDoS / edge WAF — outside Smart Security's application-layer mandate. Verified production edge as of 2026-05-10 is Vercel (no Cloudflare in stack); edge WAF (e.g. OWASP managed ruleset via Cloudflare in front of Vercel) is explicitly deferred. See `docs/smart-security-infra-hardening.md` for the accept-gap decision and reopen criteria.
 - Offensive hack-back — legally prohibited and explicitly excluded.
 - General-purpose SIEM — adjacent space; not our focus.
 
@@ -278,7 +278,7 @@ Encoded in `smart-security/policies/action-matrix.yaml`, not in model prompts. T
 | Phase | Scope | Exit signal | Model | Status |
 |---|---|---|---|---|
 | 0 | Foundations: folder skeleton, schemas (internal + wire), seed policies, health endpoint. | Skeleton committed; health endpoint returns real signals. Wire schemas document existing contracts. | n/a | **Complete** |
-| 0.5 | End-to-end model pipeline validation on Google Cloud free tier: stand up `smart-security-llm` Python+vLLM Cloud Run service serving base Gemma 4 E4B; AVIntelligence prescan calls the live LLM via the existing TS service; first prompts-only triage and finding narratives in production. | Base-E4B service answers a real triage call from production with cited doctrine, no out-of-pocket spend. | base Gemma 4 E4B | Pending |
+| 0.5 | End-to-end model pipeline validation on Google Cloud free tier: stand up `smart-security-llm` Python + HF Transformers Cloud Run service serving base Gemma 4 E4B (vLLM bypass per `smart-security-llm/docs/cloud-run-cuda-workaround.md`); AVIntelligence prescan calls the live LLM via the existing TS service; first prompts-only triage and finding narratives in production. | Base-E4B service answers a real triage call from production with cited doctrine, no out-of-pocket spend. | base Gemma 4 E4B | Pending |
 | 1 | Evidence spine only: Supabase `smart_security_decision_log` table; every `/v1/scan/file`, `/v1/decide`, and `/v1/events` produces a queryable decision record. Fine-tuning is deferred and not in current scope. | Every inbound request produces a persisted decision record. Base-E4B evaluation baseline is measured but not yet used for training. | base Gemma 4 E4B | Deferred — not in current scope |
 | 2 | Analyzer expansion: add YARA-X + qpdf + pdfid + olevba to the existing TS service alongside ClamAV/structural; port current suspicious-PDF markers into real YARA rules; `/v1/scan/file` decisions cite the firing rule. | Quarantine decision references a real YARA / structural rule, not a hand-coded marker. | unchanged | Pending |
 | 3 | Doctrine + Triage Agent: ingest NIST/CISA/OWASP/MITRE/D3FEND; every quarantine cites ≥2 doctrine sources. | First doctrine-cited quarantine decision recorded. | unchanged | Pending |
@@ -287,6 +287,14 @@ Encoded in `smart-security/policies/action-matrix.yaml`, not in model prompts. T
 | 6 | v2.0 model + enterprise tier: fine-tune Gemma 4 26B A4B on accumulated telemetry; route enterprise-tier traffic to the larger model; cross-document correlation features unlock. | First enterprise-tier customer served by 26B model with measurably better complex-reasoning outcomes. | fine-tuned Gemma 4 26B A4B | Pending (gated on MRR) |
 | 7 | Egress boundary + cross-tenant threat intel. | Known-bad hash from tenant A blocks tenant B pre-ingest. | unchanged | Pending |
 | 8 | External-API public launch. | Conditional on Year-2 trigger criteria below. | unchanged | Pending |
+
+### Roadmap intent — attack pattern identification and prediction
+
+Smart Security's purpose includes both **classifying** observed events into known attack families (identification) and **anticipating** attack progression from partial signals (prediction). These are stated user goals and must not be lost between phases or compressed into a single phase — the data substrate has to mature before prediction can ride on it.
+
+- **Identification** is the Triage Agent's core function. Phase 0.5 ships the *primitive* — `/infer/triage` returns `{decision, confidence, doctrine_refs[], reasoning}` with cited `attack_id` / `cwe_id` per detection event. Phase 3 adds the real doctrine corpus (NIST/CISA/OWASP/MITRE/D3FEND) plus iterative retrieval (DISPATCH → EVALUATE → REFINE → LOOP). Production-quality identification is Phase 3+.
+- **Prediction** is built across Phase 4 (per-principal behavioral baselines for `/v1/decide`), Phase 4–5 (cross-event sequence correlation — partial attack chains identified before full manifest), and Phase 6+ (cross-tenant signals — IP/fingerprint reputation reuse). Prediction has no Phase 0.5 deliverable.
+- **Substrate dependency**: every triage record persisted via Phase 1's evidence spine carries enough metadata (`session_id`, `principal_id`, `attack_chain_position` if known, `temporal_neighbors`) for Phase 4's sequence detector to correlate without re-extracting features. Schema design in Phase 1 must not paint Phase 4 into a corner — confirm the decision-log schema supports temporal/sequence queries before the table ships.
 
 ## Year-2 external launch trigger criteria
 

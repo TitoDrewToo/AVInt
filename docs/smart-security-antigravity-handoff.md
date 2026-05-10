@@ -174,7 +174,7 @@ Do not implement. Output is the OpenAPI spec, JSON Schemas, the integration desi
 You are the Service Build Agent. Implement smart-security-llm per smart-security-llm/openapi.yaml and the integration design.
 
 Constraints:
-- Python 3.11. vLLM as the inference framework. FastAPI as the HTTP layer.
+- Python 3.11. HuggingFace Transformers (`AutoProcessor` + `AutoModelForImageTextToText`) as the inference framework for Phase 0.5; vLLM is deferred until a release exists that registers Gemma 4 on the cu124 path. FastAPI as the HTTP layer.
 - Container image based on a slim Python base; vLLM dependencies layered cleanly.
 - Gemma 4 E4B base model loaded from Hugging Face on first boot. Verify Apache 2.0 license applies to the variant used; if not, STOP and ask human.
 - Doctrine retrieval stub for Phase 0.5: read top-k from a static seed corpus committed to the repo at smart-security-llm/seed-doctrine/. No vector DB yet (Phase 3 builds the real one). Cite at minimum {attack_id, source_path, section_heading} per smart-security/SKILL.md retrieval recipe.

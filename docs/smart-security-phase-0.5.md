@@ -6,14 +6,13 @@
 
 ## 1. Why this phase exists
 
-Phase 0 produced the doctrine + schema foundation. Phase 1 commits compute spend. **Phase 0.5 is the de-risking step in between**: prove that the deploy-and-serve pipeline works end-to-end on the free tier before committing the Phase 1 fine-tune budget. If something is wrong with the topology, model loading, latency, or wire integration, we discover it for $0 instead of mid-fine-tune.
+Phase 0 produced the doctrine + schema foundation. **Phase 0.5 is the de-risking step for serving only**: prove that the deploy-and-serve pipeline works end-to-end on the free tier with base Gemma 4 E4B. Fine-tuning is deferred indefinitely and is out of current scope. If something is wrong with the topology, model loading, latency, or wire integration, we discover it for $0 before expanding scope.
 
 Exit signal: a real production triage request from AVIntelligence's `prescan-document` reaches `smart-security-llm`, returns a base-Gemma 4 E4B response with cited doctrine, and is logged to the decision record — all within free-tier budget.
 
 ## 2. Pre-flight (block on these — do not start until done)
 
 - [ ] **GCP billing alerts** active on `avint-core` project: `$25/mo` warning, `$50/mo` hard cap.
-- [ ] **Vertex AI API** enabled (`vertex-ai.googleapis.com`) — needed even for inference helpers.
 - [ ] **Cloud Run GPU quota requested** — default quota is 0; submit quota request for `1` GPU in `asia-southeast1`. Approval can take 1–3 business days.
 - [ ] **Antigravity Agent Manager billing confirmed** before any agent submits a deploy.
 - [ ] **Service account** `smart-security-llm-runner@avint-core.iam.gserviceaccount.com` created with: Artifact Registry Reader, Secret Manager Accessor, Cloud Storage Object Viewer (for model weights).
@@ -69,17 +68,15 @@ Out of scope (deferred):
 5. Flip the flag to `true` for AVIntelligence's tenant only; observe production traffic for one week.
 6. Measure: latency p50/p95, cold-start frequency, $burn estimate, doctrine-citation quality (manual sample).
 7. Write the Phase 0.5 retrospective into `smart-security/memory/reviews/phase-0.5.md` (locally, not committed — it contains operational data).
-8. Decide: proceed to Phase 1 (fine-tune) or iterate on Phase 0.5.
+8. Decide: proceed to evidence-spine work, iterate on Phase 0.5, or explicitly reopen training scope later.
 
-## 7. Hand-off to Phase 1
+## 7. Hand-off after Phase 0.5
 
-Phase 1 (evidence spine + first fine-tune) requires:
+Phase 1 fine-tuning is deferred indefinitely and is not in current scope. The next scoped hand-off after Phase 0.5 is evidence-spine work:
 
 - Phase 0.5 retrospective complete with measured precision baseline on a labeled sample of triage decisions (use AVIntelligence's accumulated upload corpus).
 - Cloud SQL Postgres `smart_security_decision_log` table provisioned.
 - Multi-tenancy schema in place (even though only `avint-prod` exists).
-- Curated training corpus assembled (public + telemetry).
-- Fine-tune training pipeline proven on a tiny sample (one-tenth of full run cost).
 - Budget alert at $50/mo confirmed not exceeded by Phase 0.5 dogfood.
 
-Nothing in Phase 0.5 should foreclose any of these.
+Nothing in Phase 0.5 should foreclose future training, but no training environment or platform is selected until that scope explicitly reopens.

@@ -131,38 +131,6 @@ type ProcessingBadgeState = "working_slow" | "failed"
 
 const formatBytes = formatStorageBytes
 
-function SmartStorageLaunchFallback() {
-  return (
-    <div className="min-h-screen bg-background text-foreground">
-      <Navbar />
-      <main className="mx-auto flex min-h-[calc(100vh-5rem)] w-full max-w-7xl flex-col gap-4 px-4 py-6 md:px-6">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="h-4 w-28 animate-pulse rounded bg-muted" />
-            <div className="mt-3 h-7 w-44 animate-pulse rounded bg-muted" />
-          </div>
-          <div className="flex items-center gap-2 rounded-full border border-border/60 px-3 py-2 text-xs text-muted-foreground">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            Loading workspace
-          </div>
-        </div>
-        <div className="grid min-h-[60vh] grid-cols-1 gap-4 md:grid-cols-[220px_minmax(0,1fr)_260px]">
-          <div className="hidden rounded-lg border border-border/60 bg-muted/20 md:block" />
-          <div className="rounded-lg border border-border/60 bg-muted/10 p-4">
-            <div className="mb-4 h-9 w-full animate-pulse rounded bg-muted" />
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-              {Array.from({ length: 10 }).map((_, index) => (
-                <div key={index} className="aspect-[0.86] animate-pulse rounded-lg bg-muted/80" />
-              ))}
-            </div>
-          </div>
-          <div className="hidden rounded-lg border border-border/60 bg-muted/20 lg:block" />
-        </div>
-      </main>
-    </div>
-  )
-}
-
 function SmartStorageGridSkeleton() {
   return (
     <>
@@ -205,6 +173,20 @@ function SmartStorageListSkeleton() {
           <div className="h-4 w-20 animate-pulse rounded bg-muted" />
           <div className="h-4 w-24 animate-pulse rounded bg-muted" />
           <div className="ml-auto h-4 w-12 animate-pulse rounded bg-muted" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function SmartStorageReportSkeleton() {
+  return (
+    <div className="space-y-1">
+      {Array.from({ length: 7 }).map((_, index) => (
+        <div key={index} className="rounded px-2 py-2">
+          <div className="h-4 w-32 animate-pulse rounded bg-muted" />
+          <div className="mt-2 h-3 w-full animate-pulse rounded bg-muted/70" />
+          <div className="mt-1.5 h-3 w-3/4 animate-pulse rounded bg-muted/50" />
         </div>
       ))}
     </div>
@@ -351,6 +333,7 @@ export default function SmartStoragePage() {
   const [showDateRange, setShowDateRange] = useState(false)
   const [dateRange, setDateRange] = useState<DateRange>({ preset: "this_year", ...getPresetRange("this_year") })
   const [reportAvailability, setReportAvailability] = useState<Record<string, boolean>>({})
+  const [isLoadingReportAvailability, setIsLoadingReportAvailability] = useState(true)
   const router = useRouter()
   const isTaxBundleSelected = selectedReport === "tax_bundle"
 
@@ -439,6 +422,7 @@ export default function SmartStoragePage() {
   const applyWarmData = useCallback((data: SmartStorageWarmData) => {
     applyLaunchData(data)
     setReportAvailability(data.reportAvailability)
+    setIsLoadingReportAvailability(false)
   }, [applyLaunchData])
 
   const updateWarmCache = useCallback((userId: string, updates: Partial<SmartStorageWarmData>) => {
@@ -497,9 +481,14 @@ export default function SmartStoragePage() {
   // ── Report availability ────────────────────────────────────────────────────
   const checkReportAvailability = useCallback(async () => {
     if (!session?.user?.id) return
-    const availability = await fetchSmartStorageReportAvailability(session.user.id)
-    setReportAvailability(availability)
-    updateWarmCache(session.user.id, { reportAvailability: availability })
+    setIsLoadingReportAvailability(true)
+    try {
+      const availability = await fetchSmartStorageReportAvailability(session.user.id)
+      setReportAvailability(availability)
+      updateWarmCache(session.user.id, { reportAvailability: availability })
+    } finally {
+      setIsLoadingReportAvailability(false)
+    }
   }, [session, updateWarmCache])
 
   useEffect(() => {
@@ -535,8 +524,10 @@ export default function SmartStoragePage() {
   }, [session, checkProcessingState, upsertLoadedFiles, checkReportAvailability])
 
   useEffect(() => {
+    if (!sessionLoaded) return
     if (!session?.user?.id) {
       setIsLoadingLaunchData(false)
+      setIsLoadingReportAvailability(false)
       return
     }
     let active = true
@@ -544,6 +535,7 @@ export default function SmartStoragePage() {
     let refreshTimeout: ReturnType<typeof setTimeout> | null = null
     const userId = session.user.id
     setIsLoadingLaunchData(true)
+    setIsLoadingReportAvailability(true)
 
     const applyIfActive = (data: SmartStorageWarmData) => {
       if (active) applyWarmData(data)
@@ -554,6 +546,7 @@ export default function SmartStoragePage() {
     const scheduleReportAvailability = (launchData: SmartStorageLaunchData) => {
       const refreshReports = () => {
         if (!active) return
+        setIsLoadingReportAvailability(true)
         void fetchSmartStorageReportAvailability(userId)
           .then((reportAvailability) => {
             if (!active) return
@@ -562,6 +555,9 @@ export default function SmartStoragePage() {
           })
           .catch((error) => {
             console.error("smart storage report availability failed:", error)
+          })
+          .finally(() => {
+            if (active) setIsLoadingReportAvailability(false)
           })
       }
 
@@ -576,6 +572,7 @@ export default function SmartStoragePage() {
     if (cached) {
       applyWarmData(cached)
       setIsLoadingLaunchData(false)
+      setIsLoadingReportAvailability(false)
       const cacheAge = getSmartStorageCacheAgeMs(userId)
       if (cacheAge != null && cacheAge <= SMART_STORAGE_BACKGROUND_REFRESH_AFTER_MS) {
         return () => { active = false }
@@ -605,6 +602,7 @@ export default function SmartStoragePage() {
     if (cachedLaunch) {
       applyLaunchData(cachedLaunch)
       setIsLoadingLaunchData(false)
+      setIsLoadingReportAvailability(true)
       scheduleReportAvailability(cachedLaunch)
       return () => {
         active = false
@@ -621,6 +619,7 @@ export default function SmartStoragePage() {
       })
       .catch((error) => {
         if (active) setIsLoadingLaunchData(false)
+        if (active) setIsLoadingReportAvailability(false)
         console.error("smart storage initial load failed:", error)
       })
     return () => {
@@ -628,7 +627,7 @@ export default function SmartStoragePage() {
       if (idleHandle != null && "cancelIdleCallback" in window) window.cancelIdleCallback(idleHandle)
       if (refreshTimeout) clearTimeout(refreshTimeout)
     }
-  }, [applyLaunchData, applyWarmData, session])
+  }, [applyLaunchData, applyWarmData, session, sessionLoaded])
 
   // Files — classification view shows all matching types across all folders, sorted by date
   // Declared here (before keyboard shortcut useEffect) to avoid TS2448 forward-reference error.
@@ -1355,10 +1354,11 @@ export default function SmartStoragePage() {
     ? Math.max(...Object.values(itemPositions).map(p => p.row))
     : 0
   const isShowingInitialFileSkeleton = isLoadingLaunchData && currentSubfolders.length === 0 && displayedFiles.length === 0 && !isCreatingFolder
+  const hasReportAvailability = Object.keys(reportAvailability).length > 0
+  const isShowingReportSkeleton = isLoadingReportAvailability && !hasReportAvailability
 
   // ── Auth guard ─────────────────────────────────────────────────────────────
-  if (!sessionLoaded) return <SmartStorageLaunchFallback />
-  if (!session) return <AuthGuardModal isVisible={true} />
+  if (sessionLoaded && !session) return <AuthGuardModal isVisible={true} />
 
   const visibleBreadcrumb = collapseBreadcrumb(breadcrumb)
 
@@ -2339,16 +2339,16 @@ export default function SmartStoragePage() {
                   <div className="grid grid-cols-2 gap-2">
                     <Button
                       className="rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
-                      disabled={isNavigatingReport || !reportAvailability.tax_bundle}
+                      disabled={isNavigatingReport || isLoadingReportAvailability || !reportAvailability.tax_bundle}
                       size="sm"
                       onClick={() => openReport("tax_bundle", { mode: "schedule_c" })}
                     >
-                      {isNavigatingReport ? <><Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />Loading…</> : "Self-Employed"}
+                      {isNavigatingReport || isLoadingReportAvailability ? <><Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />Loading…</> : "Self-Employed"}
                     </Button>
                     <Button
                       variant="outline"
                       className="rounded-lg border-primary/25 text-foreground hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
-                      disabled={isNavigatingReport || !reportAvailability.tax_bundle}
+                      disabled={isNavigatingReport || isLoadingReportAvailability || !reportAvailability.tax_bundle}
                       size="sm"
                       onClick={() => openReport("tax_bundle", { mode: "employed" })}
                     >
@@ -2362,7 +2362,7 @@ export default function SmartStoragePage() {
               ) : (
                 <Button
                   className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
-                  disabled={isPro && (!selectedReport || !reportAvailability[selectedReport] || isNavigatingReport)}
+                  disabled={isPro && (!selectedReport || isLoadingReportAvailability || !reportAvailability[selectedReport] || isNavigatingReport)}
                   size="sm"
                   onClick={() => {
                     if (selectedReport) openReport(selectedReport)
@@ -2379,7 +2379,9 @@ export default function SmartStoragePage() {
             {/* Flat report list */}
             <div className="flex-1 overflow-y-auto px-3 pb-3">
               <div className="space-y-0.5">
-                {REPORTS.map((report) => {
+                {isShowingReportSkeleton ? (
+                  <SmartStorageReportSkeleton />
+                ) : REPORTS.map((report) => {
                   const enabled = report.coreEnabled && (reportAvailability[report.id] ?? false)
                   const locked = !isPro
                   const isSelected = selectedReport === report.id

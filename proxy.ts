@@ -20,6 +20,14 @@ function shouldInspect(pathname: string): boolean {
   return PROTECTED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
 }
 
+function isToolPageNavigation(req: NextRequest): boolean {
+  const { pathname } = req.nextUrl
+  if (!pathname.startsWith("/tools")) return false
+  if (req.method !== "GET" && req.method !== "HEAD") return false
+  const accept = req.headers.get("accept") ?? ""
+  return accept.includes("text/html")
+}
+
 function clientIp(req: NextRequest): string | null {
   return (
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
@@ -30,6 +38,9 @@ function clientIp(req: NextRequest): string | null {
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl
+  if (isToolPageNavigation(req)) {
+    return NextResponse.next()
+  }
   if (!shouldInspect(pathname) || !SMART_SECURITY_URL || !SMART_SECURITY_API_KEY) {
     return NextResponse.next()
   }

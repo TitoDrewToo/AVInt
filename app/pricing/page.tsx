@@ -81,7 +81,6 @@ function CheckoutRedirectModal({
               <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-primary shadow-[0_0_14px_var(--retro-glow-red)]" />
             </span>
           </div>
-          <h2 className="mt-6 text-xl font-semibold text-foreground">Redirecting to creem.io</h2>
           <p className="mt-2 text-sm text-muted-foreground">
             Opening secure checkout for your purchase. You&apos;ll complete payment on Creem.
           </p>

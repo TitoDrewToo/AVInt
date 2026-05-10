@@ -19,14 +19,11 @@ export default function CheckoutPage() {
         <div className="mx-auto w-full max-w-md">
           <div className="rounded-2xl border border-border bg-card p-10 shadow-sm">
 
-            {/* Processing indicator + title */}
+            {/* Processing indicator */}
             <div className="flex flex-col items-center text-center">
               <ProcessingIndicator active={true} />
-              <h1 className="mt-6 text-2xl font-semibold text-foreground">
-                Redirecting to secure checkout
-              </h1>
-              <p className="mt-2 text-sm text-muted-foreground">
-                You will complete your purchase securely via our payment partner.
+              <p className="mt-6 text-sm text-muted-foreground">
+                Redirecting. Complete your purchase securely via our payment partner.
               </p>
             </div>
 

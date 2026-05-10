@@ -55,7 +55,7 @@ function AuthProcessContent() {
     return {
       icon: LogIn,
       title: "Signing you in...",
-      body: "We are confirming your session and returning you to your workspace.",
+      body: "",
       note: "Secure handoff from auth to AVIntelligence",
       steps: ["Session confirmed", "Access checked", "Opening workspace"],
     }
@@ -126,9 +126,11 @@ function AuthProcessContent() {
               </div>
               <h1 className="mt-3 text-2xl font-semibold text-foreground">{copy.title}</h1>
             </FadeUp>
-            <FadeUp delay={0.14}>
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{copy.body}</p>
-            </FadeUp>
+            {copy.body && (
+              <FadeUp delay={0.14}>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{copy.body}</p>
+              </FadeUp>
+            )}
             <FadeUp delay={0.2}>
               <div className="mt-8 space-y-4">
                 <div className="overflow-hidden rounded-full border border-border/70 bg-muted/40">

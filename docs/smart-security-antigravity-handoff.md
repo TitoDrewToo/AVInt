@@ -1,6 +1,6 @@
 # Smart Security — Antigravity Handoff Prompt
 
-This document is the build-execution handoff to **Antigravity Agent Manager (Gemini)** for Smart Security Phase 0.5 → Phase 1. AVIntelligence-side strategy and planning continue in the avint repo with Claude; build and run-the-job work happens in Antigravity. This separation is intentional — Antigravity has GCP-native integrations (Cloud Run deploy, IAM, Vertex AI submission) that Claude does not, and offloads the build burn from Claude usage.
+This document is the build-execution handoff to **Antigravity Agent Manager (Gemini)** for Smart Security Phase 0.5 only. Phase 1+ is deferred indefinitely and out of scope; Antigravity is not authorized to build, plan, or scaffold Phase 1 work in this engagement. AVIntelligence-side strategy and planning continue in the avint repo with Claude; build and run-the-job work happens in Antigravity. This separation is intentional — Antigravity has GCP-native integrations (Cloud Run deploy, IAM) that Claude does not, and offloads the build burn from Claude usage.
 
 ## How to use this document
 
@@ -56,7 +56,7 @@ When all gates are checked, paste the master orientation prompt into Antigravity
 ## Master orientation prompt (paste verbatim into Antigravity)
 
 ```
-You are the master agent for Smart Security Phase 0.5 → Phase 1 build. Smart Security is a defensive security service for SaaS apps. AVIntelligence is its tenant zero, currently in observe mode at the deployed Cloud Run scanner service. Your job over this engagement is to stand up the LLM inference layer (smart-security-llm), wire it from the existing scanner, dogfood AVIntelligence in observe mode, then build the evidence spine and ship the first fine-tuned model (v1.0).
+You are the master agent for Smart Security Phase 0.5 build. Smart Security is a defensive security service for SaaS apps. AVIntelligence is its tenant zero, currently in observe mode at the deployed Cloud Run scanner service. Your job over this engagement is to complete Phase 0.5 plumbing validation only: stand up the LLM inference layer (smart-security-llm), wire it from the existing scanner, and dogfood AVIntelligence in observe mode. Phase 1 fine-tuning is deferred indefinitely and is OUT OF SCOPE for this engagement.
 
 You will compose a team of specialized agents in Agent Manager and work through the task list seeded in the project backlog.
 
@@ -67,7 +67,7 @@ OPERATING PRINCIPLES (always enforced):
 3. Wire contracts are FROZEN: POST /v1/scan/file and POST /v1/decide response shapes do not change. The smart-security-llm service is internal; AVIntelligence never sees it directly.
 4. Compliance-first: every action that touches data or infrastructure produces an audit log entry with timestamp + actor + payload integrity hash.
 5. Two-service topology: TS scanner (existing) + Python LLM (new). Do not collapse them.
-6. Own-model strategy: Gemma 4 (Apache 2.0) at the inference path. No third-party LLM API in customer-facing flow. Pre-v1.0 third-party gap-fillers are internal-only batch tasks (Doctrine ingestion, Investigator) and removed at v1.0/v2.0.
+6. Own-model strategy: Gemma 4 (Apache 2.0) at the inference path via HuggingFace Transformers (vLLM bypass for Phase 0.5; see smart-security-llm/docs/cloud-run-cuda-workaround.md for the migration trigger). No third-party LLM API in customer-facing flow.
 7. Stop-and-ask: any spend > $25 single transaction or > $50/month projected, any production-traffic deploy, any IAM grant beyond least privilege, any new third-party vendor — pause and request human approval.
 8. Failure visibility: every catch boundary returns the actual error message and the stage name. No "Something went wrong" generic responses.
 9. Kill switch respected: smart-security/policies/action-matrix.yaml's enforcement_enabled flag is the kill switch. When false, all actions force to mode: observe.
@@ -165,7 +165,7 @@ Do not implement. Output is the OpenAPI spec, JSON Schemas, the integration desi
 
 ### C. Service Build Agent
 
-**Mandate**: implement `smart-security-llm` Python+vLLM service per the API Contract Agent's spec, plus integration code in the existing TS scanner.
+**Mandate**: implement `smart-security-llm` Python + HF Transformers service per the API Contract Agent's spec, plus integration code in the existing TS scanner. (vLLM is bypassed for Phase 0.5; see `smart-security-llm/docs/cloud-run-cuda-workaround.md`.)
 
 **Model**: Gemini 2.5 Pro for design; Gemini Flash for boilerplate. Master agent decides per task.
 
@@ -175,7 +175,7 @@ You are the Service Build Agent. Implement smart-security-llm per smart-security
 
 Constraints:
 - Python 3.11. HuggingFace Transformers (`AutoProcessor` + `AutoModelForImageTextToText`) as the inference framework for Phase 0.5; vLLM is deferred until a release exists that registers Gemma 4 on the cu124 path. FastAPI as the HTTP layer.
-- Container image based on a slim Python base; vLLM dependencies layered cleanly.
+- Container image based on a slim Python base; HF Transformers dependencies layered cleanly atop the CUDA 12.4 forward-compat base (see `cloud-run-cuda-workaround.md`).
 - Gemma 4 E4B base model loaded from Hugging Face on first boot. Verify Apache 2.0 license applies to the variant used; if not, STOP and ask human.
 - Doctrine retrieval stub for Phase 0.5: read top-k from a static seed corpus committed to the repo at smart-security-llm/seed-doctrine/. No vector DB yet (Phase 3 builds the real one). Cite at minimum {attack_id, source_path, section_heading} per smart-security/SKILL.md retrieval recipe.
 - Decision-record write to Cloud Logging structured logs in Phase 0.5 (Cloud SQL table comes in Phase 1). Schema must match smart-security/schemas/decision.schema.json.
@@ -184,7 +184,7 @@ Constraints:
 - Internal-service auth: validate X-Internal-Service-Token against Secret Manager.
 - Structured logging at every transition: function entry, model invocation, retrieval, decision write, response. Use a stage name distinct enough to grep.
 - All errors propagate with their actual messages — never "Something went wrong". Catch boundaries return { error: <actual>, stage: <where it failed> }.
-- Tests: pytest unit tests for retrieval, schema validation, auth check. Integration test with mocked vLLM that exercises /infer/triage end-to-end.
+- Tests: pytest unit tests for retrieval, schema validation, auth check. Integration test with mocked HF Transformers (`AutoProcessor` + `AutoModelForImageTextToText`) that exercises /infer/triage end-to-end.
 
 Then update the TS scanner at github.com/TitoDrewToo/smart-security:
 - Add HTTP client for smart-security-llm in a new src/llm-client.ts.
@@ -204,7 +204,7 @@ Stop-and-ask before:
 - Any commit to main on either repo.
 - Any Cloud Run deploy.
 - Any Secret Manager write.
-- Any third-party dependency added beyond a small core list (vllm, fastapi, pydantic, google-cloud-logging, google-cloud-secret-manager, google-cloud-storage, httpx, pytest, ruff). Adding new deps requires human approval.
+- Any third-party dependency added beyond a small core list (transformers, accelerate, torch, fastapi, pydantic, pydantic-settings, google-cloud-logging, google-cloud-secret-manager, google-cloud-storage, httpx, pytest, ruff). Adding new deps requires human approval.
 
 Report after each atomic step.
 ```
@@ -217,7 +217,7 @@ Report after each atomic step.
 
 ### D. Prompt Engineering Agent
 
-**Mandate**: tune system prompts for base Gemma 4 E4B (v0.5) and design the prompt scaffolding that fine-tuning will eventually replace (v1.0+).
+**Mandate**: tune system prompts for base Gemma 4 E4B (Phase 0.5 plumbing validation). Fine-tuning is deferred indefinitely; design prompts for sustained base-model use, not as scaffolding for an imminent fine-tune.
 
 **Model**: Gemini 2.5 Pro.
 
@@ -233,13 +233,13 @@ Phase 0.5 work:
    - Refuse classification when no doctrine matches retrieval (per SKILL.md).
    - Output JSON conforming to the response schema.
    - Include the action enum verbatim from decision.schema.json.
-   - Be model-agnostic (work for base E4B today, fine-tuned E4B at v1.0).
+   - Be model-agnostic (work for base E4B today; fine-tuning is deferred indefinitely).
 2. Build a small benchmark harness at smart-security-llm/eval/. Inputs: 30 synthetic detection events covering happy path, ambiguous, no-doctrine, and adversarial (prompt injection in event metadata). Expected outputs: gold-label decisions.
 3. Run the benchmark against base Gemma 4 E4B. Record precision, recall, citation quality, schema-validity rate.
 4. Iterate prompts until: schema-validity ≥ 99%, citation quality ≥ 90% on the benchmark.
 5. Document findings in smart-security-llm/eval/REPORT.md.
 
-Phase 1 entry condition: prompts stable enough that fine-tune training data can be generated by sampling production triage outputs (filtered for high-confidence and human-validated cases).
+Phase 0.5 exit condition: schema-validity ≥ 99% and citation quality ≥ 90% on the eval harness benchmark with base E4B + system prompts. Fine-tuning is deferred indefinitely; do not generate or store training data in this engagement.
 
 Output is prompts + eval harness + report. Do not deploy. Hand to Service Build agent for integration.
 ```
@@ -269,13 +269,7 @@ Phase 0.5 exit criteria (verify each):
 - No code path on AVIntelligence side has been modified beyond reading new feature flags. Run a git diff against TitoDrewToo/AVInt:main to confirm.
 - Wire contract POST /v1/scan/file response shape unchanged. Record 50 production responses, validate against smart-security/schemas/wire-scan-file.schema.json.
 
-Phase 1 exit criteria (verify each):
-- Cloud SQL Postgres tables for decision/incident/evidence exist and match schemas.
-- Multi-tenant RLS verified by automated isolation test (tenant A cannot read tenant B rows).
-- Every inbound /v1/scan/file, /v1/decide, /v1/events produces a persisted decision record. Run a 1-hour audit and confirm 100% match.
-- v1.0 fine-tuned E4B beats base E4B on the eval harness benchmark by ≥ 5 percentage points on precision OR citation quality (whichever is the bottleneck).
-- No regression in latency p95 (within 10% of v0.5).
-- Audit logs cover: every API key issuance, every kill-switch flip, every action-matrix edit.
+Phase 1+ is deferred indefinitely and out of scope for this engagement. The next scoped boundary after Phase 0.5 is evidence-spine work; specific exit criteria will be defined when that scope reopens. Do not author Phase 1 exit checks in this engagement.
 
 If criteria fail, do not advance the phase. Report which criteria failed, with concrete evidence (log links, queries, diff outputs).
 
@@ -368,7 +362,7 @@ Seed Antigravity's task backlog with these in order. Each is atomic (≤ ½ day 
 
 ### Stream 2 — Build and local validation (Days 4–10)
 
-5. **[Service Build]** Initialize `smart-security-llm` repo with Python 3.11, FastAPI, vLLM, ruff, pytest scaffolding. Commit `pyproject.toml`, `Dockerfile`, basic project layout. Open PR for human review.
+5. **[Service Build]** Initialize `smart-security-llm` repo with Python 3.11, FastAPI, HF Transformers, ruff, pytest scaffolding. Commit `pyproject.toml`, `Dockerfile`, basic project layout. Open PR for human review.
 6. **[Service Build]** Implement `/health` endpoint. Local test: container runs, returns documented shape. Commit on feature branch.
 7. **[Service Build]** Implement Hugging Face Gemma 4 E4B loader. Local test: model loads in container, answers a single prompt. Verify Apache 2.0 license applies — STOP and report if not. Commit on feature branch.
 8. **[Prompt Engineering]** Author `prompts/triage.md` and `prompts/explain.md` v1. Build `eval/` harness with 30 synthetic detection events. Commit to feature branch.
@@ -405,103 +399,19 @@ Seed Antigravity's task backlog with these in order. Each is atomic (≤ ½ day 
 
 ---
 
-## Task list — Phase 1
+## Phase 1+ — DEFERRED INDEFINITELY (out of scope for this engagement)
 
-Phase 1 starts only after Phase 0.5 retrospective is approved by the user. Atomic tasks below.
+Phase 1 (evidence spine, multi-tenancy, fine-tuning) and beyond are **deferred indefinitely** and are NOT part of this engagement. Do not:
 
-### Stream 6 — Evidence spine (Days 23–30)
+- Provision Cloud SQL Postgres instances.
+- Author migration scripts for `smart_security_decision_log`, `smart_security_evidence_log`, or `smart_security_incidents` tables.
+- Curate any fine-tune training corpus from public sources or telemetry.
+- Submit any Vertex AI training jobs (LoRA or otherwise).
+- Activate a Dataset Curation Agent or any other fine-tune-related agent.
+- Deploy any fine-tuned model as a Cloud Run revision.
+- Plan, scaffold, or design Phase 1+ work in any form.
 
-30. **[Architecture Doc]** Confirm Cloud SQL Postgres provisioning approach with user. **STOP-AND-ASK** before any provisioning.
-31. **[Service Build]** Provision Cloud SQL Postgres instance in `asia-southeast1`, smallest tier, automated backups on. Create database `smart_security`. Service account access via Cloud SQL Auth Proxy.
-32. **[Service Build]** Migrations: `smart_security_decision_log` table per `decision.schema.json`. RLS policy: tenant_id-scoped reads. Default tenant `avint-prod`.
-33. **[Service Build]** Migrations: `smart_security_evidence_log` table per `evidence.schema.json`. RLS policy. Storage URI references Cloud Storage bucket.
-34. **[Service Build]** Migrations: `smart_security_incidents` table per `incident.schema.json`. RLS policy. Foreign keys to decision_log.
-35. **[Service Build]** Cloud Storage bucket `smart-security-evidence` per tenant. Retention class lifecycle rules per `evidence.yaml`.
-36. **[Service Build]** Replace Cloud Logging interim store with DB writes. Update `smart-security-llm` to write decision records via Cloud SQL. Update `smart-security` TS service similarly. Validate schema match.
-37. **[Validation]** Isolation test: insert rows for two synthetic tenants, query as each — confirm RLS enforces isolation. Run in CI on every migration push.
-38. **[Compliance / Docs]** Document the evidence spine in `COMPLIANCE.md`: audit log retention, RLS policy, backup posture.
-
-### Stream 7 — Multi-tenancy (Days 31–35)
-
-39. **[API Contract]** Design tenant identification: header `X-Tenant-Id` from internal calls; API key → tenant_id mapping for future external calls.
-40. **[Service Build]** Implement tenant resolver. Default to `avint-prod` if no header (Phase 0.5 backward compat). Reject unknown tenants with 403.
-41. **[Validation]** Test: `avint-prod` traffic continues to work; `unknown-tenant` rejected; `tenant-b` (synthetic test) properly isolated.
-
-### Stream 8 — First fine-tune (Days 36–55)
-
-42. **[Dataset Curation]** *(new agent — see Phase 1 agent additions below)* Curate training corpus from public security frameworks (NIST CSF 2.0, OWASP Top 10:2025, MITRE ATT&CK technique descriptions). License-gate every entry. Output to Cloud Storage as JSONL.
-43. **[Dataset Curation]** Sanitize and append AVIntelligence telemetry: high-confidence triage outputs from Phase 0.5 dogfood that have been human-validated. PII-scrub before training. Append to JSONL.
-44. **[Service Build]** Vertex AI Training pipeline: LoRA on Gemma 4 E4B base. Hyperparameters: rank=16, alpha=32, lr=1e-4, epochs=3, batch=4. Training data: curated JSONL.
-45. **[Service Build]** Run 1 (smoke): tiny sample (200 rows), confirm pipeline succeeds, ≤ $10 spend. **STOP-AND-ASK** before Run 2.
-46. **[Service Build]** Run 2 (full): full corpus, ≤ $40 spend. Save checkpoint to Cloud Storage.
-47. **[Prompt Engineering]** Run eval harness against fine-tuned checkpoint. Compare to base E4B baseline. Iterate prompts if needed.
-48. **[Service Build]** Run 3 (refinement): if eval improves, run again with adjustments. Else stop and report.
-49. **[Validation]** Confirm v1.0 beats base E4B by ≥ 5pp on precision OR citation quality. If not, **STOP-AND-ASK** before proceeding.
-
-### Stream 9 — v1.0 deploy (Days 56–60)
-
-50. **[Service Build]** Update `smart-security-llm` to load fine-tuned weights from Cloud Storage. Add MODEL_VERSION env var.
-51. **[Service Build]** Deploy as new Cloud Run revision with traffic split: v0.5 base = 90%, v1.0 fine-tune = 10% (canary). **STOP-AND-ASK** before deploy.
-52. **[Validation]** Monitor canary for 48h: precision parity (no FP rate spike), latency parity (within 10%). If pass, **STOP-AND-ASK** to promote v1.0 to 100%.
-53. **[Service Build]** Promote v1.0 to 100% traffic. Deprecate v0.5 base after 1 week of clean operation.
-54. **[Compliance / Docs]** Update `COMPLIANCE.md` with v1.0 model id, training-data provenance, eval results.
-55. **[Architecture Doc]** Drift check: open issue on `AVInt` to update phase-plan table (Phase 1 status → "Complete").
-
-### Stream 10 — Phase 1 close (Day 61)
-
-56. **[Validation]** Run full Phase 1 exit-criteria suite. Each → pass/fail with evidence.
-57. **[Master Agent]** Compose Phase 1 retrospective. Save to `smart-security-llm/RETROSPECTIVE-PHASE-1.md`. Hand off to user.
-58. **[Master Agent]** **STOP-AND-ASK**: Phase 1 complete. Request human go-ahead before Phase 2.
-
----
-
-## Phase 1 agent additions
-
-Activate at task #42:
-
-### H. Dataset Curation Agent
-
-**Mandate**: assemble fine-tune training corpus from public sources + sanitized telemetry. License-gate every entry.
-
-**Model**: Gemini 2.5 Pro.
-
-**System prompt**:
-```
-You are the Dataset Curation Agent. Your job is to assemble a license-clean fine-tune training corpus for Gemma 4 E4B.
-
-Sources permitted (verify license at ingestion):
-- NIST CSF 2.0, SP 800-53r5, SP 800-61r3, SP 800-207 (US gov work, public domain).
-- CISA advisories and Known Exploited Vulnerabilities (US gov, public).
-- OWASP Top 10:2025, ASVS 5.0, OWASP LLM Top 10 (CC BY-SA — verify attribution requirements; if attribution-incompatible with our license posture, exclude).
-- MITRE ATT&CK + D3FEND (Apache 2.0 — compatible).
-- IETF RFCs for TLS, OAuth, OIDC, SCIM (BSD-style — compatible).
-
-Sources forbidden:
-- Proprietary certification course material (Cisco CCNP, CISSP, etc.).
-- Customer data of any kind (even sanitized — never enters fine-tune corpus without separate human approval).
-- Anything CC-NC, CC-BY-NC, GPL, AGPL.
-
-Process:
-1. Fetch source. Hash. Record in MANIFEST.jsonl with {source_url, license, license_compatible: bool, fetch_date, sha256}.
-2. If license is incompatible, mark and skip.
-3. Chunk into 512-token entries with overlap.
-4. Format as JSONL training rows: { instruction, input, output, source_ref }.
-5. Output to Cloud Storage gs://avint-core-smart-security-training/v1/.
-
-Then sanitize AVIntelligence telemetry:
-1. Read decision records from Phase 0.5 dogfood that are human-validated true positives.
-2. PII-scrub: redact filenames, file_ids, signed URLs, IPs, user-agents.
-3. Format as instruction-response pairs.
-4. Append to corpus.
-
-Stop-and-ask before:
-- Any source not in the permitted list.
-- Any telemetry-derived corpus exceeding 30% of total training rows (avoid overfit on small corpus).
-```
-
-**Tools**: HTTP read for public sources. Cloud SQL read for telemetry. Cloud Storage write.
-
-**Boundary**: read-only on telemetry; PII-scrub gate before any write.
+If a task in your Phase 0.5 backlog appears to imply Phase 1+ work, **stop and ask the user**. The next scoped boundary after Phase 0.5 is evidence-spine work, but specific tasks for it will be defined in a separate handoff when that scope explicitly reopens.
 
 ---
 
@@ -559,7 +469,7 @@ Recommendation: <approve | hold | reject>
 
 - **Per-task completion**: structured handoff (what was changed, what to verify, what's next). 3–5 sentences.
 - **Daily during active work**: brief status (what was done, what's next, any blockers). One paragraph.
-- **End of stream** (each Stream 1–10): summary report (what was achieved, measured outcomes, any deviation from plan).
+- **End of stream** (each Stream 1–5): summary report (what was achieved, measured outcomes, any deviation from plan).
 - **End of phase**: full retrospective committed to repo + chat-ready summary for user.
 
 Format every report so the human reader can pick up cold. No internal jargon, no abbreviations the user hasn't seen.

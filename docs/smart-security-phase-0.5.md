@@ -1,6 +1,6 @@
 # Smart Security — Phase 0.5 Implementation Spec
 
-**Goal**: validate the end-to-end LLM-inference pipeline in production at zero out-of-pocket spend. Stand up the `smart-security-llm` Cloud Run service (Python + vLLM + base Gemma 4 E4B), wire it from the existing TypeScript scanner service, and have AVIntelligence dogfood real triage / finding-narrative calls in observe mode.
+**Goal**: validate the end-to-end LLM-inference pipeline in production at zero out-of-pocket spend. Stand up the `smart-security-llm` Cloud Run service (Python + HuggingFace Transformers + base Gemma 4 E4B; vLLM bypass per `smart-security-llm/docs/cloud-run-cuda-workaround.md`), wire it from the existing TypeScript scanner service, and have AVIntelligence dogfood real triage / finding-narrative calls in observe mode.
 
 **Reference context**: read `docs/smart-security-architecture.md` first — especially *Existing baseline*, *AI model strategy*, *Two-service deployment topology*, and *Build orchestration*.
 
@@ -24,7 +24,7 @@ Exit signal: a real production triage request from AVIntelligence's `prescan-doc
 In scope:
 
 - New `smart-security-llm` repo + Cloud Run service.
-- Container image: Python 3.11, vLLM, Gemma 4 E4B weights pulled from Hugging Face (or Cloud Storage if licensing requires).
+- Container image: Python 3.11, HuggingFace Transformers (`AutoProcessor` + `AutoModelForImageTextToText`), Gemma 4 E4B weights pulled from Hugging Face (or Cloud Storage if licensing requires). vLLM is deferred until a release exists that registers Gemma 4 on the cu124 path; see `smart-security-llm/docs/cloud-run-cuda-workaround.md`.
 - Two endpoints:
   - `POST /infer/triage` — file/event triage + cited doctrine.
   - `POST /infer/explain` — finding narrative (one-liner explanation suitable for surfacing in AVIntelligence UI).

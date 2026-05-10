@@ -18,6 +18,10 @@ import JSZip from "jszip"
 import {
   getScheduleCLine,
   getDeductStatus,
+  getDeductibleAmount,
+  getReviewReason,
+  getSubstantiationNotes,
+  getTaxRowAmount,
   computeTaxBundle,
   generateTaxBundleCSV,
   ALL_SC_CATEGORIES,
@@ -58,6 +62,65 @@ function prettyIncomeClass(cls: string | null): string {
     case "other":      return "Other"
     default:           return "Unclassified"
   }
+}
+
+function csvEscape(s: string): string {
+  return `"${s.replace(/"/g, '""')}"`
+}
+
+function safeZipName(s: string): string {
+  return s.replace(/[\\/:*?"<>|]/g, "_").replace(/\s+/g, " ").trim() || "document"
+}
+
+function zipFolderFor(row: TaxRow): string {
+  return row.document_type === "payslip" || row.document_type === "income_statement"
+    ? "income"
+    : "expenses"
+}
+
+function zipPathFor(row: TaxRow): string {
+  return `${zipFolderFor(row)}/${row.file_id}--${safeZipName(row.filename)}`
+}
+
+function generateBundleManifestCSV(rows: TaxRow[], zipPaths: Record<string, string>, failedFileIds: Set<string>): string {
+  const lines = [
+    "File ID,Original Filename,Zip Path,Bundle Status,Document Type,Date,Period Start,Period End,Vendor,Employer,Amount,Currency,Category,Schedule C Line,Status,Confidence,Income Source,Classification Rationale,Review Reason,Substantiation Notes",
+  ]
+
+  for (const row of rows) {
+    const isExpense = row.document_type === "receipt" || row.document_type === "invoice"
+    const status = isExpense ? getDeductStatus(row.expense_category, row.confidence_score) : ""
+    const zipPath = zipPaths[row.file_id] ?? ""
+    const bundleStatus = failedFileIds.has(row.file_id)
+      ? "download_failed"
+      : zipPath
+        ? "bundled"
+        : "no_source_file"
+    lines.push([
+      row.file_id,
+      csvEscape(row.filename),
+      csvEscape(zipPath),
+      bundleStatus,
+      csvEscape(row.document_type),
+      row.document_date ?? "",
+      row.period_start ?? "",
+      row.period_end ?? "",
+      csvEscape(row.vendor_name ?? ""),
+      csvEscape(row.employer_name ?? ""),
+      getTaxRowAmount(row).toFixed(2),
+      (row.currency ?? "USD").toUpperCase(),
+      csvEscape(row.expense_category ?? ""),
+      isExpense ? (getScheduleCLine(row.expense_category) ?? "N/A") : "",
+      status,
+      row.confidence_score != null ? row.confidence_score.toFixed(2) : "",
+      row.income_source ?? "",
+      csvEscape(row.classification_rationale ?? ""),
+      isExpense ? csvEscape(getReviewReason(row)) : "",
+      isExpense ? csvEscape(getSubstantiationNotes(row)) : "",
+    ].join(","))
+  }
+
+  return lines.join("\n")
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -193,6 +256,8 @@ function TaxBundleContent() {
     totalGross,
     totalExpensesRaw,
     deductibleExpenses,
+    cleanDeductibleExpenses,
+    reviewDeductibleExpenses,
     estimatedNetScheduleC,
     mealsGross,
     mealsDeductible,
@@ -270,7 +335,7 @@ function TaxBundleContent() {
     if (items.length > 1) duplicates.push({ key, items })
   }
 
-  // ── Tax Readiness Score ─────────────────────────────────────────────────────
+  // ── Accountant Review Packet Readiness Score ───────────────────────────────
 
   // Only include checks that are applicable to the current dataset so the
   // denominator cannot be inflated by checks that do not apply. Meals 50%
@@ -311,7 +376,7 @@ function TaxBundleContent() {
 
   // ── CSV Export ──────────────────────────────────────────────────────────────
   // Pure formatter lives in lib/tax-bundle.ts so it can be unit-tested.
-  const generateCSV = () => generateTaxBundleCSV(summary)
+  const generateCSV = (zipPaths?: Record<string, string>) => generateTaxBundleCSV(summary, { zipPaths })
 
   function downloadCSV() {
     const csv = generateCSV()
@@ -348,31 +413,41 @@ function TaxBundleContent() {
 
       // Collect unique file_ids with storage paths
       const filesToBundle = rows.filter(r => r.storage_path && !seen.has(r.file_id) && seen.add(r.file_id))
+      const zipPaths: Record<string, string> = Object.fromEntries(filesToBundle.map(r => [r.file_id, zipPathFor(r)]))
 
       // Download each file from Supabase storage and add to zip
-      const results = await Promise.allSettled(
+      const results = await Promise.all(
         filesToBundle.map(async (r) => {
-          const { data } = await supabase.storage.from("documents").createSignedUrl(r.storage_path!, 120)
-          if (!data?.signedUrl) throw new Error(`No URL for ${r.filename}`)
-          const res = await fetch(data.signedUrl)
-          if (!res.ok) throw new Error(`Failed to fetch ${r.filename}`)
-          const blob = await res.blob()
+          try {
+            const { data } = await supabase.storage.from("documents").createSignedUrl(r.storage_path!, 120)
+            if (!data?.signedUrl) throw new Error(`No URL for ${r.filename}`)
+            const res = await fetch(data.signedUrl)
+            if (!res.ok) throw new Error(`Failed to fetch ${r.filename}`)
+            const blob = await res.blob()
 
-          // Organize into folders by type
-          const folder = r.document_type === "payslip" || r.document_type === "income_statement"
-            ? "income" : "expenses"
-          zip.file(`${folder}/${r.filename}`, blob)
+            zip.file(zipPaths[r.file_id], blob)
+            return { fileId: r.file_id, ok: true, error: "" }
+          } catch (err) {
+            return {
+              fileId: r.file_id,
+              ok: false,
+              error: err instanceof Error ? err.message : String(err),
+            }
+          }
         })
       )
 
-      const failed = results.filter(r => r.status === "rejected").length
+      const failures = results.filter(r => !r.ok)
+      const failed = failures.length
       if (failed > 0 && failed === filesToBundle.length) {
         setError(`Failed to download all ${failed} files. Please try again.`)
         return
       }
+      const failedFileIds = new Set(failures.map(r => r.fileId))
 
       // Add the CSV summary to the zip
-      zip.file(`schedule-c-summary-${taxYear}.csv`, generateCSV())
+      zip.file(`schedule-c-summary-${taxYear}.csv`, generateCSV(zipPaths))
+      zip.file("manifest.csv", generateBundleManifestCSV(rows, zipPaths, failedFileIds))
 
       // Generate and download
       const content = await zip.generateAsync({ type: "blob" })
@@ -670,11 +745,11 @@ function TaxBundleContent() {
                     </p>
                   </div>
                   <div className="flex shrink-0 flex-wrap gap-2 print:hidden">
-                    <Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={copyCSV} disabled={mixedCurrency} title={mixedCurrency ? "Disabled while mixed currencies are present" : undefined}>
+                    <Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={copyCSV} title={mixedCurrency ? "CSV includes a mixed-currency warning and per-row currencies" : undefined}>
                       <Copy className="h-3.5 w-3.5" />
                       {csvCopied ? "Copied!" : "Copy CSV"}
                     </Button>
-                    <Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={downloadCSV} disabled={mixedCurrency} title={mixedCurrency ? "Disabled while mixed currencies are present" : undefined}>
+                    <Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={downloadCSV} title={mixedCurrency ? "CSV includes a mixed-currency warning and per-row currencies" : undefined}>
                       <Download className="h-3.5 w-3.5" />
                       Export CSV
                     </Button>
@@ -682,7 +757,7 @@ function TaxBundleContent() {
                       <Printer className="h-3.5 w-3.5" />
                       Print / PDF
                     </Button>
-                    <Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={downloadZip} disabled={zipping || mixedCurrency} title={mixedCurrency ? "Disabled while mixed currencies are present" : undefined}>
+                    <Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={downloadZip} disabled={zipping} title={mixedCurrency ? "ZIP includes a mixed-currency warning, per-row currencies, and a manifest" : undefined}>
                       {zipping ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Archive className="h-3.5 w-3.5" />}
                       {zipping ? "Bundling..." : "Download Zip"}
                     </Button>
@@ -690,10 +765,10 @@ function TaxBundleContent() {
                 </div>
               </div>
 
-              {/* ── Tax Readiness Check ── */}
+              {/* ── Accountant Review Packet Readiness Check ── */}
               <div>
                 <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                  Tax Readiness
+                  Accountant Review Packet Readiness
                 </p>
                 <div className="rounded border border-border p-5">
                   <div className="mb-4 flex items-center gap-3">
@@ -706,9 +781,9 @@ function TaxBundleContent() {
                     </div>
                     <div>
                       <p className="text-sm font-medium text-foreground">
-                        {readinessPercent === 100 ? "Ready to file" :
-                         readinessPercent >= 50 ? "Almost ready — review items below" :
-                         "Needs attention before filing"}
+                        {readinessPercent === 100 ? "Ready for accountant review" :
+                         readinessPercent >= 50 ? "Almost ready for accountant review — resolve items below" :
+                         "Needs cleanup before accountant review"}
                       </p>
                       <p className="text-xs text-muted-foreground">{passCount} of {readinessChecks.length} checks passed</p>
                     </div>
@@ -777,7 +852,7 @@ function TaxBundleContent() {
                       Negative Schedule-C-style net — no business income detected
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      There are deductible expenses ({fmt(deductibleExpenses, currency)}) but no income-statement
+                      There are proposed deductible expenses ({fmt(deductibleExpenses, currency)}) but no income-statement
                       documents, so the Estimated Net below is negative. This is <strong>not</strong> a loss you can
                       apply against W-2 wages — Schedule C business expenses cannot be offset against wage income.
                       Either the expenses are not business-related, or an income-statement document is missing.
@@ -796,8 +871,8 @@ function TaxBundleContent() {
                       Mixed currencies detected ({currencies.join(", ")})
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Totals are shown in {currency} but rows include other currencies. Amounts are <strong>not</strong> FX-converted —
-                      convert to a single currency before filing or exporting.
+                      Totals are shown in {currency} but rows include other currencies. Amounts are <strong>not</strong> FX-converted.
+                      Exports remain available for accountant review and include per-row currencies; convert to a single currency before filing.
                     </p>
                   </div>
                 </div>
@@ -822,7 +897,7 @@ function TaxBundleContent() {
                     loss: false,
                   },
                   {
-                    label: "Deductible Expenses (Sched C)",
+                    label: "Proposed Deductible Expenses",
                     value: fmt(deductibleExpenses, currency),
                     loss: false,
                   },
@@ -1110,7 +1185,7 @@ function TaxBundleContent() {
                   </p>
                   <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
                     This table is the primary transcription surface — each row corresponds to a Schedule C
-                    Part II line and the deductible column is what you or your preparer would enter (or read
+                    Part II line and the proposed deductible column is what you or your preparer would review (or read
                     aloud during a guided interview) into a tax preparation tool. Line 13 rows default to
                     depreciation / §179; items under the <strong>$2,500 de minimis safe harbor</strong> may be
                     directly expensed instead — confirm with your preparer.
@@ -1121,7 +1196,7 @@ function TaxBundleContent() {
                         <th className="pb-2 font-medium">Line</th>
                         <th className="pb-2 font-medium">IRS Category</th>
                         <th className="pb-2 text-right font-medium">Raw</th>
-                        <th className="pb-2 text-right font-medium">Deductible</th>
+                        <th className="pb-2 text-right font-medium">Proposed Deductible</th>
                         <th className="pb-2 text-right font-medium">Items</th>
                         <th className="pb-2 text-right font-medium">Status</th>
                       </tr>
@@ -1162,7 +1237,7 @@ function TaxBundleContent() {
                     <tfoot>
                       <tr className="border-t-2 border-border font-semibold">
                         <td className="pt-2.5" />
-                        <td className="pt-2.5 text-foreground">Deductible Expenses</td>
+                        <td className="pt-2.5 text-foreground">Proposed Deductible Expenses</td>
                         <td className="pt-2.5 text-right font-mono tabular-nums text-muted-foreground">
                           {fmt(totalExpensesRaw, currency)}
                         </td>
@@ -1258,9 +1333,39 @@ function TaxBundleContent() {
                         <td className="py-1.5 text-right font-mono tabular-nums text-foreground">{fmt(selfEmploymentGross, currency)}</td>
                       </tr>
                       <tr>
-                        <td className="py-1.5 text-foreground/80">Less: Schedule C deductible expenses</td>
+                        <td className="py-1.5 text-foreground/80">Less: Schedule C proposed deductible expenses</td>
                         <td className="py-1.5 text-right font-mono tabular-nums text-foreground">({fmt(deductibleExpenses, currency)})</td>
                       </tr>
+                      {reviewDeductibleExpenses > 0 && (
+                        <>
+                          <tr>
+                            <td className="py-1.5 pl-4 text-xs text-muted-foreground">
+                              clean proposed subtotal
+                            </td>
+                            <td className="py-1.5 text-right font-mono tabular-nums text-xs text-muted-foreground">
+                              ({fmt(cleanDeductibleExpenses, currency)})
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="py-1.5 pl-4 text-xs text-yellow-600">
+                              needs-review proposed subtotal
+                            </td>
+                            <td className="py-1.5 text-right font-mono tabular-nums text-xs text-yellow-600">
+                              ({fmt(reviewDeductibleExpenses, currency)})
+                            </td>
+                          </tr>
+                        </>
+                      )}
+                      {uncategorizedItems.length > 0 && (
+                        <tr>
+                          <td className="py-1.5 pl-4 text-xs text-muted-foreground">
+                            uncategorized excluded from proposed deductible totals
+                          </td>
+                          <td className="py-1.5 text-right font-mono tabular-nums text-xs text-muted-foreground">
+                            ({fmt(uncategorizedItems.reduce((s, r) => s + (r.total_amount ?? 0), 0), currency)})
+                          </td>
+                        </tr>
+                      )}
                       {mealsGross > 0 && (
                         <tr>
                           <td className="py-1.5 pl-4 text-xs text-muted-foreground">
@@ -1328,6 +1433,8 @@ function TaxBundleContent() {
                         <th className="pb-2 text-right font-medium">Amount</th>
                         <th className="pb-2 font-medium">Category</th>
                         <th className="pb-2 font-medium">Sched C</th>
+                        <th className="pb-2 font-medium">Review Notes</th>
+                        <th className="pb-2 text-right font-medium">Confidence</th>
                         <th className="pb-2 text-right font-medium">Date</th>
                       </tr>
                     </thead>
@@ -1342,7 +1449,7 @@ function TaxBundleContent() {
                             <td className="py-2 text-muted-foreground">{r.document_type}</td>
                             <td className="py-2 text-foreground">{r.vendor_name ?? r.employer_name ?? "—"}</td>
                             <td className="py-2 text-right font-mono tabular-nums text-foreground">
-                              {fmt(r.total_amount ?? r.gross_income ?? 0, currency)}
+                              {fmt(getTaxRowAmount(r), r.currency ?? currency)}
                             </td>
                             <td className="py-2 text-muted-foreground">{r.expense_category ?? "—"}</td>
                             <td className="py-2">
@@ -1353,6 +1460,14 @@ function TaxBundleContent() {
                               ) : (
                                 <span className="text-[10px] text-muted-foreground/40">—</span>
                               )}
+                            </td>
+                            <td className="py-2 max-w-[220px] text-muted-foreground">
+                              {isExpense
+                                ? (getReviewReason(r) || getSubstantiationNotes(r) || "—")
+                                : (r.classification_rationale ?? "—")}
+                            </td>
+                            <td className="py-2 text-right font-mono tabular-nums text-muted-foreground">
+                              {r.confidence_score != null ? `${Math.round(r.confidence_score * 100)}%` : "—"}
                             </td>
                             <td className="py-2 text-right text-muted-foreground">
                               {r.document_date ? formatDate(r.document_date) : "—"}

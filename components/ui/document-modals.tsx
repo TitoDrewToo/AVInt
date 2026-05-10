@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { X, PenLine, Tag } from "lucide-react"
 import { supabase } from "@/lib/supabase"
+import { ALL_SC_CATEGORIES } from "@/lib/tax-bundle"
 
 // ---------------------------------------------------------------------------
 // Shared constants
@@ -20,10 +21,7 @@ const DOCUMENT_TYPES = [
   { value: "general_document", label: "General Document" },
 ]
 
-const EXPENSE_CATEGORIES = [
-  "Food", "Transport", "Housing", "Utilities", "Healthcare", "Entertainment",
-  "Shopping", "Travel", "Office", "Salary", "Tax", "Legal", "Other",
-]
+const EXPENSE_CATEGORIES = [...ALL_SC_CATEGORIES, "Other"]
 
 const PAYMENT_METHODS = [
   "Cash",

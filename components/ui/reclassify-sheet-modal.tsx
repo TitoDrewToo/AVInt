@@ -14,29 +14,12 @@ import {
   X,
 } from "lucide-react"
 import { supabase } from "@/lib/supabase"
+import { ALL_SC_CATEGORIES } from "@/lib/tax-bundle"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { toast } from "@/hooks/use-toast"
 
-const EXPENSE_CATEGORIES = [
-  "Advertising",
-  "Bank Fees",
-  "Contract Labor",
-  "Fuel",
-  "Insurance",
-  "Legal",
-  "Meals",
-  "Office",
-  "Professional Services",
-  "Rent",
-  "Repairs",
-  "Software",
-  "Supplies",
-  "Taxes",
-  "Travel",
-  "Utilities",
-  "Other",
-]
+const EXPENSE_CATEGORIES = [...ALL_SC_CATEGORIES, "Other"]
 
 const CURRENCIES = ["PHP", "USD", "EUR", "GBP", "SGD", "JPY", "AUD"]
 const ROW_HEIGHT = 48

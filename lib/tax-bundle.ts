@@ -120,6 +120,8 @@ export interface ScheduleCTotal {
   label: string
   amount: number        // deductible (meals halved)
   grossAmount: number   // raw pre-haircut
+  cleanAmount: number   // proposed deductible rows that are not flagged review
+  reviewAmount: number  // proposed deductible rows requiring preparer review
   items: TaxRow[]
   reviewCount: number
 }
@@ -178,6 +180,8 @@ export interface TaxBundleSummary {
 
   totalExpensesRaw: number        // every expense row, raw
   deductibleExpenses: number      // Σ scheduleC[*].amount — reconciles exactly
+  cleanDeductibleExpenses: number // proposed deductible subtotal excluding review rows
+  reviewDeductibleExpenses: number // proposed deductible subtotal for review rows
   estimatedNetScheduleC: number   // selfEmploymentGross − deductibleExpenses (NOT totalGross)
   mealsGross: number
   mealsDeductible: number
@@ -188,6 +192,53 @@ export interface TaxBundleSummary {
 }
 
 export const MEALS_DEDUCTIBLE_RATIO = 0.5
+
+export interface TaxBundleCSVOptions {
+  zipPaths?: Record<string, string>
+}
+
+export function getTaxRowAmount(row: TaxRow): number {
+  return row.total_amount ?? row.gross_income ?? 0
+}
+
+export function getDeductibleAmount(row: TaxRow): number {
+  const scLine = getScheduleCLine(row.expense_category) ?? "Line 27b"
+  const raw = row.total_amount ?? 0
+  return scLine === "Line 24b" ? raw * MEALS_DEDUCTIBLE_RATIO : raw
+}
+
+export function getReviewReason(row: TaxRow): string {
+  const category = row.expense_category
+  const confidence = row.confidence_score
+  if (!category || category === "Uncategorized" || category === "Other") {
+    return "No Schedule C category assigned; excluded from proposed deductible totals."
+  }
+  if (!getScheduleCLine(category)) {
+    return "Category is not mapped to a Schedule C line; preparer should classify or exclude."
+  }
+  if (confidence !== null && confidence < 0.7) {
+    return `Low extraction confidence (${confidence.toFixed(2)}); verify source document before relying on this row.`
+  }
+  return ""
+}
+
+export function getSubstantiationNotes(row: TaxRow): string {
+  const scLine = getScheduleCLine(row.expense_category)
+  switch (scLine) {
+    case "Line 9":
+      return "Vehicle expense: confirm business-use percentage, commuting exclusion, and mileage vs actual-expense method."
+    case "Line 13":
+      return "Equipment/depreciation: confirm de minimis, Section 179, bonus depreciation, or depreciation treatment."
+    case "Line 24b":
+      return "Meals: confirm business purpose and attendees; 50% limit applied."
+    case "Line 26":
+      return "Payroll/wages: confirm payroll records and exclude owner draws or guaranteed payments if misclassified."
+    case "Line 30":
+      return "Home office: confirm exclusive/regular business use and simplified-method vs Form 8829 treatment."
+    default:
+      return ""
+  }
+}
 
 // ── Pure Aggregation ──────────────────────────────────────────────────────────
 
@@ -332,11 +383,15 @@ export function computeTaxBundle(rows: TaxRow[]): TaxBundleSummary {
       label: getScheduleCLabel(scLine),
       amount: 0,
       grossAmount: 0,
+      cleanAmount: 0,
+      reviewAmount: 0,
       items: [],
       reviewCount: 0,
     }
     existing.amount      += deductible
     existing.grossAmount += raw
+    if (status === "review") existing.reviewAmount += deductible
+    else existing.cleanAmount += deductible
     existing.items.push(r)
     if (status === "review") existing.reviewCount++
     scheduleCMap.set(scLine, existing)
@@ -350,6 +405,8 @@ export function computeTaxBundle(rows: TaxRow[]): TaxBundleSummary {
 
   // deductibleExpenses is derived from buckets → reconciliation identity holds.
   const deductibleExpenses = scheduleC.reduce((s, sc) => s + sc.amount, 0)
+  const cleanDeductibleExpenses = scheduleC.reduce((s, sc) => s + sc.cleanAmount, 0)
+  const reviewDeductibleExpenses = scheduleC.reduce((s, sc) => s + sc.reviewAmount, 0)
   // Schedule-C-style net uses the self-employment base only. W-2 wages are
   // NOT eligible to be offset by Schedule C business expenses.
   const estimatedNetScheduleC = selfEmploymentGross - deductibleExpenses
@@ -373,6 +430,8 @@ export function computeTaxBundle(rows: TaxRow[]): TaxBundleSummary {
     totalPayrollDeductions,
     totalExpensesRaw,
     deductibleExpenses,
+    cleanDeductibleExpenses,
+    reviewDeductibleExpenses,
     estimatedNetScheduleC,
     mealsGross,
     mealsDeductible,
@@ -391,7 +450,7 @@ function csvEscape(s: string): string {
   return `"${s.replace(/"/g, '""')}"`
 }
 
-export function generateTaxBundleCSV(summary: TaxBundleSummary): string {
+export function generateTaxBundleCSV(summary: TaxBundleSummary, options: TaxBundleCSVOptions = {}): string {
   const {
     primaryCurrency: currency,
     currencies,
@@ -400,6 +459,8 @@ export function generateTaxBundleCSV(summary: TaxBundleSummary): string {
     uncategorizedItems,
     totalExpensesRaw,
     deductibleExpenses,
+    cleanDeductibleExpenses,
+    reviewDeductibleExpenses,
     mealsGross,
     mealsDeductible,
     selfEmploymentGross,
@@ -439,24 +500,34 @@ export function generateTaxBundleCSV(summary: TaxBundleSummary): string {
 
   lines.push(`"Currency",${currency}`)
   lines.push("")
-  lines.push("Schedule C Line,IRS Category,Our Category,Vendor,Date,Raw Amount,Deductible Amount,Status,Source File")
+  lines.push("Schedule C Line,IRS Category,Our Category,Vendor,Document Type,Date,Period Start,Period End,Currency,Raw Amount,Proposed Deductible Amount,Status,Review Reason,Substantiation Notes,Confidence,Income Source,Classification Rationale,File ID,Source File,Zip Path")
 
   for (const sc of scheduleC) {
-    const isMeals = sc.line === "Line 24b"
     for (const item of sc.items) {
       const status = getDeductStatus(item.expense_category, item.confidence_score)
       const raw = item.total_amount ?? 0
-      const deductible = isMeals ? raw * MEALS_DEDUCTIBLE_RATIO : raw
+      const deductible = getDeductibleAmount(item)
       lines.push([
         sc.line,
         csvEscape(sc.label),
         csvEscape(item.expense_category ?? "Uncategorized"),
         csvEscape(item.vendor_name ?? ""),
+        csvEscape(item.document_type),
         item.document_date ?? "",
+        item.period_start ?? "",
+        item.period_end ?? "",
+        (item.currency ?? currency).toUpperCase(),
         raw.toFixed(2),
         deductible.toFixed(2),
         status,
+        csvEscape(getReviewReason(item)),
+        csvEscape(getSubstantiationNotes(item)),
+        item.confidence_score != null ? item.confidence_score.toFixed(2) : "",
+        item.income_source ?? "",
+        csvEscape(item.classification_rationale ?? ""),
+        item.file_id,
         csvEscape(item.filename),
+        csvEscape(options.zipPaths?.[item.file_id] ?? ""),
       ].join(","))
     }
   }
@@ -468,22 +539,33 @@ export function generateTaxBundleCSV(summary: TaxBundleSummary): string {
       '"Uncategorized"',
       csvEscape(item.expense_category ?? "None"),
       csvEscape(item.vendor_name ?? ""),
+      csvEscape(item.document_type),
       item.document_date ?? "",
+      item.period_start ?? "",
+      item.period_end ?? "",
+      (item.currency ?? currency).toUpperCase(),
       raw.toFixed(2),
       "0.00",
       "uncategorized",
+      csvEscape(getReviewReason(item)),
+      "",
+      item.confidence_score != null ? item.confidence_score.toFixed(2) : "",
+      item.income_source ?? "",
+      csvEscape(item.classification_rationale ?? ""),
+      item.file_id,
       csvEscape(item.filename),
+      csvEscape(options.zipPaths?.[item.file_id] ?? ""),
     ].join(","))
   }
 
   lines.push("")
   lines.push("SCHEDULE C SUMMARY")
-  lines.push("Line,Category,Raw Total,Deductible Total")
+  lines.push("Line,Category,Raw Total,Proposed Deductible Total,Clean Proposed Deductible,Needs-Review Proposed Deductible")
   for (const sc of scheduleC) {
-    lines.push(`${sc.line},${csvEscape(sc.label)},${sc.grossAmount.toFixed(2)},${sc.amount.toFixed(2)}`)
+    lines.push(`${sc.line},${csvEscape(sc.label)},${sc.grossAmount.toFixed(2)},${sc.amount.toFixed(2)},${sc.cleanAmount.toFixed(2)},${sc.reviewAmount.toFixed(2)}`)
   }
   lines.push(`,"TOTAL (all documented expenses, raw)",${totalExpensesRaw.toFixed(2)},`)
-  lines.push(`,"DEDUCTIBLE EXPENSES (Schedule C)",,${deductibleExpenses.toFixed(2)}`)
+  lines.push(`,"PROPOSED DEDUCTIBLE EXPENSES (Schedule C)",,${deductibleExpenses.toFixed(2)},${cleanDeductibleExpenses.toFixed(2)},${reviewDeductibleExpenses.toFixed(2)}`)
   if (mealsGross > 0) {
     lines.push(`,"  of which Meals (Line 24b) raw",${mealsGross.toFixed(2)},${mealsDeductible.toFixed(2)}`)
   }
@@ -575,7 +657,7 @@ export function generateEmployedTaxBundleCSV(summary: TaxBundleSummary): string 
 
   lines.push("")
   lines.push("PAYSLIP AUDIT TRAIL")
-  lines.push("Employer,Period Start,Period End,Document Date,Gross Wage,Net Pay,Payroll Deductions,Source File")
+  lines.push("Employer,Period Start,Period End,Document Date,Currency,Gross Wage,Net Pay,Payroll Deductions,Confidence,Income Source,Classification Rationale,File ID,Source File")
   for (const row of [...wageRows].sort((a, b) => (a.period_end ?? a.document_date ?? "").localeCompare(b.period_end ?? b.document_date ?? ""))) {
     const gross = row.gross_income ?? row.total_amount ?? 0
     const net = row.net_income ?? 0
@@ -587,9 +669,14 @@ export function generateEmployedTaxBundleCSV(summary: TaxBundleSummary): string 
       row.period_start ?? "",
       row.period_end ?? "",
       row.document_date ?? "",
+      (row.currency ?? currency).toUpperCase(),
       gross.toFixed(2),
       net.toFixed(2),
       deductions.toFixed(2),
+      row.confidence_score != null ? row.confidence_score.toFixed(2) : "",
+      row.income_source ?? "",
+      csvEscape(row.classification_rationale ?? ""),
+      row.file_id,
       csvEscape(row.filename),
     ].join(","))
   }

@@ -338,7 +338,7 @@ export async function GET(
           return NextResponse.json({ rows: [], totalOwnedDocs, detectedYears })
         }
 
-        let query = supabaseAdmin
+        const query = supabaseAdmin
           .from("document_fields")
           .select(`
             file_id, vendor_name, vendor_normalized, employer_name, document_date,
@@ -352,14 +352,22 @@ export async function GET(
           .neq("normalization_status", "excluded")
           .order("document_date", { ascending: false })
 
-        if (dateFrom) query = query.gte("period_end", dateFrom)
-        if (dateTo) query = query.lte("period_start", dateTo)
-
         const { data, error } = await query
         if (error) throw new Error(error.message)
 
+        const rows = (data ?? []).filter((row) =>
+          overlapsDateRange(
+            {
+              document_date: row.document_date,
+              period_start: row.period_start,
+              period_end: row.period_end,
+            },
+            { dateFrom, dateTo },
+          ),
+        )
+
         return NextResponse.json({
-          rows: data ?? [],
+          rows,
           totalOwnedDocs,
           detectedYears,
         })

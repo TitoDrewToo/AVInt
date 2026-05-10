@@ -189,6 +189,8 @@ function reconcile(name: string, rows: TaxRow[]) {
   assert("review: totalExpensesRaw = 250",           s.totalExpensesRaw === 250)
   assert("review: deductibleExpenses = 250 (policy: review included)",
     approx(s.deductibleExpenses, 250))
+  assert("review: cleanDeductibleExpenses = 50",     approx(s.cleanDeductibleExpenses, 50))
+  assert("review: reviewDeductibleExpenses = 200",   approx(s.reviewDeductibleExpenses, 200))
   const l18 = s.scheduleC.find(x => x.line === "Line 18")!
   assert("review: Line 18 has reviewCount 1",        l18?.reviewCount === 1)
   const l27b = s.scheduleC.find(x => x.line === "Line 27b")!
@@ -294,11 +296,12 @@ function csvLacks(csv: string, needle: string, label: string) {
   const csv = generateTaxBundleCSV(s)
 
   csvHas(csv, `"Currency",USD`, "csv-clean: currency row present")
+  csvHas(csv, "File ID,Source File,Zip Path", "csv-clean: accountant traceability columns present")
   csvHas(csv, "SCHEDULE C SUMMARY", "csv-clean: summary header present")
   csvHas(csv, `Line 18,"Office Expense",300.00,300.00`, "csv-clean: Line 18 raw+deductible")
   csvHas(csv, `Line 22,"Supplies",200.00,200.00`, "csv-clean: Line 22 raw+deductible")
   csvHas(csv, `,"TOTAL (all documented expenses, raw)",500.00,`, "csv-clean: raw total")
-  csvHas(csv, `,"DEDUCTIBLE EXPENSES (Schedule C)",,500.00`, "csv-clean: deductible total")
+  csvHas(csv, `,"PROPOSED DEDUCTIBLE EXPENSES (Schedule C)",,500.00,500.00,0.00`, "csv-clean: proposed deductible total")
   csvHas(csv, `,"Business Income (income statements — Schedule C base)",5000.00,`,
     "csv-clean: business income row")
   csvHas(csv, `,"Estimated Net (Schedule C, before adjustments)",4500.00,`,
@@ -325,7 +328,7 @@ function csvLacks(csv: string, needle: string, label: string) {
     "csv-meals: Line 24b raw 300 / deductible 150")
   csvHas(csv, `,"  of which Meals (Line 24b) raw",300.00,150.00`,
     "csv-meals: meals footnote")
-  csvHas(csv, `,"DEDUCTIBLE EXPENSES (Schedule C)",,200.00`,
+  csvHas(csv, `,"PROPOSED DEDUCTIBLE EXPENSES (Schedule C)",,200.00,200.00,0.00`,
     "csv-meals: deductible total = 200")
   csvHas(csv, `,"Estimated Net (Schedule C, before adjustments)",9800.00,`,
     "csv-meals: estimated net = 9800")

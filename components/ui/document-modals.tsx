@@ -236,7 +236,7 @@ function DocumentFormBody({ form, onChange, isManual }: DocumentFormBodyProps) {
           <input
             className={inputCls}
             type="text"
-            placeholder='e.g. Coffee at Jollibee'
+            placeholder="e.g. Office supplies receipt"
             value={form.document_name}
             onChange={(e) => onChange("document_name", e.target.value)}
           />

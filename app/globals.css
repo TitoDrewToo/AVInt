@@ -245,8 +245,6 @@
 .marketing-scroll-section,
 .marketing-hero-section {
   padding-block: 6rem;
-  scroll-snap-align: start;
-  scroll-snap-stop: always;
 }
 @supports (animation-timeline: view()) {
   .marketing-scroll-stage .marketing-scroll-section,
@@ -267,11 +265,6 @@
   }
 }
 @media (min-width: 768px) {
-  html:has(.marketing-scroll-stage),
-  body:has(.marketing-scroll-stage) {
-    scroll-snap-type: y proximity;
-    scroll-padding-top: 5.5rem;
-  }
   .marketing-scroll-section {
     min-height: 100vh;
     min-height: 100svh;

@@ -5,7 +5,6 @@ import { StorageIcon, DashboardIcon } from "@/components/sections/tools"
 import { CollapseBoxGraphic, FloatingCubeGraphic } from "@/components/sections/graphics-staging"
 
 import { useEffect, useRef, useState, useCallback, type MouseEvent } from "react"
-import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 import type { Session } from "@supabase/supabase-js"
@@ -89,41 +88,44 @@ function TrustedCounter() {
 }
 
 export function HeroSection() {
-  const router = useRouter()
   const [session, setSession] = useState<Session | null>(null)
+  const [sessionLoaded, setSessionLoaded] = useState(false)
   const [authModalVisible, setAuthModalVisible] = useState(false)
   const [pendingHref, setPendingHref] = useState<string | null>(null)
   const [storageHovered, setStorageHovered] = useState(false)
   const [dashboardHovered, setDashboardHovered] = useState(false)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSession(data.session))
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => setSession(s))
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session)
+      setSessionLoaded(true)
+    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
+      setSession(s)
+      setSessionLoaded(true)
+    })
     return () => subscription.unsubscribe()
   }, [])
 
   const handleToolClick = useCallback((e: MouseEvent<HTMLElement>, href: string) => {
     e.preventDefault()
+    if (!sessionLoaded) return
     if (session) {
-      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) {
-        window.open(href, "_blank", "noopener,noreferrer")
-        return
-      }
-      router.push(href)
+      window.open(href, "_blank", "noopener,noreferrer")
     } else {
       // Not logged in — show auth modal inline, remember where to go after
       setPendingHref(href)
       setAuthModalVisible(true)
     }
-  }, [router, session])
+  }, [session, sessionLoaded])
 
   const handleAuthSuccess = useCallback(() => {
     setAuthModalVisible(false)
     if (pendingHref) {
-      router.push(pendingHref)
+      window.open(pendingHref, "_blank", "noopener,noreferrer")
       setPendingHref(null)
     }
-  }, [pendingHref, router])
+  }, [pendingHref])
 
   return (
     <>
@@ -164,7 +166,7 @@ export function HeroSection() {
               onMouseEnter={() => setStorageHovered(true)}
               onMouseLeave={() => setStorageHovered(false)}
               onClick={(e) => handleToolClick(e, "/tools/smart-storage")}
-              className="cw-launcher-card glass-surface group relative flex min-h-[28rem] cursor-pointer flex-col overflow-hidden rounded-2xl p-5 md:min-h-[30rem]"
+              className={`cw-launcher-card glass-surface group relative flex min-h-[28rem] flex-col overflow-hidden rounded-2xl p-5 md:min-h-[30rem] ${sessionLoaded ? "cursor-pointer" : "cursor-wait"}`}
             >
               <div className="absolute inset-0 overflow-hidden">
                 <CollapseBoxGraphic embedded hovered={storageHovered} className="absolute inset-0" />
@@ -205,9 +207,13 @@ export function HeroSection() {
                   Learn more
                 </Link>
                 <button
-                  onClick={(e) => handleToolClick(e, "/tools/smart-storage")}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleToolClick(e, "/tools/smart-storage")
+                  }}
+                  disabled={!sessionLoaded}
                   className="cw-button-flow inline-flex min-h-9 items-center justify-center whitespace-nowrap rounded-lg bg-primary px-3.5 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90">
-                  {session ? "Launch Smart Storage →" : "Try for free"}
+                  {!sessionLoaded ? "Checking..." : session ? "Launch Smart Storage →" : "Try for free"}
                 </button>
               </div>
               </div>
@@ -218,7 +224,7 @@ export function HeroSection() {
               onMouseEnter={() => setDashboardHovered(true)}
               onMouseLeave={() => setDashboardHovered(false)}
               onClick={(e) => handleToolClick(e, "/tools/smart-dashboard")}
-              className="cw-launcher-card glass-surface group relative flex min-h-[28rem] cursor-pointer flex-col overflow-hidden rounded-2xl p-5 md:min-h-[30rem]"
+              className={`cw-launcher-card glass-surface group relative flex min-h-[28rem] flex-col overflow-hidden rounded-2xl p-5 md:min-h-[30rem] ${sessionLoaded ? "cursor-pointer" : "cursor-wait"}`}
             >
               <div className="absolute inset-0 overflow-hidden">
                 <FloatingCubeGraphic embedded hovered={dashboardHovered} className="absolute inset-0" />
@@ -259,9 +265,13 @@ export function HeroSection() {
                   Learn more
                 </Link>
                 <button
-                  onClick={(e) => handleToolClick(e, "/tools/smart-dashboard")}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleToolClick(e, "/tools/smart-dashboard")
+                  }}
+                  disabled={!sessionLoaded}
                   className="cw-button-flow inline-flex min-h-9 items-center justify-center whitespace-nowrap rounded-lg bg-primary px-3.5 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90">
-                  {session ? "Launch Smart Dashboard →" : "Try for free"}
+                  {!sessionLoaded ? "Checking..." : session ? "Launch Smart Dashboard →" : "Try for free"}
                 </button>
               </div>
               </div>

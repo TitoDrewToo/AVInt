@@ -5,6 +5,7 @@ import { StorageIcon, DashboardIcon } from "@/components/sections/tools"
 import { CollapseBoxGraphic, FloatingCubeGraphic } from "@/components/sections/graphics-staging"
 
 import { useEffect, useRef, useState, useCallback, type MouseEvent } from "react"
+import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 import type { Session } from "@supabase/supabase-js"
@@ -88,6 +89,7 @@ function TrustedCounter() {
 }
 
 export function HeroSection() {
+  const router = useRouter()
   const [session, setSession] = useState<Session | null>(null)
   const [authModalVisible, setAuthModalVisible] = useState(false)
   const [pendingHref, setPendingHref] = useState<string | null>(null)
@@ -103,22 +105,25 @@ export function HeroSection() {
   const handleToolClick = useCallback((e: MouseEvent<HTMLElement>, href: string) => {
     e.preventDefault()
     if (session) {
-      // Logged in — open in new tab, homepage stays put
-      window.open(href, "_blank", "noopener,noreferrer")
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) {
+        window.open(href, "_blank", "noopener,noreferrer")
+        return
+      }
+      router.push(href)
     } else {
       // Not logged in — show auth modal inline, remember where to go after
       setPendingHref(href)
       setAuthModalVisible(true)
     }
-  }, [session])
+  }, [router, session])
 
   const handleAuthSuccess = useCallback(() => {
     setAuthModalVisible(false)
     if (pendingHref) {
-      window.open(pendingHref, "_blank", "noopener,noreferrer")
+      router.push(pendingHref)
       setPendingHref(null)
     }
-  }, [pendingHref])
+  }, [pendingHref, router])
 
   return (
     <>

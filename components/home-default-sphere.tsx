@@ -22,7 +22,13 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
 
     const { width: initialWidth, height: initialHeight } = getViewportSize()
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
+    let renderer: THREE.WebGLRenderer
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
+    } catch (error) {
+      console.warn("Home background sphere disabled: WebGL is unavailable.", error)
+      return
+    }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     renderer.setSize(initialWidth, initialHeight)
     renderer.setClearAlpha(0)

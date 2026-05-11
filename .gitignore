@@ -31,3 +31,4 @@ supabase/migrations/20260407_marketing_agent.sql
 supabase/.temp/
 tsconfig.tsbuildinfo
 .claude/worktrees/
+.gstack/

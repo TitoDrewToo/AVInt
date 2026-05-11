@@ -1,6 +1,6 @@
 "use client"
 
-import type { ReactElement, ReactNode } from "react"
+import { useRef, type ReactElement, type ReactNode } from "react"
 import { Download, FolderOutput, Pencil, Tag, X } from "lucide-react"
 import {
   ContextMenu,
@@ -27,6 +27,7 @@ interface StorageItemMenuProps {
   onMoveUp?: () => void | Promise<void>
   onReclassify?: () => void
   onContextIntent?: () => void
+  disableTouchContextMenu?: boolean
   children: ReactNode
 }
 
@@ -53,11 +54,29 @@ export function StorageItemMenu({
   onMoveUp,
   onReclassify,
   onContextIntent,
+  disableTouchContextMenu = false,
   children,
 }: StorageItemMenuProps) {
+  const touchContextMenuBlockedUntilRef = useRef(0)
+
   return (
     <ContextMenu>
-      <ContextMenuTrigger onContextMenuCapture={() => onContextIntent?.()} className="block">
+      <ContextMenuTrigger
+        onPointerDownCapture={(event) => {
+          if (disableTouchContextMenu && event.pointerType === "touch") {
+            touchContextMenuBlockedUntilRef.current = Date.now() + 1200
+          }
+        }}
+        onContextMenuCapture={(event) => {
+          if (disableTouchContextMenu && Date.now() < touchContextMenuBlockedUntilRef.current) {
+            event.preventDefault()
+            event.stopPropagation()
+            return
+          }
+          onContextIntent?.()
+        }}
+        className="block"
+      >
         {children}
       </ContextMenuTrigger>
       <ContextMenuContent className="min-w-[196px] rounded-xl">

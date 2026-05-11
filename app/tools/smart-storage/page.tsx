@@ -110,6 +110,8 @@ const SLOW_PROCESSING_STATUSES = ["uploaded", "processing"]
 const CELL_W = 90
 const CELL_H = 104
 const GRID_PAD = 8
+const TOUCH_LONG_PRESS_MS = 420
+const TOUCH_MOVE_CANCEL_PX = 10
 
 type HoverPreviewState = {
   fileId: string
@@ -298,6 +300,17 @@ export default function SmartStoragePage() {
   const [boxSelect, setBoxSelect] = useState<{ startX: number; startY: number; currentX: number; currentY: number } | null>(null)
   const lastSelectedRef = useRef<string | null>(null)
   const canvasBoxSelectStart = useRef<{ x: number; y: number } | null>(null)
+  const touchPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const touchPressRef = useRef<{
+    fileId: string
+    pointerId: number
+    startX: number
+    startY: number
+    canceled: boolean
+    longPressTriggered: boolean
+  } | null>(null)
+  const suppressFileClickUntilRef = useRef(0)
+  const suppressTouchContextMenuUntilRef = useRef(0)
 
   // Preview (hover + double-click)
   const [hoverPreview, setHoverPreview] = useState<HoverPreviewState | null>(null)
@@ -671,6 +684,106 @@ export default function SmartStoragePage() {
     lastSelectedRef.current = fileId
   }, [])
 
+  const clearTouchPressTimer = useCallback(() => {
+    if (touchPressTimerRef.current) {
+      clearTimeout(touchPressTimerRef.current)
+      touchPressTimerRef.current = null
+    }
+  }, [])
+
+  useEffect(() => clearTouchPressTimer, [clearTouchPressTimer])
+
+  const toggleTouchSelection = useCallback((fileId: string) => {
+    setSelectedFiles(prev => {
+      if (prev.size === 0) return new Set([fileId])
+      const next = new Set(prev)
+      if (next.has(fileId)) next.delete(fileId)
+      else next.add(fileId)
+      return next
+    })
+    lastSelectedRef.current = fileId
+  }, [])
+
+  const addTouchSelection = useCallback((fileId: string) => {
+    setSelectedFiles(prev => {
+      if (prev.has(fileId)) return prev
+      return prev.size === 0 ? new Set([fileId]) : new Set([...prev, fileId])
+    })
+    lastSelectedRef.current = fileId
+  }, [])
+
+  const handleFileTouchPointerDown = useCallback((e: React.PointerEvent, fileId: string) => {
+    if (e.pointerType !== "touch") return false
+    e.stopPropagation()
+    lastClickRef.current = null
+    suppressTouchContextMenuUntilRef.current = Date.now() + 1200
+    clearTouchPressTimer()
+    touchPressRef.current = {
+      fileId,
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      canceled: false,
+      longPressTriggered: false,
+    }
+    touchPressTimerRef.current = setTimeout(() => {
+      const press = touchPressRef.current
+      if (!press || press.pointerId !== e.pointerId || press.fileId !== fileId || press.canceled) return
+      press.longPressTriggered = true
+      suppressFileClickUntilRef.current = Date.now() + 600
+      addTouchSelection(fileId)
+    }, TOUCH_LONG_PRESS_MS)
+    return true
+  }, [addTouchSelection, clearTouchPressTimer])
+
+  const handleFileTouchPointerMove = useCallback((e: React.PointerEvent, fileId: string) => {
+    if (e.pointerType !== "touch") return false
+    const press = touchPressRef.current
+    if (!press || press.fileId !== fileId || press.pointerId !== e.pointerId) return true
+    const dx = e.clientX - press.startX
+    const dy = e.clientY - press.startY
+    if (Math.sqrt(dx * dx + dy * dy) > TOUCH_MOVE_CANCEL_PX) {
+      press.canceled = true
+      clearTouchPressTimer()
+    }
+    return true
+  }, [clearTouchPressTimer])
+
+  const handleFileTouchPointerUp = useCallback((e: React.PointerEvent, fileId: string) => {
+    if (e.pointerType !== "touch") return false
+    e.stopPropagation()
+    const press = touchPressRef.current
+    clearTouchPressTimer()
+    touchPressRef.current = null
+    if (!press || press.fileId !== fileId || press.pointerId !== e.pointerId) return true
+    if (press.canceled) return true
+
+    e.preventDefault()
+    suppressFileClickUntilRef.current = Date.now() + 600
+    if (!press.longPressTriggered) {
+      toggleTouchSelection(fileId)
+    }
+    return true
+  }, [clearTouchPressTimer, toggleTouchSelection])
+
+  const handleFileTouchPointerCancel = useCallback((e: React.PointerEvent, fileId: string) => {
+    if (e.pointerType !== "touch") return false
+    const press = touchPressRef.current
+    if (press?.fileId === fileId && press.pointerId === e.pointerId) {
+      press.canceled = true
+      touchPressRef.current = null
+      clearTouchPressTimer()
+    }
+    return true
+  }, [clearTouchPressTimer])
+
+  const handleFileTouchContextMenu = useCallback((e: React.MouseEvent) => {
+    if (Date.now() < suppressTouchContextMenuUntilRef.current) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+  }, [])
+
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -954,6 +1067,7 @@ export default function SmartStoragePage() {
 
   // ── Box select ────────────────────────────────────────────────────────────
   const handleCanvasBoxDown = (e: React.PointerEvent) => {
+    if (e.pointerType !== "mouse" || e.button !== 0) return
     if (e.target !== canvasRef.current) return
     // Capture pointer so move/up keep firing even when leaving the div
     ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
@@ -966,6 +1080,7 @@ export default function SmartStoragePage() {
   }
 
   const handleCanvasBoxMove = (e: React.PointerEvent) => {
+    if (e.pointerType !== "mouse") return
     if (!canvasBoxSelectStart.current || !canvasRef.current) return
     const rect = canvasRef.current.getBoundingClientRect()
     const x = e.clientX - rect.left
@@ -974,6 +1089,7 @@ export default function SmartStoragePage() {
   }
 
   const handleCanvasBoxUp = (e: React.PointerEvent) => {
+    if (e.pointerType !== "mouse") return
     // Release pointer capture so browser doesn't hold it indefinitely
     try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId) } catch {}
     if (!boxSelect) return
@@ -1013,6 +1129,15 @@ export default function SmartStoragePage() {
     } else {
       selectOnly([fileId])
     }
+  }
+
+  const handleFileItemClick = (fileId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (Date.now() < suppressFileClickUntilRef.current) {
+      e.preventDefault()
+      return
+    }
+    handleFileClick(fileId, e)
   }
 
   const handleFileContextIntent = (fileId: string) => {
@@ -1156,6 +1281,7 @@ export default function SmartStoragePage() {
   }
 
   const handleCanvasPointerDown = (e: React.PointerEvent, id: string) => {
+    if (e.pointerType === "touch") return
     e.preventDefault()
     e.stopPropagation()
     ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
@@ -1176,6 +1302,7 @@ export default function SmartStoragePage() {
   }
 
   const handleCanvasPointerMove = (e: React.PointerEvent, id: string) => {
+    if (e.pointerType === "touch") return
     if (draggingId !== id || !canvasRef.current) return
     // Only mark as a real drag after moving more than 6px from pointer-down position
     if (!hasDraggedRef.current && pointerDownPosRef.current) {
@@ -1199,6 +1326,7 @@ export default function SmartStoragePage() {
   }
 
   const handleCanvasPointerUp = (e: React.PointerEvent, id: string, hoveredCanvasFolderId: string | null) => {
+    if (e.pointerType === "touch") return
     if (draggingIdRef.current !== id) { draggingIdRef.current = null; setDraggingId(null); setDragGhostPos(null); setHoveredLeftFolderId(null); setDragSelectionIds([]); return }
     draggingIdRef.current = null
     const draggedFileIds = dragSelectionIds.length > 0 ? dragSelectionIds : [id]
@@ -2084,6 +2212,7 @@ export default function SmartStoragePage() {
                         onDownload={() => handleDownloadFile(file.id)}
                         onDownloadSelection={() => Promise.all([...selectedFiles].map(fid => handleDownloadFile(fid))).then(() => undefined)}
                         onDeleteSelection={() => Promise.all([...selectedFiles].map(fid => handleDeleteFile(fid))).then(() => undefined)}
+                        disableTouchContextMenu
                         onMoveUp={() => {
                           const parentFolderId = folders.find(f => f.id === file.folder_id)?.parentId ?? null
                           return moveFileToFolder(file.id, parentFolderId)
@@ -2106,10 +2235,23 @@ export default function SmartStoragePage() {
                               ? "bg-primary/10 ring-1 ring-primary/30 cursor-grab"
                               : "hover:bg-muted cursor-grab"
                           }`}
-                          onPointerDown={(e) => { hideHoverPreview(); if (renamingFileId === file.id) return; handleCanvasPointerDown(e, file.id) }}
-                          onPointerMove={(e) => handleCanvasPointerMove(e, file.id)}
-                          onPointerUp={(e) => handleCanvasPointerUp(e, file.id, hoveredFolderId)}
-                          onClick={(e) => { e.stopPropagation(); handleFileClick(file.id, e as unknown as React.MouseEvent) }}
+                          onPointerDown={(e) => {
+                            hideHoverPreview()
+                            if (renamingFileId === file.id) return
+                            if (handleFileTouchPointerDown(e, file.id)) return
+                            handleCanvasPointerDown(e, file.id)
+                          }}
+                          onPointerMove={(e) => {
+                            if (handleFileTouchPointerMove(e, file.id)) return
+                            handleCanvasPointerMove(e, file.id)
+                          }}
+                          onPointerUp={(e) => {
+                            if (handleFileTouchPointerUp(e, file.id)) return
+                            handleCanvasPointerUp(e, file.id, hoveredFolderId)
+                          }}
+                          onPointerCancel={(e) => { handleFileTouchPointerCancel(e, file.id) }}
+                          onClick={(e) => handleFileItemClick(file.id, e as unknown as React.MouseEvent)}
+                          onContextMenuCapture={handleFileTouchContextMenu}
                           onMouseEnter={(e) => handleFileHoverEnter(file.id, e.clientX, e.clientY)}
                           onMouseMove={(e) => handleFileHoverMove(file.id, e.clientX, e.clientY)}
                           onMouseLeave={handleFileHoverLeave}
@@ -2190,6 +2332,7 @@ export default function SmartStoragePage() {
                   onDownload={() => handleDownloadFile(file.id)}
                   onDownloadSelection={() => Promise.all([...selectedFiles].map(fid => handleDownloadFile(fid))).then(() => undefined)}
                   onDeleteSelection={() => Promise.all([...selectedFiles].map(fid => handleDeleteFile(fid))).then(() => undefined)}
+                  disableTouchContextMenu
                   onMoveUp={() => {
                     const parentFolderId = folders.find(f => f.id === file.folder_id)?.parentId ?? null
                     return moveFileToFolder(file.id, parentFolderId)
@@ -2204,8 +2347,15 @@ export default function SmartStoragePage() {
                   onContextIntent={() => handleFileContextIntent(file.id)}
                 >
                   <div
-                    onPointerDown={() => hideHoverPreview()}
-                    onClick={(e) => { e.stopPropagation(); handleFileClick(file.id, e as unknown as React.MouseEvent) }}
+                    onPointerDown={(e) => {
+                      hideHoverPreview()
+                      handleFileTouchPointerDown(e, file.id)
+                    }}
+                    onPointerMove={(e) => { handleFileTouchPointerMove(e, file.id) }}
+                    onPointerUp={(e) => { handleFileTouchPointerUp(e, file.id) }}
+                    onPointerCancel={(e) => { handleFileTouchPointerCancel(e, file.id) }}
+                    onClick={(e) => handleFileItemClick(file.id, e as unknown as React.MouseEvent)}
+                    onContextMenuCapture={handleFileTouchContextMenu}
                     onDoubleClick={() => handleOpenFile(file.id)}
                     onMouseEnter={(e) => handleFileHoverEnter(file.id, e.clientX, e.clientY)}
                     onMouseMove={(e) => handleFileHoverMove(file.id, e.clientX, e.clientY)}

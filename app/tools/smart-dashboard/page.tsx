@@ -124,6 +124,30 @@ const CHART_CURRENCY_VIEW_WIDGET_TYPES = new Set([
   "banded-area",
 ])
 
+const PROCESSING_UPLOAD_STATUSES = new Set([
+  "uploaded",
+  "pending_scan",
+  "scanning",
+  "approved",
+  "processing",
+])
+
+function countStillProcessingDocuments(files: any[] = [], fields: any[] = []): number {
+  const ids = new Set<string>()
+
+  for (const file of files) {
+    if (PROCESSING_UPLOAD_STATUSES.has(file?.upload_status)) ids.add(file.id)
+  }
+
+  for (const field of fields) {
+    if (field?.normalization_status === "raw" || field?.normalization_status == null) {
+      if (field?.file_id) ids.add(field.file_id)
+    }
+  }
+
+  return ids.size
+}
+
 function displayCurrency(code: string | null | undefined) {
   return currencyDisplayName(code) ?? code ?? ""
 }
@@ -1282,6 +1306,7 @@ export default function SmartDashboardPage() {
   const [bandedSpendDataByGrain, setBandedSpendDataByGrain] = useState<Record<TimeGrain, BandedRow[]>>(emptyBandedSeries)
   const [currencyModel, setCurrencyModel] = useState<DashboardCurrencyModel>(EMPTY_CURRENCY_MODEL)
   const [dashboardRows, setDashboardRows] = useState<any[]>([])
+  const [stillProcessingCount, setStillProcessingCount] = useState(0)
   const [fxRatesMap, setFxRatesMap] = useState<RatesMap>({})
   const [fxLoadingWidgetId, setFxLoadingWidgetId] = useState<string | null>(null)
   const [fxError, setFxError] = useState<string | null>(null)
@@ -1466,16 +1491,16 @@ export default function SmartDashboardPage() {
 
     const { data: userFiles } = await supabase
       .from("files")
-      .select("id, document_type")
+      .select("id, document_type, upload_status")
       .eq("user_id", session.user.id)
 
-    if (!userFiles?.length) { clearFinancialData(); setDocTypeData([]); setLoading(false); return }
+    if (!userFiles?.length) { clearFinancialData(); setDocTypeData([]); setStillProcessingCount(0); setLoading(false); return }
 
     const fileIds = userFiles.map((f) => f.id)
 
     let query = supabase
       .from("document_fields")
-      .select("file_id, document_date, total_amount, gross_income, net_income, expense_category, merchant_domain, currency, raw_json, files!inner(document_type, filename)")
+      .select("file_id, document_date, total_amount, gross_income, net_income, expense_category, merchant_domain, currency, normalization_status, raw_json, files!inner(document_type, filename)")
       .in("file_id", fileIds)
       .neq("normalization_status", "excluded")
       .order("document_date", { ascending: true })
@@ -1484,6 +1509,7 @@ export default function SmartDashboardPage() {
     if (dateTo) query = query.lte("document_date", dateTo)
 
     const { data: fields } = await query
+    setStillProcessingCount(countStillProcessingDocuments(userFiles, fields ?? []))
     if (!fields?.length) {
       clearFinancialData()
       const typeMap: Record<string, number> = {}
@@ -1618,7 +1644,6 @@ export default function SmartDashboardPage() {
   }
 
   const plotAdvancedWidget = async (aw: AdvancedWidget) => {
-    if (!isEditingLayout) return
     if (widgets.some(w => w.advancedId === aw.id)) return
     await supabase.from("advanced_widgets").update({ is_plotted: true, expires_at: null }).eq("id", aw.id)
     setAdvancedWidgetsList(prev => prev.map(w => w.id === aw.id ? { ...w, is_plotted: true, expires_at: null } : w))
@@ -1636,9 +1661,15 @@ export default function SmartDashboardPage() {
     }
     const lastY = layout.length ? Math.max(...layout.map(l => l.y + l.h)) : 0
     const minSize = WIDGET_MIN_SIZE[aw.widget_type] ?? widgetMinSize(newWidget.type)
-    setWidgets(prev => [...prev, newWidget])
-    setLayout(prev => [...prev, { i: newWidget.id, x: 0, y: lastY, w: minSize.minW, h: minSize.minH, minW: minSize.minW, minH: minSize.minH }])
-    setIsDirty(true)
+    const nextWidgets = [...widgets, newWidget]
+    const nextLayout = [...layout, { i: newWidget.id, x: 0, y: lastY, w: minSize.minW, h: minSize.minH, minW: minSize.minW, minH: minSize.minH }]
+    setWidgets(nextWidgets)
+    setLayout(nextLayout)
+    if (isEditingLayout) {
+      setIsDirty(true)
+    } else {
+      await persistLayout(nextWidgets, nextLayout, { closeEditor: false, showConfirm: true })
+    }
   }
 
   const runAdvancedAnalytics = async () => {
@@ -2500,6 +2531,13 @@ export default function SmartDashboardPage() {
               </div>
             ) : (
               <>
+              {stillProcessingCount > 0 && (
+                <div className="mb-3 flex items-start gap-3 rounded-lg border border-amber-300/60 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+                  <p className="min-w-0 flex-1">
+                    {stillProcessingCount} documents still processing — totals may shift in a moment.
+                  </p>
+                </div>
+              )}
               {currencyModel.unspecifiedRowCount > 0 && !currencyBannerDismissed && (
                 <div className="mb-3 flex items-start gap-3 rounded-lg border border-amber-300/60 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
                   <p className="min-w-0 flex-1">
@@ -2816,7 +2854,7 @@ export default function SmartDashboardPage() {
                               </button>
                               <button
                                 onClick={() => plotAdvancedWidget(aw)}
-                                disabled={plotted || !isEditingLayout}
+                                disabled={plotted}
                                 className={`flex h-5 w-5 items-center justify-center rounded transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${plotted ? "text-primary" : "text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground"}`}
                                 title={plotted ? "On canvas" : "Add to canvas"}
                               >

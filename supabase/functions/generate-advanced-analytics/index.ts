@@ -5,6 +5,12 @@ import {
 } from "../../../lib/advanced-analytics-config.ts"
 import { type AiProvider, isProviderFailure, providerChain } from "../_shared/ai-providers.ts"
 import { fetchWithTimeout } from "../_shared/fetch.ts"
+import { logError } from "../_shared/log.ts"
+import {
+  HaikuSpecOutputSchema,
+  HaikuSpecWidgetOutputSchema,
+  payloadSampleForLog,
+} from "../_shared/widget-schemas.ts"
 
 const ANTHROPIC_API_KEY         = Deno.env.get("ANTHROPIC_API_KEY")!
 const OPENAI_API_KEY            = Deno.env.get("OPENAI_API_KEY")!
@@ -99,6 +105,23 @@ async function callAI(prompt: string, systemPrompt: string): Promise<{ rawText: 
     }
   }
   throw lastError instanceof Error ? lastError : new Error("All advanced analytics providers failed")
+}
+
+function extractWidgetType(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== "object") return undefined
+  const widgetType = (payload as Record<string, unknown>).widget_type
+  return typeof widgetType === "string" ? widgetType : undefined
+}
+
+function logWidgetValidationFailed(user_id: string, payload: unknown, zod_issues: unknown) {
+  logError("generate-advanced-analytics", "widget_validation_failed", new Error("widget_validation_failed"), {
+    event: "widget_validation_failed",
+    function: "generate-advanced-analytics",
+    user_id,
+    widget_type: extractWidgetType(payload),
+    zod_issues,
+    payload_sample: payloadSampleForLog(payload),
+  })
 }
 
 // ── Main handler ──────────────────────────────────────────────────────────────
@@ -517,8 +540,25 @@ ${taxTimelineSummary || "no tax timeline data"}`
       throw new Error(`Failed to parse AI output: ${rawText}`)
     }
 
+    let validatedWidgets: any[] = []
+    const parsedOutput = HaikuSpecOutputSchema.safeParse(parsed)
+    if (parsedOutput.success) {
+      validatedWidgets = parsedOutput.data.widgets
+    } else if (Array.isArray(parsed?.widgets)) {
+      for (const widget of parsed.widgets) {
+        const result = HaikuSpecWidgetOutputSchema.safeParse(widget)
+        if (result.success) {
+          validatedWidgets.push(result.data)
+        } else {
+          logWidgetValidationFailed(user_id, widget, result.error.issues)
+        }
+      }
+    } else {
+      logWidgetValidationFailed(user_id, parsed, parsedOutput.error.issues)
+    }
+
     const allowedWidgetTypes = new Set(getEnabledAnalyticsWidgetTypes())
-    const generatedWidgets = (parsed.widgets ?? [])
+    const generatedWidgets = validatedWidgets
       .filter((widget: any) => allowedWidgetTypes.has(widget.widget_type))
       .filter((widget: any, index: number, arr: any[]) =>
         index === arr.findIndex((other) =>

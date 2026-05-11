@@ -355,6 +355,16 @@ ${ADVANCED_ANALYTICS_NOVELTY_RULES.map((rule) => `- ${rule}`).join("\n")}
 Generation rules:
 ${ADVANCED_ANALYTICS_GENERATION_RULES.map((rule) => `- ${rule}`).join("\n")}
 
+CSV transport-label rules:
+- Treat csv_export as a transport/upload label, not a content category. Never present csv_export as a legend value, axis tick, or breakdown category in a chart.
+- For breakdown widgets using composition_simple, composition_stacked, or any family where document_type would appear as a dimension, avoid document_type when csv_export rows are more than 10% of the in-scope data.
+- When csv_export rows exceed that threshold, prefer expense_category for expense-side breakdowns, income_source for income-side breakdowns, or vendor_normalized / merchant_domain when the categorical cardinality is readable at about 3-8 buckets.
+- Document_type breakdowns are allowed when csv_export is absent or less than 10% of rows.
+- In titles, descriptions, and insights, never write csv_export, Csv_export, CSV export, or spreadsheet upload as if it were a content category.
+- If you need to describe what CSV rows contain, translate to the actual content signal inferred from expense_category, is_recurring, vendor patterns, merchant_domain, or counterparty_name.
+- If a breakdown was redirected away from document_type, make the widget description and insight name the actual dimension used; never keep stale "by document type" framing.
+- Receipt remains a valid content label when receipts are a genuine slice. These rules target csv_export specifically; other content labels such as receipt, invoice, payslip, income_statement, contract, and transaction_record are unaffected.
+
 Return ONLY a valid JSON object — no markdown, no explanation:
 {
   "widgets": [

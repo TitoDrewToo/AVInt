@@ -1,6 +1,13 @@
 import { createClient, serve } from "../_shared/deps.ts"
 import { type AiProvider, isProviderFailure, providerChain } from "../_shared/ai-providers.ts"
 import { fetchWithTimeout } from "../_shared/fetch.ts"
+import { logError } from "../_shared/log.ts"
+import {
+  RdWidgetConfigSchema,
+  SonnetRdOutputSchema,
+  SonnetRdWidgetOutputSchema,
+  payloadSampleForLog,
+} from "../_shared/widget-schemas.ts"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // generate-rd-analytics
@@ -92,6 +99,16 @@ Sufficiency rules:
 - Do not fabricate numbers. Every value in data[] must be derivable from the input.
 - Do not guess thresholds you cannot compute. Use the user's own baseline.
 
+CSV transport-label rules:
+- Treat csv_export as a transport/upload label, not a content category. Never surface csv_export as a legend value, axis tick, grouping key, or breakdown category.
+- If a candidate R&D angle would group by document_type and csv_export rows are more than 10% of the relevant data, redirect to a real content signal instead.
+- For expense-side work, prefer expense_category. For income-side work, prefer income_source. For readable categorical stories, use vendor_normalized or merchant_domain when they produce about 3-8 useful buckets.
+- Document_type can still be used when csv_export is absent or less than 10% of rows.
+- Never write csv_export, Csv_export, CSV export, or spreadsheet upload in titles, descriptions, insights, axis values, or legend values as if it were content.
+- When you need to describe what CSV rows contain, infer the actual content from expense_category, is_recurring, vendor patterns, merchant_domain, counterparty_name, raw_json excerpts, or line items.
+- If you redirect away from document_type, describe the real dimension you used; do not leave stale "by document type" framing in the widget.
+- Receipt remains a valid content label when receipts are truly part of the pattern. These rules target csv_export only; receipt, invoice, payslip, income_statement, contract, and transaction_record keep their normal meaning.
+
 Output contract — return ONLY valid JSON, no markdown, no code fences:
 
 {
@@ -175,6 +192,23 @@ async function callAI(systemPrompt: string, userPrompt: string): Promise<{ rawTe
     }
   }
   throw lastError instanceof Error ? lastError : new Error("All R&D analytics providers failed")
+}
+
+function extractWidgetType(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== "object") return undefined
+  const widgetType = (payload as Record<string, unknown>).widget_type
+  return typeof widgetType === "string" ? widgetType : undefined
+}
+
+function logWidgetValidationFailed(user_id: string, payload: unknown, zod_issues: unknown, widget_type?: string) {
+  logError("generate-rd-analytics", "widget_validation_failed", new Error("widget_validation_failed"), {
+    event: "widget_validation_failed",
+    function: "generate-rd-analytics",
+    user_id,
+    widget_type: widget_type ?? extractWidgetType(payload),
+    zod_issues,
+    payload_sample: payloadSampleForLog(payload),
+  })
 }
 
 // ── Sampling helpers ──────────────────────────────────────────────────────────
@@ -486,21 +520,24 @@ no genuinely non-redundant insight is data-supported.`
       throw new Error(`Failed to parse R&D analytics output from ${provider}: ${rawText.slice(0, 500)}`)
     }
 
-    const ALLOWED_CHART_TYPES = new Set(["line-chart", "area-chart", "bar-chart", "pie-chart"])
-    const ALLOWED_ANGLES      = new Set(["cross_doc_correlation", "raw_json_intelligence", "anomaly_detection"])
+    let validated: any[] = []
+    const parsedOutput = SonnetRdOutputSchema.safeParse(parsed)
+    if (parsedOutput.success) {
+      validated = parsedOutput.data.widgets
+    } else if (Array.isArray(parsed?.widgets)) {
+      for (const widget of parsed.widgets) {
+        const result = SonnetRdWidgetOutputSchema.safeParse(widget)
+        if (result.success) {
+          validated.push(result.data)
+        } else {
+          logWidgetValidationFailed(user_id, widget, result.error.issues)
+        }
+      }
+    } else {
+      logWidgetValidationFailed(user_id, parsed, parsedOutput.error.issues)
+    }
 
-    const rawWidgets: any[] = Array.isArray(parsed.widgets) ? parsed.widgets : []
-    const validated = rawWidgets
-      .filter((w) => ALLOWED_CHART_TYPES.has(w.chart_type))
-      .filter((w) => ALLOWED_ANGLES.has(w.angle))
-      .filter((w) => typeof w.title === "string" && w.title.trim().length > 0)
-      .filter((w) => Array.isArray(w.data) && w.data.length >= 3 && w.data.length <= 24)
-      .filter((w) => typeof w.x_key === "string" && typeof w.data_key === "string")
-      .filter((w) => w.data.every((row: any) =>
-        row != null && typeof row === "object" &&
-        row[w.x_key] != null && typeof row[w.data_key] === "number" && Number.isFinite(row[w.data_key]),
-      ))
-      .slice(0, 2)
+    validated = validated.slice(0, 2)
 
     if (validated.length === 0) {
       return new Response(
@@ -509,7 +546,46 @@ no genuinely non-redundant insight is data-supported.`
       )
     }
 
-    // ── 8a. Clear stale, non-starred rd-insight rows before inserting the
+    // ── 8a. Build rd-insight insert rows (7-day TTL unless starred/plotted) ─
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+    const rowsToInsert = validated.flatMap((w: any) => {
+      const config = {
+        source:     "rd",
+        angle:      w.angle,
+        chart_type: w.chart_type,
+        data:       w.data,
+        x_key:      w.x_key,
+        data_key:   w.data_key,
+        currency,
+      }
+
+      const configResult = RdWidgetConfigSchema.safeParse(config)
+      if (!configResult.success) {
+        logWidgetValidationFailed(user_id, config, configResult.error.issues, "rd-insight")
+        return []
+      }
+
+      return [{
+        user_id,
+        widget_type: "rd-insight",
+        title:       w.title,
+        description: w.description ?? null,
+        insight:     w.insight ?? null,
+        config:      configResult.data,
+        is_starred:  false,
+        is_plotted:  false,
+        expires_at:  expiresAt,
+      }]
+    })
+
+    if (rowsToInsert.length === 0) {
+      return new Response(
+        JSON.stringify({ success: true, count: 0, widgets: [], skipped: false, reason: "no_valid_widgets" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      )
+    }
+
+    // ── 8b. Clear stale, non-starred rd-insight rows before inserting the
     //       new batch. Scoped strictly to widget_type='rd-insight' so parallel
     //       Haiku runs don't step on each other.
     await supabase
@@ -518,28 +594,6 @@ no genuinely non-redundant insight is data-supported.`
       .eq("user_id", user_id)
       .eq("is_starred", false)
       .eq("widget_type", "rd-insight")
-
-    // ── 8b. Insert rd-insight widgets (7-day TTL unless starred/plotted) ───
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
-    const rowsToInsert = validated.map((w: any) => ({
-      user_id,
-      widget_type: "rd-insight",
-      title:       w.title,
-      description: w.description ?? null,
-      insight:     w.insight ?? null,
-      config: {
-        source:     "rd",
-        angle:      w.angle,
-        chart_type: w.chart_type,
-        data:       w.data,
-        x_key:      w.x_key,
-        data_key:   w.data_key,
-        currency,
-      },
-      is_starred: false,
-      is_plotted: false,
-      expires_at: expiresAt,
-    }))
 
     const { data: inserted, error: insertError } = await supabase
       .from("advanced_widgets")

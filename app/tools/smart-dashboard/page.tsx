@@ -92,6 +92,12 @@ import {
   type Widget,
 } from "@/lib/smart-dashboard"
 
+type DrilldownState = {
+  bucket: "expense_category" | "document_type" | "merchant_domain"
+  key: string
+  label: string
+}
+
 const CURRENCY_SCOPED_WIDGET_TYPES = new Set([
   "kpi-income",
   "kpi-expenses",
@@ -152,6 +158,14 @@ function displayCurrency(code: string | null | undefined) {
   return currencyDisplayName(code) ?? code ?? ""
 }
 
+function variantToChartType(variant: string | null | undefined): RdWidgetConfig["chart_type"] | undefined {
+  if (variant === "pie") return "pie-chart"
+  if (variant === "bar") return "bar-chart"
+  if (variant === "line") return "line-chart"
+  if (variant === "area") return "area-chart"
+  return undefined
+}
+
 function currencyHasWidgetData(bucket: DashboardCurrencyBucket | undefined, widgetType: string) {
   if (!bucket) return false
   if (widgetType === "kpi-income") return bucket.totalIncome > 0
@@ -188,6 +202,15 @@ function displayWidgetTitleWithCurrency(widget: Widget, currency: string | null)
 const safeNum = (v: unknown): number => {
   const n = parseFloat(String(v ?? "0"))
   return isNaN(n) ? 0 : n
+}
+
+function titleCaseValue(value: unknown): string {
+  const text = typeof value === "string" && value.trim() ? value.trim() : "Unknown"
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
+function drilldownRowAmount(row: any): number {
+  return safeNum(row?.gross_income ?? row?.total_amount)
 }
 
 const kpiPrimaryValueStyle: CSSProperties = {
@@ -351,6 +374,7 @@ function WidgetContent({
   currencyModel, mergedCurrencyModel,
   dashboardAccent,
   contextSummary, contextSummaryDate, isGeneratingSummary, isPro, onGenerateSummary, onCycleTimeGrain, onActiveCurrencyChange,
+  onDrilldown,
 }: {
   widget: Widget
   kpi: KPIData
@@ -374,6 +398,7 @@ function WidgetContent({
   onGenerateSummary: () => void
   onCycleTimeGrain: (widgetId: string) => void
   onActiveCurrencyChange: (widgetId: string, currency: string | null) => void
+  onDrilldown: (drilldown: DrilldownState) => void
 }) {
   const { resolvedTheme } = useTheme()
   const themeMode: ThemeMode = resolvedTheme === "dark" ? "dark" : "light"
@@ -412,6 +437,19 @@ function WidgetContent({
     if (!isCurrencyScopedWidget) return
     onActiveCurrencyChange(widget.id, selectedCurrency ?? null)
   }, [isCurrencyScopedWidget, onActiveCurrencyChange, selectedCurrency, widget.id])
+
+  const chartPointName = (point: any): string => String(point?.name ?? point?.payload?.name ?? "")
+  const openExpenseCategoryDrilldown = (point: any) => {
+    const name = chartPointName(point)
+    if (!name) return
+    onDrilldown({ bucket: "expense_category", key: name, label: name })
+  }
+  const openDocumentTypeDrilldown = (point: any) => {
+    const label = chartPointName(point)
+    if (!label) return
+    onDrilldown({ bucket: "document_type", key: label.toLowerCase(), label })
+  }
+
   // Active-shape renderer factory. Currency symbol is optional — doc-count
   // pies (Document Distribution) have no symbol; value-driven pies pass one.
   const makeActiveSlice = (opts: { symbol?: string } = {}) => (props: any) => {
@@ -709,6 +747,7 @@ function WidgetContent({
   // styling matches the rest of the chart library.
   if (widget.rdConfig) {
     const rd = widget.rdConfig
+    const effectiveChartType = variantToChartType(widget.chartVariant) ?? rd.chart_type
     const rdSymbol = currencyToSymbol(rd.currency)
     const axisProps = {
       xAxis: <XAxis dataKey={rd.x_key} tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} />,
@@ -721,12 +760,12 @@ function WidgetContent({
         <p className="mb-3 text-muted-foreground" style={chartTitleStyle}>{widget.title}</p>
         <div className="flex-1 min-h-0">
           <ResponsiveContainer width="100%" height="100%">
-            {rd.chart_type === "line-chart" ? (
+            {effectiveChartType === "line-chart" ? (
               <LineChart data={rd.data as any[]} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                 {axisProps.grid}{axisProps.xAxis}{axisProps.yAxis}{axisProps.tooltip}
                 <Line type="monotone" dataKey={rd.data_key} stroke={colors.primary} strokeWidth={2.5} dot={{ fill: colors.primary, r: 3, strokeWidth: 0 }} activeDot={{ r: 5 }} />
               </LineChart>
-            ) : rd.chart_type === "area-chart" ? (
+            ) : effectiveChartType === "area-chart" ? (
               <AreaChart data={rd.data as any[]} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                 <defs>
                   <linearGradient id={`rdGrad-${widget.id}`} x1="0" y1="0" x2="0" y2="1">
@@ -736,7 +775,7 @@ function WidgetContent({
                 {axisProps.grid}{axisProps.xAxis}{axisProps.yAxis}{axisProps.tooltip}
                 <Area type="monotone" dataKey={rd.data_key} stroke={colors.primary} strokeWidth={2.5} fill={`url(#rdGrad-${widget.id})`} dot={{ fill: colors.primary, r: 3, strokeWidth: 0 }} activeDot={{ r: 5, strokeWidth: 0 }} />
               </AreaChart>
-            ) : rd.chart_type === "pie-chart" ? (
+            ) : effectiveChartType === "pie-chart" ? (
               <PieChart>
                 <defs>{renderCategoricalDefs(widget.id, MULTI_COLORS, themeMode, rd.data.length)}</defs>
                 <Pie
@@ -869,8 +908,10 @@ function WidgetContent({
                   innerRadius="38%" outerRadius="62%"
                   paddingAngle={3}
                   dataKey="value"
+                  style={{ cursor: "pointer" }}
                   activeIndex={activePieIndex ?? undefined}
                   activeShape={makeActiveSlice({ symbol })}
+                  onClick={openExpenseCategoryDrilldown}
                   onMouseEnter={(_: any, idx: number) => setActivePieIndex(idx)}
                   onMouseLeave={() => setActivePieIndex(null)}
                 >
@@ -886,7 +927,7 @@ function WidgetContent({
                 <XAxis dataKey="name" tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${symbol}${(v/1000).toFixed(0)}k`} />
                 <Tooltip content={<CustomTooltip symbol={symbol} />} />
-                <Bar dataKey="value" name={widget.type === "bar-deductible" ? "Deductible" : "Amount"} radius={[6, 6, 0, 0]}>
+                <Bar dataKey="value" name={widget.type === "bar-deductible" ? "Deductible" : "Amount"} radius={[6, 6, 0, 0]} style={{ cursor: "pointer" }} onClick={openExpenseCategoryDrilldown}>
                   {data.map((_, i) => <Cell key={i} fill={categoricalFillFor(widget.id, MULTI_COLORS, i)} />)}
                 </Bar>
               </BarChart>
@@ -911,7 +952,7 @@ function WidgetContent({
               <XAxis dataKey="name" tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 11, fill: axisTickColor }} axisLine={false} tickLine={false} />
               <Tooltip content={<CustomTooltip />} />
-              <Bar dataKey="value" name="Count" radius={[6, 6, 0, 0]}>
+              <Bar dataKey="value" name="Count" radius={[6, 6, 0, 0]} style={{ cursor: "pointer" }} onClick={openDocumentTypeDrilldown}>
                 {docTypeData.map((_, i) => <Cell key={i} fill={categoricalFillFor(widget.id, MULTI_COLORS, i)} />)}
               </Bar>
             </BarChart>
@@ -924,8 +965,10 @@ function WidgetContent({
               innerRadius="40%" outerRadius="62%"
               paddingAngle={3}
               dataKey="value"
+              style={{ cursor: "pointer" }}
               activeIndex={activePieIndex ?? undefined}
               activeShape={makeActiveSlice()}
+              onClick={openDocumentTypeDrilldown}
               onMouseEnter={(_: any, idx: number) => setActivePieIndex(idx)}
               onMouseLeave={() => setActivePieIndex(null)}
             >
@@ -963,7 +1006,16 @@ function WidgetContent({
               <Tooltip content={<CustomTooltip symbol={symbol} />} />
               <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, color: legendColor }} />
               {activeStackedData.seriesKeys.map((key, i) => (
-                <Bar key={key} dataKey={key} name={key} stackId="spend" fill={categoricalFillFor(widget.id, MULTI_COLORS, i)} radius={i === activeStackedData.seriesKeys.length - 1 ? [4,4,0,0] : [0,0,0,0]} />
+                <Bar
+                  key={key}
+                  dataKey={key}
+                  name={key}
+                  stackId="spend"
+                  fill={categoricalFillFor(widget.id, MULTI_COLORS, i)}
+                  radius={i === activeStackedData.seriesKeys.length - 1 ? [4,4,0,0] : [0,0,0,0]}
+                  style={{ cursor: "pointer" }}
+                  onClick={() => onDrilldown({ bucket: activeStackedData.groupBy, key, label: key })}
+                />
               ))}
             </BarChart>
           </ResponsiveContainer>
@@ -1287,6 +1339,86 @@ function ChartVariantPicker({
   )
 }
 
+function DrilldownModal({
+  drilldown,
+  rows,
+  primaryCurrency,
+  onClose,
+}: {
+  drilldown: DrilldownState | null
+  rows: any[]
+  primaryCurrency: string
+  onClose: () => void
+}) {
+  if (!drilldown) return null
+
+  const sortedRows = [...rows].sort((a, b) => drilldownRowAmount(b) - drilldownRowAmount(a))
+  const totalRows = primaryCurrency && primaryCurrency !== "Unspecified"
+    ? rows.filter((row) => String(row?.currency ?? "").toUpperCase() === primaryCurrency.toUpperCase())
+    : rows
+  const total = totalRows.reduce((sum, row) => sum + drilldownRowAmount(row), 0)
+  const primarySymbol = currencyToSymbol(primaryCurrency)
+  const primaryLabel = displayCurrency(primaryCurrency)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="dashboard-drilldown-title"
+        className="flex max-h-[82vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-border bg-card shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start gap-3 border-b border-border px-4 py-3">
+          <div className="min-w-0 flex-1">
+            <p id="dashboard-drilldown-title" className="truncate text-sm font-semibold text-foreground">{drilldown.label}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {rows.length} {rows.length === 1 ? "document row" : "document rows"} · {primarySymbol}{Math.round(total).toLocaleString()} {primaryLabel ? `${primaryLabel} total` : "total"}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+            aria-label="Close drilldown"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+          {sortedRows.length === 0 ? (
+            <p className="px-3 py-8 text-center text-sm text-muted-foreground">No matching document rows.</p>
+          ) : sortedRows.map((row, index) => {
+            const date = row?.document_date
+              ? new Date(`${String(row.document_date).slice(0, 10)}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+              : "No date"
+            const file = row?.files ?? {}
+            const title = row?.vendor_name ?? row?.counterparty_name ?? row?.employer_name ?? file?.filename ?? "Untitled document"
+            const currency = row?.currency ?? primaryCurrency
+            const symbol = currencyToSymbol(currency)
+            const amount = drilldownRowAmount(row)
+            const documentType = titleCaseValue(file?.document_type)
+
+            return (
+              <div key={`${row?.file_id ?? "row"}-${index}`} className="grid grid-cols-[1fr_auto] gap-3 rounded-lg px-3 py-2.5 hover:bg-muted/60">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-foreground">{title}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{date} · {documentType}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-semibold text-foreground">{symbol}{Math.round(amount).toLocaleString()}</p>
+                  <p className="mt-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">{displayCurrency(currency)}</p>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function SmartDashboardPage() {
@@ -1306,6 +1438,7 @@ export default function SmartDashboardPage() {
   const [bandedSpendDataByGrain, setBandedSpendDataByGrain] = useState<Record<TimeGrain, BandedRow[]>>(emptyBandedSeries)
   const [currencyModel, setCurrencyModel] = useState<DashboardCurrencyModel>(EMPTY_CURRENCY_MODEL)
   const [dashboardRows, setDashboardRows] = useState<any[]>([])
+  const [drilldown, setDrilldown] = useState<DrilldownState | null>(null)
   const [stillProcessingCount, setStillProcessingCount] = useState(0)
   const [fxRatesMap, setFxRatesMap] = useState<RatesMap>({})
   const [fxLoadingWidgetId, setFxLoadingWidgetId] = useState<string | null>(null)
@@ -1984,6 +2117,21 @@ export default function SmartDashboardPage() {
   const selectedPrimaryCurrency = currencyModel.currencies.includes(preferredPrimaryCurrency ?? "")
     ? preferredPrimaryCurrency!
     : currencyModel.primaryCurrency
+  const drilldownRows = useMemo(() => {
+    if (!drilldown) return []
+    return dashboardRows.filter((row) => {
+      if (drilldown.bucket === "expense_category") {
+        return (row.expense_category ?? "Other") === drilldown.key
+      }
+      if (drilldown.bucket === "document_type") {
+        return (row.files?.document_type ?? "") === drilldown.key
+      }
+      if (drilldown.bucket === "merchant_domain") {
+        return (row.merchant_domain ?? "") === drilldown.key
+      }
+      return false
+    })
+  }, [dashboardRows, drilldown])
   const requiredRateTuples = useMemo(
     () => getRequiredRateTuples(dashboardRows, selectedPrimaryCurrency),
     [dashboardRows, selectedPrimaryCurrency],
@@ -2684,6 +2832,7 @@ export default function SmartDashboardPage() {
                           onGenerateSummary={generateContextSummary}
                           onCycleTimeGrain={cycleWidgetTimeGrain}
                           onActiveCurrencyChange={updateActiveWidgetCurrency}
+                          onDrilldown={setDrilldown}
                         />
                       </div>
 
@@ -2719,6 +2868,13 @@ export default function SmartDashboardPage() {
                 </div>
               </>
             )}
+
+            <DrilldownModal
+              drilldown={drilldown}
+              rows={drilldownRows}
+              primaryCurrency={selectedPrimaryCurrency}
+              onClose={() => setDrilldown(null)}
+            />
 
             {/* Analytics toast notification */}
             {analyticsToast && (

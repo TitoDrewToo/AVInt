@@ -1394,7 +1394,9 @@ function DrilldownModal({
               ? new Date(`${String(row.document_date).slice(0, 10)}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
               : "No date"
             const file = row?.files ?? {}
-            const title = row?.vendor_name ?? row?.counterparty_name ?? row?.employer_name ?? file?.filename ?? "Untitled document"
+            const primary = row?.vendor_name ?? row?.counterparty_name ?? row?.employer_name ?? row?.expense_category ?? file?.filename ?? "Unlabeled"
+            const primaryIsField = !!(row?.vendor_name ?? row?.counterparty_name ?? row?.employer_name ?? row?.expense_category)
+            const subscriptFilename = primaryIsField ? file?.filename ?? null : null
             const currency = row?.currency ?? primaryCurrency
             const symbol = currencyToSymbol(currency)
             const amount = drilldownRowAmount(row)
@@ -1403,7 +1405,10 @@ function DrilldownModal({
             return (
               <div key={`${row?.file_id ?? "row"}-${index}`} className="grid grid-cols-[1fr_auto] gap-3 rounded-lg px-3 py-2.5 hover:bg-muted/60">
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-foreground">{title}</p>
+                  <p className="truncate text-sm font-medium text-foreground">{primary}</p>
+                  {subscriptFilename && (
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">{subscriptFilename}</p>
+                  )}
                   <p className="mt-0.5 text-xs text-muted-foreground">{date} · {documentType}</p>
                 </div>
                 <div className="text-right">

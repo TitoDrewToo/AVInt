@@ -176,7 +176,7 @@ function ExpenseSummaryContent() {
         <div className="mx-auto max-w-4xl">
 
           {/* Back nav */}
-          <div className="mb-8 flex items-center gap-3">
+          <div className="mb-8 flex items-center gap-3 print:hidden">
             <Link href="/tools/smart-storage">
               <button className="flex h-8 w-8 items-center justify-center rounded border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
                 <ArrowLeft className="h-4 w-4" />
@@ -186,7 +186,7 @@ function ExpenseSummaryContent() {
           </div>
 
           {/* Filters */}
-          <div className="mb-8 flex flex-wrap items-center gap-3">
+          <div className="mb-8 flex flex-wrap items-center gap-3 print:hidden">
             <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Period</span>
             <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
               className="rounded border border-border bg-background px-3 py-1.5 text-xs text-foreground" />

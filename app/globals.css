@@ -527,8 +527,21 @@
 .sd-anim-spark-18  { animation: sd-spark    1.8s ease-in-out infinite; }
 .sd-anim-spark-15  { animation: sd-spark    1.5s ease-in-out infinite; }
 
-/* Print styles for Tax Bundle PDF export */
+/* Print styles for Smart Storage report exports */
 @media print {
+  @page {
+    margin: 1.5cm;
+    size: letter;
+  }
+  @page smart-storage-report {
+    margin: 0;
+    size: letter;
+  }
+  html,
+  body {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
   nav, button, select, input {
     display: none !important;
   }
@@ -537,17 +550,32 @@
     color: black !important;
     font-size: 11px !important;
   }
-  main {
-    padding: 0 !important;
+  body.smart-storage-report-route {
+    page: smart-storage-report;
+    margin: 0 !important;
+    padding: 1.5cm !important;
+    box-sizing: border-box !important;
   }
-  .mx-auto {
+  body.smart-storage-report-route main {
+    padding: 0 !important;
+    width: 100% !important;
+  }
+  body.smart-storage-report-route .mx-auto {
+    width: 100% !important;
     max-width: 100% !important;
   }
-  table {
+  body.smart-storage-report-route table {
+    width: 100% !important;
+    table-layout: fixed !important;
     font-size: 10px !important;
   }
-  @page {
-    margin: 1.5cm;
-    size: letter;
+  body.smart-storage-report-route th,
+  body.smart-storage-report-route td {
+    overflow-wrap: anywhere !important;
+    word-break: normal !important;
+  }
+  body.smart-storage-report-route th.text-right,
+  body.smart-storage-report-route td.text-right {
+    white-space: nowrap !important;
   }
 }

@@ -16,6 +16,7 @@ import { AuthGuardModal } from "@/components/auth-guard-modal"
 import { Navbar } from "@/components/navbar"
 import { Button } from "@/components/ui/button"
 import { useEntitlement } from "@/hooks/use-entitlement"
+import { printReportOutput } from "@/lib/report-print"
 import { supabase } from "@/lib/supabase"
 import {
   computeTaxBundle,
@@ -398,7 +399,7 @@ function EmployedTaxBundleContent() {
                       <Download className="h-3.5 w-3.5" />
                       Export CSV
                     </Button>
-                    <Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={() => window.print()}>
+                    <Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={printReportOutput}>
                       <Printer className="h-3.5 w-3.5" />
                       Print / PDF
                     </Button>

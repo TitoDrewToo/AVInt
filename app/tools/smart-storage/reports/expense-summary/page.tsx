@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
 import { useEntitlement } from "@/hooks/use-entitlement"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
+import { printReportOutput } from "@/lib/report-print"
 import { summarizeCurrencies } from "@/lib/report-utils"
 import type { Session } from "@supabase/supabase-js"
 import { AlertTriangle, ArrowLeft, FolderOpen, Printer } from "lucide-react"
@@ -246,7 +247,7 @@ function ExpenseSummaryContent() {
                     </div>
                   </div>
                   <div className="print:hidden">
-                    <Button variant="outline" size="sm" className="shrink-0 gap-2 rounded text-xs" onClick={() => window.print()}>
+                    <Button variant="outline" size="sm" className="shrink-0 gap-2 rounded text-xs" onClick={printReportOutput}>
                       <Printer className="h-3.5 w-3.5" />
                       Print / PDF
                     </Button>

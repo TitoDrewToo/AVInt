@@ -15,6 +15,7 @@ import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import JSZip from "jszip"
 
+import { printReportOutput } from "@/lib/report-print"
 import {
   getScheduleCLine,
   getDeductStatus,
@@ -399,7 +400,7 @@ function TaxBundleContent() {
   // ── PDF Export (print-to-PDF) ───────────────────────────────────────────────
 
   function printReport() {
-    window.print()
+    printReportOutput()
   }
 
   // ── Zip Source Documents ────────────────────────────────────────────────────

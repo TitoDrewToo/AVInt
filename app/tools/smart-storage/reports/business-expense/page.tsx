@@ -13,6 +13,7 @@ import {
   normalizeBusinessExpenseAssumptions,
   type BusinessExpenseAssumptions,
 } from "@/lib/report-assumptions"
+import { printReportOutput } from "@/lib/report-print"
 import { summarizeCurrencies } from "@/lib/report-utils"
 import { ALL_SC_CATEGORIES, getScheduleCLine } from "@/lib/tax-bundle"
 import type { Session } from "@supabase/supabase-js"
@@ -343,7 +344,7 @@ function BusinessExpenseContent() {
   }
 
   function printReport() {
-    window.print()
+    printReportOutput()
   }
 
   function updateAssumptions(patch: Partial<BusinessExpenseAssumptions>) {

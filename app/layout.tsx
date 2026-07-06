@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/theme-provider'
 import { MarketingScrollReset } from '@/components/marketing-scroll-reset'
+import { ReferralAttribution } from '@/components/referral-attribution'
 import { SmartStoragePrefetcher } from '@/components/smart-storage-prefetcher'
 import { Toaster } from '@/components/ui/toaster'
 import './globals.css'
@@ -43,6 +44,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <MarketingScrollReset />
+          <ReferralAttribution />
           <SmartStoragePrefetcher />
           {children}
           <Toaster />

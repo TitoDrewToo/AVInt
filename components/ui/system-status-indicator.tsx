@@ -40,6 +40,24 @@ function worstOf(...statuses: string[]): Overall {
   return "operational"
 }
 
+const AI_STATUS_PAGES = {
+  openai: "https://status.openai.com/",
+  anthropic: "https://status.claude.com/",
+  gemini: "https://aistudio.google.com/status",
+} as const
+
+function isAffectedProvider(indicator: string): boolean {
+  return ["minor", "maintenance", "major", "critical"].includes(indicator)
+}
+
+function openAffectedAiStatusPages(providers: HealthResponse["providers"]) {
+  for (const key of Object.keys(AI_STATUS_PAGES) as Array<keyof typeof AI_STATUS_PAGES>) {
+    if (isAffectedProvider(providers[key])) {
+      window.open(AI_STATUS_PAGES[key], "_blank", "noopener,noreferrer")
+    }
+  }
+}
+
 function StatusRow({
   label,
   indicator,
@@ -147,6 +165,16 @@ export function SystemStatusIndicator() {
 
   // Grouped statuses for user view
   const aiStatus = p ? worstOf(p.openai, p.anthropic, p.gemini) : "operational"
+  const canOpenAiStatus = !isOwner && aiStatus !== "operational" && !!p
+
+  const handleAiStatusClick = () => {
+    if (!canOpenAiStatus || !p) return
+    openAffectedAiStatusPages(p)
+  }
+
+  const statusTitle = canOpenAiStatus
+    ? `${LABEL[overall]} — click to view affected AI provider status`
+    : LABEL[overall]
 
   return (
     <div
@@ -157,10 +185,12 @@ export function SystemStatusIndicator() {
       onBlur={scheduleClosePanel}
     >
       <button
+        type="button"
         className="relative flex h-2 w-2 cursor-pointer focus:outline-none"
-        title={LABEL[overall]}
-        aria-label={LABEL[overall]}
+        title={statusTitle}
+        aria-label={statusTitle}
         aria-expanded={open}
+        onClick={handleAiStatusClick}
       >
         <span className={`absolute inline-flex h-full w-full animate-ping rounded-full ${DOT[overall]} opacity-50`} />
         <span className={`relative inline-flex h-2 w-2 rounded-full ${DOT[overall]}`} />
@@ -193,16 +223,26 @@ export function SystemStatusIndicator() {
               /* User view — DB and AI only */
               <div className="space-y-1.5 border-t border-border pt-2">
                 <StatusRow label="Database" indicator={p?.supabase ?? "unknown"} />
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">AI</span>
-                  <span className={`text-xs font-medium ${
-                    aiStatus === "operational" ? "text-green-500" :
-                    aiStatus === "outage"      ? "text-red-500"   : "text-amber-400"
-                  }`}>
-                    {aiStatus === "operational" ? "Operational" :
-                     aiStatus === "outage"      ? "Outage"      : "Minor issues"}
-                  </span>
-                </div>
+                {canOpenAiStatus ? (
+                  <button
+                    type="button"
+                    onClick={handleAiStatusClick}
+                    className="flex w-full items-center justify-between rounded-sm transition-colors hover:text-foreground"
+                    title="View affected AI provider status pages"
+                  >
+                    <span className="text-xs text-muted-foreground">AI</span>
+                    <span className={`text-xs font-medium ${
+                      aiStatus === "outage" ? "text-red-500" : "text-amber-400"
+                    }`}>
+                      {aiStatus === "outage" ? "Outage — click for details" : "Minor issues — click for details"}
+                    </span>
+                  </button>
+                ) : (
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">AI</span>
+                    <span className="text-xs font-medium text-green-500">Operational</span>
+                  </div>
+                )}
               </div>
             )}
         </div>

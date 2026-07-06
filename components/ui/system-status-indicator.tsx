@@ -165,16 +165,12 @@ export function SystemStatusIndicator() {
 
   // Grouped statuses for user view
   const aiStatus = p ? worstOf(p.openai, p.anthropic, p.gemini) : "operational"
-  const canOpenAiStatus = !isOwner && aiStatus !== "operational" && !!p
+  const dotOpensAiStatus = !isOwner && overall !== "operational" && !!p
 
-  const handleAiStatusClick = () => {
-    if (!canOpenAiStatus || !p) return
+  const handleDotClick = () => {
+    if (!dotOpensAiStatus || !p) return
     openAffectedAiStatusPages(p)
   }
-
-  const statusTitle = canOpenAiStatus
-    ? `${LABEL[overall]} — click to view affected AI provider status`
-    : LABEL[overall]
 
   return (
     <div
@@ -186,11 +182,11 @@ export function SystemStatusIndicator() {
     >
       <button
         type="button"
-        className="relative flex h-2 w-2 cursor-pointer focus:outline-none"
-        title={statusTitle}
-        aria-label={statusTitle}
+        className={`relative flex h-2 w-2 focus:outline-none ${dotOpensAiStatus ? "cursor-pointer" : "cursor-default"}`}
+        title={LABEL[overall]}
+        aria-label={LABEL[overall]}
         aria-expanded={open}
-        onClick={handleAiStatusClick}
+        onClick={dotOpensAiStatus ? handleDotClick : undefined}
       >
         <span className={`absolute inline-flex h-full w-full animate-ping rounded-full ${DOT[overall]} opacity-50`} />
         <span className={`relative inline-flex h-2 w-2 rounded-full ${DOT[overall]}`} />
@@ -223,26 +219,16 @@ export function SystemStatusIndicator() {
               /* User view — DB and AI only */
               <div className="space-y-1.5 border-t border-border pt-2">
                 <StatusRow label="Database" indicator={p?.supabase ?? "unknown"} />
-                {canOpenAiStatus ? (
-                  <button
-                    type="button"
-                    onClick={handleAiStatusClick}
-                    className="flex w-full items-center justify-between rounded-sm transition-colors hover:text-foreground"
-                    title="View affected AI provider status pages"
-                  >
-                    <span className="text-xs text-muted-foreground">AI</span>
-                    <span className={`text-xs font-medium ${
-                      aiStatus === "outage" ? "text-red-500" : "text-amber-400"
-                    }`}>
-                      {aiStatus === "outage" ? "Outage — click for details" : "Minor issues — click for details"}
-                    </span>
-                  </button>
-                ) : (
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">AI</span>
-                    <span className="text-xs font-medium text-green-500">Operational</span>
-                  </div>
-                )}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">AI</span>
+                  <span className={`text-xs font-medium ${
+                    aiStatus === "operational" ? "text-green-500" :
+                    aiStatus === "outage"      ? "text-red-500"   : "text-amber-400"
+                  }`}>
+                    {aiStatus === "operational" ? "Operational" :
+                     aiStatus === "outage"      ? "Outage"      : "Minor issues"}
+                  </span>
+                </div>
               </div>
             )}
         </div>

@@ -40,6 +40,24 @@ function worstOf(...statuses: string[]): Overall {
   return "operational"
 }
 
+const AI_STATUS_PAGES = {
+  openai: "https://status.openai.com/",
+  anthropic: "https://status.claude.com/",
+  gemini: "https://aistudio.google.com/status",
+} as const
+
+function isAffectedProvider(indicator: string): boolean {
+  return ["minor", "maintenance", "major", "critical"].includes(indicator)
+}
+
+function openAffectedAiStatusPages(providers: HealthResponse["providers"]) {
+  for (const key of Object.keys(AI_STATUS_PAGES) as Array<keyof typeof AI_STATUS_PAGES>) {
+    if (isAffectedProvider(providers[key])) {
+      window.open(AI_STATUS_PAGES[key], "_blank", "noopener,noreferrer")
+    }
+  }
+}
+
 function StatusRow({
   label,
   indicator,
@@ -148,6 +166,11 @@ export function SystemStatusIndicator() {
   // Grouped statuses for user view
   const aiStatus = p ? worstOf(p.openai, p.anthropic, p.gemini) : "operational"
 
+  const handleAiStatusClick = () => {
+    if (isOwner || aiStatus === "operational" || !p) return
+    openAffectedAiStatusPages(p)
+  }
+
   return (
     <div
       className="relative"
@@ -196,13 +219,19 @@ export function SystemStatusIndicator() {
                 <StatusRow label="Database" indicator={p?.supabase ?? "unknown"} />
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-muted-foreground">AI</span>
-                  <span className={`text-xs font-medium ${
-                    aiStatus === "operational" ? "text-green-500" :
-                    aiStatus === "outage"      ? "text-red-500"   : "text-amber-400"
-                  }`}>
-                    {aiStatus === "operational" ? "Operational" :
-                     aiStatus === "outage"      ? "Outage"      : "Minor issues"}
-                  </span>
+                  {aiStatus === "operational" ? (
+                    <span className="text-xs font-medium text-green-500">Operational</span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleAiStatusClick}
+                      className={`text-xs font-medium cursor-pointer hover:underline underline-offset-2 ${
+                        aiStatus === "outage" ? "text-red-500" : "text-amber-400"
+                      }`}
+                    >
+                      {aiStatus === "outage" ? "Outage" : "Minor issues"}
+                    </button>
+                  )}
                 </div>
               </div>
             )}

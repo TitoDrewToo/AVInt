@@ -40,24 +40,6 @@ function worstOf(...statuses: string[]): Overall {
   return "operational"
 }
 
-const AI_STATUS_PAGES = {
-  openai: "https://status.openai.com/",
-  anthropic: "https://status.claude.com/",
-  gemini: "https://aistudio.google.com/status",
-} as const
-
-function isAffectedProvider(indicator: string): boolean {
-  return ["minor", "maintenance", "major", "critical"].includes(indicator)
-}
-
-function openAffectedAiStatusPages(providers: HealthResponse["providers"]) {
-  for (const key of Object.keys(AI_STATUS_PAGES) as Array<keyof typeof AI_STATUS_PAGES>) {
-    if (isAffectedProvider(providers[key])) {
-      window.open(AI_STATUS_PAGES[key], "_blank", "noopener,noreferrer")
-    }
-  }
-}
-
 function StatusRow({
   label,
   indicator,
@@ -165,12 +147,6 @@ export function SystemStatusIndicator() {
 
   // Grouped statuses for user view
   const aiStatus = p ? worstOf(p.openai, p.anthropic, p.gemini) : "operational"
-  const dotOpensAiStatus = !isOwner && overall !== "operational" && !!p
-
-  const handleDotClick = () => {
-    if (!dotOpensAiStatus || !p) return
-    openAffectedAiStatusPages(p)
-  }
 
   return (
     <div
@@ -182,11 +158,10 @@ export function SystemStatusIndicator() {
     >
       <button
         type="button"
-        className={`relative flex h-2 w-2 focus:outline-none ${dotOpensAiStatus ? "cursor-pointer" : "cursor-default"}`}
+        className="relative flex h-2 w-2 cursor-default focus:outline-none"
         title={LABEL[overall]}
         aria-label={LABEL[overall]}
         aria-expanded={open}
-        onClick={dotOpensAiStatus ? handleDotClick : undefined}
       >
         <span className={`absolute inline-flex h-full w-full animate-ping rounded-full ${DOT[overall]} opacity-50`} />
         <span className={`relative inline-flex h-2 w-2 rounded-full ${DOT[overall]}`} />

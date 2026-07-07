@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { GoogleSignInButton } from "@/components/google-sign-in-button"
 import { InAppBrowserBanner } from "@/components/in-app-browser-banner"
-import { handleEmailSignupReferral } from "@/lib/referral"
+import { handleEmailSignupReferral, markReferralSignupPending } from "@/lib/referral"
 import { supabase } from "@/lib/supabase"
 
 interface AuthGuardModalProps {
@@ -153,6 +153,7 @@ export function AuthGuardModal({ isVisible, onSuccess, onClose }: AuthGuardModal
                   if (password !== confirmPassword) { setError("Passwords do not match"); return }
                   if (password.length < 6) { setError("Password must be at least 6 characters"); return }
                     setLoading(true)
+                    markReferralSignupPending()
                     const { data, error } = await supabase.auth.signUp({ email, password })
                     setLoading(false)
                     if (error) { setError(error.message); return }

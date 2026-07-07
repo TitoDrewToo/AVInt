@@ -4,7 +4,7 @@ import { supabase } from "@/lib/supabase"
 
 const REF_PATTERN = /^[A-Za-z0-9_-]{1,32}$/
 const SIGNUP_PENDING_KEY = "avint_referral_signup_pending"
-const NEW_USER_WINDOW_MS = 120_000
+const NEW_ACCOUNT_WINDOW_MS = 72 * 3600 * 1000
 
 export function getRef(): string | null {
   if (typeof document === "undefined") return null
@@ -33,7 +33,7 @@ export function captureRefFromUrl(): void {
 
 export function markReferralSignupPending(): void {
   try {
-    sessionStorage.setItem(SIGNUP_PENDING_KEY, "1")
+    localStorage.setItem(SIGNUP_PENDING_KEY, "1")
   } catch {
     // best-effort
   }
@@ -41,7 +41,7 @@ export function markReferralSignupPending(): void {
 
 function clearReferralSignupPending(): void {
   try {
-    sessionStorage.removeItem(SIGNUP_PENDING_KEY)
+    localStorage.removeItem(SIGNUP_PENDING_KEY)
   } catch {
     // best-effort
   }
@@ -49,16 +49,10 @@ function clearReferralSignupPending(): void {
 
 function isReferralSignupPending(): boolean {
   try {
-    return sessionStorage.getItem(SIGNUP_PENDING_KEY) === "1"
+    return localStorage.getItem(SIGNUP_PENDING_KEY) === "1"
   } catch {
     return false
   }
-}
-
-function isLikelyNewAuthUser(createdAt: string, lastSignInAt?: string | null): boolean {
-  const created = new Date(createdAt).getTime()
-  const lastSignIn = lastSignInAt ? new Date(lastSignInAt).getTime() : created
-  return Math.abs(lastSignIn - created) < NEW_USER_WINDOW_MS
 }
 
 export async function tryPersistUserReferral(userId: string): Promise<void> {
@@ -72,27 +66,26 @@ export async function tryPersistUserReferral(userId: string): Promise<void> {
 
     if (error) {
       console.warn("[referral] failed to persist user_referrals:", error.message)
+      return
     }
+    clearReferralSignupPending()
   } catch (err) {
     console.warn("[referral] unexpected error persisting user_referrals:", err)
   }
 }
 
 export async function handleEmailSignupReferral(session: Session | null): Promise<void> {
-  markReferralSignupPending()
   if (session?.user?.id) {
     await tryPersistUserReferral(session.user.id)
-    clearReferralSignupPending()
   }
 }
 
 export async function handleAuthSessionReferral(event: AuthChangeEvent, session: Session | null): Promise<void> {
   if (event !== "SIGNED_IN" || !session?.user?.id) return
+  if (!isReferralSignupPending()) return
 
-  const pending = isReferralSignupPending()
-  const isNew = isLikelyNewAuthUser(session.user.created_at, session.user.last_sign_in_at)
-  if (!pending && !isNew) return
+  const createdAt = new Date(session.user.created_at).getTime()
+  if (Date.now() - createdAt > NEW_ACCOUNT_WINDOW_MS) return
 
   await tryPersistUserReferral(session.user.id)
-  clearReferralSignupPending()
 }

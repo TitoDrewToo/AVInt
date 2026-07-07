@@ -5,7 +5,7 @@ import { X, User, ChevronDown, AlertTriangle, LogOut, ExternalLink } from "lucid
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { GoogleSignInButton } from "@/components/google-sign-in-button"
-import { handleEmailSignupReferral } from "@/lib/referral"
+import { handleEmailSignupReferral, markReferralSignupPending } from "@/lib/referral"
 import { supabase } from "@/lib/supabase"
 import { computeEntitlement, isUnlimitedEntitlement } from "@/lib/entitlement"
 import type { Session } from "@supabase/supabase-js"
@@ -464,6 +464,7 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                             if (authPassword !== authConfirmPassword) { setAuthError("Passwords do not match"); return }
                             if (authPassword.length < 6) { setAuthError("Password must be at least 6 characters"); return }
                             setAuthLoading(true)
+                            markReferralSignupPending()
                             const { data, error } = await supabase.auth.signUp({ email: authEmail, password: authPassword })
                             setAuthLoading(false)
                             if (error) setAuthError(error.message)

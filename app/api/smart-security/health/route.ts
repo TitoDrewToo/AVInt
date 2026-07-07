@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import crypto from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { TENANT_ID } from "@/smart-security/config/tenant";
@@ -28,6 +29,23 @@ type HealthResponse = {
     };
   };
 };
+
+function timingSafeEqualString(a: string, b: string): boolean {
+  const aBuf = Buffer.from(a);
+  const bBuf = Buffer.from(b);
+  if (aBuf.length !== bBuf.length) return false;
+  return crypto.timingSafeEqual(aBuf, bBuf);
+}
+
+function isAuthorizedForDetails(req: Request): boolean {
+  const apiKey = process.env.SMART_SECURITY_API_KEY ?? "";
+  if (!apiKey) return false;
+
+  const provided = req.headers.get("x-smart-security-key");
+  if (!provided) return false;
+
+  return timingSafeEqualString(provided, apiKey);
+}
 
 async function readJson<T>(relativePath: string): Promise<T | null> {
   try {
@@ -64,7 +82,11 @@ async function summarizeDetectionModes(): Promise<
   );
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  if (!isAuthorizedForDetails(req)) {
+    return NextResponse.json({ status: "ok" }, { status: 200 });
+  }
+
   const [
     registry,
     modeSummary,

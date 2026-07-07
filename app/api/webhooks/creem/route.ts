@@ -110,8 +110,8 @@ export async function POST(req: NextRequest) {
   // re-run increment_user_counter and re-insert gift codes on every retry.
   // Insert-before-side-effects means a retry of a partially-processed event
   // short-circuits here (acceptable — each branch is largely idempotent, and
-  // the alternative of double-counting subscribers is worse). If Creem ever
-  // stops including a top-level `id`, fail open rather than drop the event.
+  // the alternative of double-counting subscribers is worse). Missing event
+  // ids are rejected because replay protection depends on the dedup ledger.
   if (eventId) {
     const { error: dedupErr } = await supabaseAdmin
       .from("processed_webhook_events")
@@ -124,7 +124,8 @@ export async function POST(req: NextRequest) {
       return serverError(dedupErr, { route: "webhooks/creem", stage: "dedup_insert" })
     }
   } else {
-    console.warn("Creem webhook missing top-level id; dedup skipped")
+    console.warn("Creem webhook missing top-level id; rejecting")
+    return NextResponse.json({ error: "Missing event id" }, { status: 400 })
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────────

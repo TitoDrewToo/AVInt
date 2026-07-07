@@ -1,6 +1,7 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
+import { markReferralSignupPending } from "@/lib/referral"
 import { supabase } from "@/lib/supabase"
 
 function GoogleIcon({ className }: { className?: string }) {
@@ -45,6 +46,7 @@ function oauthRedirectTo(next?: string) {
 
 export function GoogleSignInButton({ onClick, className, next }: GoogleSignInButtonProps) {
   const handleClick = async () => {
+    markReferralSignupPending()
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {

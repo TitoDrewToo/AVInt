@@ -21,6 +21,15 @@ interface BlogPost {
 
 const posts: BlogPost[] = [
   {
+    title: "What Makes an Expense Report \"Tax-Ready\" (and Why Yours Probably Isn't)",
+    description:
+      "A folder of receipts and a spreadsheet isn't the same as a tax-ready expense report. Learn the five things a tax-ready report needs — and the gap that costs freelancers money every year.",
+    slug: "what-makes-expense-report-tax-ready",
+    date: "July 7, 2026",
+    readTime: "5 min read",
+    tags: ["Tax Prep", "Expense Reports", "Freelancers", "Schedule C"],
+  },
+  {
     title: "Why Smart Storage Beats Folders for Financial Documents",
     description:
       "Google Drive and iCloud can store financial files, but they don't turn them into usable business data. Learn how Smart Storage creates tax-ready records, analytics, and long-term value from uploaded documents.",

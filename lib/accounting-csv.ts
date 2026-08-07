@@ -8,11 +8,12 @@ export interface AccountingExportRow {
 }
 
 function csvCell(value: string): string {
-  return `"${value.replace(/"/g, '""')}"`
+  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value
 }
 
 function normalizedDate(value: string | null | undefined): string {
-  return value?.slice(0, 10) ?? ""
+  const match = value?.slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  return match ? `${match[2]}/${match[3]}/${match[1]}` : ""
 }
 
 function normalizedVendor(value: string | null | undefined): string {
@@ -24,11 +25,8 @@ function normalizedCategory(value: string | null | undefined): string {
 }
 
 function normalizedAmount(value: number | null | undefined): string {
-  return (value ?? 0).toFixed(2)
-}
-
-function normalizedCurrency(value: string | null | undefined): string {
-  return (value?.trim() || "USD").toUpperCase()
+  const amount = Math.abs(value ?? 0)
+  return amount === 0 ? "0.00" : `-${amount.toFixed(2)}`
 }
 
 function orderedRows(rows: AccountingExportRow[]): AccountingExportRow[] {
@@ -36,32 +34,25 @@ function orderedRows(rows: AccountingExportRow[]): AccountingExportRow[] {
 }
 
 export function generateQuickBooksCSV(rows: AccountingExportRow[]): string {
-  const lines = ["Date,Vendor,Category,Amount,Description,Currency"]
+  const lines = ["Date,Description,Amount"]
   for (const row of orderedRows(rows)) {
     lines.push([
       normalizedDate(row.document_date),
-      csvCell(normalizedVendor(row.vendor_name)),
-      csvCell(normalizedCategory(row.expense_category)),
+      csvCell(`${normalizedVendor(row.vendor_name)} — ${normalizedCategory(row.expense_category)}`),
       normalizedAmount(row.total_amount),
-      csvCell(row.filename?.trim() || "Document expense"),
-      normalizedCurrency(row.currency),
     ].join(","))
   }
   return lines.join("\n")
 }
 
 export function generateXeroCSV(rows: AccountingExportRow[]): string {
-  const lines = ["Date,Amount,Payee,Description,Category,AccountCode,TaxType,Currency"]
+  const lines = ["Date,Amount,Payee,Description"]
   for (const row of orderedRows(rows)) {
     lines.push([
       normalizedDate(row.document_date),
       normalizedAmount(row.total_amount),
       csvCell(normalizedVendor(row.vendor_name)),
-      csvCell(row.filename?.trim() || "Document expense"),
-      csvCell(normalizedCategory(row.expense_category)),
-      "",
-      "",
-      normalizedCurrency(row.currency),
+      csvCell(normalizedCategory(row.expense_category).slice(0, 500)),
     ].join(","))
   }
   return lines.join("\n")

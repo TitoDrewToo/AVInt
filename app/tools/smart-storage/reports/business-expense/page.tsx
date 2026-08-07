@@ -349,7 +349,7 @@ function BusinessExpenseContent() {
     const a = document.createElement("a")
     a.href = url
     const periodLabel = periodStart && periodEnd ? `${periodStart}_${periodEnd}` : "all"
-    a.download = `${format}-business-expenses-${periodLabel}.csv`
+    a.download = `business-expense-${format}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }

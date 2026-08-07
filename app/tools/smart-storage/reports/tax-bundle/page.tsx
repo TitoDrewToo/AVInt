@@ -404,7 +404,7 @@ function TaxBundleContent() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = `${format}-${taxYear}-expenses.csv`
+    a.download = `tax-bundle-${format}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }

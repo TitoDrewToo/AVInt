@@ -361,6 +361,18 @@ export default function SmartStorageProductPage() {
         {/* Privacy and security */}
         <PrivacySecuritySection />
 
+        {/* Accounting exports */}
+        <section className="marketing-scroll-section relative px-6">
+          <div className="relative mx-auto max-w-4xl">
+            <FadeUp className="text-center">
+              <h2 className="text-sm font-medium uppercase tracking-wider text-primary">Works with QuickBooks &amp; Xero</h2>
+              <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
+                Export your organized expenses as import-ready files for QuickBooks and Xero, or hand your accountant a clean Schedule C bundle.
+              </p>
+            </FadeUp>
+          </div>
+        </section>
+
         {/* Infrastructure & Security */}
         <section className="marketing-scroll-section relative px-6">
           <div className="relative mx-auto max-w-4xl">

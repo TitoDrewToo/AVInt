@@ -4,89 +4,10 @@ import Link from "next/link"
 import { StorageIcon, DashboardIcon } from "@/components/sections/tools"
 import { CollapseBoxGraphic, FloatingCubeGraphic } from "@/components/sections/graphics-staging"
 
-import { useEffect, useRef, useState, useCallback, type MouseEvent } from "react"
+import { useEffect, useState, useCallback, type MouseEvent } from "react"
 import { supabase } from "@/lib/supabase"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 import type { Session } from "@supabase/supabase-js"
-function TrustedCounter() {
-  const [current, setCurrent] = useState<number | null>(null)
-  const [next, setNext] = useState<number | null>(null)
-  const [phase, setPhase] = useState<"idle" | "exit" | "enter">("idle")
-  const currentRef = useRef<number | null>(null)
-
-  const animateTo = (newCount: number) => {
-    setPhase("exit")
-    setTimeout(() => {
-      setNext(newCount)
-      setPhase("enter")
-      setTimeout(() => {
-        currentRef.current = newCount
-        setCurrent(newCount)
-        setNext(null)
-        setPhase("idle")
-      }, 350)
-    }, 300)
-  }
-
-  useEffect(() => {
-    let cancelled = false
-    async function loadTrustedCount() {
-      try {
-        const res = await fetch("/api/trusted-count")
-        if (!res.ok) return
-        const data = await res.json()
-        if (!cancelled && typeof data.total_users === "number") {
-          if (currentRef.current === null) {
-            currentRef.current = data.total_users
-            setCurrent(data.total_users)
-          } else if (data.total_users !== currentRef.current) {
-            animateTo(data.total_users)
-          }
-        }
-      } catch {}
-    }
-
-    void loadTrustedCount()
-    const id = window.setInterval(loadTrustedCount, 60_000)
-    return () => { cancelled = true; window.clearInterval(id) }
-  }, [])
-
-  if (current === null) return <span className="font-medium text-primary">—</span>
-
-  return (
-    <span className="relative inline-block overflow-hidden align-middle" style={{ height: "1.2em", minWidth: "1.5ch" }}>
-      <style>{`
-        @keyframes exitDown {
-          from { transform: translateY(0); opacity: 1; }
-          to { transform: translateY(100%); opacity: 0; }
-        }
-        @keyframes enterFromAbove {
-          from { transform: translateY(-100%); opacity: 0; }
-          to { transform: translateY(0); opacity: 1; }
-        }
-      `}</style>
-      {phase !== "enter" && (
-        <span
-          className="absolute inset-0 flex items-center justify-center font-medium text-primary"
-          style={{
-            animation: phase === "exit" ? "exitDown 0.3s cubic-bezier(0.4,0,0.2,1) forwards" : "none",
-          }}
-        >
-          {current}
-        </span>
-      )}
-      {phase === "enter" && next !== null && (
-        <span
-          className="absolute inset-0 flex items-center justify-center font-medium text-primary"
-          style={{ animation: "enterFromAbove 0.35s cubic-bezier(0.34,1.56,0.64,1) forwards" }}
-        >
-          {next}
-        </span>
-      )}
-    </span>
-  )
-}
-
 export function HeroSection() {
   const [session, setSession] = useState<Session | null>(null)
   const [sessionLoaded, setSessionLoaded] = useState(false)
@@ -151,13 +72,6 @@ export function HeroSection() {
           }}
         />
         <div className="relative mx-auto max-w-6xl">
-          {/* Trusted counter */}
-          <div className="relative z-[1] mb-8">
-            <span className="text-sm text-muted-foreground">
-              Trusted by <TrustedCounter /> users worldwide
-            </span>
-          </div>
-
           {/* Two combined cards — equal columns */}
           <div className="relative z-[1] grid gap-4 md:grid-cols-2">
 

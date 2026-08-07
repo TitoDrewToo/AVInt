@@ -54,6 +54,10 @@ begin
   where file_id = p_file_id;
 
   if existing_user is not null then
+    if existing_user <> p_user_id then
+      return query select false, true, 0, p_limit;
+      return;
+    end if;
     select count(*)::integer into current_count
     from public.document_processing_usage
     where user_id = p_user_id and period_start = p_period_start;
@@ -76,6 +80,9 @@ begin
   return query select true, false, current_count + 1, p_limit;
 end;
 $$;
+
+revoke all on function public.avint_claim_document_processing(uuid, uuid, timestamptz, timestamptz, integer) from public, anon, authenticated;
+grant execute on function public.avint_claim_document_processing(uuid, uuid, timestamptz, timestamptz, integer) to service_role;
 
 create or replace function public.avint_claim_report_export(
   p_user_id uuid,
@@ -109,3 +116,6 @@ begin
   return query select true, false, 1, p_limit;
 end;
 $$;
+
+revoke all on function public.avint_claim_report_export(uuid, text, timestamptz, timestamptz, integer) from public, anon, authenticated;
+grant execute on function public.avint_claim_report_export(uuid, text, timestamptz, timestamptz, integer) to service_role;

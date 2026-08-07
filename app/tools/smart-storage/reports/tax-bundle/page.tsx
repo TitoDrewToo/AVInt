@@ -17,6 +17,7 @@ import JSZip from "jszip"
 
 import { printReportOutput } from "@/lib/report-print"
 import { generateQuickBooksCSV, generateXeroCSV } from "@/lib/accounting-csv"
+import { trackActivationEvent } from "@/lib/analytics"
 import {
   getScheduleCLine,
   getDeductStatus,
@@ -383,6 +384,7 @@ function TaxBundleContent() {
   const generateCSV = (zipPaths?: Record<string, string>) => generateTaxBundleCSV(summary, { zipPaths })
 
   function downloadCSV() {
+    trackActivationEvent("report_exported", { format: "csv", report: "tax_bundle" })
     const csv = generateCSV()
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
     const url = URL.createObjectURL(blob)
@@ -394,6 +396,7 @@ function TaxBundleContent() {
   }
 
   function downloadAccountingCSV(format: "quickbooks" | "xero") {
+    trackActivationEvent("report_exported", { format, report: "tax_bundle" })
     const csv = format === "quickbooks"
       ? generateQuickBooksCSV(expenseRows)
       : generateXeroCSV(expenseRows)
@@ -423,6 +426,7 @@ function TaxBundleContent() {
 
   async function downloadZip() {
     if (zipping) return
+    trackActivationEvent("report_exported", { format: "zip", report: "tax_bundle" })
     setZipping(true)
     try {
       const zip = new JSZip()

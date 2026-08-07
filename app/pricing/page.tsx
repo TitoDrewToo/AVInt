@@ -9,6 +9,7 @@ import Link from "next/link"
 import { supabase } from "@/lib/supabase"
 import { computeEntitlement, pricingStatusForEntitlement } from "@/lib/entitlement"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
+import { trackActivationEvent } from "@/lib/analytics"
 
 const CHECKOUT_URLS: Record<string, string> = {
   "Day Pass": "https://www.creem.io/payment/prod_RBLECFWVb9ObYTbyzHqRN",
@@ -150,6 +151,10 @@ function PricingCard({
       .join(" ")
 
   const handlePaidClick = () => {
+    trackActivationEvent("upgrade_clicked", {
+      plan: name,
+      billing_period: name === "Pro" ? (isAnnual ? "annual" : "monthly") : "one_time",
+    })
     if (!isSignedIn) {
       onRequireAuth(checkoutUrl)
     } else {

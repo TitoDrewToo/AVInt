@@ -1,5 +1,7 @@
 "use client"
 
+import { trackActivationEvent } from "@/lib/analytics"
+
 const PRINT_STYLES = `
   @page {
     margin: 0;
@@ -57,6 +59,10 @@ const PRINT_STYLES = `
 `
 
 export function printReportOutput() {
+  trackActivationEvent("report_exported", {
+    format: "pdf",
+    report: document.querySelector("main h1")?.textContent?.trim() || "report",
+  })
   const reportMain = document.querySelector("main")
   const printWindow = window.open("", "_blank", "width=960,height=720")
 

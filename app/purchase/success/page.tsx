@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, Suspense } from "react"
+import { useEffect, useRef, useState, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import { Navbar } from "@/components/navbar"
 import { Footer } from "@/components/footer"
@@ -9,6 +9,7 @@ import { CheckCircle, Copy, Check } from "lucide-react"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
 import { FadeUp, PopIn } from "@/components/fade-up"
+import { trackActivationEvent } from "@/lib/analytics"
 
 function CopyableCode({ code }: { code: string }) {
   const [copied, setCopied] = useState(false)
@@ -37,9 +38,16 @@ function SuccessContent() {
   const params = useSearchParams()
   const type = params.get("type") // "subscription" | "gift"
   const isGift = type === "gift"
+  const subscriptionTrackedRef = useRef(false)
 
   const [giftCodes, setGiftCodes] = useState<string[]>([])
   const [loadingCodes, setLoadingCodes] = useState(isGift)
+
+  useEffect(() => {
+    if (type !== "subscription" || subscriptionTrackedRef.current) return
+    subscriptionTrackedRef.current = true
+    trackActivationEvent("subscribed", { source: "purchase_success" })
+  }, [type])
 
   useEffect(() => {
     if (!isGift) return

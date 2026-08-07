@@ -15,6 +15,7 @@ import {
 } from "@/lib/report-assumptions"
 import { printReportOutput } from "@/lib/report-print"
 import { generateQuickBooksCSV, generateXeroCSV } from "@/lib/accounting-csv"
+import { trackActivationEvent } from "@/lib/analytics"
 import { summarizeCurrencies } from "@/lib/report-utils"
 import { ALL_SC_CATEGORIES, getScheduleCLine } from "@/lib/tax-bundle"
 import type { Session } from "@supabase/supabase-js"
@@ -326,6 +327,7 @@ function BusinessExpenseContent() {
   }
 
   function downloadCSV() {
+    trackActivationEvent("report_exported", { format: "csv", report: "business_expense" })
     const csv = generateCSV()
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
     const url = URL.createObjectURL(blob)
@@ -338,6 +340,7 @@ function BusinessExpenseContent() {
   }
 
   function downloadAccountingCSV(format: "quickbooks" | "xero") {
+    trackActivationEvent("report_exported", { format, report: "business_expense" })
     const csv = format === "quickbooks"
       ? generateQuickBooksCSV(businessRows)
       : generateXeroCSV(businessRows)

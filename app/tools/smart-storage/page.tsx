@@ -49,6 +49,7 @@ import {
   storageUsagePercent,
 } from "@/lib/storage-quota"
 import { collapseBreadcrumb } from "@/lib/breadcrumb"
+import { trackActivationEvent } from "@/lib/analytics"
 import {
   CLASSIFICATION_FOLDER_MAP,
   MAX_FILE_SIZE,
@@ -285,6 +286,7 @@ export default function SmartStoragePage() {
   const [isLoadingMoreFiles, setIsLoadingMoreFiles] = useState(false)
   const [detectedTypes, setDetectedTypes] = useState<string[]>([])
   const recentlyDeletedFileIdsRef = useRef<Set<string>>(new Set())
+  const extractionTrackedFileIdsRef = useRef<Set<string>>(new Set())
   const processingExpiryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const checkProcessingStateRef = useRef<(() => Promise<boolean | undefined>) | null>(null)
   const openFileHandlerRef = useRef<(fileId: string) => Promise<void>>(async () => {})
@@ -526,6 +528,13 @@ export default function SmartStoragePage() {
           if (!stillActive) {
             const refreshedFiles = await fetchSmartStorageFilesByIds(session.user.id, [fileId])
             upsertLoadedFiles(refreshedFiles)
+            const completedJob = (payload.new as any)?.status === "completed"
+            if (completedJob && !extractionTrackedFileIdsRef.current.has(fileId)) {
+              extractionTrackedFileIdsRef.current.add(fileId)
+              trackActivationEvent("extraction_completed", {
+                document_type: refreshedFiles[0]?.document_type ?? "unknown",
+              })
+            }
             await checkReportAvailability()
           }
         },
@@ -1012,6 +1021,12 @@ export default function SmartStoragePage() {
         if (r.status === "fulfilled" && r.value) uploadedFiles.push(r.value)
       }
       upsertLoadedFiles(uploadedFiles)
+      for (const file of uploadedFiles) {
+        trackActivationEvent("document_uploaded", {
+          file_type: file.file_type ?? "unknown",
+          size_bytes: file.file_size ?? 0,
+        })
+      }
 
       const stillActive = await checkProcessingState()
       if (!stillActive) setIsProcessing(false)

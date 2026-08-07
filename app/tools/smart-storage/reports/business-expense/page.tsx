@@ -14,7 +14,6 @@ import {
   type BusinessExpenseAssumptions,
 } from "@/lib/report-assumptions"
 import { printReportOutput } from "@/lib/report-print"
-import { generateQuickBooksCSV, generateXeroCSV } from "@/lib/accounting-csv"
 import { trackActivationEvent } from "@/lib/analytics"
 import { summarizeCurrencies } from "@/lib/report-utils"
 import { ALL_SC_CATEGORIES, getScheduleCLine } from "@/lib/tax-bundle"
@@ -80,7 +79,7 @@ function BusinessExpenseContent() {
   const searchParams = useSearchParams()
   const [session, setSession]             = useState<Session | null>(null)
   const [sessionLoaded, setSessionLoaded] = useState(false)
-  const { isActive: isPro }               = useEntitlement(session)
+  const { tier }                          = useEntitlement(session)
   const [expenses, setExpenses]           = useState<BizExpenseRow[]>([])
   const [loading, setLoading]             = useState(true)
   const [error, setError]                 = useState<string | null>(null)
@@ -339,19 +338,33 @@ function BusinessExpenseContent() {
     URL.revokeObjectURL(url)
   }
 
-  function downloadAccountingCSV(format: "quickbooks" | "xero") {
+  async function downloadAccountingCSV(format: "quickbooks" | "xero") {
     trackActivationEvent("report_exported", { format, report: "business_expense" })
-    const csv = format === "quickbooks"
-      ? generateQuickBooksCSV(businessRows)
-      : generateXeroCSV(businessRows)
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    const periodLabel = periodStart && periodEnd ? `${periodStart}_${periodEnd}` : "all"
-    a.download = `business-expense-${format}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
+    try {
+      const { data: auth } = await supabase.auth.getSession()
+      const token = auth.session?.access_token
+      if (!token) throw new Error("Unauthorized")
+      const params = new URLSearchParams({ export: format })
+      if (dateFrom) params.set("dateFrom", dateFrom)
+      if (dateTo) params.set("dateTo", dateTo)
+      if (targetFolder) params.set("targetFolder", targetFolder)
+      const res = await fetch(`/api/reports/business-expense?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(json.error ?? "Export unavailable for this plan")
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `business-expense-${format}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Export unavailable for this plan")
+    }
   }
 
   function copyCSV() {
@@ -407,19 +420,6 @@ function BusinessExpenseContent() {
 
   if (!sessionLoaded) return null
   if (!session) return <AuthGuardModal isVisible={true} />
-  if (!isPro) return (
-    <div className="flex min-h-screen flex-col">
-      <Navbar />
-      <main className="flex flex-1 items-center justify-center">
-        <div className="text-center space-y-3">
-          <p className="text-lg font-semibold text-foreground">Pro Required</p>
-          <p className="text-sm text-muted-foreground">Upgrade to access financial reports.</p>
-          <a href="/pricing" className="inline-block rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90">View Pricing</a>
-        </div>
-      </main>
-    </div>
-  )
-
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <Navbar />
@@ -462,11 +462,11 @@ function BusinessExpenseContent() {
                 <Download className="h-3.5 w-3.5" />
                 Export CSV
               </Button>
-              <Button variant="outline" size="sm" className="gap-2 rounded-md text-xs" onClick={() => downloadAccountingCSV("quickbooks")}>
-                QuickBooks CSV
+              <Button variant="outline" size="sm" className="gap-2 rounded-md text-xs" onClick={() => void downloadAccountingCSV("quickbooks")} disabled={tier === "free"} title={tier === "free" ? "Available on Day Pass or Pro" : undefined}>
+                {tier === "free" ? "QuickBooks (upgrade)" : "QuickBooks CSV"}
               </Button>
-              <Button variant="outline" size="sm" className="gap-2 rounded-md text-xs" onClick={() => downloadAccountingCSV("xero")}>
-                Xero CSV
+              <Button variant="outline" size="sm" className="gap-2 rounded-md text-xs" onClick={() => void downloadAccountingCSV("xero")} disabled={tier === "free"} title={tier === "free" ? "Available on Day Pass or Pro" : undefined}>
+                {tier === "free" ? "Xero (upgrade)" : "Xero CSV"}
               </Button>
               <Button variant="outline" size="sm" className="gap-2 rounded-md text-xs" onClick={printReport}>
                 <Printer className="h-3.5 w-3.5" />

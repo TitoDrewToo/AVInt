@@ -238,7 +238,7 @@ export default function SmartStorageProductPage() {
               <div className="text-left">
                 <FadeUp>
                   <h1 className="text-balance text-4xl font-semibold leading-[1.1] tracking-tight text-foreground md:text-5xl lg:text-6xl">
-                    Stop sorting receipts manually. Upload your documents and get a clean expense report in minutes.
+                    Stop sorting receipts manually. Upload your documents and get a clean expense <span className="text-primary">report in minutes.</span>
                   </h1>
                 </FadeUp>
                 <FadeUp delay={0.1}>

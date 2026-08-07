@@ -222,7 +222,9 @@ function TaxBundleContent() {
       setDetectedYears(years)
 
       if (!defaultsApplied && years.length > 0 && !dateFrom && !dateTo) {
-        const y = years[0]
+        const y = typeof json.defaultYear === "number" && !isNaN(json.defaultYear)
+          ? json.defaultYear
+          : years[0]
         setDateFrom(`${y}-01-01`)
         setDateTo(`${y}-12-31`)
       }

@@ -6,6 +6,7 @@
 // uncategorized-only, review-heavy, mixed-currency.
 
 import { computeTaxBundle, generateEmployedTaxBundleCSV, generateTaxBundleCSV, type TaxRow } from "../lib/tax-bundle"
+import { selectTaxBundleDefaultYear } from "../lib/tax-bundle-default-year"
 
 // ── Assertion helpers ────────────────────────────────────────────────────────
 
@@ -79,6 +80,28 @@ function businessIncome(partial: { gross: number; currency?: string; source?: st
     expense_category: null,
     currency: partial.currency ?? "USD",
     confidence_score: 0.95,
+    storage_path: null,
+  }
+}
+
+function stressRow(partial: Partial<TaxRow> & Pick<TaxRow, "document_type">): TaxRow {
+  _id++
+  return {
+    file_id: `stress-${_id}`,
+    filename: `stress-${_id}.pdf`,
+    document_type: partial.document_type,
+    vendor_name: partial.vendor_name ?? null,
+    employer_name: partial.employer_name ?? null,
+    document_date: partial.document_date ?? "2025-12-31",
+    period_start: partial.period_start ?? null,
+    period_end: partial.period_end ?? null,
+    total_amount: partial.total_amount ?? null,
+    gross_income: partial.gross_income ?? null,
+    net_income: partial.net_income ?? null,
+    expense_category: partial.expense_category ?? null,
+    income_source: partial.income_source ?? null,
+    currency: partial.currency ?? "USD",
+    confidence_score: partial.confidence_score ?? 0.95,
     storage_path: null,
   }
 }
@@ -273,6 +296,79 @@ function reconcile(name: string, rows: TaxRow[]) {
   assert("wage-only: estimatedNetScheduleC = −500",   s.estimatedNetScheduleC === -500)
   assert("wage-only: estimatedNetScheduleC !== 49500 (would be wrong)",
     s.estimatedNetScheduleC !== 49500)
+}
+
+// ── Fixture 8: 27-document stress kit ground truth, tax year 2025 ─────────
+// This is the expected normalized extraction after filtering the kit to 2025.
+// The Jan 2026-issued 1099-DIV and 2024 archive documents are outside the
+// selected year; the duplicate Figma receipt is excluded from the ground truth.
+
+{
+  const rows: TaxRow[] = [
+    stressRow({ document_type: "income_statement", period_start: "2025-01-01", period_end: "2025-03-31", gross_income: 18000 }),
+    stressRow({ document_type: "income_statement", period_start: "2025-04-01", period_end: "2025-06-30", gross_income: 22000 }),
+    stressRow({ document_type: "income_statement", period_start: "2025-07-01", period_end: "2025-09-30", gross_income: 15000 }),
+    stressRow({ document_type: "income_statement", period_start: "2025-10-01", period_end: "2025-12-31", gross_income: 25000 }),
+    stressRow({ document_type: "payslip", period_start: "2025-03-01", period_end: "2025-03-31", gross_income: 5000, net_income: 3800 }),
+    stressRow({ document_type: "payslip", period_start: "2025-06-01", period_end: "2025-06-30", gross_income: 5200, net_income: 3950 }),
+    stressRow({ document_type: "receipt", total_amount: 450, expense_category: "Marketing" }),
+    stressRow({ document_type: "receipt", total_amount: 85, expense_category: "Fuel" }),
+    stressRow({ document_type: "invoice", total_amount: 2000, expense_category: "Consulting" }),
+    stressRow({ document_type: "receipt", total_amount: 2499, expense_category: "Hardware" }),
+    stressRow({ document_type: "invoice", total_amount: 1200, expense_category: "Insurance" }),
+    stressRow({ document_type: "invoice", total_amount: 850, expense_category: "Legal" }),
+    stressRow({ document_type: "receipt", total_amount: 125, expense_category: "Office Supplies" }),
+    stressRow({ document_type: "invoice", total_amount: 600, expense_category: "Coworking" }),
+    stressRow({ document_type: "receipt", total_amount: 45, expense_category: "SaaS" }),
+    stressRow({ document_type: "receipt", total_amount: 650, expense_category: "Airfare" }),
+    stressRow({ document_type: "receipt", total_amount: 220, expense_category: "Business Meals" }),
+    stressRow({ document_type: "receipt", total_amount: 180, expense_category: "Business Meals" }),
+    stressRow({ document_type: "invoice", total_amount: 120, expense_category: "Internet" }),
+    stressRow({ document_type: "receipt", total_amount: 300, expense_category: "Training" }),
+    stressRow({ document_type: "statement", total_amount: 45, expense_category: "Bank Fees" }),
+    stressRow({ document_type: "receipt", total_amount: 65, expense_category: null }),
+    stressRow({ document_type: "income_statement", income_source: "rental", gross_income: 12000, document_date: "2025-12-31" }),
+  ]
+  const s = reconcile("stress-kit-2025-ground-truth", rows)
+
+  assert("stress: selfEmploymentGross = 80000", s.selfEmploymentGross === 80000)
+  assert("stress: deductibleExpenses = 9124", s.deductibleExpenses === 9124)
+  assert("stress: estimatedNetScheduleC = 70876", s.estimatedNetScheduleC === 70876)
+  assert("stress: mealsGross = 400", s.mealsGross === 400)
+  assert("stress: mealsDeductible = 200", s.mealsDeductible === 200)
+  assert("stress: wageGross = 10200", s.wageGross === 10200)
+  assert("stress: wageNet = 7750", s.wageNet === 7750)
+  assert("stress: wagePayrollDeductions = 2450", s.wagePayrollDeductions === 2450)
+  assert("stress: rental otherIncomeGross = 12000", s.otherIncomeGross === 12000)
+  assert("stress: uncategorizedItems.length = 1", s.uncategorizedItems.length === 1)
+  assert("stress: household-misc is uncategorized", s.uncategorizedItems[0]?.total_amount === 65)
+
+  const lineAmount = (line: string) => s.scheduleC.find((item) => item.line === line)?.amount
+  for (const [line, amount] of Object.entries({
+    "Line 8": 450, "Line 9": 85, "Line 11": 2000, "Line 13": 2499,
+    "Line 15": 1200, "Line 17": 850, "Line 18": 125, "Line 20b": 600,
+    "Line 22": 45, "Line 24a": 650, "Line 24b": 200, "Line 25": 120,
+    "Line 27b": 300,
+  })) {
+    assert(`stress: ${line} deductible = ${amount}`, lineAmount(line) === amount)
+  }
+}
+
+// ── Default-year regression: a Jan-issued form must not hijack 2025 ────────
+
+{
+  const defaultYear = selectTaxBundleDefaultYear(
+    [2026, 2025, 2024],
+    [
+      { document_type: "receipt", document_date: "2024-11-10" },
+      { document_type: "receipt", document_date: "2025-01-15" },
+      { document_type: "invoice", period_end: "2025-03-31" },
+      { document_type: "payslip", period_end: "2025-06-30" },
+      { document_type: "income_statement", period_end: "2025-12-31" },
+      { document_type: "tax_form", document_date: "2026-01-31" },
+    ],
+  )
+  assert("default-year: most-active tax year is 2025, not Jan-issued form year 2026", defaultYear === 2025)
 }
 
 // ── CSV Output Regression ────────────────────────────────────────────────────

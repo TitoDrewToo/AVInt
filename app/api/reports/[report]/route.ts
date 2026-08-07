@@ -5,6 +5,7 @@ import { computeEntitlement } from "@/lib/entitlement"
 import { overlapsDateRange } from "@/lib/report-utils"
 import { serverError } from "@/lib/api-error"
 import { checkRateLimit } from "@/lib/rate-limit"
+import { selectTaxBundleDefaultYear } from "@/lib/tax-bundle-default-year"
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -316,10 +317,11 @@ export async function GET(
         const totalOwnedDocs = fileIds.length
 
         let detectedYears: number[] = []
+        let defaultYear: number | null = null
         if (totalOwnedDocs > 0) {
           const { data: yearRows, error: yearErr } = await supabaseAdmin
             .from("document_fields")
-            .select("period_start, period_end, document_date, files!inner(user_id)")
+            .select("period_start, period_end, document_date, files!inner(user_id, document_type)")
             .eq("files.user_id", user.id)
             .in("file_id", fileIds)
             .neq("normalization_status", "excluded")
@@ -332,10 +334,19 @@ export async function GET(
             if (d && d.length >= 4) years.add(parseInt(d.slice(0, 4), 10))
           }
           detectedYears = Array.from(years).filter((n) => !isNaN(n)).sort((a, b) => b - a)
+          defaultYear = selectTaxBundleDefaultYear(
+            detectedYears,
+            (yearRows ?? []).map((row) => ({
+              document_type: row.files?.[0]?.document_type,
+              document_date: row.document_date,
+              period_start: row.period_start,
+              period_end: row.period_end,
+            })),
+          )
         }
 
         if (fileIds.length === 0) {
-          return NextResponse.json({ rows: [], totalOwnedDocs, detectedYears })
+          return NextResponse.json({ rows: [], totalOwnedDocs, detectedYears, defaultYear })
         }
 
         const query = supabaseAdmin
@@ -370,6 +381,7 @@ export async function GET(
           rows,
           totalOwnedDocs,
           detectedYears,
+          defaultYear,
         })
       }
 

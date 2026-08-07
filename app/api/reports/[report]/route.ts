@@ -2,17 +2,19 @@ import { createClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
 
 import { computeEntitlement } from "@/lib/entitlement"
+import { generateQuickBooksCSV, generateXeroCSV } from "@/lib/accounting-csv"
 import { overlapsDateRange } from "@/lib/report-utils"
 import { serverError } from "@/lib/api-error"
 import { checkRateLimit } from "@/lib/rate-limit"
 import { selectTaxBundleDefaultYear } from "@/lib/tax-bundle-default-year"
+import { PLAN_LIMITS, usageWindowForTier } from "@/supabase/functions/_shared/plan-limits"
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 )
 
-async function authorizeReportRequest(req: NextRequest) {
+async function authorizeReportRequest(req: NextRequest, reportKey: string, exportFormat: string | null) {
   const token = req.headers.get("authorization")?.replace("Bearer ", "")
   if (!token) return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) }
 
@@ -23,7 +25,7 @@ async function authorizeReportRequest(req: NextRequest) {
 
   const { data: subRow, error: subErr } = await supabaseAdmin
     .from("subscriptions")
-    .select("status, current_period_end")
+    .select("status, plan, current_period_end")
     .eq("user_id", user.id)
     .maybeSingle()
 
@@ -32,11 +34,58 @@ async function authorizeReportRequest(req: NextRequest) {
   }
 
   const ent = computeEntitlement(subRow)
-  if (!ent.isActive) {
-    return { error: NextResponse.json({ error: "Active premium access required" }, { status: 403 }) }
+  if (exportFormat && !["quickbooks", "xero"].includes(exportFormat)) {
+    return { error: NextResponse.json({ error: "Unsupported export format" }, { status: 400 }) }
   }
 
-  return { user }
+  if (exportFormat && !PLAN_LIMITS[ent.tier].accountingExports) {
+    return {
+      error: NextResponse.json({
+        error: "QuickBooks and Xero exports require Day Pass or Pro access. Upgrade to export categorized transactions.",
+        code: "ACCOUNTING_EXPORT_REQUIRES_PAID_PLAN",
+      }, { status: 403 }),
+    }
+  }
+
+  if (PLAN_LIMITS[ent.tier].reportExports !== null) {
+    const usageWindow = usageWindowForTier(ent.tier, new Date(), ent.expiresAt)
+    const { data: usageRows, error: usageError } = await supabaseAdmin.rpc("avint_claim_report_export", {
+      p_user_id: user.id,
+      p_report_key: reportKey,
+      p_period_start: usageWindow.start,
+      p_period_end: usageWindow.end,
+      p_limit: PLAN_LIMITS[ent.tier].reportExports,
+    })
+
+    if (usageError) {
+      return { error: serverError(usageError, { route: "reports/[report]", stage: "report_usage", userId: user.id }) }
+    }
+
+    const usage = usageRows?.[0]
+    if (!usage?.allowed) {
+      return {
+        error: NextResponse.json({
+          error: "Free includes 1 report export per month. Upgrade to generate another report.",
+          code: "REPORT_EXPORT_LIMIT_REACHED",
+          used_count: usage?.used_count ?? PLAN_LIMITS[ent.tier].reportExports,
+          limit_count: PLAN_LIMITS[ent.tier].reportExports,
+        }, { status: 429 }),
+      }
+    }
+  }
+
+  return { user, ent }
+}
+
+function accountingCsvResponse(format: "quickbooks" | "xero", rows: any[], filename: string) {
+  const csv = format === "quickbooks" ? generateQuickBooksCSV(rows) : generateXeroCSV(rows)
+  return new NextResponse(csv, {
+    headers: {
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Cache-Control": "no-store",
+    },
+  })
 }
 
 function getFilters(req: NextRequest) {
@@ -46,6 +95,10 @@ function getFilters(req: NextRequest) {
     dateTo: searchParams.get("dateTo") ?? "",
     targetFolder: searchParams.get("targetFolder") ?? "",
   }
+}
+
+function getExportFormat(req: NextRequest): string | null {
+  return new URL(req.url).searchParams.get("export")
 }
 
 async function getFileIds(userId: string, documentTypes: string[], targetFolder: string) {
@@ -96,7 +149,8 @@ export async function GET(
   { params }: { params: Promise<{ report: string }> },
 ) {
   const { report } = await params
-  const auth = await authorizeReportRequest(req)
+  const exportFormat = getExportFormat(req)
+  const auth = await authorizeReportRequest(req, report, exportFormat)
   if ("error" in auth) return auth.error
 
   const { user } = auth
@@ -195,7 +249,10 @@ export async function GET(
 
       case "business-expense": {
         const fileIds = await getFileIds(user.id, ["receipt", "invoice"], targetFolder)
-        if (fileIds.length === 0) return NextResponse.json({ expenses: [] })
+        if (fileIds.length === 0) {
+          if (exportFormat) return accountingCsvResponse(exportFormat as "quickbooks" | "xero", [], `business-expense-${exportFormat}.csv`)
+          return NextResponse.json({ expenses: [] })
+        }
 
         let query = supabaseAdmin
           .from("document_fields")
@@ -213,6 +270,16 @@ export async function GET(
 
         const { data, error } = await query
         if (error) throw new Error(error.message)
+        if (exportFormat) {
+          const exportRows = (data ?? []).map((row) => ({
+            document_date: row.document_date,
+            vendor_name: row.vendor_name,
+            expense_category: row.expense_category,
+            total_amount: row.total_amount,
+          }))
+          return accountingCsvResponse(exportFormat as "quickbooks" | "xero", exportRows, `business-expense-${exportFormat}.csv`)
+        }
+
         return NextResponse.json({ expenses: data ?? [] })
       }
 
@@ -346,6 +413,7 @@ export async function GET(
         }
 
         if (fileIds.length === 0) {
+          if (exportFormat) return accountingCsvResponse(exportFormat as "quickbooks" | "xero", [], `tax-bundle-${exportFormat}.csv`)
           return NextResponse.json({ rows: [], totalOwnedDocs, detectedYears, defaultYear })
         }
 
@@ -376,6 +444,18 @@ export async function GET(
             { dateFrom, dateTo },
           ),
         )
+
+        if (exportFormat) {
+          const exportRows = rows
+            .filter((row) => ["receipt", "invoice"].includes(row.files?.[0]?.document_type))
+            .map((row) => ({
+              document_date: row.document_date,
+              vendor_name: row.vendor_name,
+              expense_category: row.expense_category,
+              total_amount: row.total_amount,
+            }))
+          return accountingCsvResponse(exportFormat as "quickbooks" | "xero", exportRows, `tax-bundle-${exportFormat}.csv`)
+        }
 
         return NextResponse.json({
           rows,

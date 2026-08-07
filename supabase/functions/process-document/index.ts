@@ -2,6 +2,7 @@ import { createClient, serve } from "../_shared/deps.ts"
 import { type AiProvider, isProviderFailure, providerChain } from "../_shared/ai-providers.ts"
 import { logError, logEvent } from "../_shared/log.ts"
 import { fetchWithTimeout } from "../_shared/fetch.ts"
+import { PLAN_LIMITS, planTierForSubscription, usageWindowForTier } from "../_shared/plan-limits.ts"
 
 const FN = "process-document"
 
@@ -830,6 +831,53 @@ serve(async (req) => {
         JSON.stringify({ error: "File not approved for processing", current_status: file.upload_status }),
         { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       )
+    }
+
+    const { data: subscription, error: subscriptionError } = await supabase
+      .from("subscriptions")
+      .select("status, current_period_end")
+      .eq("user_id", file.user_id)
+      .maybeSingle()
+
+    if (subscriptionError) throw new Error(`Subscription lookup failed: ${subscriptionError.message}`)
+
+    const tier = planTierForSubscription(subscription?.status, subscription?.current_period_end)
+    const usageWindow = usageWindowForTier(tier, new Date(), subscription?.current_period_end)
+    const { data: usageRows, error: usageError } = await supabase.rpc("avint_claim_document_processing", {
+      p_user_id: file.user_id,
+      p_file_id: file_id,
+      p_period_start: usageWindow.start,
+      p_period_end: usageWindow.end,
+      p_limit: PLAN_LIMITS[tier].documents,
+    })
+
+    if (usageError) throw new Error(`Document usage claim failed: ${usageError.message}`)
+
+    const usage = usageRows?.[0]
+    if (!usage?.allowed) {
+      const limitMessage = `You've reached the ${PLAN_LIMITS[tier].documents}-document limit for your current plan. Upgrade to continue processing documents.`
+      await supabase
+        .from("processing_jobs")
+        .update({ status: "failed", error_message: limitMessage })
+        .eq("file_id", file_id)
+        .in("status", ["uploaded", "processing"])
+      logEvent(FN, "document_limit_reached", {
+        file_id,
+        user_id: file.user_id,
+        tier,
+        used_count: usage?.used_count ?? PLAN_LIMITS[tier].documents,
+        limit_count: PLAN_LIMITS[tier].documents,
+      })
+      return new Response(JSON.stringify({
+        error: limitMessage,
+        code: "DOCUMENT_LIMIT_REACHED",
+        tier,
+        used_count: usage?.used_count ?? PLAN_LIMITS[tier].documents,
+        limit_count: PLAN_LIMITS[tier].documents,
+      }), {
+        status: 429,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      })
     }
 
     // 1. Mark active job for this file as processing.

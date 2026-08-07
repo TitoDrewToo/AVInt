@@ -849,11 +849,22 @@ serve(async (req) => {
       p_period_start: usageWindow.start,
       p_period_end: usageWindow.end,
       p_limit: PLAN_LIMITS[tier].documents,
+      p_soft_cap: PLAN_LIMITS[tier].softCap,
     })
 
     if (usageError) throw new Error(`Document usage claim failed: ${usageError.message}`)
 
     const usage = usageRows?.[0]
+    if (usage?.fair_use_warning) {
+      logEvent(FN, "document_fair_use_warning", {
+        file_id,
+        user_id: file.user_id,
+        tier,
+        used_count: usage.used_count,
+        limit_count: PLAN_LIMITS[tier].documents,
+      })
+    }
+
     if (!usage?.allowed) {
       const limitMessage = `You've reached the ${PLAN_LIMITS[tier].documents}-document limit for your current plan. Upgrade to continue processing documents.`
       await supabase

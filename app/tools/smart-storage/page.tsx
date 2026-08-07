@@ -295,6 +295,7 @@ export default function SmartStoragePage() {
   // Upload
   const [isUploading, setIsUploading] = useState(false)
   const [uploadNotice, setUploadNotice] = useState<string | null>(null)
+  const [usageNotice, setUsageNotice] = useState<string | null>(null)
   const [isNavigatingReport, setIsNavigatingReport] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set())
@@ -328,6 +329,24 @@ export default function SmartStoragePage() {
   const [renameFileValue, setRenameFileValue] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
   const directoryInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!session?.user?.id) {
+      setUsageNotice(null)
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      const { data: auth } = await supabase.auth.getSession()
+      const token = auth.session?.access_token
+      if (!token) return
+      const res = await fetch("/api/usage", { headers: { Authorization: `Bearer ${token}` } })
+      if (!res.ok || cancelled) return
+      const usage = await res.json()
+      if (!cancelled) setUsageNotice(typeof usage.message === "string" ? usage.message : null)
+    })().catch(() => {})
+    return () => { cancelled = true }
+  }, [session, entitlement.tier, files.length])
 
   // Canvas drag state
   const canvasRef = useRef<HTMLDivElement>(null)
@@ -1970,6 +1989,11 @@ export default function SmartStoragePage() {
                 {uploadNotice && (
                   <span className="max-w-[240px] truncate text-xs text-destructive">
                     {uploadNotice}
+                  </span>
+                )}
+                {usageNotice && !uploadNotice && (
+                  <span className="max-w-[360px] truncate text-xs text-amber-600 dark:text-amber-400">
+                    {usageNotice}
                   </span>
                 )}
                 {(classificationView || documentVirtualView) && (

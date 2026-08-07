@@ -6,21 +6,23 @@ import { StartFreeButton } from "@/components/start-free-button"
 import { FadeUp, StaggerContainer, StaggerItem } from "@/components/fade-up"
 import { PomelliClip } from "@/components/ui/pomelli-clip"
 import { HomeDefaultSphere } from "@/components/home-default-sphere"
+import { SampleReportsSection } from "@/components/sections/sample-reports"
+import { PrivacySecuritySection } from "@/components/sections/privacy-security"
 
 export const metadata = {
-  title: "Smart Storage — AI Document Storage & Analysis | AVIntelligence",
-  description: "Automatically extract and organize data from receipts, invoices, payslips, and contracts. Generate expense, income, tax, and profit & loss reports instantly.",
+  title: "Smart Storage — Clean Expense Reports from Your Documents | AVIntelligence",
+  description: "Extract vendors, dates, amounts, categories, and recurring expenses from receipts and invoices into searchable records and exportable reports.",
   openGraph: {
-    title: "Smart Storage — AI Document Storage & Analysis | AVIntelligence",
-    description: "Automatically extract and organize data from receipts, invoices, payslips, and contracts. Generate expense, income, tax, and profit & loss reports instantly.",
+    title: "Smart Storage — Clean Expense Reports from Your Documents | AVIntelligence",
+    description: "Extract vendors, dates, amounts, categories, and recurring expenses from receipts and invoices into searchable records and exportable reports.",
     url: "https://www.avintph.com/products/smart-storage",
     siteName: "AVIntelligence",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Smart Storage — AI Document Storage & Analysis | AVIntelligence",
-    description: "Automatically extract and organize data from receipts, invoices, payslips, and contracts.",
+    title: "Smart Storage — Clean Expense Reports from Your Documents | AVIntelligence",
+    description: "Extract vendors, dates, amounts, categories, and recurring expenses from receipts and invoices.",
   },
 }
 
@@ -197,9 +199,9 @@ const capabilities = [
 ]
 
 const workflowSteps = [
-  { icon: <IconUpload />,     title: "Upload documents",             step: "01" },
-  { icon: <IconLayers />,     title: "Data becomes structured",      step: "02" },
-  { icon: <IconFileOutput />, title: "Reports available when needed", step: "03" },
+  { icon: <IconUpload />,     title: "Upload",                            step: "01" },
+  { icon: <IconLayers />,     title: "AI extracts & categorizes",         step: "02" },
+  { icon: <IconFileOutput />, title: "Export an accountant-ready report", step: "03" },
 ]
 
 // ── Page ───────────────────────────────────────────────────────────────────────
@@ -236,18 +238,18 @@ export default function SmartStorageProductPage() {
               <div className="text-left">
                 <FadeUp>
                   <h1 className="text-balance text-4xl font-semibold leading-[1.1] tracking-tight text-foreground md:text-5xl lg:text-6xl">
-                    <span className="text-primary">Structure</span> your real-world documents automatically.
+                    Stop sorting receipts manually. Upload your documents and get a clean expense report in minutes.
                   </h1>
                 </FadeUp>
                 <FadeUp delay={0.1}>
                   <p className="mt-6 max-w-xl text-lg text-muted-foreground">
-                    Smart Storage transforms receipts, invoices, and records into organized data ready for reporting and analysis.
+                    Extract vendors, dates, amounts, categories, and recurring expenses from receipts and invoices into searchable records and exportable reports.
                   </p>
                 </FadeUp>
                 <FadeUp delay={0.18} className="mt-10 flex flex-col items-start gap-4 sm:flex-row">
-                  <Link href="/pricing">
+                  <Link href="/tools/smart-storage">
                     <Button size="lg" className="rounded-xl bg-primary text-primary-foreground hover:bg-primary/90">
-                      View Pricing
+                      Start free
                     </Button>
                   </Link>
                   <Link href="/products/smart-dashboard">
@@ -352,6 +354,12 @@ export default function SmartStorageProductPage() {
             </StaggerContainer>
           </div>
         </section>
+
+        {/* Report outcomes */}
+        <SampleReportsSection />
+
+        {/* Privacy and security */}
+        <PrivacySecuritySection />
 
         {/* Infrastructure & Security */}
         <section className="marketing-scroll-section relative px-6">

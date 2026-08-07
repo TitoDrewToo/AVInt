@@ -2,8 +2,8 @@ import type { Metadata } from 'next'
 import { Navbar } from "@/components/navbar"
 
 export const metadata: Metadata = {
-  title: 'AVIntelligence — Clean expense reports in minutes',
-  description: 'Upload receipts and invoices. AVIntelligence extracts vendors, dates, amounts, categories, and recurring expenses into searchable records and exportable reports.',
+  title: 'AVIntelligence — AI Powered file storage and reports generator and analytics',
+  description: 'Upload receipts, invoices, and payslips. AVIntelligence extracts, categorizes, and analyzes your financial documents automatically. Smart Storage, Smart Dashboard.',
 }
 import { Footer } from "@/components/footer"
 import { HeroSection } from "@/components/sections/hero"
@@ -11,8 +11,6 @@ import { WhatWeDoSection } from "@/components/sections/what-we-do"
 import { HowItWorksSection } from "@/components/sections/how-it-works"
 import { ProductsSection } from "@/components/sections/products"
 import { PricingPreviewSection } from "@/components/sections/pricing-preview"
-import { SampleReportsSection } from "@/components/sections/sample-reports"
-import { PrivacySecuritySection } from "@/components/sections/privacy-security"
 import { HomeInteractiveTrail } from "@/components/home-interactive-trail"
 import { HomeDefaultSphere } from "@/components/home-default-sphere"
 
@@ -27,9 +25,7 @@ export default function HomePage() {
         <HomeInteractiveTrail>
           <HowItWorksSection />
           <ProductsSection />
-          <SampleReportsSection />
           <PricingPreviewSection />
-          <PrivacySecuritySection />
         </HomeInteractiveTrail>
       </main>
       <Footer />

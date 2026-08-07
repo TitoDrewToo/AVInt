@@ -16,10 +16,12 @@ export function WhatWeDoSection() {
             </FadeUp>
             <FadeUp delay={0.1} className="mt-8 space-y-6">
               <p className="text-balance font-sans text-4xl font-semibold leading-[1.1] text-foreground md:text-5xl lg:text-6xl">
-                Turn a messy document pile into a usable financial operating system.
+                AVIntelligence develops{" "}
+                <span className="text-primary">intelligent</span> tools{" "}
+                that structure information from real-world documents and workflows.
               </p>
               <p className="max-w-xl text-base text-muted-foreground md:text-lg">
-                Upload receipts, invoices, and related records once. Get searchable transactions, categorized spending, recurring-expense visibility, and reports you can hand to an accountant or export into your books.
+                Our systems transform files and activity into structured data that powers dashboards, reports, and decision-making.
               </p>
             </FadeUp>
           </div>

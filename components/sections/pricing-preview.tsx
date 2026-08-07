@@ -11,16 +11,14 @@ interface PricingCardProps {
   annualPrice?: string
   features: string[]
   isAnnual?: boolean
-  featured?: boolean
 }
 
-function PricingCard({ name, price, annualPrice, features, isAnnual, featured }: PricingCardProps) {
+function PricingCard({ name, price, annualPrice, features, isAnnual }: PricingCardProps) {
   const displayPrice = isAnnual && annualPrice ? annualPrice : price
 
   return (
     <Link href="/pricing" className="group block h-full">
-      <div className={`glass-surface hover-bloom flex h-full flex-col rounded-2xl p-6 transition-all group-hover:border-primary/20 group-hover:[box-shadow:0_0_30px_-14px_var(--retro-glow-red)] ${featured ? "border-primary/60 bg-primary/[0.06] shadow-[0_0_50px_-20px_var(--retro-glow-red)] ring-1 ring-primary/20 xl:scale-[1.03]" : ""}`}>
-        {featured && <span className="mb-3 w-fit rounded-full bg-primary px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-primary-foreground">Most popular</span>}
+      <div className="glass-surface hover-bloom flex h-full flex-col rounded-2xl p-6 transition-all group-hover:border-primary/20 group-hover:[box-shadow:0_0_30px_-14px_var(--retro-glow-red)]">
         <h3 className="text-lg font-semibold text-foreground">{name}</h3>
         {displayPrice && (
           <div className="mt-4 flex items-center">
@@ -62,33 +60,31 @@ function PricingCard({ name, price, annualPrice, features, isAnnual, featured }:
 
 const plans: PricingCardProps[] = [
   {
-    name: "Pro",
-    price: "$12",
-    annualPrice: "$100",
+    name: "Gift Codes",
+    price: "$6",
     features: [
-      "Searchable expense records",
-      "Clean reports and accounting exports",
-      "Recurring-spend visibility",
+      "Smart Storage",
+      "Smart Dashboards",
     ],
-    featured: true,
   },
   {
     name: "Free",
     price: null,
-    features: ["Start organizing documents", "Basic dashboard access"],
+    features: ["Secure Storage", "Basic dashboard access"],
   },
   {
     name: "Day Pass",
     price: "$6",
     features: [
-      "One focused reporting session",
-      "Smart Storage and dashboards",
+      "Smart Storage",
+      "Smart Dashboards",
     ],
   },
   {
-    name: "Gift Codes",
-    price: "$6",
-    features: ["Share a reporting session", "Smart Storage and dashboards"],
+    name: "Pro",
+    price: "$12",
+    annualPrice: "$100",
+    features: ["Smart Storage", "Smart Dashboards"],
   },
 ]
 

@@ -14,6 +14,7 @@ import {
   type BusinessExpenseAssumptions,
 } from "@/lib/report-assumptions"
 import { printReportOutput } from "@/lib/report-print"
+import { generateQuickBooksCSV, generateXeroCSV } from "@/lib/accounting-csv"
 import { summarizeCurrencies } from "@/lib/report-utils"
 import { ALL_SC_CATEGORIES, getScheduleCLine } from "@/lib/tax-bundle"
 import type { Session } from "@supabase/supabase-js"
@@ -336,6 +337,20 @@ function BusinessExpenseContent() {
     URL.revokeObjectURL(url)
   }
 
+  function downloadAccountingCSV(format: "quickbooks" | "xero") {
+    const csv = format === "quickbooks"
+      ? generateQuickBooksCSV(businessRows)
+      : generateXeroCSV(businessRows)
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    const periodLabel = periodStart && periodEnd ? `${periodStart}_${periodEnd}` : "all"
+    a.download = `${format}-business-expenses-${periodLabel}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   function copyCSV() {
     navigator.clipboard.writeText(generateCSV()).then(() => {
       setCsvCopied(true)
@@ -443,6 +458,12 @@ function BusinessExpenseContent() {
               <Button variant="outline" size="sm" className="gap-2 rounded-md text-xs" onClick={downloadCSV}>
                 <Download className="h-3.5 w-3.5" />
                 Export CSV
+              </Button>
+              <Button variant="outline" size="sm" className="gap-2 rounded-md text-xs" onClick={() => downloadAccountingCSV("quickbooks")}>
+                QuickBooks CSV
+              </Button>
+              <Button variant="outline" size="sm" className="gap-2 rounded-md text-xs" onClick={() => downloadAccountingCSV("xero")}>
+                Xero CSV
               </Button>
               <Button variant="outline" size="sm" className="gap-2 rounded-md text-xs" onClick={printReport}>
                 <Printer className="h-3.5 w-3.5" />

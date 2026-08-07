@@ -16,6 +16,7 @@ import { useSearchParams } from "next/navigation"
 import JSZip from "jszip"
 
 import { printReportOutput } from "@/lib/report-print"
+import { generateQuickBooksCSV, generateXeroCSV } from "@/lib/accounting-csv"
 import {
   getScheduleCLine,
   getDeductStatus,
@@ -392,6 +393,19 @@ function TaxBundleContent() {
     URL.revokeObjectURL(url)
   }
 
+  function downloadAccountingCSV(format: "quickbooks" | "xero") {
+    const csv = format === "quickbooks"
+      ? generateQuickBooksCSV(expenseRows)
+      : generateXeroCSV(expenseRows)
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `${format}-${taxYear}-expenses.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   function copyCSV() {
     navigator.clipboard.writeText(generateCSV()).then(() => {
       setCsvCopied(true)
@@ -755,6 +769,12 @@ function TaxBundleContent() {
                     <Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={downloadCSV} title={mixedCurrency ? "CSV includes a mixed-currency warning and per-row currencies" : undefined}>
                       <Download className="h-3.5 w-3.5" />
                       Export CSV
+                    </Button>
+                    <Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={() => downloadAccountingCSV("quickbooks")}>
+                      QuickBooks CSV
+                    </Button>
+                    <Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={() => downloadAccountingCSV("xero")}>
+                      Xero CSV
                     </Button>
                     <Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={printReport}>
                       <Printer className="h-3.5 w-3.5" />

@@ -19,6 +19,7 @@ export interface Entitlement {
   status: string
   isActive: boolean
   isPro: boolean
+  isBusiness: boolean
   isDayPass: boolean
   isGiftCode: boolean
   expiresAt: string | null
@@ -30,6 +31,7 @@ const INACTIVE: Entitlement = {
   status: "none",
   isActive: false,
   isPro: false,
+  isBusiness: false,
   isDayPass: false,
   isGiftCode: false,
   expiresAt: null,
@@ -52,11 +54,26 @@ export function computeEntitlement(row: EntitlementRow | null | undefined): Enti
       status: "pro",
       isActive: true,
       isPro: true,
+      isBusiness: false,
       isDayPass: false,
       isGiftCode: false,
       expiresAt: current_period_end,
       plan,
       tier: "pro",
+    }
+  }
+
+  if (status === "business") {
+    return {
+      status: "business",
+      isActive: true,
+      isPro: true,
+      isBusiness: true,
+      isDayPass: false,
+      isGiftCode: false,
+      expiresAt: current_period_end,
+      plan,
+      tier: "business",
     }
   }
 
@@ -68,6 +85,7 @@ export function computeEntitlement(row: EntitlementRow | null | undefined): Enti
       status: "day_pass",
       isActive: true,
       isPro: false,
+      isBusiness: false,
       isDayPass: true,
       isGiftCode: false,
       expiresAt: current_period_end,
@@ -84,6 +102,7 @@ export function computeEntitlement(row: EntitlementRow | null | undefined): Enti
       status: "gift_code",
       isActive: true,
       isPro: false,
+      isBusiness: false,
       isDayPass: false,
       isGiftCode: true,
       expiresAt: current_period_end,
@@ -107,5 +126,6 @@ export function isUnlimitedEntitlement(entitlement: Pick<Entitlement, "expiresAt
 
 export function pricingStatusForEntitlement(entitlement: Entitlement): string | null {
   if (!entitlement.isActive) return null
+  if (entitlement.status === "business") return "business"
   return isUnlimitedEntitlement(entitlement) ? "pro" : entitlement.status
 }

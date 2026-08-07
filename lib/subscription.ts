@@ -23,6 +23,7 @@ export interface SubscriptionInfo {
   productName: string | null
   currentPeriodEnd: string | null
   isPro: boolean
+  isBusiness: boolean
   isDayPass: boolean
   isActive: boolean
 }
@@ -46,6 +47,7 @@ export async function getUserSubscription(email: string): Promise<SubscriptionIn
     productName: data.product_name,
     currentPeriodEnd: data.current_period_end,
     isPro: ent.isPro,
+    isBusiness: ent.isBusiness,
     isDayPass: ent.isDayPass,
     isActive: ent.isActive,
   }

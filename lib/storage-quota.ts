@@ -12,7 +12,7 @@ export type StorageQuotaPlan = {
 }
 
 export function storageQuotaBytes(plan: StorageQuotaPlan | null | undefined) {
-  if (plan?.status === "pro" || plan?.isPro) {
+  if (plan?.status === "pro" || plan?.status === "business" || plan?.isPro) {
     return plan.plan === "annual" ? ANNUAL_PRO_STORAGE_BYTES : MONTHLY_PRO_STORAGE_BYTES
   }
   return FREE_STORAGE_BYTES

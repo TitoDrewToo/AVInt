@@ -9,6 +9,7 @@ const INACTIVE: Entitlement = {
   status: "none",
   isActive: false,
   isPro: false,
+  isBusiness: false,
   isDayPass: false,
   isGiftCode: false,
   expiresAt: null,

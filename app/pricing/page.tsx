@@ -10,6 +10,7 @@ import { supabase } from "@/lib/supabase"
 import { computeEntitlement, pricingStatusForEntitlement } from "@/lib/entitlement"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 import { trackActivationEvent } from "@/lib/analytics"
+import { PLAN_PRICING } from "@/supabase/functions/_shared/plan-limits"
 
 const CHECKOUT_URLS: Record<string, string> = {
   "Day Pass": "https://www.creem.io/payment/prod_RBLECFWVb9ObYTbyzHqRN",
@@ -30,6 +31,7 @@ interface PricingCardProps {
   activeStatus: string | null
   onRequireAuth: (checkoutUrl: string) => void
   onRedirect: (checkoutUrl: string) => void
+  businessCheckoutUrl: string | null
 }
 
 function CheckoutRedirectModal({
@@ -108,6 +110,7 @@ function isCardActive(name: string, activeStatus: string | null): boolean {
   if (!activeStatus) return false
   if (name === "Day Pass" && activeStatus === "day_pass") return true
   if (name === "Pro" && activeStatus === "pro") return true
+  if (name === "Business" && activeStatus === "business") return true
   if (name === "Gift Codes" && activeStatus === "gift_code") return true
   return false
 }
@@ -115,6 +118,7 @@ function isCardActive(name: string, activeStatus: string | null): boolean {
 function PricingCard({
   name, price, annualPrice, description, features,
   isAnnual, highlighted, isSignedIn, activeStatus, onRequireAuth, onRedirect,
+  businessCheckoutUrl,
 }: PricingCardProps) {
   const displayPrice = isAnnual && annualPrice ? annualPrice : price
   const displayFeatures = features.map((feature) =>
@@ -122,13 +126,15 @@ function PricingCard({
   )
   const checkoutUrl = name === "Pro"
     ? (isAnnual ? CHECKOUT_URLS["Pro Annual"] : CHECKOUT_URLS["Pro Monthly"])
+    : name === "Business"
+    ? businessCheckoutUrl ?? "#"
     : CHECKOUT_URLS[name] ?? "#"
 
   // Is this card the user's current active plan?
   const active = isCardActive(name, activeStatus) && name !== "Gift Codes"
 
   // Does the user have a higher/equal plan that makes this card irrelevant?
-  const isPro = activeStatus === "pro"
+  const isPro = activeStatus === "pro" || activeStatus === "business"
   const isDayPass = activeStatus === "day_pass"
   const isGiftCode = activeStatus === "gift_code"
 
@@ -185,6 +191,10 @@ function PricingCard({
           Purchase Code
         </Button>
       )
+    }
+
+    if (name === "Business" && !businessCheckoutUrl) {
+      return <p className="mt-8 text-center text-sm text-muted-foreground">Business checkout is being prepared.</p>
     }
 
     // This card is the user's active plan
@@ -340,29 +350,36 @@ function PricingCard({
 const plans = [
   {
     name: "Gift Codes",
-    price: "$6",
+    price: PLAN_PRICING.gift_code.price,
     description: "Shareable 24-hour access",
-    features: ["50 documents (24-hour access)", "All reports + structured outputs", "Advanced Analytics + Smart & Custom Dashboards", "Export to QuickBooks & Xero"],
+    features: [...PLAN_PRICING.gift_code.featureLines],
   },
   {
     name: "Free",
-    price: null,
+    price: PLAN_PRICING.free.price,
     description: "For individuals getting started",
-    features: ["10 documents / month", "Smart Storage + document classification", "Basic dashboard", "1 report export / month"],
+    features: [...PLAN_PRICING.free.featureLines],
   },
   {
     name: "Day Pass",
-    price: "$6",
+    price: PLAN_PRICING.day_pass.price,
     description: "Full access for 24 hours",
-    features: ["50 documents (24-hour access)", "All reports + structured outputs", "Advanced Analytics + Smart & Custom Dashboards", "Export to QuickBooks & Xero"],
+    features: [...PLAN_PRICING.day_pass.featureLines],
   },
   {
     name: "Pro",
-    price: "$12",
-    annualPrice: "$100",
+    price: PLAN_PRICING.pro.price,
+    annualPrice: PLAN_PRICING.pro.annualPrice ?? undefined,
     description: "For power users and convenience",
-    features: ["500 documents / month", "All reports + structured outputs", "Advanced Analytics + Smart & Custom Dashboards", "Recurring-expense detection", "Export to QuickBooks & Xero", "Priority processing"],
+    features: [...PLAN_PRICING.pro.featureLines],
     highlighted: true,
+  },
+  {
+    name: "Business",
+    price: PLAN_PRICING.business.price,
+    annualPrice: PLAN_PRICING.business.annualPrice ?? undefined,
+    description: "For growing operations",
+    features: [...PLAN_PRICING.business.featureLines],
   },
 ]
 
@@ -374,6 +391,19 @@ export default function PricingPage() {
   const [pendingCheckoutUrl, setPendingCheckoutUrl] = useState<string | null>(null)
   const [redirectingCheckoutUrl, setRedirectingCheckoutUrl] = useState<string | null>(null)
   const [redirectProgress, setRedirectProgress] = useState(0)
+  const [businessPlanEnabled, setBusinessPlanEnabled] = useState(false)
+  const [businessCheckoutUrl, setBusinessCheckoutUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch("/api/plan-config")
+      .then((res) => res.ok ? res.json() : null)
+      .then((config) => {
+        if (!config) return
+        setBusinessPlanEnabled(config.businessEnabled === true)
+        setBusinessCheckoutUrl(typeof config.businessCheckoutUrl === "string" ? config.businessCheckoutUrl : null)
+      })
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data }) => {
@@ -476,7 +506,7 @@ export default function PricingPage() {
             </span>
           </div>
           <div className="mt-12 grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
-            {plans.map((plan) => (
+            {plans.filter((plan) => plan.name !== "Business" || businessPlanEnabled).map((plan) => (
               <PricingCard
                 key={plan.name}
                 {...plan}
@@ -485,6 +515,7 @@ export default function PricingPage() {
                 activeStatus={activeStatus}
                 onRequireAuth={handleRequireAuth}
                 onRedirect={handleRedirect}
+                businessCheckoutUrl={businessCheckoutUrl}
               />
             ))}
           </div>

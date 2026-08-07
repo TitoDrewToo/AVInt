@@ -24,7 +24,7 @@ function buildCorsHeaders(req: Request) {
 function hasActiveEntitlement(row: { status: string | null; current_period_end: string | null } | null): boolean {
   if (!row?.status) return false
 
-  if (row.status === "pro") return true
+  if (row.status === "pro" || row.status === "business") return true
 
   if (row.status === "day_pass" || row.status === "gift_code") {
     if (!row.current_period_end) return false

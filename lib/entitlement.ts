@@ -7,6 +7,8 @@
 // would ship the service key into the client bundle. This module has no
 // server-only dependencies, so that risk is structurally eliminated.
 
+import { planTierForSubscription, type PlanTier } from "@/supabase/functions/_shared/plan-limits"
+
 export interface EntitlementRow {
   status: string | null
   plan?: string | null
@@ -21,6 +23,7 @@ export interface Entitlement {
   isGiftCode: boolean
   expiresAt: string | null
   plan: string | null
+  tier: PlanTier
 }
 
 const INACTIVE: Entitlement = {
@@ -31,6 +34,7 @@ const INACTIVE: Entitlement = {
   isGiftCode: false,
   expiresAt: null,
   plan: null,
+  tier: "free",
 }
 
 // Single source of truth for premium access. Day passes and redeemed gift
@@ -52,6 +56,7 @@ export function computeEntitlement(row: EntitlementRow | null | undefined): Enti
       isGiftCode: false,
       expiresAt: current_period_end,
       plan,
+      tier: "pro",
     }
   }
 
@@ -67,6 +72,7 @@ export function computeEntitlement(row: EntitlementRow | null | undefined): Enti
       isGiftCode: false,
       expiresAt: current_period_end,
       plan,
+      tier: "day_pass",
     }
   }
 
@@ -82,10 +88,17 @@ export function computeEntitlement(row: EntitlementRow | null | undefined): Enti
       isGiftCode: true,
       expiresAt: current_period_end,
       plan,
+      tier: "day_pass",
     }
   }
 
-  return { ...INACTIVE, status, expiresAt: current_period_end, plan }
+  return {
+    ...INACTIVE,
+    status,
+    expiresAt: current_period_end,
+    plan,
+    tier: planTierForSubscription(status, current_period_end),
+  }
 }
 
 export function isUnlimitedEntitlement(entitlement: Pick<Entitlement, "expiresAt">): boolean {

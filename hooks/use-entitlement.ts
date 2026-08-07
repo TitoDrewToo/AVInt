@@ -13,6 +13,7 @@ const INACTIVE: Entitlement = {
   isGiftCode: false,
   expiresAt: null,
   plan: null,
+  tier: "free",
 }
 
 export interface UseEntitlementResult extends Entitlement {

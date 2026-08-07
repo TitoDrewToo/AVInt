@@ -49,6 +49,18 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "monthly",
       priority: 0.9,
     },
+    ...[
+      "receipt-organizer-for-freelancers",
+      "expense-reports-for-agencies",
+      "invoice-organizer-for-contractors",
+      "business-receipt-tracker",
+      "receipt-to-csv-converter",
+    ].map((slug) => ({
+      url: `${BASE_URL}/${slug}`,
+      lastModified: new Date(),
+      changeFrequency: "monthly" as const,
+      priority: 0.8,
+    })),
     // ── Legal ──────────────────────────────────────────────────────────────────
     {
       url: `${BASE_URL}/privacy`,

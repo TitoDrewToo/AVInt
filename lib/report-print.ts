@@ -47,6 +47,13 @@ const PRINT_STYLES = `
   td.text-right {
     white-space: nowrap !important;
   }
+  .avint-export-footer {
+    margin: 24px 0 0;
+    color: #6b7280;
+    font-size: 9px;
+    letter-spacing: 0.02em;
+    text-align: center;
+  }
 `
 
 export function printReportOutput() {
@@ -80,6 +87,7 @@ export function printReportOutput() {
   </head>
   <body class="smart-storage-report-route">
     ${reportMarkup.outerHTML}
+    <p class="avint-export-footer">Prepared with AVIntelligence — organize your business documents automatically.</p>
   </body>
 </html>`)
   printWindow.document.close()

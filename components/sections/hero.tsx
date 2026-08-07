@@ -151,14 +151,34 @@ export function HeroSection() {
           }}
         />
         <div className="relative mx-auto max-w-6xl">
-          {/* Trusted counter */}
-          <div className="relative z-[1] mb-8">
-            <span className="text-sm text-muted-foreground">
-              Trusted by <TrustedCounter /> users worldwide
+          <div className="relative z-[1] max-w-4xl pb-14 pt-12 md:pb-20 md:pt-20">
+            <span className="text-sm font-medium uppercase tracking-[0.18em] text-primary">
+              Document intelligence for busy operators
             </span>
+            <h1 className="mt-6 text-balance text-5xl font-semibold leading-[0.98] tracking-[-0.04em] text-foreground md:text-7xl">
+              Stop sorting receipts manually. Upload your documents and get a clean expense report in minutes.
+            </h1>
+            <p className="mt-7 max-w-2xl text-pretty text-base leading-relaxed text-muted-foreground md:text-xl">
+              AVIntelligence extracts vendors, dates, amounts, categories, and recurring expenses from receipts & invoices → searchable records + exportable reports.
+            </p>
+            <div className="mt-9 flex flex-wrap items-center gap-3">
+              <button
+                onClick={(e) => handleToolClick(e, "/tools/smart-storage")}
+                disabled={!sessionLoaded}
+                className="cw-button-flow inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+              >
+                {!sessionLoaded ? "Checking..." : session ? "Open Smart Storage" : "Start free"}
+              </button>
+              <Link href="/pricing" className="inline-flex min-h-11 items-center rounded-xl border border-border/70 px-5 py-3 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground">
+                See Pro plan
+              </Link>
+            </div>
+            <p className="mt-5 text-xs text-muted-foreground/70">
+              Trusted by <TrustedCounter /> users worldwide · No credit card required to start
+            </p>
           </div>
 
-          {/* Two combined cards — equal columns */}
+          {/* Supporting workflow surfaces */}
           <div className="relative z-[1] grid gap-4 md:grid-cols-2">
 
             {/* Smart Storage */}
@@ -187,9 +207,9 @@ export function HeroSection() {
                 <h3 className="text-base font-semibold text-foreground">Smart Storage</h3>
               </div>
               <p className="mb-4 text-[11px] leading-snug text-muted-foreground sm:text-sm sm:leading-relaxed">
-                <span className="block sm:whitespace-nowrap">Secure cloud storage. AI-structured data. Reports ready.</span>
+                <span className="block sm:whitespace-nowrap">Keep every source document in one secure workspace.</span>
                 <span className="block text-[10px] leading-snug text-muted-foreground/70 sm:whitespace-nowrap sm:text-xs">
-                  Tax-ready insights, smart flags, and exportable summaries when you need them.
+                  The plumbing behind searchable records and clean reports.
                 </span>
               </p>
               {/* Tags */}
@@ -245,10 +265,10 @@ export function HeroSection() {
                 <h3 className="text-base font-semibold text-foreground">Smart Dashboard</h3>
               </div>
               <p className="mb-1 text-sm leading-relaxed text-muted-foreground">
-                AI-powered custom dashboards and visuals.
+                See spending patterns before they become surprises.
               </p>
               <p className="mb-4 text-xs text-muted-foreground/70">
-                Interactive dashboards built from real activity data.
+                Interactive views built from the documents you already have.
               </p>
               {/* Tags */}
               <div className="mt-3 flex flex-wrap gap-1.5">

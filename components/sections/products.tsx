@@ -184,13 +184,13 @@ function ProductCard({ name, description, status, href, external, disabled, icon
 const products: ProductCardProps[] = [
   {
     name: "Smart Storage",
-    description: "Upload documents once. Generate structured reports automatically.",
+    description: "Turn receipts and invoices into searchable records and clean expense reports.",
     href: "/products/smart-storage",
     icon: <StorageIcon className="h-5 w-5" />,
   },
   {
     name: "Smart Dashboard",
-    description: "Visualize financial activity and trends derived from structured data.",
+    description: "Spot recurring spend, category drift, and the trends worth acting on.",
     href: "/products/smart-dashboard",
     icon: <DashboardIcon className="h-5 w-5" />,
   },
@@ -230,10 +230,10 @@ export function ProductsSection() {
             Products
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-lg text-foreground">
-            We develop products that simplify organization, decisions, and workflows.
+            From upload to export, every surface is designed around a useful business outcome.
           </p>
           <p className="mx-auto mt-2 max-w-2xl text-sm text-muted-foreground">
-            Applied intelligence for real-world systems.
+            Storage is the foundation. Structured records and decisions are the payoff.
           </p>
         </FadeUp>
         <StaggerContainer className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">

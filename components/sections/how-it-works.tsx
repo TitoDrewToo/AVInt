@@ -149,20 +149,20 @@ function Step({ number, title, subtitle, icon }: StepProps) {
 const steps: StepProps[] = [
   {
     number: 1,
-    title: "Store in the cloud",
-    subtitle: "Receipts, invoices, payslips, contracts — all secure in one place.",
+    title: "Upload",
+    subtitle: "Drop in receipts, invoices, and the business records already scattered across your devices.",
     icon: <CloudIcon className="h-8 w-8" />,
   },
   {
     number: 2,
-    title: "AI structures data",
-    subtitle: "Fields, amounts, dates, and categories extracted automatically.",
+    title: "AI extracts & categorizes",
+    subtitle: "Vendors, dates, amounts, categories, and recurring expenses become searchable records.",
     icon: <ProcessIcon className="h-8 w-8" />,
   },
   {
     number: 3,
-    title: "Generate reports & dashboards",
-    subtitle: "Turn structured records into instant reports, summaries, and visuals.",
+    title: "Export an accountant-ready report",
+    subtitle: "Turn structured records into clean reports, CSVs, and accounting-system exports.",
     icon: <OutputIcon className="h-8 w-8" />,
   },
 ]

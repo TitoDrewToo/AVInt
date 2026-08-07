@@ -1,6 +1,7 @@
 import { createClient, serve } from "../_shared/deps.ts"
 import { type AiProvider, isProviderFailure, providerChain } from "../_shared/ai-providers.ts"
 import { fetchWithTimeout } from "../_shared/fetch.ts"
+import { analyzePdf } from "../_shared/pdf-prescan.ts"
 
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY")!
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY")!
@@ -25,7 +26,6 @@ function buildCorsHeaders(req: Request) {
 
 // ── Tier 1 limits ────────────────────────────────────────────────────────────
 const MAX_FILE_SIZE = 60 * 1024 * 1024        // 60 MB (bucket limit is the hard cap)
-const MAX_PDF_PAGES = 100                      // launch cap; raise for Pro tier later
 
 const ALLOWED_MIME_PREFIXES = [
   "application/pdf",
@@ -46,18 +46,6 @@ const ALLOWED_EXTENSIONS_BY_MIME: Record<string, string[]> = {
   "text/csv": ["csv"],
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ["xlsx"],
 }
-
-const SUSPICIOUS_PDF_MARKERS = [
-  "/JavaScript",
-  "/JS",
-  "/Launch",
-  "/EmbeddedFile",
-  "/OpenAction",
-  "/AA",
-  "/RichMedia",
-  "/SubmitForm",
-  "/ImportData",
-]
 
 const SUSPICIOUS_XLSX_MARKERS = [
   "vbaProject.bin",
@@ -150,31 +138,6 @@ function detectMagicMime(bytes: Uint8Array): string | null {
     /* not utf-8 */
   }
   return null
-}
-
-function normalizePdfNames(text: string): string {
-  return text
-    .replace(/#([0-9a-fA-F]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
-    .toLowerCase()
-}
-
-// PDF quick parse: confirm not encrypted + extract rough page count from /Count tokens
-async function analyzePdf(bytes: Uint8Array): Promise<{ ok: boolean; reason?: string; pages?: number }> {
-  const head = new TextDecoder("latin1").decode(bytes.slice(0, Math.min(bytes.length, 16384)))
-  if (!head.startsWith("%PDF-")) return { ok: false, reason: "Not a valid PDF header" }
-  const fullText = new TextDecoder("latin1").decode(bytes)
-  if (/\/Encrypt\s/.test(fullText)) return { ok: false, reason: "Encrypted PDFs are not supported" }
-  const normalizedText = normalizePdfNames(fullText)
-  if (SUSPICIOUS_PDF_MARKERS.some((marker) => normalizedText.includes(marker.toLowerCase()))) {
-    return { ok: false, reason: "PDF contains active or embedded content that is not supported." }
-  }
-  // /Count N inside a /Type /Pages dict. Multiple may exist; take the largest non-leaf.
-  const counts = [...fullText.matchAll(/\/Count\s+(\d+)/g)].map(m => parseInt(m[1], 10)).filter(n => !Number.isNaN(n))
-  const pages = counts.length ? Math.max(...counts) : undefined
-  if (pages !== undefined && pages > MAX_PDF_PAGES) {
-    return { ok: false, reason: `PDF exceeds page limit (${pages} > ${MAX_PDF_PAGES})` }
-  }
-  return { ok: true, pages }
 }
 
 function analyzeCsv(bytes: Uint8Array): { ok: boolean; reason?: string } {

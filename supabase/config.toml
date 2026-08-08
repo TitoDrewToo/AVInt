@@ -50,3 +50,8 @@ entrypoint = "./functions/prescan-document/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/reprocess-documents/index.ts"
+
+[functions.diagnose-error]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/diagnose-error/index.ts"

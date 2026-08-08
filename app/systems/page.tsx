@@ -1,12 +1,12 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { AlertTriangle, ChevronRight, CircleAlert, RefreshCw, Search, ShieldCheck } from "lucide-react"
+import { AlertTriangle, Bot, CircleAlert, LockKeyhole, RefreshCw, Search, ShieldCheck } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
 import { ERROR_GROUP_STATUSES, type ErrorGroupStatus } from "@/lib/system-admin"
-import { updateErrorGroupStatus } from "./actions"
+import { diagnoseErrorGroup, setErrorGroupReviewVerdict, updateErrorGroupStatus } from "./actions"
 
 type Group = {
   fingerprint: string
@@ -15,6 +15,16 @@ type Group = {
   last_seen: string
   count: number
   status: ErrorGroupStatus
+  ai_analysis: string | null
+  proposed_fix: string | null
+  risk_level: "low" | "medium" | "high" | null
+  confidence: number | null
+  severity: string | null
+  diagnosed_at: string | null
+  ai_model: string | null
+  review_verdict: "matched" | "partial" | "wrong" | null
+  reviewed_at: string | null
+  reviewed_by: string | null
 }
 
 type Event = {
@@ -93,12 +103,13 @@ export default function SystemsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [updating, setUpdating] = useState(false)
+  const [diagnosing, setDiagnosing] = useState(false)
 
   const loadGroups = useCallback(async () => {
     setLoading(true)
     setError(null)
     const [{ data: groupRows, error: groupError }, { data: eventRows, error: eventError }] = await Promise.all([
-      supabase.from("error_groups").select("fingerprint, title, first_seen, last_seen, count, status").order("last_seen", { ascending: false }),
+      supabase.from("error_groups").select("fingerprint, title, first_seen, last_seen, count, status, ai_analysis, proposed_fix, risk_level, confidence, severity, diagnosed_at, ai_model, review_verdict, reviewed_at, reviewed_by").order("last_seen", { ascending: false }),
       supabase.from("error_events").select("id, occurred_at, occurred_at_manila, user_id, tool, fn, action, route, level, message, stack, fingerprint, context").order("occurred_at", { ascending: false }).limit(2_000),
     ])
     if (groupError || eventError) {
@@ -184,6 +195,28 @@ export default function SystemsPage() {
     setUpdating(false)
   }
 
+  async function diagnose(force: boolean) {
+    if (!selectedGroup) return
+    setDiagnosing(true)
+    setError(null)
+    const { data: { session } } = await supabase.auth.getSession()
+    const result = await diagnoseErrorGroup(selectedGroup.fingerprint, force, session?.access_token)
+    if (!result.ok) setError(result.error)
+    else await loadGroups()
+    setDiagnosing(false)
+  }
+
+  async function recordVerdict(verdict: "matched" | "partial" | "wrong") {
+    if (!selectedGroup) return
+    setUpdating(true)
+    setError(null)
+    const { data: { session } } = await supabase.auth.getSession()
+    const result = await setErrorGroupReviewVerdict(selectedGroup.fingerprint, verdict, session?.access_token)
+    if (!result.ok) setError(result.error)
+    else await loadGroups()
+    setUpdating(false)
+  }
+
   if (access !== "allowed") {
     return access === "checking" ? <div className="min-h-screen bg-background" /> : null
   }
@@ -251,7 +284,10 @@ export default function SystemsPage() {
           <aside className="rounded-2xl border border-border bg-card/60">
             <div className="border-b border-border px-5 py-4"><h2 className="font-medium">Occurrences</h2><p className="mt-1 text-xs text-muted-foreground">{selectedGroup ? `${selectedGroup.count} total · showing recent captured events` : "Select a group to inspect occurrences"}</p></div>
             {!selectedGroup ? <div className="px-5 py-12 text-center text-sm text-muted-foreground">Choose an error group.</div> : <>
-              <div className="border-b border-border px-5 py-4"><div className="mb-3 text-sm font-medium">Triage status</div><div className="flex flex-wrap gap-2">{ERROR_GROUP_STATUSES.map((status) => <Button key={status} size="sm" variant={selectedGroup.status === status ? "default" : "outline"} onClick={() => void changeStatus(status)} disabled={updating}>{status}</Button>)}</div></div>
+              <div className="border-b border-border px-5 py-4">
+                <div className="mb-3 flex items-center justify-between gap-3"><div className="text-sm font-medium">Triage status</div><div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => void diagnose(Boolean(selectedGroup.diagnosed_at))} disabled={diagnosing}>{diagnosing ? "Diagnosing…" : selectedGroup.diagnosed_at ? "Re-diagnose" : "Diagnose"}</Button></div></div>
+                <div className="flex flex-wrap gap-2">{ERROR_GROUP_STATUSES.map((status) => <Button key={status} size="sm" variant={selectedGroup.status === status ? "default" : "outline"} onClick={() => void changeStatus(status)} disabled={updating}>{status}</Button>)}</div>
+              </div>
               <div className="max-h-[720px] overflow-y-auto">
                 {selectedGroup.events.length === 0 ? <div className="px-5 py-10 text-sm text-muted-foreground">No recent event details available.</div> : selectedGroup.events.map((event) => (
                   <article key={event.id} className="border-b border-border px-5 py-5">
@@ -268,8 +304,14 @@ export default function SystemsPage() {
           </aside>
         </div>
 
-        <section className="mt-6 hidden rounded-2xl border border-dashed border-border bg-muted/20 p-5 lg:block">
-          <div className="grid grid-cols-4 gap-4 text-xs text-muted-foreground"><div><span className="font-medium text-foreground">AI analysis</span><br />Reserved for Phase 3</div><div><span className="font-medium text-foreground">Proposed fix</span><br />Reserved for Phase 3</div><div><span className="font-medium text-foreground">Risk / confidence</span><br />Reserved for Phase 3</div><div><span className="font-medium text-foreground">Action</span><br />Execute is intentionally disabled</div></div>
+        <section className="mt-6 rounded-2xl border border-dashed border-border bg-muted/20 p-5">
+          <div className="mb-4 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground"><Bot className="h-4 w-4" /> Observation-mode diagnosis</div>
+          {!selectedGroup ? <p className="text-sm text-muted-foreground">Select a group to inspect its diagnosis.</p> : <div className="grid gap-5 text-sm lg:grid-cols-4">
+            <div><div className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">AI analysis</div><p className="whitespace-pre-wrap text-foreground">{selectedGroup.ai_analysis ?? "Not diagnosed yet."}</p></div>
+            <div><div className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Proposed fix</div><p className="whitespace-pre-wrap text-foreground">{selectedGroup.proposed_fix ?? "No proposed fix yet."}</p></div>
+            <div><div className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Risk / confidence</div><p className="capitalize text-foreground">{selectedGroup.risk_level ?? "—"} {selectedGroup.confidence === null ? "" : `· ${Math.round(selectedGroup.confidence * 100)}% confidence`}</p><p className="mt-1 text-xs text-muted-foreground">Severity: {selectedGroup.severity ?? "—"}</p>{selectedGroup.diagnosed_at && <div className="mt-2">{dualTimestamp(selectedGroup.diagnosed_at)}</div>}</div>
+            <div><div className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Action</div><Button variant="outline" disabled className="gap-2"><LockKeyhole className="h-3.5 w-3.5" />Observation mode — execution not enabled</Button><div className="mt-4 text-xs font-medium uppercase tracking-wider text-muted-foreground">Review verdict</div><div className="mt-2 flex flex-wrap gap-2">{(["matched", "partial", "wrong"] as const).map((verdict) => <Button key={verdict} size="sm" variant={selectedGroup.review_verdict === verdict ? "default" : "outline"} onClick={() => void recordVerdict(verdict)} disabled={updating}>{verdict}</Button>)}</div>{selectedGroup.reviewed_at && <div className="mt-2">{dualTimestamp(selectedGroup.reviewed_at)}<span className="mt-1 block text-xs text-muted-foreground">by {selectedGroup.reviewed_by ?? "admin"}</span></div>}</div>
+          </div>}
         </section>
       </div>
     </main>

@@ -6,6 +6,7 @@ import { logError } from "../_shared/log.ts"
 const FN = "diagnose-error"
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? ""
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+const SYSTEMS_INTERNAL_SECRET = Deno.env.get("SYSTEMS_INTERNAL_SECRET") ?? ""
 const ANTHROPIC_SYSTEMS_API_KEY = Deno.env.get("ANTHROPIC_SYSTEMS_API_KEY") ?? ""
 const ANTHROPIC_SYSTEMS_MODEL = Deno.env.get("ANTHROPIC_SYSTEMS_MODEL") ?? "claude-haiku-4-5-20251001"
 
@@ -95,7 +96,7 @@ async function callAnthropic(prompt: string) {
 serve(async (req) => {
   if (req.method !== "POST") return json({ error: "POST required" }, 405)
   const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "")
-  if (!SUPABASE_SERVICE_ROLE_KEY || token !== SUPABASE_SERVICE_ROLE_KEY) return json({ error: "Service role required" }, 401)
+  if (!SYSTEMS_INTERNAL_SECRET || token !== SYSTEMS_INTERNAL_SECRET) return json({ error: "Internal systems secret required" }, 401)
 
   try {
     const body = await req.json()

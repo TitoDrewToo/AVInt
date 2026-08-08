@@ -64,7 +64,8 @@ export async function diagnoseErrorGroup(
   const client = adminClient()
   const functionUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!client || !functionUrl || !serviceKey) return { ok: false as const, error: "Diagnosis service is unavailable" }
+  const systemsInternalSecret = process.env.SYSTEMS_INTERNAL_SECRET
+  if (!client || !functionUrl || !serviceKey || !systemsInternalSecret) return { ok: false as const, error: "Diagnosis service is unavailable" }
 
   const { data: group, error: groupError } = await client
     .from("error_groups")
@@ -92,7 +93,7 @@ export async function diagnoseErrorGroup(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${serviceKey}`,
+      Authorization: `Bearer ${systemsInternalSecret}`,
     },
     body: JSON.stringify({
       fingerprint,

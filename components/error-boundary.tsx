@@ -2,7 +2,7 @@
 
 import React from "react"
 
-import { captureError } from "@/lib/client-error-capture"
+import { captureError, isBenignError } from "@/lib/client-error-capture"
 
 type Props = { children: React.ReactNode }
 type State = { hasError: boolean }
@@ -31,7 +31,9 @@ export class ErrorMonitoringBoundary extends React.Component<Props, State> {
   }
 
   private handleWindowError = (event: ErrorEvent) => {
-    captureError("AVIntelligence", "window", "error", event.error ?? event.message, {
+    const error = event.error ?? event.message
+    if (isBenignError(error)) return
+    captureError("AVIntelligence", "window", "error", error, {
       filename: event.filename,
       line: event.lineno,
       column: event.colno,
@@ -39,6 +41,7 @@ export class ErrorMonitoringBoundary extends React.Component<Props, State> {
   }
 
   private handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+    if (isBenignError(event.reason)) return
     captureError("AVIntelligence", "window", "unhandledrejection", event.reason)
   }
 

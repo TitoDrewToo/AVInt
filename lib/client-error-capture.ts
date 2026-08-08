@@ -3,6 +3,13 @@
 import { supabase } from "./supabase"
 import { sanitizeErrorContext, sanitizeErrorString } from "./error-sanitize"
 
+export const BENIGN_ERROR_PATTERNS: RegExp[] = [
+  /ResizeObserver loop (completed with undelivered notifications|limit exceeded)/i,
+  /Non-Error promise rejection captured/i,
+  /chrome-extension:\/\//i,
+  /moz-extension:\/\//i,
+]
+
 function errorParts(error: unknown): { message: string; stack: string | null } {
   if (error instanceof Error) return { message: error.message, stack: error.stack ?? null }
   if (typeof error === "string") return { message: error, stack: null }
@@ -11,6 +18,11 @@ function errorParts(error: unknown): { message: string; stack: string | null } {
   } catch {
     return { message: String(error), stack: null }
   }
+}
+
+export function isBenignError(error: unknown): boolean {
+  const { message } = errorParts(error)
+  return BENIGN_ERROR_PATTERNS.some((pattern) => pattern.test(message))
 }
 
 export function captureError(
@@ -22,6 +34,7 @@ export function captureError(
 ): void {
   try {
     const parts = errorParts(error)
+    if (isBenignError(error)) return
     const payload = {
       tool: sanitizeErrorString(tool, 120),
       fn: sanitizeErrorString(fn, 160),

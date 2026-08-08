@@ -5,6 +5,7 @@ import { MarketingScrollReset } from '@/components/marketing-scroll-reset'
 import { ReferralAttribution } from '@/components/referral-attribution'
 import { SmartStoragePrefetcher } from '@/components/smart-storage-prefetcher'
 import { Toaster } from '@/components/ui/toaster'
+import { ErrorMonitoringBoundary } from '@/components/error-boundary'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -43,11 +44,13 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <MarketingScrollReset />
-          <ReferralAttribution />
-          <SmartStoragePrefetcher />
-          {children}
-          <Toaster />
+          <ErrorMonitoringBoundary>
+            <MarketingScrollReset />
+            <ReferralAttribution />
+            <SmartStoragePrefetcher />
+            {children}
+            <Toaster />
+          </ErrorMonitoringBoundary>
         </ThemeProvider>
         <Analytics />
       </body>

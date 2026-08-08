@@ -31,10 +31,10 @@ export function createErrorFingerprint(input: {
   message?: string | null
 }): string {
   const source = fingerprintInput(input)
-  let hash = 0xcbf29ce484222325n
+  let hash = 0x811c9dc5
   for (const byte of new TextEncoder().encode(source)) {
-    hash ^= BigInt(byte)
-    hash = BigInt.asUintN(64, hash * 0x100000001b3n)
+    hash ^= byte
+    hash = Math.imul(hash, 0x01000193) >>> 0
   }
-  return `err_${hash.toString(16).padStart(16, "0")}`
+  return `err_${hash.toString(16).padStart(8, "0")}`
 }

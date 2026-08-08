@@ -39,6 +39,9 @@ function isRelated(section: Section, error: JournalError) {
 }
 function chooseTime(error: JournalError, group: JournalGroup, timeline: TimelineEntry[], force: boolean): TimeWindow {
   if (force || group.diagnosed_at) return "all"
+  const tool = normalize(error.tool)
+  const crossSubsystem = Boolean(tool && [error.fn, error.route].filter(Boolean).map(normalize).some((value) => value && !value.includes(tool) && !tool.includes(value)))
+  if (normalize(error.severity ?? group.severity) === "high" && crossSubsystem) return "all"
   const anchor = dateOf(error.occurred_at) ?? dateOf(group.last_seen) ?? Date.now()
   const first = dateOf(group.first_seen)
   if (first !== null && anchor - first > 30 * 86400000) return "all"

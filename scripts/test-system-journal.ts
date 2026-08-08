@@ -43,7 +43,7 @@ const cross = selectJournalContext(
   { first_seen: "2026-08-08T04:00:00Z" },
   journal,
 )
-assert.equal(cross.timeWindow, "day")
+assert.equal(cross.timeWindow, "all")
 assert.equal(cross.topicScope, "full")
 assert.ok(fresh.text.length <= JOURNAL_CHAR_BUDGET)
 assert.ok(billing.text.length <= JOURNAL_CHAR_BUDGET)

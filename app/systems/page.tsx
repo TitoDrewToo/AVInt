@@ -255,7 +255,7 @@ export default function SystemsPage() {
             </p>
           </div>
           <Button variant="outline" onClick={() => void loadGroups()} disabled={loading} className="gap-2">
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Refresh
+            {loading ? <><DiagnosisSpinner /><span>Refreshing…</span></> : <><RefreshCw className="h-4 w-4" /><span>Refresh</span></>}
           </Button>
         </header>
 

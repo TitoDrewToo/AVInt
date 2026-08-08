@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 
+import { captureServerError } from "./error-capture"
+
 // Central error responder for API routes. Logs the real error server-side
 // (Supabase constraint messages, stack frames, PG error codes) while returning
 // an opaque payload to the client. Prevents schema / internal detail leakage
@@ -34,6 +36,15 @@ export function logApiError(err: unknown, ctx: LogContext) {
     stack,
     ...(ctx.extra ?? {}),
   }))
+  captureServerError({
+    userId: ctx.userId,
+    fn: "api-route",
+    action: ctx.stage,
+    route: ctx.route,
+    message,
+    stack,
+    context: ctx.extra,
+  })
 }
 
 // 500 response with logging. Message is always the generic string; callers

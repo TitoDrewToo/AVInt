@@ -4,6 +4,8 @@
 // lib/api-error.ts#logApiError so the API and edge surfaces produce
 // compatible log lines.
 
+import { captureFunctionError } from "./error-capture.ts"
+
 type Fields = Record<string, unknown>
 
 export function logEvent(fn: string, event: string, fields: Fields = {}) {
@@ -28,4 +30,14 @@ export function logError(fn: string, stage: string, err: unknown, fields: Fields
     stack,
     ...fields,
   }))
+  captureFunctionError({
+    userId: typeof fields.user_id === "string" ? fields.user_id : null,
+    tool: typeof fields.tool === "string" ? fields.tool : fn,
+    fn,
+    action: stage,
+    route: typeof fields.route === "string" ? fields.route : null,
+    message,
+    stack,
+    context: fields,
+  })
 }

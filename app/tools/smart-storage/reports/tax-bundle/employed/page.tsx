@@ -15,6 +15,7 @@ import {
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 import { Navbar } from "@/components/navbar"
 import { Button } from "@/components/ui/button"
+import { Tip } from "@/components/ui/tip"
 import { printReportOutput } from "@/lib/report-print"
 import { supabase } from "@/lib/supabase"
 import {
@@ -252,11 +253,11 @@ function EmployedTaxBundleContent() {
       <main className="flex-1 px-6 py-8">
         <div className="mx-auto max-w-4xl">
           <div className="mb-8 flex items-center gap-3">
-            <Link href="/tools/smart-storage">
+            <Tip text="Return to Smart Storage."><Link href="/tools/smart-storage">
               <button className="flex h-8 w-8 items-center justify-center rounded border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
                 <ArrowLeft className="h-4 w-4" />
               </button>
-            </Link>
+            </Link></Tip>
             <span className="text-xs text-muted-foreground">Smart Storage / Reports / Tax Bundle</span>
           </div>
 
@@ -321,6 +322,7 @@ function EmployedTaxBundleContent() {
                   <FolderOpen className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
                   <select
                     value={targetFolder}
+                    title="Limit this report to one folder and its subfolders."
                     onChange={e => setTargetFolder(e.target.value)}
                     className="appearance-none rounded border border-border bg-background py-1 pl-7 pr-6 text-[11px] text-foreground"
                   >

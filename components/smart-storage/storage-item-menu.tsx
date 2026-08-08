@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, type ReactElement, type ReactNode } from "react"
+import { useRef, type ReactNode } from "react"
 import { Download, FolderOutput, Pencil, Tag, X } from "lucide-react"
 import {
   ContextMenu,
@@ -11,7 +11,7 @@ import {
   ContextMenuShortcut,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { Tip } from "@/components/ui/tip"
 
 interface StorageItemMenuProps {
   kind: "file" | "folder"
@@ -29,15 +29,6 @@ interface StorageItemMenuProps {
   onContextIntent?: () => void
   disableTouchContextMenu?: boolean
   children: ReactNode
-}
-
-function Tip({ children, text }: { children: ReactElement; text: string }) {
-  return (
-    <Tooltip delayDuration={500}>
-      <TooltipTrigger asChild>{children}</TooltipTrigger>
-      <TooltipContent sideOffset={6}>{text}</TooltipContent>
-    </Tooltip>
-  )
 }
 
 export function StorageItemMenu({
@@ -100,10 +91,7 @@ export function StorageItemMenu({
           <>
             <ContextMenuLabel className="truncate">{filename}</ContextMenuLabel>
             <ContextMenuSeparator />
-            <ContextMenuItem inset onSelect={() => void onRename()}>
-              <Pencil className="h-3.5 w-3.5" />
-              Rename
-            </ContextMenuItem>
+            <Tip text="Rename this document."><ContextMenuItem inset onSelect={() => void onRename()}><Pencil className="h-3.5 w-3.5" />Rename</ContextMenuItem></Tip>
             <ContextMenuSeparator />
             <ContextMenuItem inset variant="destructive" onSelect={() => void onDelete()}>
               <X className="h-3.5 w-3.5" />
@@ -121,10 +109,7 @@ export function StorageItemMenu({
             {canMoveUp && onMoveUp && (
               <>
                 <ContextMenuSeparator />
-                <ContextMenuItem inset onSelect={() => void onMoveUp()}>
-                  <FolderOutput className="h-3.5 w-3.5" />
-                  Move up
-                </ContextMenuItem>
+                <Tip text="Move this file to the parent folder."><ContextMenuItem inset onSelect={() => void onMoveUp()}><FolderOutput className="h-3.5 w-3.5" />Move up</ContextMenuItem></Tip>
               </>
             )}
             {onReclassify && (
@@ -141,19 +126,11 @@ export function StorageItemMenu({
             {onDownload && (
               <>
                 <ContextMenuSeparator />
-                <ContextMenuItem inset onSelect={() => void onDownload()}>
-                  <Download className="h-3.5 w-3.5" />
-                  Download
-                  <ContextMenuShortcut>Enter</ContextMenuShortcut>
-                </ContextMenuItem>
+                <Tip text="Download the original file(s)."><ContextMenuItem inset onSelect={() => void onDownload()}><Download className="h-3.5 w-3.5" />Download<ContextMenuShortcut>Enter</ContextMenuShortcut></ContextMenuItem></Tip>
               </>
             )}
             <ContextMenuSeparator />
-            <ContextMenuItem inset variant="destructive" onSelect={() => void onDelete()}>
-              <X className="h-3.5 w-3.5" />
-              Delete file
-              <ContextMenuShortcut>Del</ContextMenuShortcut>
-            </ContextMenuItem>
+            <Tip text="Delete permanently. This can't be undone."><ContextMenuItem inset variant="destructive" onSelect={() => void onDelete()}><X className="h-3.5 w-3.5" />Delete file<ContextMenuShortcut>Del</ContextMenuShortcut></ContextMenuItem></Tip>
           </>
         )}
       </ContextMenuContent>

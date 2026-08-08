@@ -1,6 +1,6 @@
 "use client"
 
-import { type ReactElement, useState, useEffect, useCallback, useRef, useMemo } from "react"
+import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import dynamic from "next/dynamic"
 import { Navbar } from "@/components/navbar"
 import { Button } from "@/components/ui/button"
@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { ProcessingIndicator } from "@/components/ui/processing-indicator"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { Tip, TooltipProvider } from "@/components/ui/tip"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 import { supabase } from "@/lib/supabase"
 import { useEntitlement } from "@/hooks/use-entitlement"
@@ -114,20 +114,21 @@ const GRID_PAD = 8
 const TOUCH_LONG_PRESS_MS = 420
 const TOUCH_MOVE_CANCEL_PX = 10
 
+const REPORT_HINTS: Record<string, string> = {
+  tax_bundle: "For self-employed / 1099 income — maps expenses to IRS Schedule C.",
+  business_expense: "Itemized, categorized expense report for review or filing.",
+  expense_summary: "Totals by category over the selected period.",
+  income_summary: "Income totals and sources over the selected period.",
+  profit_loss: "Income minus expenses for the period.",
+  contract_summary: "Key parties, dates, and obligations pulled from contracts.",
+  key_terms: "The important clauses and terms extracted from a document.",
+}
+
 type HoverPreviewState = {
   fileId: string
   url: string | null
   x: number
   y: number
-}
-
-function Tip({ children, text }: { children: ReactElement; text: string }) {
-  return (
-    <Tooltip delayDuration={500}>
-      <TooltipTrigger asChild>{children}</TooltipTrigger>
-      <TooltipContent sideOffset={6}>{text}</TooltipContent>
-    </Tooltip>
-  )
 }
 
 type ProcessingBadgeState = "working_slow" | "failed"
@@ -1603,47 +1604,47 @@ export default function SmartStoragePage() {
 
       <div className="flex shrink-0 items-center gap-1">
         {breadcrumb.length > 1 && (
-          <button
+          <Tip text="Go up to the parent folder."><button
             onClick={() => { const prev = breadcrumb[breadcrumb.length - 2]; navigateBreadcrumb(prev.id, prev.name, breadcrumb.length - 2) }}
-            className="flex h-7 w-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="flex h-7 w-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground" aria-label="Back"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
-          </button>
+          </button></Tip>
         )}
         {!classificationView && !documentVirtualView && (<>
-          <button
+          <Tip text="Create a folder to organize documents your way."><button
             onClick={() => setIsCreatingFolder(true)}
             className="flex h-7 items-center gap-1.5 rounded px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <Plus className="h-3.5 w-3.5" />
             New folder
-          </button>
+          </button></Tip>
           <DropdownMenu>
-            <DropdownMenuTrigger asChild disabled={isUploading}>
-              <button className="flex h-7 items-center gap-1.5 rounded px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50">
+            <Tip text="Add receipts, invoices, payslips, or contracts — we scan each file, then auto-extract the key fields."><DropdownMenuTrigger asChild disabled={isUploading}>
+              <button aria-label="Upload" className="flex h-7 items-center gap-1.5 rounded px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50">
                 {isUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
                 {isUploading ? "Uploading..." : "Upload"}
                 <ChevronDown className="h-3.5 w-3.5" />
               </button>
-            </DropdownMenuTrigger>
+            </DropdownMenuTrigger></Tip>
             <DropdownMenuContent align="start" className="min-w-[176px] rounded-xl">
-              <DropdownMenuItem onSelect={() => fileInputRef.current?.click()}>
+              <Tip text="Pick individual files — PDF, images, XLSX or CSV, up to 60 MB each."><DropdownMenuItem onSelect={() => fileInputRef.current?.click()}>
                 <Upload className="h-3.5 w-3.5" />
                 Upload files
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => directoryInputRef.current?.click()}>
+              </DropdownMenuItem></Tip>
+              <Tip text="Import a whole folder; its subfolders are recreated here."><DropdownMenuItem onSelect={() => directoryInputRef.current?.click()}>
                 <FolderOpen className="h-3.5 w-3.5" />
                 Upload folder
-              </DropdownMenuItem>
+              </DropdownMenuItem></Tip>
             </DropdownMenuContent>
           </DropdownMenu>
-          <button
+          <Tip text="Enter a document by hand when you don't have a file to upload."><button
             onClick={() => setManualEntryOpen(true)}
             className="flex h-7 items-center gap-1.5 rounded px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <PenLine className="h-3.5 w-3.5" />
             Add Entry
-          </button>
+          </button></Tip>
         </>)}
         {(classificationView || documentVirtualView) && (
           <select
@@ -1657,7 +1658,7 @@ export default function SmartStoragePage() {
           </select>
         )}
         <div className="flex items-center rounded border border-border">
-          <button
+          <Tip text="Show documents as a detailed list."><button
             onClick={() => setViewMode("list")}
             className={`flex h-6 w-6 items-center justify-center rounded-l text-xs transition-colors ${viewMode === "list" ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/50"}`}
             aria-label="List view"
@@ -1668,8 +1669,8 @@ export default function SmartStoragePage() {
               <rect x="1" y="7" width="2" height="2" rx="0.5" fill="currentColor" stroke="none"/>
               <rect x="1" y="11" width="2" height="2" rx="0.5" fill="currentColor" stroke="none"/>
             </svg>
-          </button>
-          <button
+          </button></Tip>
+          <Tip text="Show documents as icons you can arrange."><button
             onClick={() => setViewMode("grid")}
             className={`flex h-6 w-6 items-center justify-center rounded-r text-xs transition-colors ${viewMode === "grid" ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/50"}`}
             aria-label="Grid view"
@@ -1678,7 +1679,7 @@ export default function SmartStoragePage() {
               <rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/>
               <rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/>
             </svg>
-          </button>
+          </button></Tip>
         </div>
       </div>
     </div>
@@ -1726,6 +1727,7 @@ export default function SmartStoragePage() {
   }
 
   return (
+    <TooltipProvider>
     <div className="flex min-h-screen flex-col">
       <Navbar wide toolSlot={storageToolbar} />
 
@@ -2481,7 +2483,7 @@ export default function SmartStoragePage() {
 
               {hasMoreFiles && (
                 <div className="flex justify-center py-4">
-                  <Button
+                  <Tip text="Load older documents."><Button
                     variant="outline"
                     size="sm"
                     className="rounded-lg"
@@ -2489,7 +2491,7 @@ export default function SmartStoragePage() {
                     onClick={() => void loadMoreFiles()}
                   >
                     {isLoadingMoreFiles ? <><Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />Loading…</> : "Load more"}
-                  </Button>
+                  </Button></Tip>
                 </div>
               )}
             </div>
@@ -2503,7 +2505,7 @@ export default function SmartStoragePage() {
 
             <div className="flex flex-col gap-3 p-3">
               {/* Date range toggle */}
-              <button
+              <Tip text="Limit reports to a date range. Defaults to your most active tax year."><button
                 onClick={() => setShowDateRange(!showDateRange)}
                 className="flex w-full items-center justify-between rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               >
@@ -2512,7 +2514,7 @@ export default function SmartStoragePage() {
                   {dateRange.preset === "custom" ? `${dateRange.from} – ${dateRange.to}` : PRESET_LABELS[dateRange.preset]}
                 </span>
                 <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showDateRange ? "rotate-180" : ""}`} />
-              </button>
+              </button></Tip>
 
               {showDateRange && (
                 <div className="rounded-lg border border-border bg-muted/30 p-3">
@@ -2526,15 +2528,15 @@ export default function SmartStoragePage() {
                     Tax Bundle Mode
                   </p>
                   <div className="grid grid-cols-2 gap-2">
-                    <Button
+                    <Tip text="For self-employed / 1099 income — maps expenses to IRS Schedule C."><Button
                       className="rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
                       disabled={isNavigatingReport || isLoadingReportAvailability || !reportAvailability.tax_bundle}
                       size="sm"
                       onClick={() => openReport("tax_bundle", { mode: "schedule_c" })}
                     >
                       {isNavigatingReport || isLoadingReportAvailability ? <><Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />Loading…</> : "Self-Employed"}
-                    </Button>
-                    <Button
+                    </Button></Tip>
+                    <Tip text="For W-2 wage earners — organizes payslips and withholdings."><Button
                       variant="outline"
                       className="rounded-lg border-primary/25 text-foreground hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
                       disabled={isNavigatingReport || isLoadingReportAvailability || !reportAvailability.tax_bundle}
@@ -2542,14 +2544,14 @@ export default function SmartStoragePage() {
                       onClick={() => openReport("tax_bundle", { mode: "employed" })}
                     >
                       Employed
-                    </Button>
+                    </Button></Tip>
                   </div>
                   <p className="px-1 text-[11px] leading-relaxed text-muted-foreground/75">
                     Choose the report path that matches the income documents you want to review.
                   </p>
                 </div>
               ) : (
-                <Button
+                <Tip text={!isPro ? "Upgrade to Pro to generate reports" : "Generate the selected report."}><Button
                   className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
                   disabled={isPro && (!selectedReport || isLoadingReportAvailability || !reportAvailability[selectedReport] || isNavigatingReport)}
                   size="sm"
@@ -2561,7 +2563,7 @@ export default function SmartStoragePage() {
                   {isNavigatingReport ? (
                     <><Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />Generating…</>
                   ) : isPro ? "Generate Report" : "Upgrade to Pro"}
-                </Button>
+                </Button></Tip>
               )}
             </div>
 
@@ -2576,7 +2578,7 @@ export default function SmartStoragePage() {
                   const isSelected = selectedReport === report.id
                   const dimmed = !enabled || locked
                   return (
-                    <button
+                    <Tip text={locked ? "Upgrade to Pro to generate reports" : REPORT_HINTS[report.id] ?? report.description}><button
                       key={report.id}
                       onClick={() => {
                         if (locked) { router.push("/pricing"); return }
@@ -2594,7 +2596,7 @@ export default function SmartStoragePage() {
                     >
                       <span className="block text-sm font-medium">{report.label}</span>
                       <span className={`block text-xs leading-snug mt-0.5 ${isSelected ? "text-primary/70" : dimmed ? "text-muted-foreground/35" : "text-muted-foreground"}`}>{report.description}</span>
-                    </button>
+                    </button></Tip>
                   )
                 })}
               </div>
@@ -2791,5 +2793,6 @@ export default function SmartStoragePage() {
       })()}
 
     </div>
+    </TooltipProvider>
   )
 }

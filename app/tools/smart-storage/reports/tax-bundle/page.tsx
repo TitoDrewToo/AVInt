@@ -3,6 +3,7 @@
 import { Suspense, useState, useEffect, useCallback, useMemo } from "react"
 import { Navbar } from "@/components/navbar"
 import { Button } from "@/components/ui/button"
+import { Tip } from "@/components/ui/tip"
 import { supabase } from "@/lib/supabase"
 import { useEntitlement } from "@/hooks/use-entitlement"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
@@ -590,11 +591,11 @@ function TaxBundleContent() {
 
           {/* Back nav */}
           <div className="mb-8 flex items-center gap-3">
-            <Link href="/tools/smart-storage">
+            <Tip text="Return to Smart Storage."><Link href="/tools/smart-storage">
               <button className="flex h-8 w-8 items-center justify-center rounded border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
                 <ArrowLeft className="h-4 w-4" />
               </button>
-            </Link>
+            </Link></Tip>
             <span className="text-xs text-muted-foreground">Smart Storage / Reports</span>
           </div>
 
@@ -606,14 +607,14 @@ function TaxBundleContent() {
               {detectedYears.slice(0, 3).map(y => {
                 const active = activePreset === `ty-${y}`
                 return (
-                  <button key={y} onClick={() => applyTaxYear(y)}
+                  <Tip text="Jump to a tax year detected in your documents."><button key={y} onClick={() => applyTaxYear(y)}
                     className={`rounded border px-3 py-1.5 text-xs transition-colors ${
                       active
                         ? "border-foreground bg-foreground text-background"
                         : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
                     }`}>
                     Tax Year {y}
-                  </button>
+                  </button></Tip>
                 )
               })}
               <button onClick={applyLastQuarter}
@@ -633,11 +634,13 @@ function TaxBundleContent() {
                 All Time
               </button>
               <span className="mx-1 h-4 w-px bg-border" />
-              <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+              <Tip text="Set an exact reporting period."><input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
                 className="rounded border border-border bg-background px-3 py-1.5 text-xs text-foreground" />
+              </Tip>
               <span className="text-xs text-muted-foreground">—</span>
-              <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+              <Tip text="Set an exact reporting period."><input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
                 className="rounded border border-border bg-background px-3 py-1.5 text-xs text-foreground" />
+              </Tip>
             </div>
 
             {/* Match counter + active window */}
@@ -659,13 +662,13 @@ function TaxBundleContent() {
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-[10px]">
                     <FolderOpen className="h-3 w-3" />
                     {folders.find(f => f.id === targetFolder)?.name ?? "folder"}
-                    <button
+                    <Tip text="Clear the filter — include all documents."><button
                       onClick={() => setTargetFolder("")}
                       className="ml-0.5 text-muted-foreground hover:text-foreground"
                       aria-label="Clear folder filter"
                     >
                       ×
-                    </button>
+                    </button></Tip>
                   </span>
                 </>
               )}
@@ -677,14 +680,14 @@ function TaxBundleContent() {
                 <span className="italic">Optional — narrow to a folder if the auto-filter is picking up unrelated data:</span>
                 <div className="relative">
                   <FolderOpen className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
-                  <select
+                  <Tip text="Limit this report to one folder and its subfolders."><select
                     value={targetFolder}
                     onChange={e => setTargetFolder(e.target.value)}
                     className="appearance-none rounded border border-border bg-background py-1 pl-7 pr-6 text-[11px] text-foreground"
                   >
                     <option value="">Choose folder…</option>
                     {folders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                  </select>
+                  </select></Tip>
                 </div>
               </div>
             )}
@@ -771,24 +774,24 @@ function TaxBundleContent() {
                       <Copy className="h-3.5 w-3.5" />
                       {csvCopied ? "Copied!" : "Copy CSV"}
                     </Button>
-                    <Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={downloadCSV} title={mixedCurrency ? "CSV includes a mixed-currency warning and per-row currencies" : undefined}>
+                    <Tip text="Download the summary as a CSV."><Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={downloadCSV} title={mixedCurrency ? "CSV includes a mixed-currency warning and per-row currencies" : undefined}>
                       <Download className="h-3.5 w-3.5" />
                       Export CSV
-                    </Button>
-                    <Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={() => void downloadAccountingCSV("quickbooks")} disabled={tier === "free"} title={tier === "free" ? "Available on Day Pass or Pro" : undefined}>
+                    </Button></Tip>
+                    <Tip text={tier === "free" ? "CSV exports for QuickBooks/Xero are a Pro feature." : "Export for QuickBooks (Date, Description, Amount; expenses negative)."}><Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={() => void downloadAccountingCSV("quickbooks")} disabled={tier === "free"} title={tier === "free" ? "CSV exports for QuickBooks/Xero are a Pro feature." : undefined}>
                       {tier === "free" ? "QuickBooks (upgrade)" : "QuickBooks CSV"}
-                    </Button>
-                    <Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={() => void downloadAccountingCSV("xero")} disabled={tier === "free"} title={tier === "free" ? "Available on Day Pass or Pro" : undefined}>
+                    </Button></Tip>
+                    <Tip text={tier === "free" ? "CSV exports for QuickBooks/Xero are a Pro feature." : "Export for Xero (Date, Amount, Payee, Description)."}><Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={() => void downloadAccountingCSV("xero")} disabled={tier === "free"} title={tier === "free" ? "CSV exports for QuickBooks/Xero are a Pro feature." : undefined}>
                       {tier === "free" ? "Xero (upgrade)" : "Xero CSV"}
-                    </Button>
-                    <Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={printReport}>
+                    </Button></Tip>
+                    <Tip text="Open your browser's print dialog to save as PDF."><Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={printReport}>
                       <Printer className="h-3.5 w-3.5" />
                       Print / PDF
-                    </Button>
-                    <Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={downloadZip} disabled={zipping} title={mixedCurrency ? "ZIP includes a mixed-currency warning, per-row currencies, and a manifest" : undefined}>
+                    </Button></Tip>
+                    <Tip text="Full evidence bundle — summary CSV, source files, and a manifest."><Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={downloadZip} disabled={zipping} title={mixedCurrency ? "ZIP includes a mixed-currency warning, per-row currencies, and a manifest" : undefined}>
                       {zipping ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Archive className="h-3.5 w-3.5" />}
                       {zipping ? "Bundling..." : "Download Zip"}
-                    </Button>
+                    </Button></Tip>
                   </div>
                 </div>
               </div>

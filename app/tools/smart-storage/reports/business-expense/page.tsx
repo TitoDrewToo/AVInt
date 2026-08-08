@@ -3,6 +3,7 @@
 import { Suspense, useState, useEffect, useCallback } from "react"
 import { Navbar } from "@/components/navbar"
 import { Button } from "@/components/ui/button"
+import { Tip } from "@/components/ui/tip"
 import { supabase } from "@/lib/supabase"
 import { useEntitlement } from "@/hooks/use-entitlement"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
@@ -428,11 +429,11 @@ function BusinessExpenseContent() {
 
           {/* Back nav */}
           <div className="mb-8 flex items-center gap-3">
-            <Link href="/tools/smart-storage">
+            <Tip text="Return to Smart Storage."><Link href="/tools/smart-storage">
               <button className="flex h-8 w-8 items-center justify-center rounded border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
                 <ArrowLeft className="h-4 w-4" />
               </button>
-            </Link>
+            </Link></Tip>
             <span className="text-xs text-muted-foreground">Smart Storage / Reports</span>
           </div>
 
@@ -458,20 +459,20 @@ function BusinessExpenseContent() {
                 <Copy className="h-3.5 w-3.5" />
                 {csvCopied ? "Copied!" : "Copy CSV"}
               </Button>
-              <Button variant="outline" size="sm" className="gap-2 rounded-md text-xs" onClick={downloadCSV}>
+              <Tip text="Download the summary as a CSV."><Button variant="outline" size="sm" className="gap-2 rounded-md text-xs" onClick={downloadCSV}>
                 <Download className="h-3.5 w-3.5" />
                 Export CSV
-              </Button>
-              <Button variant="outline" size="sm" className="gap-2 rounded-md text-xs" onClick={() => void downloadAccountingCSV("quickbooks")} disabled={tier === "free"} title={tier === "free" ? "Available on Day Pass or Pro" : undefined}>
+              </Button></Tip>
+              <Tip text={tier === "free" ? "CSV exports for QuickBooks/Xero are a Pro feature." : "Export for QuickBooks (Date, Description, Amount; expenses negative)."}><Button variant="outline" size="sm" className="gap-2 rounded-md text-xs" onClick={() => void downloadAccountingCSV("quickbooks")} disabled={tier === "free"} title={tier === "free" ? "CSV exports for QuickBooks/Xero are a Pro feature." : undefined}>
                 {tier === "free" ? "QuickBooks (upgrade)" : "QuickBooks CSV"}
-              </Button>
-              <Button variant="outline" size="sm" className="gap-2 rounded-md text-xs" onClick={() => void downloadAccountingCSV("xero")} disabled={tier === "free"} title={tier === "free" ? "Available on Day Pass or Pro" : undefined}>
+              </Button></Tip>
+              <Tip text={tier === "free" ? "CSV exports for QuickBooks/Xero are a Pro feature." : "Export for Xero (Date, Amount, Payee, Description)."}><Button variant="outline" size="sm" className="gap-2 rounded-md text-xs" onClick={() => void downloadAccountingCSV("xero")} disabled={tier === "free"} title={tier === "free" ? "CSV exports for QuickBooks/Xero are a Pro feature." : undefined}>
                 {tier === "free" ? "Xero (upgrade)" : "Xero CSV"}
-              </Button>
-              <Button variant="outline" size="sm" className="gap-2 rounded-md text-xs" onClick={printReport}>
+              </Button></Tip>
+              <Tip text="Open your browser's print dialog to save as PDF."><Button variant="outline" size="sm" className="gap-2 rounded-md text-xs" onClick={printReport}>
                 <Printer className="h-3.5 w-3.5" />
                 Print / PDF
-              </Button>
+              </Button></Tip>
             </div>
           </div>
 

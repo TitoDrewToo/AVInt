@@ -30,6 +30,7 @@ import {
   LayoutGrid, X, Check, Plus, Zap, PanelRight, Star
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Tip, TooltipProvider } from "@/components/ui/tip"
 import Link from "next/link"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -1376,14 +1377,14 @@ function DrilldownModal({
               {rows.length} {rows.length === 1 ? "document row" : "document rows"} · {primarySymbol}{Math.round(total).toLocaleString()} {primaryLabel ? `${primaryLabel} total` : "total"}
             </p>
           </div>
-          <button
+          <Tip text="Close and return to the full chart."><button
             type="button"
             onClick={onClose}
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
             aria-label="Close drilldown"
           >
             <X className="h-4 w-4" />
-          </button>
+          </button></Tip>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
@@ -2319,7 +2320,7 @@ export default function SmartDashboardPage() {
               onMouseEnter={cancelAdvancedMenuClose}
               onMouseLeave={showAdvancedMenu ? scheduleAdvancedMenuClose : undefined}
             >
-              <button
+              <Tip text="Choose the time period the dashboard covers."><button
                 onClick={() => { cancelAdvancedMenuClose(); setShowAdvancedMenu(!showAdvancedMenu); setShowColorPicker(false); setShowDateFilter(false) }}
                 className={`flex h-7 items-center gap-1.5 rounded-lg border px-3 text-xs transition-all duration-200 hover:-translate-y-0.5 hover:bg-muted hover:text-foreground ${
                   readinessState.kind === "unlock_moment"
@@ -2347,7 +2348,7 @@ export default function SmartDashboardPage() {
                     <span className="text-[10px] font-medium">New data</span>
                   </span>
                 )}
-              </button>
+              </button></Tip>
               <div className={`absolute left-0 top-9 z-30 min-w-[260px] origin-top-left rounded-xl border border-border bg-card p-3 shadow-xl transition-all duration-200 ${
                 showAdvancedMenu
                   ? "pointer-events-auto translate-y-0 scale-100 opacity-100"
@@ -2449,6 +2450,7 @@ export default function SmartDashboardPage() {
   )
 
   return (
+    <TooltipProvider>
     <div className="flex h-screen flex-col overflow-hidden">
       <Navbar wide toolSlot={dashboardToolbar} />
 
@@ -3186,5 +3188,6 @@ export default function SmartDashboardPage() {
       </Sheet>
 
     </div>
+    </TooltipProvider>
   )
 }

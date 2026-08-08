@@ -1,9 +1,10 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { AlertTriangle, Bot, CircleAlert, LockKeyhole, RefreshCw, Search, ShieldCheck } from "lucide-react"
+import { AlertTriangle, Bot, CircleAlert, LockKeyhole, Play, RefreshCw, RotateCcw, Search, ShieldCheck } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { Navbar } from "@/components/navbar"
 import { supabase } from "@/lib/supabase"
 import { ERROR_GROUP_STATUSES, type ErrorGroupStatus } from "@/lib/system-admin"
 import { diagnoseErrorGroup, setErrorGroupReviewVerdict, updateErrorGroupStatus } from "./actions"
@@ -98,6 +99,23 @@ function DiagnosisSpinner() {
       <span className="absolute inset-0 rounded-full border border-primary/25 border-t-primary motion-safe:animate-spin" />
       <span className="absolute inset-[3px] rounded-full border border-primary/20 border-b-primary motion-safe:animate-[spin_1.35s_linear_infinite_reverse]" />
     </span>
+  )
+}
+
+function ObservationActionButton({
+  label,
+  Icon,
+  loading = false,
+}: {
+  label: string
+  Icon: typeof Play
+  loading?: boolean
+}) {
+  return (
+    <Button variant="outline" disabled className="w-full justify-start gap-2" aria-disabled="true">
+      {loading ? <DiagnosisSpinner /> : <Icon className="h-3.5 w-3.5" />}
+      <span>{loading ? `${label}…` : label}</span>
+    </Button>
   )
 }
 
@@ -238,11 +256,18 @@ export default function SystemsPage() {
   }
 
   if (access !== "allowed") {
-    return access === "checking" ? <div className="min-h-screen bg-background" /> : null
+    return (
+      <>
+        <Navbar />
+        {access === "checking" ? <div className="min-h-screen bg-background" /> : null}
+      </>
+    )
   }
 
   return (
-    <main className="min-h-screen bg-background px-4 py-8 text-foreground md:px-8">
+    <>
+      <Navbar />
+      <main className="min-h-screen bg-background px-4 py-8 text-foreground md:px-8">
       <div className="mx-auto max-w-[1500px]">
         <header className="mb-8 flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -330,10 +355,11 @@ export default function SystemsPage() {
             <div><div className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">AI analysis</div><p className="whitespace-pre-wrap text-foreground">{selectedGroup.ai_analysis ?? "Not diagnosed yet."}</p></div>
             <div><div className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Proposed fix</div><p className="whitespace-pre-wrap text-foreground">{selectedGroup.proposed_fix ?? "No proposed fix yet."}</p></div>
             <div><div className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Risk / confidence</div><p className="capitalize text-foreground">{selectedGroup.risk_level ?? "—"} {selectedGroup.confidence === null ? "" : `· ${Math.round(selectedGroup.confidence * 100)}% confidence`}</p><p className="mt-1 text-xs text-muted-foreground">Severity: {selectedGroup.severity ?? "—"}</p>{selectedGroup.diagnosed_at && <div className="mt-2">{dualTimestamp(selectedGroup.diagnosed_at)}</div>}</div>
-            <div><div className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Action</div><Button variant="outline" disabled className="gap-2"><LockKeyhole className="h-3.5 w-3.5" />Observation mode — execution not enabled</Button><div className="mt-4 text-xs font-medium uppercase tracking-wider text-muted-foreground">Review verdict</div><div className="mt-2 flex flex-wrap gap-2">{(["matched", "partial", "wrong"] as const).map((verdict) => <Button key={verdict} size="sm" variant={selectedGroup.review_verdict === verdict ? "default" : "outline"} onClick={() => void recordVerdict(verdict)} disabled={updating}>{verdict}</Button>)}</div>{selectedGroup.reviewed_at && <div className="mt-2">{dualTimestamp(selectedGroup.reviewed_at)}<span className="mt-1 block text-xs text-muted-foreground">by {selectedGroup.reviewed_by ?? "admin"}</span></div>}</div>
+            <div><div className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Action</div><div className="space-y-2"><ObservationActionButton label="Execute fix" Icon={Play} /><ObservationActionButton label="Rollback to last working deployment" Icon={RotateCcw} /></div><p className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground"><LockKeyhole className="h-3.5 w-3.5" />observation mode — execution not enabled</p><div className="mt-4 text-xs font-medium uppercase tracking-wider text-muted-foreground">Review verdict</div><div className="mt-2 flex flex-wrap gap-2">{(["matched", "partial", "wrong"] as const).map((verdict) => <Button key={verdict} size="sm" variant={selectedGroup.review_verdict === verdict ? "default" : "outline"} onClick={() => void recordVerdict(verdict)} disabled={updating}>{verdict}</Button>)}</div>{selectedGroup.reviewed_at && <div className="mt-2">{dualTimestamp(selectedGroup.reviewed_at)}<span className="mt-1 block text-xs text-muted-foreground">by {selectedGroup.reviewed_by ?? "admin"}</span></div>}</div>
           </div>}
         </section>
-      </div>
-    </main>
+        </div>
+      </main>
+    </>
   )
 }

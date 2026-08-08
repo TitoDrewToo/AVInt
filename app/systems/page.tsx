@@ -92,6 +92,15 @@ function statusClass(status: ErrorGroupStatus) {
   return "border-primary/30 bg-primary/10 text-primary"
 }
 
+function DiagnosisSpinner() {
+  return (
+    <span aria-hidden="true" className="relative inline-flex h-4 w-4 shrink-0 items-center justify-center text-primary">
+      <span className="absolute inset-0 rounded-full border border-primary/25 border-t-primary motion-safe:animate-spin" />
+      <span className="absolute inset-[3px] rounded-full border border-primary/20 border-b-primary motion-safe:animate-[spin_1.35s_linear_infinite_reverse]" />
+    </span>
+  )
+}
+
 export default function SystemsPage() {
   const [access, setAccess] = useState<"checking" | "allowed" | "denied">("checking")
   const [groups, setGroups] = useState<GroupView[]>([])
@@ -199,11 +208,22 @@ export default function SystemsPage() {
     if (!selectedGroup) return
     setDiagnosing(true)
     setError(null)
-    const { data: { session } } = await supabase.auth.getSession()
-    const result = await diagnoseErrorGroup(selectedGroup.fingerprint, force, session?.access_token)
-    if (!result.ok) setError(result.error)
-    else await loadGroups()
-    setDiagnosing(false)
+    let timeoutId: ReturnType<typeof setTimeout> | null = null
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const diagnosisPromise = diagnoseErrorGroup(selectedGroup.fingerprint, force, session?.access_token)
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error("Diagnosis timed out. Try again.")), 45_000)
+      })
+      const result = await Promise.race([diagnosisPromise, timeoutPromise])
+      if (!result.ok) setError(result.error)
+      else await loadGroups()
+    } catch (diagnosisError) {
+      setError(diagnosisError instanceof Error ? diagnosisError.message : "Diagnosis failed. Try again.")
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId)
+      setDiagnosing(false)
+    }
   }
 
   async function recordVerdict(verdict: "matched" | "partial" | "wrong") {
@@ -285,7 +305,7 @@ export default function SystemsPage() {
             <div className="border-b border-border px-5 py-4"><h2 className="font-medium">Occurrences</h2><p className="mt-1 text-xs text-muted-foreground">{selectedGroup ? `${selectedGroup.count} total · showing recent captured events` : "Select a group to inspect occurrences"}</p></div>
             {!selectedGroup ? <div className="px-5 py-12 text-center text-sm text-muted-foreground">Choose an error group.</div> : <>
               <div className="border-b border-border px-5 py-4">
-                <div className="mb-3 flex items-center justify-between gap-3"><div className="text-sm font-medium">Triage status</div><div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => void diagnose(Boolean(selectedGroup.diagnosed_at))} disabled={diagnosing}>{diagnosing ? "Diagnosing…" : selectedGroup.diagnosed_at ? "Re-diagnose" : "Diagnose"}</Button></div></div>
+                <div className="mb-3 flex items-center justify-between gap-3"><div className="text-sm font-medium">Triage status</div><div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => void diagnose(Boolean(selectedGroup.diagnosed_at))} disabled={diagnosing} className="gap-2">{diagnosing ? <><DiagnosisSpinner /><span>Diagnosing…</span></> : selectedGroup.diagnosed_at ? "Re-diagnose" : "Diagnose"}</Button></div></div>
                 <div className="flex flex-wrap gap-2">{ERROR_GROUP_STATUSES.map((status) => <Button key={status} size="sm" variant={selectedGroup.status === status ? "default" : "outline"} onClick={() => void changeStatus(status)} disabled={updating}>{status}</Button>)}</div>
               </div>
               <div className="max-h-[720px] overflow-y-auto">

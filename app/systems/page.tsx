@@ -105,14 +105,16 @@ function DiagnosisSpinner() {
 function ObservationActionButton({
   label,
   Icon,
+  title,
   loading = false,
 }: {
   label: string
   Icon: typeof Play
+  title: string
   loading?: boolean
 }) {
   return (
-    <Button variant="outline" disabled className="w-full justify-start gap-2" aria-disabled="true">
+    <Button variant="outline" disabled className="w-full justify-start gap-2" aria-disabled="true" title={title}>
       {loading ? <DiagnosisSpinner /> : <Icon className="h-3.5 w-3.5" />}
       <span>{loading ? `${label}…` : label}</span>
     </Button>
@@ -279,7 +281,7 @@ export default function SystemsPage() {
               Grouped production failures and occurrence context. Read and triage only; AI diagnosis and execution are reserved for later phases.
             </p>
           </div>
-          <Button variant="outline" onClick={() => void loadGroups()} disabled={loading} className="gap-2">
+          <Button variant="outline" onClick={() => void loadGroups()} disabled={loading} className="gap-2" title="Reload the latest error groups and counts.">
             {loading ? <><DiagnosisSpinner /><span>Refreshing…</span></> : <><RefreshCw className="h-4 w-4" /><span>Refresh</span></>}
           </Button>
         </header>
@@ -330,8 +332,8 @@ export default function SystemsPage() {
             <div className="border-b border-border px-5 py-4"><h2 className="font-medium">Occurrences</h2><p className="mt-1 text-xs text-muted-foreground">{selectedGroup ? `${selectedGroup.count} total · showing recent captured events` : "Select a group to inspect occurrences"}</p></div>
             {!selectedGroup ? <div className="px-5 py-12 text-center text-sm text-muted-foreground">Choose an error group.</div> : <>
               <div className="border-b border-border px-5 py-4">
-                <div className="mb-3 flex items-center justify-between gap-3"><div className="text-sm font-medium">Triage status</div><div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => void diagnose(Boolean(selectedGroup.diagnosed_at))} disabled={diagnosing} className="gap-2">{diagnosing ? <><DiagnosisSpinner /><span>Diagnosing…</span></> : selectedGroup.diagnosed_at ? "Re-diagnose" : "Diagnose"}</Button></div></div>
-                <div className="flex flex-wrap gap-2">{ERROR_GROUP_STATUSES.map((status) => <Button key={status} size="sm" variant={selectedGroup.status === status ? "default" : "outline"} onClick={() => void changeStatus(status)} disabled={updating}>{status}</Button>)}</div>
+                <div className="mb-3 flex items-center justify-between gap-3"><div className="text-sm font-medium">Triage status</div><div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => void diagnose(Boolean(selectedGroup.diagnosed_at))} disabled={diagnosing} className="gap-2" title="Run AI triage on this error group. One diagnosis is cached per group — use Re-run to force a fresh pass.">{diagnosing ? <><DiagnosisSpinner /><span>Diagnosing…</span></> : selectedGroup.diagnosed_at ? "Re-diagnose" : "Diagnose"}</Button></div></div>
+                <div className="flex flex-wrap gap-2">{ERROR_GROUP_STATUSES.map((status) => <Button key={status} size="sm" variant={selectedGroup.status === status ? "default" : "outline"} onClick={() => void changeStatus(status)} disabled={updating} title="Lifecycle state of this error group.">{status}</Button>)}</div>
               </div>
               <div className="max-h-[720px] overflow-y-auto">
                 {selectedGroup.events.length === 0 ? <div className="px-5 py-10 text-sm text-muted-foreground">No recent event details available.</div> : selectedGroup.events.map((event) => (
@@ -355,7 +357,7 @@ export default function SystemsPage() {
             <div><div className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">AI analysis</div><p className="whitespace-pre-wrap text-foreground">{selectedGroup.ai_analysis ?? "Not diagnosed yet."}</p></div>
             <div><div className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Proposed fix</div><p className="whitespace-pre-wrap text-foreground">{selectedGroup.proposed_fix ?? "No proposed fix yet."}</p></div>
             <div><div className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Risk / confidence</div><p className="capitalize text-foreground">{selectedGroup.risk_level ?? "—"} {selectedGroup.confidence === null ? "" : `· ${Math.round(selectedGroup.confidence * 100)}% confidence`}</p><p className="mt-1 text-xs text-muted-foreground">Severity: {selectedGroup.severity ?? "—"}</p>{selectedGroup.diagnosed_at && <div className="mt-2">{dualTimestamp(selectedGroup.diagnosed_at)}</div>}</div>
-            <div><div className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Action</div><div className="space-y-2"><ObservationActionButton label="Execute fix" Icon={Play} /><ObservationActionButton label="Rollback to last working deployment" Icon={RotateCcw} /></div><p className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground"><LockKeyhole className="h-3.5 w-3.5" />observation mode — execution not enabled</p><div className="mt-4 text-xs font-medium uppercase tracking-wider text-muted-foreground">Review verdict</div><div className="mt-2 flex flex-wrap gap-2">{(["matched", "partial", "wrong"] as const).map((verdict) => <Button key={verdict} size="sm" variant={selectedGroup.review_verdict === verdict ? "default" : "outline"} onClick={() => void recordVerdict(verdict)} disabled={updating}>{verdict}</Button>)}</div>{selectedGroup.reviewed_at && <div className="mt-2">{dualTimestamp(selectedGroup.reviewed_at)}<span className="mt-1 block text-xs text-muted-foreground">by {selectedGroup.reviewed_by ?? "admin"}</span></div>}</div>
+            <div><div className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Action</div><div className="space-y-2"><ObservationActionButton label="Execute fix" Icon={Play} title="Disabled in observation mode. When enabled, opens a PR with the proposed fix and runs tests before merge." /><ObservationActionButton label="Rollback to last working deployment" Icon={RotateCcw} title="Re-promote the last known-good production deployment. Reverts code, not the database." /></div><p className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground"><LockKeyhole className="h-3.5 w-3.5" />observation mode — execution not enabled</p><div className="mt-4 text-xs font-medium uppercase tracking-wider text-muted-foreground">Review verdict</div><div className="mt-2 flex flex-wrap gap-2">{(["matched", "partial", "wrong"] as const).map((verdict) => <Button key={verdict} size="sm" variant={selectedGroup.review_verdict === verdict ? "default" : "outline"} onClick={() => void recordVerdict(verdict)} disabled={updating} title="Rate the AI's proposed fix vs. what you'd actually do — tracks agreement before Execute is enabled.">{verdict}</Button>)}</div>{selectedGroup.reviewed_at && <div className="mt-2">{dualTimestamp(selectedGroup.reviewed_at)}<span className="mt-1 block text-xs text-muted-foreground">by {selectedGroup.reviewed_by ?? "admin"}</span></div>}</div>
           </div>}
         </section>
         </div>

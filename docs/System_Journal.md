@@ -42,6 +42,13 @@
 
 ---
 
+## TIMELINE
+- 2026-08-08 · monitoring triage · avint/systems · Added two-axis journal retrieval design: time windows and topic scopes remain independently selectable.
+- 2026-08-08 · deployment · avint/systems · Systems diagnosis uses the dedicated internal secret and remains observation-only.
+- 2026-08-08 · migration · avint/error-monitoring · Added context_scope storage for diagnosis retrieval observability.
+- 2026-08-07 · feature · avint/smart-storage · Shipped QuickBooks/Xero manual-import CSV exports and the tax-bundle default-year fix.
+- 2026-08-07 · security fix · avint/prescan · Benign PDF OpenAction view actions no longer trigger the active-content block.
+
 ## CHANGELOG (recent material changes)
 - **2026-08-08** — Error monitoring Phases 1–2 (capture + `/systems` page).
 - **2026-08-08** — Value-based re-tiering + usage metering (hard Free/Day Pass, soft Pro/Business) + Business tier (hidden).

@@ -4,7 +4,7 @@ import { createClient } from "@supabase/supabase-js"
 import { headers } from "next/headers"
 
 import { checkRateLimit } from "@/lib/rate-limit"
-import { loadJournalSection } from "@/lib/system-journal"
+import { loadSystemJournal, nextTimeWindow, nextTopicScope, selectJournalContext, shouldEscalateDiagnosis, type JournalContext } from "@/lib/system-journal"
 import { sanitizeErrorContext } from "@/lib/error-sanitize"
 import { isReviewVerdict, shouldDiagnose, type ReviewVerdict } from "@/lib/system-diagnosis"
 import {
@@ -14,6 +14,8 @@ import {
   isErrorGroupStatus,
   type ErrorGroupStatus,
 } from "@/lib/system-admin"
+
+type Diagnosis = { root_cause: string; affected_area: string; proposed_fix: string; risk_level: "low" | "medium" | "high"; confidence: number; severity: string; needs_more?: { time?: boolean; topic?: boolean }; ai_model?: string }
 
 function adminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -69,7 +71,7 @@ export async function diagnoseErrorGroup(
 
   const { data: group, error: groupError } = await client
     .from("error_groups")
-    .select("fingerprint, title, first_seen, last_seen, count, status, ai_analysis, proposed_fix, risk_level, confidence, severity, diagnosed_at, ai_model")
+    .select("*")
     .eq("fingerprint", fingerprint)
     .maybeSingle()
   if (groupError || !group) return { ok: false as const, error: groupError?.message ?? "Error group not found" }
@@ -88,31 +90,56 @@ export async function diagnoseErrorGroup(
   if (eventsError) return { ok: false as const, error: eventsError.message }
 
   const representative = events?.[0]
-  const journalSection = await loadJournalSection(representative?.tool ?? null)
-  const response = await fetch(`${functionUrl}/functions/v1/diagnose-error`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${systemsInternalSecret}`,
-    },
-    body: JSON.stringify({
-      fingerprint,
-      journal_section: journalSection,
-      error: {
-        message: representative?.message ?? group.title,
-        stack: representative?.stack ?? null,
-        tool: representative?.tool ?? null,
-        fn: representative?.fn ?? null,
-        action: representative?.action ?? null,
-        route: representative?.route ?? null,
-        context: sanitizeErrorContext(representative?.context) ?? null,
-      },
-    }),
-  }).catch(() => null)
-  if (!response) return { ok: false as const, error: "Diagnosis request failed" }
-  const result = await response.json().catch(() => null)
-  if (!response.ok || !result) return { ok: false as const, error: result?.error ?? "Diagnosis request failed" }
-  return { ok: true as const, skipped: false, group: result }
+  const error = {
+    message: representative?.message ?? group.title,
+    stack: representative?.stack ?? null,
+    tool: representative?.tool ?? null,
+    fn: representative?.fn ?? null,
+    action: representative?.action ?? null,
+    route: representative?.route ?? null,
+    severity: representative?.level ?? group.severity ?? null,
+    occurred_at: representative?.occurred_at ?? group.last_seen,
+    context: sanitizeErrorContext(representative?.context) ?? null,
+  }
+  const journal = await loadSystemJournal()
+  let context = selectJournalContext(error, group, journal, force)
+  const call = async (selectedContext: JournalContext) => {
+    const response = await fetch(`${functionUrl}/functions/v1/diagnose-error`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${systemsInternalSecret}` },
+      body: JSON.stringify({ fingerprint, journal_section: selectedContext.text, error }),
+      signal: AbortSignal.timeout(35_000),
+    }).catch(() => null)
+    if (!response) return null
+    const result = await response.json().catch(() => null)
+    return { response, result }
+  }
+  let attempt = await call(context)
+  if (!attempt || !attempt.response.ok || !attempt.result) return { ok: false as const, error: attempt?.result?.error ?? "Diagnosis request failed" }
+  const first = attempt.result as Diagnosis
+  const valid = (value: unknown): value is Diagnosis => {
+    const item = value as Partial<Diagnosis> | null
+    return Boolean(item && typeof item.root_cause === "string" && typeof item.affected_area === "string" && typeof item.proposed_fix === "string" && typeof item.confidence === "number" && item.confidence >= 0 && item.confidence <= 1 && typeof item.severity === "string")
+  }
+  if (!valid(first)) return { ok: false as const, error: "Diagnosis returned an invalid result" }
+  if (shouldEscalateDiagnosis(first)) {
+    const lowConfidence = first.confidence < 0.5
+    context = selectJournalContext(error, group, journal, force, {
+      timeWindow: first.needs_more?.time || lowConfidence ? nextTimeWindow(context.timeWindow) : context.timeWindow,
+      topicScope: first.needs_more?.topic || lowConfidence ? nextTopicScope(context.topicScope) : context.topicScope,
+    })
+    attempt = await call(context)
+    if (!attempt || !attempt.response.ok || !attempt.result || !valid(attempt.result)) return { ok: false as const, error: attempt?.result?.error ?? "Diagnosis escalation failed" }
+  }
+  const result = attempt.result as Diagnosis
+  const { data: updated, error: updateError } = await client.from("error_groups").update({
+    ai_analysis: `Root cause: ${result.root_cause}\nAffected area: ${result.affected_area}`,
+    proposed_fix: result.proposed_fix, risk_level: result.risk_level, confidence: result.confidence, severity: result.severity,
+    diagnosed_at: new Date().toISOString(), ai_model: result.ai_model || process.env.ANTHROPIC_SYSTEMS_MODEL || "claude-haiku-4-5-20251001",
+    context_scope: `${context.timeWindow}/${context.topicScope}`, status: group.status === "new" ? "triaged" : group.status,
+  }).eq("fingerprint", fingerprint).select("*").single()
+  if (updateError || !updated) return { ok: false as const, error: "Diagnosis returned, but could not be saved." }
+  return { ok: true as const, skipped: false, group: updated }
 }
 
 export async function setErrorGroupReviewVerdict(

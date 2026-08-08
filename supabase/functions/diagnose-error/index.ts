@@ -21,7 +21,8 @@ Return ONLY strict JSON with exactly these fields:
   "proposed_fix": "...",
   "risk_level": "low" | "medium" | "high",
   "confidence": 0.0,
-  "severity": "..."
+  "severity": "...",
+  "needs_more": { "time": false, "topic": false }
 }
 Confidence must be a number from 0 to 1. If evidence is incomplete, say so and lower confidence.`
 
@@ -53,6 +54,7 @@ function parseDiagnosis(text: string) {
   const riskLevel = parsed.risk_level
   const confidence = parsed.confidence
   const severity = validString(parsed.severity, 80)
+  const needsMore = parsed.needs_more && typeof parsed.needs_more === "object" ? parsed.needs_more as Record<string, unknown> : {}
   if (!rootCause || !affectedArea || !proposedFix || !severity || !["low", "medium", "high"].includes(String(riskLevel))) {
     throw new Error("Anthropic diagnosis failed schema validation")
   }
@@ -66,6 +68,7 @@ function parseDiagnosis(text: string) {
     risk_level: riskLevel as "low" | "medium" | "high",
     confidence,
     severity,
+    needs_more: { time: needsMore.time === true, topic: needsMore.topic === true },
   }
 }
 

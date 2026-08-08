@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  outputFileTracingIncludes: {
+    "/**": ["./docs/System_Journal.md"],
+  },
   allowedDevOrigins: ["192.168.254.175"],
   images: {
     unoptimized: true,

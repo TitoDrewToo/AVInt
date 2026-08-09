@@ -59,8 +59,7 @@ export default function BlogIndex() {
             Blog
           </h1>
           <p className="mt-2 text-muted-foreground">
-            Practical guides for organizing documents, tracking expenses, and
-            making sense of your financial data.
+            Field notes from AVIntelligence — what we're building and what we're learning. Product updates, build stories, and practical guides for organizing documents, decisions, and workflows.
           </p>
 
           <div className="mt-12 space-y-8">

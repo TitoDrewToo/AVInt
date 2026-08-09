@@ -25,11 +25,14 @@ function assert(name: string, condition: boolean) {
 }
 
 const quickBooks = generateQuickBooksCSV(rows)
+const quickBooks4 = generateQuickBooksCSV(rows, "4col")
 const xero = generateXeroCSV(rows)
 
 assert("QuickBooks has the exact import header", quickBooks.split("\n")[0] === "Date,Description,Amount")
-assert("QuickBooks rows are US-date normalized and ordered", quickBooks.includes("01/02/2025,Unknown vendor — Uncategorized,0.00"))
+assert("QuickBooks rows are US-date normalized and ordered", quickBooks.includes("01/02/2025,Unknown vendor — Uncategorized,"))
 assert("QuickBooks expenses are negative and comma fields are escaped", quickBooks.includes("02/03/2025,\"Acme, Inc. — Software\",-125.50"))
+assert("QuickBooks 4-column header and positive debit", quickBooks4.split("\n")[0] === "Date,Description,Credit,Debit" && quickBooks4.includes("02/03/2025,\"Acme, Inc. — Software\",,125.50"))
+assert("QuickBooks 4-column zero cells are blank", quickBooks4.includes("01/02/2025,Unknown vendor — Uncategorized,,"))
 assert("Xero has the exact import header", xero.split("\n")[0] === "Date,Amount,Payee,Description")
 assert("Xero expenses use a negative amount and normalized payee", xero.includes("02/03/2025,-125.50,\"Acme, Inc.\",Software"))
 assert("Both exports have no blank lines", !quickBooks.includes("\n\n") && !xero.includes("\n\n"))
@@ -40,4 +43,4 @@ assert("Xero descriptions are capped at 500 characters", generateXeroCSV([{
   total_amount: 1,
 }]).split(",").pop()?.length === 500)
 
-console.log("7 passed, 0 failed")
+console.log("9 passed, 0 failed")

@@ -77,8 +77,8 @@ async function authorizeReportRequest(req: NextRequest, reportKey: string, expor
   return { user, ent }
 }
 
-function accountingCsvResponse(format: "quickbooks" | "xero", rows: any[], filename: string) {
-  const csv = format === "quickbooks" ? generateQuickBooksCSV(rows) : generateXeroCSV(rows)
+function accountingCsvResponse(format: "quickbooks" | "xero", rows: any[], filename: string, qbLayout: "3col" | "4col" = "3col") {
+  const csv = format === "quickbooks" ? generateQuickBooksCSV(rows, qbLayout) : generateXeroCSV(rows)
   return new NextResponse(csv, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
@@ -99,6 +99,10 @@ function getFilters(req: NextRequest) {
 
 function getExportFormat(req: NextRequest): string | null {
   return new URL(req.url).searchParams.get("export")
+}
+
+function getQuickBooksLayout(req: NextRequest): "3col" | "4col" {
+  return new URL(req.url).searchParams.get("qbColumns") === "4" ? "4col" : "3col"
 }
 
 async function getFileIds(userId: string, documentTypes: string[], targetFolder: string) {
@@ -150,6 +154,7 @@ export async function GET(
 ) {
   const { report } = await params
   const exportFormat = getExportFormat(req)
+  const qbLayout = getQuickBooksLayout(req)
   const auth = await authorizeReportRequest(req, report, exportFormat)
   if ("error" in auth) return auth.error
 
@@ -250,7 +255,7 @@ export async function GET(
       case "business-expense": {
         const fileIds = await getFileIds(user.id, ["receipt", "invoice"], targetFolder)
         if (fileIds.length === 0) {
-          if (exportFormat) return accountingCsvResponse(exportFormat as "quickbooks" | "xero", [], `business-expense-${exportFormat}.csv`)
+          if (exportFormat) return accountingCsvResponse(exportFormat as "quickbooks" | "xero", [], `business-expense-${exportFormat}.csv`, qbLayout)
           return NextResponse.json({ expenses: [] })
         }
 
@@ -277,7 +282,7 @@ export async function GET(
             expense_category: row.expense_category,
             total_amount: row.total_amount,
           }))
-          return accountingCsvResponse(exportFormat as "quickbooks" | "xero", exportRows, `business-expense-${exportFormat}.csv`)
+          return accountingCsvResponse(exportFormat as "quickbooks" | "xero", exportRows, `business-expense-${exportFormat}.csv`, qbLayout)
         }
 
         return NextResponse.json({ expenses: data ?? [] })
@@ -413,7 +418,7 @@ export async function GET(
         }
 
         if (fileIds.length === 0) {
-          if (exportFormat) return accountingCsvResponse(exportFormat as "quickbooks" | "xero", [], `tax-bundle-${exportFormat}.csv`)
+          if (exportFormat) return accountingCsvResponse(exportFormat as "quickbooks" | "xero", [], `tax-bundle-${exportFormat}.csv`, qbLayout)
           return NextResponse.json({ rows: [], totalOwnedDocs, detectedYears, defaultYear })
         }
 
@@ -454,7 +459,7 @@ export async function GET(
               expense_category: row.expense_category,
               total_amount: row.total_amount,
             }))
-          return accountingCsvResponse(exportFormat as "quickbooks" | "xero", exportRows, `tax-bundle-${exportFormat}.csv`)
+          return accountingCsvResponse(exportFormat as "quickbooks" | "xero", exportRows, `tax-bundle-${exportFormat}.csv`, qbLayout)
         }
 
         return NextResponse.json({

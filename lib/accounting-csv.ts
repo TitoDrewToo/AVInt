@@ -33,14 +33,17 @@ function orderedRows(rows: AccountingExportRow[]): AccountingExportRow[] {
   return [...rows].sort((a, b) => normalizedDate(a.document_date).localeCompare(normalizedDate(b.document_date)))
 }
 
-export function generateQuickBooksCSV(rows: AccountingExportRow[]): string {
-  const lines = ["Date,Description,Amount"]
+export function generateQuickBooksCSV(rows: AccountingExportRow[], layout: "3col" | "4col" = "3col"): string {
+  const lines = [layout === "4col" ? "Date,Description,Credit,Debit" : "Date,Description,Amount"]
   for (const row of orderedRows(rows)) {
-    lines.push([
-      normalizedDate(row.document_date),
-      csvCell(`${normalizedVendor(row.vendor_name)} — ${normalizedCategory(row.expense_category)}`),
-      normalizedAmount(row.total_amount),
-    ].join(","))
+    const date = normalizedDate(row.document_date)
+    const description = csvCell(`${normalizedVendor(row.vendor_name)} — ${normalizedCategory(row.expense_category)}`)
+    const amount = Math.abs(row.total_amount ?? 0)
+    if (layout === "4col") {
+      lines.push([date, description, "", amount === 0 ? "" : amount.toFixed(2)].join(","))
+    } else {
+      lines.push([date, description, amount === 0 ? "" : `-${amount.toFixed(2)}`].join(","))
+    }
   }
   return lines.join("\n")
 }

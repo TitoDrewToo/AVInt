@@ -91,6 +91,7 @@ function BusinessExpenseContent() {
   // overrides: id → true (force Business) | false (force Personal)
   const [overrides, setOverrides]         = useState<Record<string, boolean>>({})
   const [csvCopied, setCsvCopied]         = useState(false)
+  const [quickBooksLayout, setQuickBooksLayout] = useState<"3col" | "4col">("3col")
   const [assumptions, setAssumptions]     = useState<BusinessExpenseAssumptions>(getDefaultBusinessExpenseAssumptions())
   const [assumptionsLoaded, setAssumptionsLoaded] = useState(false)
   const [savingAssumptions, setSavingAssumptions] = useState(false)
@@ -346,6 +347,7 @@ function BusinessExpenseContent() {
       const token = auth.session?.access_token
       if (!token) throw new Error("Unauthorized")
       const params = new URLSearchParams({ export: format })
+      if (format === "quickbooks") params.set("qbColumns", quickBooksLayout === "4col" ? "4" : "3")
       if (dateFrom) params.set("dateFrom", dateFrom)
       if (dateTo) params.set("dateTo", dateTo)
       if (targetFolder) params.set("targetFolder", targetFolder)
@@ -463,9 +465,13 @@ function BusinessExpenseContent() {
                 <Download className="h-3.5 w-3.5" />
                 Export CSV
               </Button></Tip>
-              <Tip text={tier === "free" ? "CSV exports for QuickBooks/Xero are a Pro feature." : "Export for QuickBooks (Date, Description, Amount; expenses negative)."}><Button variant="outline" size="sm" className="gap-2 rounded-md text-xs" onClick={() => void downloadAccountingCSV("quickbooks")} disabled={tier === "free"} title={tier === "free" ? "CSV exports for QuickBooks/Xero are a Pro feature." : undefined}>
+              <Tip text={tier === "free" ? "CSV exports for QuickBooks/Xero are a Pro feature." : quickBooksLayout === "4col" ? "Export for QuickBooks (Date, Description, Credit, Debit)." : "Export for QuickBooks (Date, Description, Amount; expenses negative)."}><Button variant="outline" size="sm" className="gap-2 rounded-md text-xs" onClick={() => void downloadAccountingCSV("quickbooks")} disabled={tier === "free"} title={tier === "free" ? "CSV exports for QuickBooks/Xero are a Pro feature." : undefined}>
                 {tier === "free" ? "QuickBooks (upgrade)" : "QuickBooks CSV"}
               </Button></Tip>
+              <select aria-label="QuickBooks CSV format" value={quickBooksLayout} onChange={(event) => setQuickBooksLayout(event.target.value as "3col" | "4col")} disabled={tier === "free"} className="h-8 rounded-md border border-border bg-background px-1.5 text-[11px] text-muted-foreground" title="Choose the QuickBooks CSV column layout.">
+                <option value="3col">3-column</option>
+                <option value="4col">4-column</option>
+              </select>
               <Tip text={tier === "free" ? "CSV exports for QuickBooks/Xero are a Pro feature." : "Export for Xero (Date, Amount, Payee, Description)."}><Button variant="outline" size="sm" className="gap-2 rounded-md text-xs" onClick={() => void downloadAccountingCSV("xero")} disabled={tier === "free"} title={tier === "free" ? "CSV exports for QuickBooks/Xero are a Pro feature." : undefined}>
                 {tier === "free" ? "Xero (upgrade)" : "Xero CSV"}
               </Button></Tip>

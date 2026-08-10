@@ -378,17 +378,17 @@ export default function SmartStorageProductPage() {
           <div className="relative mx-auto max-w-5xl">
             <FadeUp className="text-center">
               <h2 className="text-sm font-medium uppercase tracking-wider text-primary">Now works inside Claude</h2>
-              <h3 className="mt-4 text-balance text-3xl font-semibold tracking-tight text-foreground md:text-4xl">Your documents, inside Claude.</h3>
+              <h3 className="mt-4 text-balance text-3xl font-semibold tracking-tight text-foreground md:text-4xl">Your Smart Storage, now operable from Claude.</h3>
               <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
-                Connect Smart Storage to Claude and work in plain language. Ask Claude to file a receipt, run your Schedule C tax bundle, or hand you a QuickBooks-ready export — no dashboards, no exports to download by hand. It runs securely on your own account, and it&apos;s included with Pro.
+                Your documents already live in Smart Storage. Connect it to Claude and run the whole workflow in plain language — pull your Schedule C tax bundle and get back an import-ready QuickBooks or Xero file, without opening the dashboard. It works securely on your own account and it&apos;s included with Pro.
               </p>
             </FadeUp>
 
             <StaggerContainer className="mt-10 grid gap-4 md:grid-cols-3">
               {[
-                { icon: <IconUpload />, title: "Ingest", body: "Drop documents into Claude; they land in Smart Storage, classified and extracted." },
-                { icon: <IconFileText />, title: "Report", body: "Ask for your Tax Bundle or Business Expense report and get the numbers back in chat." },
-                { icon: <IconFileOutput />, title: "Export", body: "Generate an import-ready QuickBooks or Xero file without leaving the conversation." },
+                { icon: <IconFileText />, title: "Report", body: "Ask for your Tax Bundle or Business Expense report and get the numbers back in chat — straight from the documents already in Smart Storage." },
+                { icon: <IconFileOutput />, title: "Export", body: "Generate an import-ready QuickBooks or Xero file — same workflow, either platform — without leaving the conversation." },
+                { icon: <IconUpload />, title: "File (bonus)", body: "Have a new receipt? Drop it into the chat and Claude files it into Smart Storage, classified and extracted." },
               ].map((item) => (
                 <StaggerItem key={item.title} className="h-full">
                   <div className="glass-surface hover-bloom h-full rounded-2xl p-5">

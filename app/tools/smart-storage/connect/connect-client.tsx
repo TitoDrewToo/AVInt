@@ -118,6 +118,27 @@ export default function ConnectClient({ oauthEnabled }: { oauthEnabled: boolean 
         </>
       )}
       {secret && <div className="mt-4 rounded-lg border border-primary/40 bg-primary/5 p-4"><p className="text-sm font-medium">Copy this key now — it will not be shown again.</p><code className="mt-2 block break-all text-sm">{secret}</code></div>}
+
+      <div className="mt-8 border-t border-border pt-6">
+        <h3 className="text-base font-medium">Your keys</h3>
+        <div className="mt-4 space-y-3">
+          {keys.length === 0 && <p className="text-sm text-muted-foreground">No connector keys yet.</p>}
+          {keys.map((key) => (
+            <div key={key.id} className="rounded-lg border border-border/70 p-3">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium">{key.name} <span className="font-mono text-muted-foreground">{key.prefix}…</span></p>
+                  <p className="text-xs text-muted-foreground">Created {new Date(key.created_at).toLocaleDateString()} · Last used {key.last_used_at ? new Date(key.last_used_at).toLocaleString() : "never"} · {expiryLabel(key.expires_at)}</p>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  {!key.revoked_at && <><Button variant="outline" size="sm" onClick={() => void create("rotate", key.id)} disabled={loading}>Rotate</Button><Button variant="outline" size="sm" onClick={() => void revoke(key.id)}>Revoke</Button></>}
+                  <Button variant="outline" size="sm" onClick={() => void remove(key.id)}>Delete</Button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </>
   )
 
@@ -163,26 +184,6 @@ export default function ConnectClient({ oauthEnabled }: { oauthEnabled: boolean 
           <section className="rounded-xl border border-border bg-card p-6">{apiKeyPanel}</section>
         )}
 
-        <section className="rounded-xl border border-border bg-card p-6">
-          <h2 className="text-lg font-medium">Your keys</h2>
-          <div className="mt-4 space-y-3">
-            {keys.length === 0 && <p className="text-sm text-muted-foreground">No connector keys yet.</p>}
-            {keys.map((key) => (
-              <div key={key.id} className="rounded-lg border border-border/70 p-3">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-medium">{key.name} <span className="font-mono text-muted-foreground">{key.prefix}…</span></p>
-                    <p className="text-xs text-muted-foreground">Created {new Date(key.created_at).toLocaleDateString()} · Last used {key.last_used_at ? new Date(key.last_used_at).toLocaleString() : "never"} · {expiryLabel(key.expires_at)}</p>
-                  </div>
-                  <div className="flex shrink-0 gap-2">
-                    {!key.revoked_at && <><Button variant="outline" size="sm" onClick={() => void create("rotate", key.id)} disabled={loading}>Rotate</Button><Button variant="outline" size="sm" onClick={() => void revoke(key.id)}>Revoke</Button></>}
-                    <Button variant="outline" size="sm" onClick={() => void remove(key.id)}>Delete</Button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
         {error && <p className="text-sm text-destructive">{error}</p>}
       </div>
     </main>

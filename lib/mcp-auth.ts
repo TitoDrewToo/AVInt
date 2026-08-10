@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto"
 import { createClient, type SupabaseClient } from "@supabase/supabase-js"
 import type { NextRequest } from "next/server"
-import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose"
+import { createRemoteJWKSet, decodeJwt, jwtVerify, type JWTPayload } from "jose"
 
 import { MCP_CONNECTOR_ENABLED, MCP_OAUTH_ENABLED, mcpResourceUrl, workosIssuer } from "@/lib/mcp-config"
 import { computeEntitlement, type Entitlement } from "@/lib/entitlement"
@@ -63,6 +63,25 @@ export async function resolveOAuthToken(req: Request | NextRequest): Promise<{ u
     return { userId }
   } catch (error) {
     if (error instanceof OAuthAccountRequiredError) throw error
+    // Diagnostic (observability-first): surface WHY jwtVerify rejected the token.
+    // Never logs the token or any secret — only claim identifiers and the jose code.
+    try {
+      const claims = decodeJwt(token)
+      const audValue = Array.isArray(claims.aud) ? claims.aud.join(",") : claims.aud
+      console.error("[mcp-oauth] token verify failed", {
+        code: (error as { code?: string })?.code ?? null,
+        reason: (error as { message?: string })?.message ?? null,
+        token_iss: claims.iss ?? null,
+        token_aud: audValue ?? null,
+        token_azp: (claims as { azp?: string }).azp ?? null,
+        expected_iss: issuer,
+        expected_aud: resource,
+      })
+    } catch {
+      console.error("[mcp-oauth] token verify failed; token not a decodable JWT", {
+        code: (error as { code?: string })?.code ?? null,
+      })
+    }
     return null
   }
 }

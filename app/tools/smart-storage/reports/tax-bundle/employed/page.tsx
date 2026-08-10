@@ -170,6 +170,9 @@ function EmployedTaxBundleContent() {
     wagePayrollDeductions,
     selfEmploymentGross,
     otherIncomeGross,
+    excludedNonUsdRows,
+    excludedNonUsdByCurrency,
+    excludedNonUsdRaw,
   } = summary
 
   const employerRows = useMemo(() => {
@@ -382,7 +385,7 @@ function EmployedTaxBundleContent() {
                     </p>
                   </div>
                   <div className="flex shrink-0 flex-wrap gap-2 print:hidden">
-                    <Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={downloadCSV} disabled={mixedCurrency} title={mixedCurrency ? "Disabled while mixed currencies are present" : undefined}>
+                    <Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={downloadCSV}>
                       <Download className="h-3.5 w-3.5" />
                       Export CSV
                     </Button>
@@ -416,8 +419,29 @@ function EmployedTaxBundleContent() {
                     <div className="flex items-start gap-3 rounded border border-red-500/30 bg-red-500/5 p-4">
                       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
                       <p className="text-xs text-muted-foreground">
-                        Mixed currencies detected ({currencies.join(", ")}). Convert to a single currency before using totals.
+                        Only explicit USD wages are included in this worksheet. Non-USD and unspecified rows are excluded;
+                        no FX conversion is applied.
                       </p>
+                    </div>
+                  )}
+                  {excludedNonUsdRows.length > 0 && (
+                    <div className="rounded border border-amber-500/30 bg-amber-500/5 p-4">
+                      <p className="text-xs font-medium text-foreground">Excluded — non-USD (not filed)</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {excludedNonUsdRows.length} row{excludedNonUsdRows.length === 1 ? "" : "s"} excluded; no FX conversion was applied.
+                      </p>
+                      <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                        {Array.from(excludedNonUsdByCurrency.entries()).map(([excludedCurrency, subtotal]) => (
+                          <div key={excludedCurrency} className="flex justify-between gap-4">
+                            <span>{excludedCurrency}</span>
+                            <span className="font-mono">{subtotal.toFixed(2)}</span>
+                          </div>
+                        ))}
+                        <div className="flex justify-between gap-4 border-t border-amber-500/20 pt-1 font-medium text-foreground">
+                          <span>Total excluded ({excludedNonUsdRows.length})</span>
+                          <span className="font-mono">{excludedNonUsdRaw.toFixed(2)}</span>
+                        </div>
+                      </div>
                     </div>
                   )}
                   {hasNonWageIncome && (

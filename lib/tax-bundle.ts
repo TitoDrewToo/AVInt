@@ -8,6 +8,8 @@
 // ── Schedule C Line-Item Mapping ──────────────────────────────────────────────
 // https://www.irs.gov/pub/irs-pdf/f1040sc.pdf
 
+import { classifyRow, currencyLabel, isExpenseRow, isUsdRow } from "@/lib/document-classification"
+
 export interface ScheduleCLineDef {
   line: string
   label: string
@@ -103,6 +105,7 @@ export interface TaxRow {
   currency: string | null
   confidence_score: number | null
   storage_path: string | null
+  raw_json?: unknown
 }
 
 // Structured income classification from the normalizer. `null` means legacy
@@ -189,6 +192,9 @@ export interface TaxBundleSummary {
   uncategorizedItems: TaxRow[]
   reviewItems: TaxRow[]
   incomeByEmployer: Map<string, EmployerIncome>
+  excludedNonUsdRows: TaxRow[]
+  excludedNonUsdByCurrency: Map<string, number>
+  excludedNonUsdRaw: number
 }
 
 export const MEALS_DEDUCTIBLE_RATIO = 0.5
@@ -244,17 +250,18 @@ export function getSubstantiationNotes(row: TaxRow): string {
 
 export function computeTaxBundle(rows: TaxRow[]): TaxBundleSummary {
   const currencySet = new Set<string>()
-  for (const r of rows) currencySet.add((r.currency ?? "USD").toUpperCase())
+  for (const r of rows) currencySet.add(currencyLabel(r.currency))
   const currencies = Array.from(currencySet)
-  const mixedCurrency = currencies.length > 1
-
-  // Dominant currency by magnitude — for display only.
-  const weight: Record<string, number> = {}
-  for (const r of rows) {
-    const c = (r.currency ?? "USD").toUpperCase()
-    weight[c] = (weight[c] ?? 0) + Math.abs(r.total_amount ?? r.gross_income ?? 0)
+  const usdRows = rows.filter(isUsdRow)
+  const excludedNonUsdRows = rows.filter((row) => !isUsdRow(row))
+  const excludedNonUsdByCurrency = new Map<string, number>()
+  for (const row of excludedNonUsdRows) {
+    const currency = currencyLabel(row.currency)
+    excludedNonUsdByCurrency.set(currency, (excludedNonUsdByCurrency.get(currency) ?? 0) + getTaxRowAmount(row))
   }
-  const primaryCurrency = Object.entries(weight).sort(([, a], [, b]) => b - a)[0]?.[0] ?? "USD"
+  const excludedNonUsdRaw = Array.from(excludedNonUsdByCurrency.values()).reduce((sum, amount) => sum + amount, 0)
+  const mixedCurrency = excludedNonUsdRows.length > 0
+  const primaryCurrency = "USD"
 
   // Income classification — prefer the AI-assigned income_source (v2
   // normalization). Legacy rows (income_source === null) fall back to the
@@ -264,6 +271,7 @@ export function computeTaxBundle(rows: TaxRow[]): TaxBundleSummary {
     if (r.income_source) return r.income_source
     if (r.document_type === "payslip") return "wage"
     if (r.document_type === "income_statement") return "business"
+    if (classifyRow(r) === "income") return "other"
     return null
   }
 
@@ -272,8 +280,8 @@ export function computeTaxBundle(rows: TaxRow[]): TaxBundleSummary {
   const otherIncomeRows: TaxRow[]    = []
   const expenseRows: TaxRow[]        = []
 
-  for (const r of rows) {
-    if (r.document_type === "receipt" || r.document_type === "invoice") {
+  for (const r of usdRows) {
+    if (isExpenseRow(r)) {
       expenseRows.push(r)
       continue
     }
@@ -439,6 +447,9 @@ export function computeTaxBundle(rows: TaxRow[]): TaxBundleSummary {
     uncategorizedItems,
     reviewItems,
     incomeByEmployer,
+    excludedNonUsdRows,
+    excludedNonUsdByCurrency,
+    excludedNonUsdRaw,
   }
 }
 
@@ -470,6 +481,9 @@ export function generateTaxBundleCSV(summary: TaxBundleSummary, options: TaxBund
     selfEmploymentRows,
     otherIncomeGross,
     otherIncomeByType,
+    excludedNonUsdRows,
+    excludedNonUsdByCurrency,
+    excludedNonUsdRaw,
   } = summary
 
   const prettyOtherIncomeLabel = (cls: IncomeSourceClass): string => {
@@ -484,7 +498,7 @@ export function generateTaxBundleCSV(summary: TaxBundleSummary, options: TaxBund
   const lines: string[] = []
 
   if (mixedCurrency) {
-    lines.push(`"WARNING: Mixed currencies detected (${currencies.join(", ")}). Amounts are NOT aggregated — convert to a single currency before filing."`)
+    lines.push(`"WARNING: Tax Bundle math includes explicit USD rows only. Non-USD and unspecified rows are excluded and are NOT FX-converted."`)
     lines.push("")
   }
 
@@ -500,6 +514,16 @@ export function generateTaxBundleCSV(summary: TaxBundleSummary, options: TaxBund
 
   lines.push(`"Currency",${currency}`)
   lines.push("")
+  if (excludedNonUsdRows.length > 0) {
+    lines.push("EXCLUDED — NON-USD (NOT FILED)")
+    lines.push("Currency,Row Count,Raw Subtotal")
+    for (const [excludedCurrency, subtotal] of excludedNonUsdByCurrency.entries()) {
+      const count = excludedNonUsdRows.filter((row) => currencyLabel(row.currency) === excludedCurrency).length
+      lines.push(`${excludedCurrency},${count},${subtotal.toFixed(2)}`)
+    }
+    lines.push(`TOTAL EXCLUDED,${excludedNonUsdRows.length},${excludedNonUsdRaw.toFixed(2)}`)
+    lines.push("")
+  }
   lines.push("Schedule C Line,IRS Category,Our Category,Vendor,Document Type,Date,Period Start,Period End,Currency,Raw Amount,Proposed Deductible Amount,Status,Review Reason,Substantiation Notes,Confidence,Income Source,Classification Rationale,File ID,Source File,Zip Path")
 
   for (const sc of scheduleC) {
@@ -600,12 +624,15 @@ export function generateEmployedTaxBundleCSV(summary: TaxBundleSummary): string 
     wagePayrollDeductions,
     selfEmploymentGross,
     otherIncomeGross,
+    excludedNonUsdRows,
+    excludedNonUsdByCurrency,
+    excludedNonUsdRaw,
   } = summary
 
   const lines: string[] = []
 
   if (mixedCurrency) {
-    lines.push(`"WARNING: Mixed currencies detected (${currencies.join(", ")}). Amounts are NOT aggregated — convert to a single currency before filing."`)
+    lines.push(`"WARNING: This employee worksheet includes explicit USD wages only. Non-USD and unspecified rows are excluded and are NOT FX-converted."`)
     lines.push("")
   }
 
@@ -616,6 +643,16 @@ export function generateEmployedTaxBundleCSV(summary: TaxBundleSummary): string 
 
   lines.push(`"Currency",${currency}`)
   lines.push("")
+  if (excludedNonUsdRows.length > 0) {
+    lines.push("EXCLUDED — NON-USD (NOT FILED)")
+    lines.push("Currency,Row Count,Raw Subtotal")
+    for (const [excludedCurrency, subtotal] of excludedNonUsdByCurrency.entries()) {
+      const count = excludedNonUsdRows.filter((row) => currencyLabel(row.currency) === excludedCurrency).length
+      lines.push(`${excludedCurrency},${count},${subtotal.toFixed(2)}`)
+    }
+    lines.push(`TOTAL EXCLUDED,${excludedNonUsdRows.length},${excludedNonUsdRaw.toFixed(2)}`)
+    lines.push("")
+  }
   lines.push("EMPLOYEE INCOME SUMMARY")
   lines.push(`,"Gross Wage Income",${wageGross.toFixed(2)}`)
   lines.push(`,"Net Pay Documented",${wageNet.toFixed(2)}`)

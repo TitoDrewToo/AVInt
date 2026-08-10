@@ -111,14 +111,14 @@ function buildFixtureRows(): FixtureRow[] {
     [3, 20, "DocuSign", "Contract software", 30, "Software", "6500-SOFTWARE"],
     [3, 24, "OpenAI", "API usage", 188.32, "Software", "6500-SOFTWARE"],
   ] as const
-  rows.push(expense("Q1 Expenses", 2, null, "January 2025", "", null, null, "", null, 0.55, "raw", 1))
+  rows.push(expense("Q1 Expenses", 2, null, "January 2025", "", null, null, "", null, 0.55, "excluded"))
   q1Normal.slice(0, 8).forEach((r, idx) => rows.push(expense("Q1 Expenses", idx + 3, isoDate(r[0], r[1]), r[2], r[3], r[4], "USD", r[6], r[5])))
-  rows.push(expense("Q1 Expenses", 11, isoDate(1, 31), "SUBTOTAL Jan", "-", 1368.4, "USD", "", null, 0.42, "raw", 2))
-  rows.push(expense("Q1 Expenses", 12, null, "February 2025", "", null, null, "", null, 0.58))
+  rows.push(expense("Q1 Expenses", 11, isoDate(1, 31), "SUBTOTAL Jan", "-", 1368.4, "USD", "", null, 0.42, "excluded"))
+  rows.push(expense("Q1 Expenses", 12, null, "February 2025", "", null, null, "", null, 0.58, "excluded"))
   q1Normal.slice(8, 14).forEach((r, idx) => rows.push(expense("Q1 Expenses", idx + 13, isoDate(r[0], r[1]), r[2], r[3], r[4], "USD", r[6], r[5])))
-  rows.push(expense("Q1 Expenses", 19, isoDate(2, 28), "SUBTOTAL Feb", "-", 561.88, "USD", "", null, 0.44))
+  rows.push(expense("Q1 Expenses", 19, isoDate(2, 28), "SUBTOTAL Feb", "-", 561.88, "USD", "", null, 0.44, "excluded"))
   q1Normal.slice(14).forEach((r, idx) => rows.push(expense("Q1 Expenses", idx + 20, isoDate(r[0], r[1]), r[2], r[3], r[4], "USD", r[6], r[5])))
-  rows.push(expense("Q1 Expenses", 26, isoDate(3, 31), "SUBTOTAL Mar", "-", 1354.72, "USD", "", null, 0.45))
+  rows.push(expense("Q1 Expenses", 26, isoDate(3, 31), "SUBTOTAL Mar", "-", 1354.72, "USD", "", null, 0.45, "excluded"))
   rows.push(expense("Q1 Expenses", 27, isoDate(1, 10), "Strabucks", "MISC", 17.2, "USD", "6300-MEALS", "Meals", 0.38))
   rows.push(expense("Q1 Expenses", 28, isoDate(1, 17), "ubre", "MISC", 24.8, "USD", "6400-TRAVEL", "Travel", 0.41))
   rows.push(expense("Q1 Expenses", 29, isoDate(2, 11), "AMZN Mktp", "MISC", 122.1, "USD", "6100-OFFICE", "Office", 0.54))
@@ -148,7 +148,7 @@ function buildFixtureRows(): FixtureRow[] {
     cells: { "Period Start": isoDate(6, 1), "Period End": isoDate(6, 30), Employer: "Refund", Gross: 450, Net: 450, Tax: 0, Currency: "USD", "Net Pay Date": isoDate(6, 15) },
     extracted: { vendor_name: "Refund", document_date: isoDate(6, 15), currency: "USD", total_amount: 450, expense_category: null },
     confidence: 0.48,
-    normalizationStatus: "normalized",
+    normalizationStatus: "excluded",
     normalizationAttempts: 0,
   })
 

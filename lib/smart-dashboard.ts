@@ -1,4 +1,5 @@
 import type { WidgetColor } from "@/lib/palette"
+import { classifyRow } from "@/lib/document-classification"
 
 export type TimeGrain = "monthly" | "weekly" | "daily"
 
@@ -223,30 +224,6 @@ export function nextTimeGrain(grain: TimeGrain | undefined): TimeGrain {
   if (grain === "weekly") return "daily"
   if (grain === "daily") return "monthly"
   return "weekly"
-}
-
-const INCOME_DOCUMENT_TYPES = new Set(["payslip", "income_statement"])
-const EXPENSE_DOCUMENT_TYPES = new Set(["receipt", "invoice", "transaction_record"])
-
-function rowDocumentType(row: any): string | null {
-  const fromGemini = row?.raw_json?.gemini_raw?.document_type
-  if (typeof fromGemini === "string" && fromGemini.length) return fromGemini
-  return null
-}
-
-function classifyRow(row: any): "income" | "expense" | null {
-  const fileType = row?.files?.document_type
-  const rowType = rowDocumentType(row)
-
-  if (INCOME_DOCUMENT_TYPES.has(fileType ?? "") || INCOME_DOCUMENT_TYPES.has(rowType ?? "")) return "income"
-  if (EXPENSE_DOCUMENT_TYPES.has(fileType ?? "") || EXPENSE_DOCUMENT_TYPES.has(rowType ?? "")) return "expense"
-
-  if (fileType === "csv_export") {
-    if (row.gross_income != null || row.net_income != null) return "income"
-    if (row.total_amount != null) return "expense"
-  }
-
-  return null
 }
 
 function dashboardAmount(row: any, safeNum: (v: unknown) => number): number {

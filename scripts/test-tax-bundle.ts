@@ -100,9 +100,10 @@ function stressRow(partial: Partial<TaxRow> & Pick<TaxRow, "document_type">): Ta
     net_income: partial.net_income ?? null,
     expense_category: partial.expense_category ?? null,
     income_source: partial.income_source ?? null,
-    currency: partial.currency ?? "USD",
+    currency: partial.currency === undefined ? "USD" : partial.currency,
     confidence_score: partial.confidence_score ?? 0.95,
     storage_path: null,
+    raw_json: partial.raw_json,
   }
 }
 
@@ -236,6 +237,66 @@ function reconcile(name: string, rows: TaxRow[]) {
   assert("mixed: currencies contain USD/EUR/GBP",
     s.currencies.includes("USD") && s.currencies.includes("EUR") && s.currencies.includes("GBP"))
   assert("mixed: primaryCurrency = USD (by weight)", s.primaryCurrency === "USD")
+  assert("mixed: non-USD rows excluded from raw expenses", s.totalExpensesRaw === 100)
+  assert("mixed: non-USD rows are listed", s.excludedNonUsdRows.length === 2)
+  assert("mixed: excluded EUR subtotal = 50", s.excludedNonUsdByCurrency.get("EUR") === 50)
+  assert("mixed: excluded GBP subtotal = 30", s.excludedNonUsdByCurrency.get("GBP") === 30)
+}
+
+// ── Fixture 6: Content-level spreadsheet classification ─────────────────────
+
+{
+  const rows: TaxRow[] = [
+    businessIncome({ gross: 1000 }),
+    stressRow({
+      document_type: "csv_export",
+      raw_json: { gemini_raw: { document_type: "transaction_record" } },
+      total_amount: 60,
+      expense_category: "Software",
+    }),
+    stressRow({
+      document_type: "csv_export",
+      raw_json: { gemini_raw: { document_type: "receipt" } },
+      total_amount: 40,
+      expense_category: "Office",
+    }),
+    stressRow({
+      document_type: "transaction_record",
+      total_amount: 10,
+      expense_category: "Fuel",
+    }),
+    stressRow({
+      document_type: "csv_export",
+      vendor_name: "Subtotal Feb",
+      total_amount: 561.88,
+      expense_category: null,
+    }),
+    stressRow({
+      document_type: "csv_export",
+      vendor_name: "Refund",
+      total_amount: 450,
+      expense_category: null,
+    }),
+    stressRow({
+      document_type: "csv_export",
+      vendor_name: "Unknown Vendor",
+      total_amount: 86,
+      expense_category: null,
+    }),
+    stressRow({
+      document_type: "csv_export",
+      gross_income: 250,
+      income_source: "business",
+    }),
+  ]
+  const s = reconcile("spreadsheet-content-classification", rows)
+
+  assert("spreadsheet: csv_export and transaction_record expenses are included", s.totalExpensesRaw === 196)
+  assert("spreadsheet: transaction_record enters Schedule C", s.deductibleExpenses === 110)
+  assert("spreadsheet: csv_export income remains non-expense income", s.selfEmploymentGross === 1250 && s.otherIncomeGross === 450)
+  assert("spreadsheet: subtotal/refund rows do not inflate expenses", s.expenseRows.every((row) => !["Subtotal Feb", "Refund"].includes(row.vendor_name ?? "")))
+  assert("spreadsheet: unknown null-category row remains reviewable", s.uncategorizedItems.some((row) => row.vendor_name === "Unknown Vendor"))
+  assert("spreadsheet: refund is surfaced as non-expense income", s.otherIncomeGross === 450)
 }
 
 // ── Fixture 6: Mixed-income (W-2 + self-employment together) ────────────────
@@ -430,7 +491,7 @@ function csvLacks(csv: string, needle: string, label: string) {
     "csv-meals: estimated net = 9800")
 }
 
-// CSV: mixed-currency — warning banner at top
+// CSV: mixed-currency — USD-only warning and exclusion section
 {
   const rows: TaxRow[] = [
     businessIncome({ gross: 1000, currency: "USD" }),
@@ -440,11 +501,24 @@ function csvLacks(csv: string, needle: string, label: string) {
   const s = computeTaxBundle(rows)
   const csv = generateTaxBundleCSV(s)
 
-  csvHas(csv, "WARNING: Mixed currencies detected", "csv-mixed-ccy: warning banner")
-  csvHas(csv, "USD, EUR", "csv-mixed-ccy: currencies listed")
-  const warningIdx = csv.indexOf("WARNING: Mixed currencies")
+  csvHas(csv, "Tax Bundle math includes explicit USD rows only", "csv-mixed-ccy: USD-only warning")
+  csvHas(csv, "EXCLUDED — NON-USD (NOT FILED)", "csv-mixed-ccy: exclusion section")
+  csvHas(csv, "EUR,1,50.00", "csv-mixed-ccy: EUR subtotal")
+  const warningIdx = csv.indexOf("WARNING: Tax Bundle math")
   const currencyIdx = csv.indexOf(`"Currency",USD`)
   assert("csv-mixed-ccy: warning appears before currency header", warningIdx >= 0 && warningIdx < currencyIdx)
+}
+
+// CSV: unspecified currency is excluded, not silently treated as USD
+{
+  const rows: TaxRow[] = [
+    businessIncome({ gross: 1000 }),
+    stressRow({ document_type: "transaction_record", total_amount: 25, expense_category: "Office", currency: null }),
+  ]
+  const csv = generateTaxBundleCSV(computeTaxBundle(rows))
+  csvHas(csv, "UNSPECIFIED,1,25.00", "csv-unspecified-ccy: subtotal")
+  csvHas(csv, "TOTAL EXCLUDED,1,25.00", "csv-unspecified-ccy: total")
+  csvLacks(csv, `Line 18,"Office Expense",25.00`, "csv-unspecified-ccy: not in USD Schedule C")
 }
 
 // CSV: mixed-income — wage row + business row both present, estimated net from SE only

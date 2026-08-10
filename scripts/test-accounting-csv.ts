@@ -1,4 +1,7 @@
 import { generateQuickBooksCSV, generateXeroCSV } from "../lib/accounting-csv"
+import { isExportableExpenseRow, isExpenseRow, isUsdRow } from "../lib/document-classification"
+
+let passed = 0
 
 const rows = [
   {
@@ -19,8 +22,31 @@ const rows = [
   },
 ]
 
+const classifiedRows = [
+  { document_type: "csv_export", raw_json: { gemini_raw: { document_type: "transaction_record" } }, currency: "USD", total_amount: 25, document_date: "2025-01-03", vendor_name: "Spreadsheet vendor", expense_category: "Software" },
+  { document_type: "csv_export", raw_json: { gemini_raw: { document_type: "receipt" } }, currency: "PHP", total_amount: 369, document_date: "2025-01-04", vendor_name: "PHP vendor", expense_category: "Rent" },
+  { document_type: "csv_export", currency: "USD", gross_income: 500, document_date: "2025-01-05", vendor_name: "Customer", expense_category: null },
+  { document_type: "csv_export", currency: "USD", total_amount: 1368.4, document_date: "2025-01-31", vendor_name: "Subtotal Jan", expense_category: null },
+  { document_type: "csv_export", currency: "USD", total_amount: 450, document_date: "2025-06-15", vendor_name: "Refund", expense_category: null },
+  { document_type: "csv_export", currency: "USD", total_amount: 86, document_date: "2025-03-14", vendor_name: "Unknown Vendor", expense_category: null },
+]
+
+const usdExpenses = classifiedRows.filter((row) => isExportableExpenseRow(row) && isUsdRow(row))
+assert("classifier: csv_export transaction_record USD expense retained", usdExpenses.length === 1 && usdExpenses[0].total_amount === 25)
+assert("classifier: non-USD spreadsheet expense excluded from export input", classifiedRows.filter((row) => isExpenseRow(row) && !isUsdRow(row)).length === 1)
+assert("classifier: csv_export income is not an expense", !isExpenseRow(classifiedRows[2]))
+assert("classifier: subtotal is not an expense", !isExpenseRow(classifiedRows[3]))
+assert("classifier: refund is not an expense", !isExpenseRow(classifiedRows[4]))
+assert("classifier: null-category row is not exportable", !isExportableExpenseRow(classifiedRows[5]))
+
+const classifiedQuickBooks = generateQuickBooksCSV(usdExpenses)
+const classifiedXero = generateXeroCSV(usdExpenses)
+assert("classifier: QuickBooks export contains only USD spreadsheet expense", classifiedQuickBooks.includes("Spreadsheet vendor") && !classifiedQuickBooks.includes("PHP vendor"))
+assert("classifier: Xero export contains only USD spreadsheet expense", classifiedXero.includes("Spreadsheet vendor") && !classifiedXero.includes("PHP vendor"))
+
 function assert(name: string, condition: boolean) {
   if (!condition) throw new Error(`✗ ${name}`)
+  passed++
   console.log(`✓ ${name}`)
 }
 
@@ -43,4 +69,4 @@ assert("Xero descriptions are capped at 500 characters", generateXeroCSV([{
   total_amount: 1,
 }]).split(",").pop()?.length === 500)
 
-console.log("9 passed, 0 failed")
+console.log(`${passed} passed, 0 failed`)

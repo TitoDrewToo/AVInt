@@ -155,6 +155,16 @@ function isGarbageRow(cells: Record<string, any>): boolean {
   const values = Object.values(cells).filter((value) => !isBlankCell(value))
   if (values.length === 0) return true
 
+  const labelValues = Object.entries(cells)
+    .filter(([key]) => /vendor|supplier|employer|description|name|label|memo|note/i.test(key))
+    .map(([, value]) => typeof value === "string" ? value.trim() : "")
+    .filter(Boolean)
+  const aggregateLabel = labelValues.some((value) => /^(?:sub\s*-?total|grand\s+total|total)(?:\s|$)/i.test(value))
+  if (aggregateLabel) return true
+
+  const creditLabel = labelValues.some((value) => /^(?:refund|credit|rebate|chargeback|return)(?:\s|$)/i.test(value))
+  if (creditLabel) return true
+
   if (values.length === 1) {
     const onlyValue = values[0]
     if (
@@ -164,11 +174,6 @@ function isGarbageRow(cells: Record<string, any>): boolean {
       return true
     }
   }
-
-  const hasSubtotalMarker = values.some((value) =>
-    typeof value === "string" && /\b(sub-?total|grand\s*total|total)\b/i.test(value)
-  )
-  if (hasSubtotalMarker && values.length < 4) return true
 
   return false
 }

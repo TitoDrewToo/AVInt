@@ -271,6 +271,9 @@ function TaxBundleContent() {
     uncategorizedItems,
     reviewItems,
     incomeByEmployer,
+    excludedNonUsdRows,
+    excludedNonUsdByCurrency,
+    excludedNonUsdRaw,
   } = summary
   const hasWageIncome = wageGross > 0
   const hasSelfEmploymentIncome = selfEmploymentGross > 0
@@ -908,9 +911,45 @@ function TaxBundleContent() {
                       Mixed currencies detected ({currencies.join(", ")})
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Totals are shown in {currency} but rows include other currencies. Amounts are <strong>not</strong> FX-converted.
-                      Exports remain available for accountant review and include per-row currencies; convert to a single currency before filing.
+                      Only explicit USD rows are included in Tax Bundle math. Non-USD and unspecified rows are excluded below;
+                      amounts are <strong>not</strong> FX-converted.
                     </p>
+                  </div>
+                </div>
+              )}
+
+              {excludedNonUsdRows.length > 0 && (
+                <div className="rounded border border-amber-500/30 bg-amber-500/5 p-4">
+                  <div className="flex items-start gap-3">
+                    <FileWarning className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-foreground">Excluded — non-USD (not filed)</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {excludedNonUsdRows.length} row{excludedNonUsdRows.length === 1 ? "" : "s"} excluded from USD filing math;
+                        no FX conversion was applied.
+                      </p>
+                      <div className="mt-3 overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead className="text-left text-muted-foreground">
+                            <tr><th className="pb-1 pr-4 font-medium">Currency</th><th className="pb-1 pr-4 font-medium">Rows</th><th className="pb-1 text-right font-medium">Raw subtotal</th></tr>
+                          </thead>
+                          <tbody>
+                            {Array.from(excludedNonUsdByCurrency.entries()).map(([excludedCurrency, subtotal]) => (
+                              <tr key={excludedCurrency} className="border-t border-amber-500/10">
+                                <td className="py-1 pr-4 font-mono">{excludedCurrency}</td>
+                                <td className="py-1 pr-4">{excludedNonUsdRows.filter((row) => (row.currency?.trim().toUpperCase() || "UNSPECIFIED") === excludedCurrency).length}</td>
+                                <td className="py-1 text-right font-mono">{excludedCurrency === "USD" ? fmt(subtotal, "USD") : `${excludedCurrency} ${subtotal.toFixed(2)}`}</td>
+                              </tr>
+                            ))}
+                            <tr className="border-t border-amber-500/30 font-medium">
+                              <td className="pt-1 pr-4">Total excluded</td>
+                              <td className="pt-1 pr-4">{excludedNonUsdRows.length}</td>
+                              <td className="pt-1 text-right font-mono">{excludedNonUsdRaw.toFixed(2)}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}

@@ -1,7 +1,26 @@
 export const MCP_CONNECTOR_ENABLED = process.env.ENABLE_MCP_CONNECTOR === "true"
+export const MCP_OAUTH_ENABLED = MCP_CONNECTOR_ENABLED && process.env.ENABLE_MCP_OAUTH === "true"
 // Client bundles cannot read non-public Next.js environment variables. Set
 // this alongside ENABLE_MCP_CONNECTOR when enabling the reviewed rollout.
 export const MCP_CONNECTOR_CLIENT_ENABLED = process.env.NEXT_PUBLIC_ENABLE_MCP_CONNECTOR === "true"
+
+export function mcpResourceUrl() {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL
+  if (!appUrl) return null
+  return new URL("/api/mcp", appUrl).toString()
+}
+
+export function oauthProtectedResourceUrl() {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL
+  if (!appUrl) return null
+  return new URL("/.well-known/oauth-protected-resource", appUrl).toString()
+}
+
+export function workosIssuer() {
+  const raw = process.env.WORKOS_AUTH_DOMAIN ?? process.env.WORKOS_ISSUER
+  if (!raw) return null
+  return `${raw.startsWith("http") ? raw : `https://${raw}`}`.replace(/\/+$/, "")
+}
 
 function positiveInteger(name: string, fallback: number) {
   const value = Number.parseInt(process.env[name] ?? "", 10)

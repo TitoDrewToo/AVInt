@@ -3,8 +3,8 @@ import { z } from "zod"
 import { NextRequest, NextResponse } from "next/server"
 
 import { computeEntitlement } from "@/lib/entitlement"
-import { entitlementForUser, resolveApiKey, supabaseAdmin } from "@/lib/mcp-auth"
-import { MCP_CONNECTOR_ENABLED, MCP_RATE_LIMITS, upgradeMessage } from "@/lib/mcp-config"
+import { entitlementForUser, OAuthAccountRequiredError, resolveApiKey, resolveOAuthToken, supabaseAdmin } from "@/lib/mcp-auth"
+import { MCP_CONNECTOR_ENABLED, MCP_OAUTH_ENABLED, MCP_RATE_LIMITS, oauthProtectedResourceUrl, upgradeMessage } from "@/lib/mcp-config"
 import { checkRateLimit, type RateLimitBucket } from "@/lib/rate-limit"
 import { ingestFiles } from "@/lib/smart-storage-ingest"
 import { getExport, getReport } from "@/lib/report-engine"
@@ -89,8 +89,22 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
 
 async function handle(req: NextRequest) {
   if (!MCP_CONNECTOR_ENABLED) return NextResponse.json({ error: "Not found" }, { status: 404 })
-  const identity = await resolveApiKey(req)
-  if (!identity) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  let identity: { userId: string } | null = null
+  try {
+    identity = await resolveOAuthToken(req)
+  } catch (error) {
+    if (error instanceof OAuthAccountRequiredError) return NextResponse.json({ error: error.message }, { status: 403 })
+    return NextResponse.json({ error: "OAuth authentication failed" }, { status: 401 })
+  }
+  identity ??= await resolveApiKey(req)
+  if (!identity) {
+    const headers = new Headers()
+    if (MCP_OAUTH_ENABLED) {
+      const metadata = oauthProtectedResourceUrl()
+      if (metadata) headers.set("WWW-Authenticate", `Bearer error="unauthorized", error_description="Authorization needed", resource_metadata="${metadata}"`)
+    }
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers })
+  }
   try {
     const entitlement = await entitlementForUser(identity.userId)
     return buildHandler(identity.userId, entitlement)(req)

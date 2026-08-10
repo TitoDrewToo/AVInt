@@ -26,7 +26,7 @@ function expiryLabel(value: string | null) {
   return `expires in ${days} day${days === 1 ? "" : "s"}`
 }
 
-export default function ConnectClient() {
+export default function ConnectClient({ oauthEnabled }: { oauthEnabled: boolean }) {
   const [session, setSession] = useState<Session | null>(null)
   const entitlement = useEntitlement(session)
   const [keys, setKeys] = useState<ApiKey[]>([])
@@ -102,11 +102,17 @@ export default function ConnectClient() {
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-primary">Smart Storage</p>
           <h1 className="mt-2 text-3xl font-semibold">Connect to Claude</h1>
-          <p className="mt-3 max-w-xl text-muted-foreground">Use your Smart Storage records inside Claude with a private, expiring API key.</p>
+          <p className="mt-3 max-w-xl text-muted-foreground">{oauthEnabled ? "Connect Claude to Smart Storage with WorkOS OAuth, while keeping API keys available for advanced programmatic clients." : "Connect programmatic clients to Smart Storage with a private, expiring API key."}</p>
         </div>
 
+        {oauthEnabled && <section className="rounded-xl border border-primary/30 bg-primary/5 p-6">
+          <h2 className="text-lg font-medium">Connect Claude with OAuth</h2>
+          <p className="mt-2 text-sm text-muted-foreground">In Claude, choose Add custom connector, paste this URL, then choose Add → Sign in with Google → connected.</p>
+          <code className="mt-4 block break-all rounded-md border border-border bg-background p-3 text-sm">{`${process.env.NEXT_PUBLIC_APP_URL ?? ""}/api/mcp`}</code>
+        </section>}
+
         <section className="rounded-xl border border-border bg-card p-6">
-          <h2 className="text-lg font-medium">{paid ? "Create a connector key" : "Unlock the Claude connector"}</h2>
+          <h2 className="text-lg font-medium">{paid ? "API keys for advanced clients" : "API-key access is Pro-only"}</h2>
           {!entitlement.loading && !paid ? (
             <div className="mt-4">
               <p className="text-sm text-muted-foreground">The Claude connector is a Pro feature. Upgrade to generate and use connector keys.</p>

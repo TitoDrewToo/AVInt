@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 520">
+  <circle cx="180" cy="150" r="88" fill="#f6bd8f" stroke="#2b1b14" stroke-width="6"/>
+  <path d="M95 145c8-78 66-124 136-103 42 13 70 52 70 105-45-30-90-41-150-35-25 3-44 13-56 33Z" fill="#2a1811"/>
+  <text x="180" y="82" text-anchor="middle" font-family="Arial, sans-serif" font-size="22" font-weight="700" fill="#fff8dc">HEAD</text>
+</svg>

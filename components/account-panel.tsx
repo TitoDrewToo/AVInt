@@ -9,6 +9,7 @@ import { GoogleSignInButton } from "@/components/google-sign-in-button"
 import { handleEmailSignupReferral, markReferralSignupPending } from "@/lib/referral"
 import { supabase } from "@/lib/supabase"
 import { computeEntitlement, isUnlimitedEntitlement } from "@/lib/entitlement"
+import { MCP_CONNECTOR_CLIENT_ENABLED } from "@/lib/mcp-config"
 import type { Session } from "@supabase/supabase-js"
 
 const chromeFontStyle = {
@@ -619,6 +620,18 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                     </div>
 
                     {/* Email & Password */}
+                    {MCP_CONNECTOR_CLIENT_ENABLED && (
+                      <>
+                        <div className="retro-divider h-px" />
+                        <div className="space-y-1">
+                          <Link href="/tools/smart-storage/connect" onClick={onClose} className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground/85 transition-all hover:text-primary" style={chromeFontStyle}>
+                            Connect to Claude
+                            <ExternalLink className="h-4 w-4 text-muted-foreground" />
+                          </Link>
+                        </div>
+                      </>
+                    )}
+
                     <div className="retro-divider h-px" />
                     <div className="space-y-1">
                       <AccordionItem

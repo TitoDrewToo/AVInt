@@ -412,7 +412,9 @@ serve(async (req) => {
   const corsHeaders = buildCorsHeaders(req)
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
 
-  // Auth: user JWT required (prescan is user-triggered; no service role entry)
+  // Auth: user JWT required for browser uploads. The MCP connector may use the
+  // service role only for this internal, server-originated call and must pass
+  // the already-resolved user id; no client can access the service role.
   const authHeader = req.headers.get("authorization") ?? ""
   const token = authHeader.replace(/^Bearer\s+/i, "")
   if (!token) {
@@ -420,15 +422,6 @@ serve(async (req) => {
       status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
     })
   }
-  const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-  const { data: userData, error: userErr } = await adminClient.auth.getUser(token)
-  if (userErr || !userData?.user) {
-    return new Response(JSON.stringify({ error: "Invalid token" }), {
-      status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    })
-  }
-  const userId = userData.user.id
-
   let body: any = {}
   try {
     const text = await req.text()
@@ -437,6 +430,26 @@ serve(async (req) => {
     return new Response(JSON.stringify({ error: "Invalid request body" }), {
       status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
     })
+  }
+
+  const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+  const isInternal = token === SUPABASE_SERVICE_ROLE_KEY
+  let userId: string
+  if (isInternal) {
+    if (typeof body.user_id !== "string") {
+      return new Response(JSON.stringify({ error: "user_id required for internal call" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      })
+    }
+    userId = body.user_id
+  } else {
+    const { data: userData, error: userErr } = await adminClient.auth.getUser(token)
+    if (userErr || !userData?.user) {
+      return new Response(JSON.stringify({ error: "Invalid token" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      })
+    }
+    userId = userData.user.id
   }
 
   const { file_id } = body

@@ -1,0 +1,28 @@
+{
+  "name": "paperclip-2-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "description": "File-based multi-agent runtime for AI After Dark.",
+  "type": "module",
+  "scripts": {
+    "verify": "tsx src/cli/verify.ts",
+    "sprint:start": "tsx src/cli/start-sprint.ts",
+    "weekly:trigger": "tsx src/cli/trigger-weekly.ts",
+    "review:list": "tsx src/cli/review-list.ts",
+    "review:lock": "tsx src/cli/review-lock.ts",
+    "review:kill": "tsx src/cli/review-kill.ts",
+    "review:edit": "tsx src/cli/review-edit.ts",
+    "agent:test": "tsx src/cli/agent-test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.68.0",
+    "dotenv": "^17.2.3",
+    "tsx": "^4.21.0",
+    "zod": "^4.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.0",
+    "typescript": "^5.9.3"
+  }
+}

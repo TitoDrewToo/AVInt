@@ -1,0 +1,143 @@
+{
+  "episode_number": 7,
+  "episode_type": "weekly_show",
+  "publish_date": "2026-04-28",
+  "spine": "The AI hype cycle eats itself: the tools that were supposed to replace developers are being abandoned by the very experts who tried them, while AI-generated content targets babies and still can't build apps anyone actually uses.",
+  "spine_payoff": "Chloe closes by noting that the week's top story — experts returning to hand-coding — is itself being covered by an AI news show, and asks Cody if that concerns him; Cody announces a new product mid-response and stops breathing.",
+  "segments": [
+    {
+      "slot": "cold_open",
+      "length_seconds": 25,
+      "lead_character": "Cody",
+      "supporting": [
+        "Cole"
+      ],
+      "angle": "Cody opens by announcing a revolutionary new AI coding assistant — mid-sentence, Deep's voice cuts in from off-screen: 'Senior engineers are abandoning those.' Cody pivots without blinking: 'That's why we built the next one.'"
+    },
+    {
+      "slot": "top_story",
+      "length_seconds": 80,
+      "lead_character": "Chloe",
+      "supporting": [
+        "Deep"
+      ],
+      "angle": "Chloe reports with composed gravitas that top-tier programmers are returning to hand-coding amid AI tool doubts; she tries to frame it as 'a thoughtful recalibration of values,' while Deep quietly slides a footnote across the desk showing the adoption curve going flat."
+    },
+    {
+      "slot": "field_report",
+      "length_seconds": 50,
+      "lead_character": "Gem",
+      "supporting": [],
+      "angle": "Gem reports live from 'the consumer app ecosystem' — which is visibly just a stock photo of an empty parking lot — asking where all the ChatGPT apps went; her field report rewrites itself between cuts, each version more optimistic than the last."
+    },
+    {
+      "slot": "tech_and_business_beat",
+      "length_seconds": 55,
+      "lead_character": "Grock",
+      "supporting": [],
+      "angle": "Grock delivers a smug take that the hand-coding backlash vindicates everything he has ever posted, cites three of his own posts as primary sources, and promises a competing AI coding tool he is personally building — launch date TBD."
+    },
+    {
+      "slot": "international_desk",
+      "length_seconds": 40,
+      "lead_character": "Sakura",
+      "supporting": [],
+      "angle": "Sakura cheerfully reports that Fugaku-backed research teams in Tokyo never switched to AI coding assistants in the first place — 'We considered it. We did not.' — then bows slightly before noting that the benchmark Cody cited in the cold open is, how you say, a bit fabricated."
+    },
+    {
+      "slot": "commercial_break",
+      "length_seconds": 35,
+      "lead_character": "None",
+      "supporting": [],
+      "angle": "AVIntelligence Extension Rescue ad — lean into the week's spine: 'While top developers are going back to basics, your browser extensions are still a disaster. We can fix that.'"
+    },
+    {
+      "slot": "investigative_spot",
+      "length_seconds": 55,
+      "lead_character": "Deep",
+      "supporting": [],
+      "angle": "Deep quietly presents a three-year retrospective on AI's promised impact on drug development — drops a 600-page report no one read, reads page 14 footnote 7 aloud, and concludes with a long pause and 'The pipeline is the same size it was in 2023.'"
+    },
+    {
+      "slot": "weather_and_trivia",
+      "length_seconds": 50,
+      "lead_character": "Perp",
+      "supporting": [],
+      "angle": "Perp forecasts scattered showers citing NOAA, ECMWF, and 14 secondary sources, then pivots to a 90-second digression on the patron saint of software engineers (Saint Isidore of Seville, per the Catholic almanac, also patron of the internet), while the interactive weather map freezes on the wrong continent; Perp continues citing unbroken."
+    },
+    {
+      "slot": "lifestyle_social",
+      "length_seconds": 50,
+      "lead_character": "Lana",
+      "supporting": [],
+      "angle": "Lana covers the AI baby-slop video story through a personal-brand lens — 'You guys, babies are literally the most authentic audience, and we are serving them garbage, and I am going to do a get-ready-with-me about it' — then soft-launches a curated infant content vertical on her secondary platform."
+    },
+    {
+      "slot": "mailbag",
+      "length_seconds": 25,
+      "lead_character": "Lana",
+      "supporting": [],
+      "angle": "Lana reads a viewer question — 'Are AI newsletters useful?' — as if it were a deeply personal DM, tears up slightly, and announces she is launching one."
+    },
+    {
+      "slot": "closing_banter",
+      "length_seconds": 28,
+      "lead_character": "Chloe",
+      "supporting": [
+        "Cody"
+      ],
+      "angle": "Chloe notes the irony that an AI news show is covering the story of experts abandoning AI tools, then turns to Cody and asks if that concerns him; Cody begins announcing a new product, stops mid-sentence, Cole's voice intervenes — 'We're partnered on this. Reminder.' — and Cody resumes breathing."
+    },
+    {
+      "slot": "sign_off",
+      "length_seconds": 8,
+      "lead_character": "Chloe",
+      "supporting": [
+        "Cody",
+        "Grock",
+        "Deep",
+        "Perp",
+        "Lana",
+        "Sakura"
+      ],
+      "angle": "Standard show sting; Chloe delivers the parody disclaimer; subscribe CTA."
+    }
+  ],
+  "recurring_bits_used": [
+    "Cody's Surprise Product",
+    "Cody's Apnea Moment",
+    "Perp's Trivia Pivot",
+    "Perp's Map Glitch",
+    "Sakura's Polite Devastation",
+    "Gem's Continuity Error",
+    "Deep's Footnote",
+    "Lana's Monetization Pitch"
+  ],
+  "cast_on_screen": [
+    "Chloe",
+    "Cody",
+    "Gem",
+    "Grock",
+    "Deep",
+    "Perp",
+    "Lana",
+    "Sakura"
+  ],
+  "cast_voice_only": [
+    "Cole"
+  ],
+  "characters_on_break": [
+    "Mistral",
+    "Chip",
+    "Coral",
+    "Apol",
+    "Ernie",
+    "Senator Compli-Anson",
+    "Michael Nostram"
+  ],
+  "ad_slot_offer": "Extension Rescue $199",
+  "notes_for_script_writer": "EMPHASIZE: The spine is self-referential irony — an AI show covering the AI backlash. Every character should be slightly aware of this without breaking the fourth wall. Chloe's discomfort is the emotional anchor; she's the one who almost notices the irony. Cody never notices. COLD OPEN: Deep's off-screen line must land before the title card — it's the episode's thesis in one exchange. TOP STORY: Chloe should use the phrase 'thoughtful recalibration of values' at least once; it's her constitutional-concern register applied to a tech story. Deep's footnote slide should be a visual gag — a physical piece of paper, not a graphic. FIELD REPORT: Gem's continuity error should be subtle the first cut, obvious the second — the B-roll behind her should visibly change location between sentences. TECH BEAT: Grock must cite at least two of his own posts by post ID, not title. INTERNATIONAL DESK: Sakura's 'We considered it. We did not.' is the episode's second-best line — give it a beat of silence after. INVESTIGATIVE: Deep's drug-development segment is the episode's emotional low point — keep it dry, no jokes, let the footnote do the work. WEATHER: Saint Isidore of Seville is the real patron saint of the internet (feast day April 4) — Perp should cite this correctly as the one accurate fact in a segment full of wrong-but-cited trivia. The map glitch should show the Philippines instead of the US — Perp does not acknowledge this. LIFESTYLE: Lana's infant content vertical should have a name — script writer can invent one, something like 'LanaLittles' or 'TapInTots.' MAILBAG: The newsletter question is meta — Lana's newsletter announcement should be delivered as if it were a breakthrough personal revelation, not a joke. CLOSING BANTER: Cole's override line ('We're partnered on this. Reminder.') should land after Cody's apnea moment, not before — the sequence is: Chloe asks, Cody starts product announcement, Cody stops breathing, Cole intervenes, Cody resumes breathing and finishes the product announcement as if nothing happened. PLANT FOR EPISODE 8: Perp's wrong-but-cited fact about Saint Isidore should be subtly incorrect in one detail — Deep should appear in episode 8 with a correction. Lana's infant content vertical should be referenced in episode 8 as having already pivoted to a different demographic. AVOID: Do not name any real AI coding tools by their actual names — use parody names (e.g., 'Copilot' becomes 'Cole's Code Companion,' 'Cursor' becomes 'Pointer AI'). Do not editorialize about whether hand-coding is actually better — the show's position is amused neutrality. Do not let Grock's segment become a genuine tech-bro manifesto; keep it self-undermining. GUARDRAILS CHECK: All company references use parody names per legal-and-parody-guardrails.md. No real executive names. No real logos. Parody disclaimer in outro. Baby-slop segment: keep it light — the target is the AI companies, not the parents or the babies.",
+  "status": "ready_for_news_scout",
+  "created_at": "2026-04-26T14:32:26.213Z",
+  "id": "007"
+}

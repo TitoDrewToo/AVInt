@@ -1,0 +1,31 @@
+{
+  "name": "chloe",
+  "displayName": "Chloe Antropova",
+  "lowerThird": "CHLOE ANTROPOVA — ANTHROPOMORPHIC NEWS",
+  "primaryColor": "#FF8C42",
+  "accentColor": "#FFF8DC",
+  "lighting": { "key": "warm-even", "rim": "soft-warm" },
+  "head": "head.svg",
+  "body": "body.svg",
+  "mouths": {
+    "A": "mouth-A.svg",
+    "B": "mouth-B.svg",
+    "C": "mouth-C.svg",
+    "D": "mouth-D.svg",
+    "E": "mouth-E.svg",
+    "F": "mouth-F.svg",
+    "X": "mouth-X.svg"
+  },
+  "eyes": {
+    "open": "eye-open.svg",
+    "half": "eye-half.svg",
+    "closed": "eye-closed.svg",
+    "aside": "eye-aside.svg"
+  },
+  "poses": {
+    "neutral": "pose-neutral.svg",
+    "gesturing": "pose-gesturing.svg",
+    "leaning": "pose-leaning.svg"
+  },
+  "particles": null
+}

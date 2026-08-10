@@ -1,0 +1,9 @@
+tools/
+assets/source-images/
+assets/audio/
+assets/music/
+assets/renders/
+node_modules/
+.venv/
+__pycache__/
+*.pyc

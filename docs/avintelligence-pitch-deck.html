@@ -1,0 +1,1176 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AVIntelligence Pitch Deck</title>
+    <style>
+      :root {
+        --bg: #f5f3ef;
+        --surface: rgba(255, 255, 255, 0.82);
+        --surface-strong: rgba(255, 255, 255, 0.94);
+        --ink: #171311;
+        --muted: #6e625b;
+        --line: rgba(26, 20, 17, 0.12);
+        --accent: #c32b1f;
+        --accent-soft: rgba(195, 43, 31, 0.12);
+        --accent-glow: rgba(195, 43, 31, 0.18);
+        --shadow: 0 28px 80px rgba(33, 23, 18, 0.1);
+        --radius: 26px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background:
+          radial-gradient(circle at top left, rgba(195, 43, 31, 0.08), transparent 28%),
+          radial-gradient(circle at bottom right, rgba(195, 43, 31, 0.06), transparent 32%),
+          linear-gradient(180deg, #faf7f3 0%, #f3efe9 100%);
+        color: var(--ink);
+        font-family: "Aptos", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      }
+
+      body {
+        padding: 32px 0 80px;
+      }
+
+      .deck {
+        width: min(1180px, calc(100vw - 40px));
+        margin: 0 auto;
+      }
+
+      .slide {
+        position: relative;
+        min-height: 664px;
+        aspect-ratio: 16 / 9;
+        margin: 0 auto 28px;
+        padding: 34px 40px 34px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.92)),
+          linear-gradient(135deg, rgba(195, 43, 31, 0.035), transparent 44%);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+        page-break-after: always;
+      }
+
+      .slide::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background-image:
+          linear-gradient(rgba(195, 43, 31, 0.05) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(195, 43, 31, 0.05) 1px, transparent 1px);
+        background-size: 56px 56px;
+        mask-image: radial-gradient(circle at center, black 0%, rgba(0, 0, 0, 0.42) 62%, transparent 100%);
+        opacity: 0.55;
+      }
+
+      .slide-inner {
+        position: relative;
+        z-index: 1;
+        display: grid;
+        height: 100%;
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 16px;
+        font-size: 12px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--accent);
+        font-weight: 700;
+      }
+
+      .eyebrow::before {
+        content: "";
+        width: 28px;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: clamp(42px, 6vw, 68px);
+        line-height: 0.96;
+        letter-spacing: -0.04em;
+      }
+
+      h2 {
+        font-size: 34px;
+        line-height: 1.02;
+        letter-spacing: -0.035em;
+      }
+
+      h3 {
+        font-size: 16px;
+        line-height: 1.15;
+        letter-spacing: -0.02em;
+      }
+
+      .lede {
+        max-width: 700px;
+        font-size: 20px;
+        line-height: 1.5;
+        color: var(--muted);
+      }
+
+      .small {
+        font-size: 13px;
+        line-height: 1.5;
+        color: var(--muted);
+      }
+
+      .muted {
+        color: var(--muted);
+      }
+
+      .accent {
+        color: var(--accent);
+      }
+
+      .grid-2 {
+        display: grid;
+        grid-template-columns: 1.1fr 0.9fr;
+        gap: 26px;
+      }
+
+      .grid-3 {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .stack {
+        display: grid;
+        gap: 16px;
+      }
+
+      .card {
+        border: 1px solid rgba(23, 19, 17, 0.08);
+        border-radius: 20px;
+        background: var(--surface);
+        box-shadow: 0 14px 40px rgba(25, 20, 17, 0.05);
+      }
+
+      .card.pad-lg {
+        padding: 22px;
+      }
+
+      .card.pad-md {
+        padding: 18px;
+      }
+
+      .metric {
+        display: grid;
+        gap: 8px;
+        padding: 18px;
+        border-radius: 18px;
+        background: linear-gradient(180deg, rgba(195, 43, 31, 0.05), rgba(255, 255, 255, 0.88));
+        border: 1px solid rgba(195, 43, 31, 0.09);
+      }
+
+      .metric-label {
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .metric-value {
+        font-size: 26px;
+        font-weight: 700;
+        letter-spacing: -0.03em;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        border: 1px solid rgba(195, 43, 31, 0.16);
+        background: rgba(195, 43, 31, 0.06);
+        font-size: 12px;
+        color: var(--accent);
+        font-weight: 600;
+      }
+
+      .list {
+        display: grid;
+        gap: 10px;
+        padding: 0;
+        margin: 0;
+        list-style: none;
+      }
+
+      .list li {
+        position: relative;
+        padding-left: 16px;
+        font-size: 15px;
+        line-height: 1.5;
+        color: var(--ink);
+      }
+
+      .list li::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 0.65em;
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--accent);
+      }
+
+      .rail {
+        display: grid;
+        gap: 12px;
+      }
+
+      .rail-step {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 12px;
+        align-items: start;
+        padding: 14px 16px;
+        border-radius: 18px;
+        border: 1px solid rgba(23, 19, 17, 0.08);
+        background: rgba(255, 255, 255, 0.7);
+      }
+
+      .rail-index {
+        width: 28px;
+        height: 28px;
+        border-radius: 999px;
+        display: grid;
+        place-items: center;
+        background: var(--accent);
+        color: white;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .product-panels {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px;
+      }
+
+      .product-shot {
+        position: relative;
+        min-height: 250px;
+        padding: 18px;
+        border-radius: 22px;
+        overflow: hidden;
+        border: 1px solid rgba(23, 19, 17, 0.08);
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(248, 243, 238, 0.94)),
+          radial-gradient(circle at top right, rgba(195, 43, 31, 0.09), transparent 30%);
+      }
+
+      .shot-topbar {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 14px;
+      }
+
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: rgba(23, 19, 17, 0.18);
+      }
+
+      .shot-grid {
+        display: grid;
+        grid-template-columns: 0.9fr 1.1fr;
+        gap: 12px;
+        height: calc(100% - 22px);
+      }
+
+      .panel {
+        border-radius: 16px;
+        border: 1px solid rgba(23, 19, 17, 0.08);
+        background: rgba(255, 255, 255, 0.78);
+      }
+
+      .storage-tree {
+        display: grid;
+        gap: 10px;
+        padding: 14px;
+      }
+
+      .tree-line {
+        height: 12px;
+        border-radius: 8px;
+        background: linear-gradient(90deg, rgba(195, 43, 31, 0.18), rgba(23, 19, 17, 0.08));
+      }
+
+      .tree-line.short {
+        width: 58%;
+      }
+
+      .tree-line.mid {
+        width: 74%;
+      }
+
+      .file-table {
+        display: grid;
+        gap: 10px;
+        padding: 14px;
+      }
+
+      .file-row {
+        display: grid;
+        grid-template-columns: 1.1fr 0.6fr 0.7fr;
+        gap: 10px;
+      }
+
+      .file-cell {
+        height: 12px;
+        border-radius: 8px;
+        background: rgba(23, 19, 17, 0.08);
+      }
+
+      .dashboard-grid {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        gap: 10px;
+        padding: 14px;
+      }
+
+      .kpi-tile {
+        grid-column: span 3;
+        min-height: 78px;
+        border-radius: 16px;
+        background: linear-gradient(180deg, rgba(195, 43, 31, 0.1), rgba(255, 255, 255, 0.78));
+        border: 1px solid rgba(195, 43, 31, 0.1);
+      }
+
+      .chart-tile {
+        grid-column: span 6;
+        min-height: 128px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.76);
+        border: 1px solid rgba(23, 19, 17, 0.08);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .chart-line {
+        position: absolute;
+        inset: auto 12px 18px 12px;
+        height: 72px;
+      }
+
+      .comparison-table {
+        display: grid;
+        gap: 8px;
+      }
+
+      .comparison-row {
+        display: grid;
+        grid-template-columns: 0.9fr 1fr 1.1fr;
+        gap: 12px;
+        padding: 14px 16px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid rgba(23, 19, 17, 0.08);
+      }
+
+      .comparison-row.head {
+        font-size: 11px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--muted);
+        background: rgba(23, 19, 17, 0.03);
+      }
+
+      .placeholder {
+        border-radius: 16px;
+        border: 1px dashed rgba(195, 43, 31, 0.3);
+        background: rgba(195, 43, 31, 0.05);
+        padding: 14px 16px;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .rings {
+        display: flex;
+        align-items: end;
+        justify-content: center;
+        gap: 18px;
+        padding-top: 12px;
+      }
+
+      .ring {
+        position: relative;
+        border-radius: 999px;
+        display: grid;
+        place-items: center;
+        text-align: center;
+        border: 1px solid rgba(195, 43, 31, 0.18);
+        background: rgba(255, 255, 255, 0.56);
+        color: var(--ink);
+      }
+
+      .ring.tam { width: 270px; height: 270px; }
+      .ring.sam { width: 190px; height: 190px; margin-bottom: 18px; }
+      .ring.som { width: 116px; height: 116px; margin-bottom: 36px; }
+
+      .ring-label {
+        display: grid;
+        gap: 4px;
+      }
+
+      .ring-label strong {
+        font-size: 14px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--accent);
+      }
+
+      .ring-label span {
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .bar-stack {
+        display: grid;
+        gap: 10px;
+      }
+
+      .bar {
+        position: relative;
+        height: 38px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: rgba(23, 19, 17, 0.07);
+      }
+
+      .bar-fill {
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, rgba(195, 43, 31, 0.9), rgba(195, 43, 31, 0.55));
+      }
+
+      .bar-label {
+        position: absolute;
+        inset: 0 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .timeline {
+        display: grid;
+        gap: 16px;
+      }
+
+      .timeline-item {
+        display: grid;
+        grid-template-columns: 84px 1fr;
+        gap: 14px;
+        align-items: start;
+      }
+
+      .timeline-badge {
+        padding-top: 2px;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--accent);
+        font-weight: 700;
+      }
+
+      .timeline-card {
+        padding: 16px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid rgba(23, 19, 17, 0.08);
+      }
+
+      .split-note {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 14px;
+        align-items: end;
+      }
+
+      .fund-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
+      }
+
+      .fund-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .fund-item {
+        display: grid;
+        grid-template-columns: 56px 1fr;
+        gap: 14px;
+        align-items: center;
+        padding: 12px 14px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.76);
+        border: 1px solid rgba(23, 19, 17, 0.08);
+      }
+
+      .fund-pct {
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--accent);
+      }
+
+      .footer-note {
+        position: absolute;
+        right: 28px;
+        bottom: 20px;
+        font-size: 10px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: rgba(23, 19, 17, 0.42);
+      }
+
+      .page-num {
+        position: absolute;
+        left: 28px;
+        bottom: 20px;
+        font-size: 11px;
+        color: rgba(23, 19, 17, 0.45);
+      }
+
+      .cover-logo {
+        width: 270px;
+        max-width: 48vw;
+      }
+
+      .cover-grid {
+        display: grid;
+        grid-template-columns: 1.1fr 0.9fr;
+        gap: 26px;
+        align-items: stretch;
+      }
+
+      .cover-side {
+        display: grid;
+        align-content: space-between;
+      }
+
+      .hero-panel {
+        min-height: 410px;
+        border-radius: 28px;
+        border: 1px solid rgba(23, 19, 17, 0.08);
+        background:
+          radial-gradient(circle at 24% 20%, rgba(195, 43, 31, 0.16), transparent 34%),
+          linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(244, 238, 231, 0.88));
+        padding: 18px;
+        display: grid;
+        gap: 14px;
+      }
+
+      .hero-panel .mini-window {
+        flex: 1;
+      }
+
+      .mini-window {
+        border-radius: 18px;
+        border: 1px solid rgba(23, 19, 17, 0.08);
+        background: rgba(255, 255, 255, 0.76);
+        padding: 14px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .mini-bars {
+        display: grid;
+        gap: 8px;
+      }
+
+      .mini-bar {
+        height: 10px;
+        border-radius: 999px;
+        background: rgba(23, 19, 17, 0.08);
+      }
+
+      .mini-bar.red {
+        background: linear-gradient(90deg, rgba(195, 43, 31, 0.88), rgba(195, 43, 31, 0.24));
+      }
+
+      .assumption-note {
+        font-size: 12px;
+        line-height: 1.5;
+        color: var(--muted);
+      }
+
+      @media print {
+        body {
+          padding: 0;
+          background: white;
+        }
+
+        .deck {
+          width: 100%;
+        }
+
+        .slide {
+          width: 100%;
+          margin: 0;
+          border-radius: 0;
+          box-shadow: none;
+          break-after: page;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="deck">
+      <section class="slide">
+        <div class="slide-inner cover-grid">
+          <div class="cover-side">
+            <div class="stack" style="gap: 20px;">
+              <div class="eyebrow">AVIntelligence</div>
+              <img class="cover-logo" src="../public/avintelligence-stacked.svg" alt="AVIntelligence" />
+              <h1>AI-powered financial document workspace</h1>
+              <p class="lede">
+                Turn receipts, invoices, payslips, contracts, and screenshots into organized data, reports, and dashboard-ready insight.
+              </p>
+              <div class="pill">Seed-stage investor deck draft</div>
+            </div>
+            <div class="small">
+              [Founder name]<br />
+              [Email]<br />
+              [Website]
+            </div>
+          </div>
+          <div class="hero-panel">
+            <div class="mini-window">
+              <div class="shot-topbar"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+              <div class="shot-grid">
+                <div class="panel storage-tree">
+                  <div class="tree-line"></div>
+                  <div class="tree-line short"></div>
+                  <div class="tree-line mid"></div>
+                  <div class="tree-line short"></div>
+                  <div class="tree-line"></div>
+                </div>
+                <div class="panel file-table">
+                  <div class="file-row"><span class="file-cell"></span><span class="file-cell"></span><span class="file-cell"></span></div>
+                  <div class="file-row"><span class="file-cell"></span><span class="file-cell"></span><span class="file-cell"></span></div>
+                  <div class="file-row"><span class="file-cell"></span><span class="file-cell"></span><span class="file-cell"></span></div>
+                  <div class="file-row"><span class="file-cell"></span><span class="file-cell"></span><span class="file-cell"></span></div>
+                </div>
+              </div>
+            </div>
+            <div class="mini-window">
+              <div class="dashboard-grid">
+                <div class="kpi-tile"></div>
+                <div class="kpi-tile"></div>
+                <div class="chart-tile">
+                  <svg class="chart-line" viewBox="0 0 320 72" preserveAspectRatio="none">
+                    <path d="M0,58 C30,56 48,44 78,40 C108,36 122,48 150,33 C176,20 198,24 225,16 C252,8 278,18 320,8" fill="none" stroke="rgba(195,43,31,0.9)" stroke-width="3" stroke-linecap="round"/>
+                    <path d="M0,61 C42,63 68,50 104,45 C134,41 156,50 192,37 C220,28 240,30 272,24 C294,20 307,18 320,16" fill="none" stroke="rgba(23,19,17,0.18)" stroke-width="2.5" stroke-linecap="round"/>
+                  </svg>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="page-num">01</div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <div class="slide-inner">
+          <div class="eyebrow">Problem</div>
+          <div class="grid-2">
+            <div class="stack" style="gap: 20px;">
+              <h2>Financial records are everywhere, but understanding them is still manual.</h2>
+              <ul class="list">
+                <li>Receipts, invoices, payslips, contracts, and screenshots live across folders, drives, email, and chat.</li>
+                <li>Most people do not have structured records when they need reporting, review, or tax preparation.</li>
+                <li>Storage tools keep files, but do not convert them into usable financial context.</li>
+              </ul>
+              <div class="card pad-lg">
+                <h3>Core problem</h3>
+                <p class="lede" style="font-size: 24px; max-width: none; margin-top: 10px;">
+                  People store financial documents, but they still cannot work with them as living financial data.
+                </p>
+              </div>
+            </div>
+            <div class="stack">
+              <div class="rail">
+                <div class="rail-step">
+                  <div class="rail-index">1</div>
+                  <div class="stack" style="gap: 6px;">
+                    <h3>Scattered files</h3>
+                    <p class="small">Records live across multiple apps and storage habits, with no single system of record.</p>
+                  </div>
+                </div>
+                <div class="rail-step">
+                  <div class="rail-index">2</div>
+                  <div class="stack" style="gap: 6px;">
+                    <h3>Manual cleanup</h3>
+                    <p class="small">Users still rename, sort, inspect, and reconcile documents by hand before any reporting starts.</p>
+                  </div>
+                </div>
+                <div class="rail-step">
+                  <div class="rail-index">3</div>
+                  <div class="stack" style="gap: 6px;">
+                    <h3>Delayed insight</h3>
+                    <p class="small">By the time documents become understandable, the moment for fast decision-making is already gone.</p>
+                  </div>
+                </div>
+              </div>
+              <div class="placeholder">Simple truth: file retention is not the same as financial understanding.</div>
+            </div>
+          </div>
+          <div class="page-num">02</div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <div class="slide-inner">
+          <div class="eyebrow">Solution</div>
+          <div class="stack" style="gap: 20px;">
+            <h2>AVIntelligence converts financial documents into a usable workspace.</h2>
+            <p class="lede">Not just OCR. Not just storage. Not just Dashboards. One workflow from document intake to financial understanding.</p>
+            <div class="grid-3">
+              <div class="card pad-lg">
+                <h3>Smart Storage</h3>
+                <p class="small" style="margin-top: 10px;">Organizes uploads into one account-isolated document workspace.</p>
+              </div>
+              <div class="card pad-lg">
+                <h3>Structured Extraction</h3>
+                <p class="small" style="margin-top: 10px;">Turns files into fields, normalized records, and usable financial data.</p>
+              </div>
+              <div class="card pad-lg">
+                <h3>Reports + Dashboards</h3>
+                <p class="small" style="margin-top: 10px;">Creates summaries, analytics visuals, contextual insight, and drill-down views.</p>
+              </div>
+            </div>
+            <div class="card pad-lg">
+              <div class="split-note">
+                <div class="stack" style="gap: 8px;">
+                  <div class="small accent" style="letter-spacing: 0.12em; text-transform: uppercase;">Workflow</div>
+                  <h3 style="font-size: 24px;">Upload -> Extract -> Report -> Understand</h3>
+                </div>
+                <div class="pill">Account-isolated, server-side workflow</div>
+              </div>
+            </div>
+          </div>
+          <div class="page-num">03</div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <div class="slide-inner">
+          <div class="eyebrow">Market Opportunity</div>
+          <div class="grid-2">
+            <div class="stack" style="gap: 18px;">
+              <h2>AVIntelligence sits at the intersection of storage, expense workflows, reporting, and AI document understanding.</h2>
+              <p class="lede" style="font-size: 18px;">
+                Primary wedge: individuals, freelancers, and small businesses who already collect financial documents but still manage them manually.
+              </p>
+              <ul class="list">
+                <li>Document storage</li>
+                <li>Expense and record management</li>
+                <li>Financial reporting workflows</li>
+                <li>AI-assisted document understanding</li>
+              </ul>
+              <div class="placeholder">
+                Replace before investor use:<br />
+                [TAM] [SAM] [SOM] using bottom-up market sizing, target-user counts, ARPU assumptions, and reachable niche share.
+              </div>
+            </div>
+            <div class="card pad-lg">
+              <div class="rings">
+                <div class="ring tam">
+                  <div class="ring-label">
+                    <strong>TAM</strong>
+                    <span>Financial document and reporting workflow market</span>
+                  </div>
+                </div>
+                <div class="ring sam">
+                  <div class="ring-label">
+                    <strong>SAM</strong>
+                    <span>Initial geography and user segment</span>
+                  </div>
+                </div>
+                <div class="ring som">
+                  <div class="ring-label">
+                    <strong>SOM</strong>
+                    <span>Initial obtainable wedge</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="page-num">04</div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <div class="slide-inner">
+          <div class="eyebrow">Product</div>
+          <div class="stack" style="gap: 20px;">
+            <h2>AVIntelligence is already a live product, not a concept.</h2>
+            <div class="product-panels">
+              <div class="product-shot">
+                <div class="small accent" style="text-transform: uppercase; letter-spacing: 0.1em;">Document workspace</div>
+                <div class="shot-topbar"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+                <div class="shot-grid">
+                  <div class="panel storage-tree">
+                    <div class="tree-line"></div>
+                    <div class="tree-line short"></div>
+                    <div class="tree-line"></div>
+                    <div class="tree-line mid"></div>
+                    <div class="tree-line short"></div>
+                  </div>
+                  <div class="panel file-table">
+                    <div class="file-row"><span class="file-cell"></span><span class="file-cell"></span><span class="file-cell"></span></div>
+                    <div class="file-row"><span class="file-cell"></span><span class="file-cell"></span><span class="file-cell"></span></div>
+                    <div class="file-row"><span class="file-cell"></span><span class="file-cell"></span><span class="file-cell"></span></div>
+                    <div class="file-row"><span class="file-cell"></span><span class="file-cell"></span><span class="file-cell"></span></div>
+                    <div class="file-row"><span class="file-cell"></span><span class="file-cell"></span><span class="file-cell"></span></div>
+                  </div>
+                </div>
+              </div>
+              <div class="product-shot">
+                <div class="small accent" style="text-transform: uppercase; letter-spacing: 0.1em;">Insight workspace</div>
+                <div class="shot-topbar"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+                <div class="dashboard-grid">
+                  <div class="kpi-tile"></div>
+                  <div class="kpi-tile"></div>
+                  <div class="chart-tile">
+                    <svg class="chart-line" viewBox="0 0 320 72" preserveAspectRatio="none">
+                      <path d="M0,58 C34,54 62,42 86,38 C120,32 152,44 182,28 C210,13 236,14 266,18 C286,20 304,14 320,10" fill="none" stroke="rgba(195,43,31,0.92)" stroke-width="3" stroke-linecap="round"/>
+                      <path d="M0,63 C32,61 58,50 92,46 C126,42 146,52 174,40 C198,30 232,34 260,24 C286,16 304,20 320,18" fill="none" stroke="rgba(23,19,17,0.18)" stroke-width="2.5" stroke-linecap="round"/>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="grid-3">
+              <div class="metric">
+                <div class="metric-label">Current capability</div>
+                <div class="metric-value">Uploads</div>
+                <div class="small">PDF, image, CSV, and XLSX ingestion</div>
+              </div>
+              <div class="metric">
+                <div class="metric-label">Current capability</div>
+                <div class="metric-value">Reports</div>
+                <div class="small">Expense, income, contract, P&amp;L, and tax-oriented outputs</div>
+              </div>
+              <div class="metric">
+                <div class="metric-label">Current capability</div>
+                <div class="metric-value">Dashboards</div>
+                <div class="small">KPI, analytics, contextual summary, and drill-down views</div>
+              </div>
+            </div>
+          </div>
+          <div class="page-num">05</div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <div class="slide-inner">
+          <div class="eyebrow">Business Model</div>
+          <div class="grid-2">
+            <div class="stack" style="gap: 18px;">
+              <h2>Recurring software revenue from users who need ongoing document-to-insight workflows.</h2>
+              <ul class="list">
+                <li>Subscription access for premium usage</li>
+                <li>Future paid expansion through advanced analytics and deeper automation</li>
+                <li>Account-level monetization rather than one-off report labor</li>
+              </ul>
+              <div class="placeholder">
+                Confirm before circulation:<br />
+                [Current plan structure] [gift/day-pass status] [future annual or business tiers]
+              </div>
+            </div>
+            <div class="card pad-lg">
+              <div class="bar-stack">
+                <div class="bar">
+                  <div class="bar-fill" style="width: 38%;"></div>
+                  <div class="bar-label"><span>Entry access</span><span>Free</span></div>
+                </div>
+                <div class="bar">
+                  <div class="bar-fill" style="width: 68%;"></div>
+                  <div class="bar-label"><span>Pro access</span><span>Subscription</span></div>
+                </div>
+                <div class="bar">
+                  <div class="bar-fill" style="width: 52%;"></div>
+                  <div class="bar-label"><span>Future business tier</span><span>Expansion</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="page-num">06</div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <div class="slide-inner">
+          <div class="eyebrow">Go-to-Market</div>
+          <div class="grid-2">
+            <div class="stack" style="gap: 18px;">
+              <h2>Initial GTM is founder-led and product-led.</h2>
+              <ul class="list">
+                <li>Direct founder outreach and warm-network introductions</li>
+                <li>Educational content around receipts, invoices, reporting, and financial organization</li>
+                <li>AI and tool discovery listings</li>
+                <li>Short-form demos and workflow videos</li>
+                <li>Onboarding flows designed to convert free interest into active usage</li>
+              </ul>
+            </div>
+            <div class="timeline">
+              <div class="timeline-item">
+                <div class="timeline-badge">Step 1</div>
+                <div class="timeline-card"><strong>Founder outreach</strong><br /><span class="small">Win initial trust and usage through direct relationships.</span></div>
+              </div>
+              <div class="timeline-item">
+                <div class="timeline-badge">Step 2</div>
+                <div class="timeline-card"><strong>Content and demos</strong><br /><span class="small">Show the workflow clearly in public channels and low-cost discovery surfaces.</span></div>
+              </div>
+              <div class="timeline-item">
+                <div class="timeline-badge">Step 3</div>
+                <div class="timeline-card"><strong>Activation and conversion</strong><br /><span class="small">Move early users from curiosity into recurring product usage and paid adoption.</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="page-num">07</div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <div class="slide-inner">
+          <div class="eyebrow">Competition</div>
+          <div class="stack" style="gap: 20px;">
+            <h2>Users currently stitch this workflow together across storage, extraction, bookkeeping, and spreadsheets.</h2>
+            <div class="comparison-table">
+              <div class="comparison-row head">
+                <div>Category</div>
+                <div>What they do</div>
+                <div>What AVIntelligence adds</div>
+              </div>
+              <div class="comparison-row">
+                <div><strong>Storage tools</strong></div>
+                <div class="small">Keep files and folders</div>
+                <div class="small">Turn stored documents into structured records, reports, and insight</div>
+              </div>
+              <div class="comparison-row">
+                <div><strong>Expense tools</strong></div>
+                <div class="small">Capture narrow receipt workflows</div>
+                <div class="small">Support broader financial document reality across multiple document types</div>
+              </div>
+              <div class="comparison-row">
+                <div><strong>OCR / extraction tools</strong></div>
+                <div class="small">Extract text or fields</div>
+                <div class="small">Turn extraction into an ongoing account workspace with downstream value</div>
+              </div>
+            </div>
+            <div class="card pad-md">
+              <p class="lede" style="font-size: 22px; max-width: none;">AVIntelligence's edge is integration: one workflow from document intake to financial understanding.</p>
+            </div>
+          </div>
+          <div class="page-num">08</div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <div class="slide-inner">
+          <div class="eyebrow">Traction</div>
+          <div class="grid-2">
+            <div class="stack" style="gap: 18px;">
+              <h2>Live product, active validation, and real workflow hardening.</h2>
+              <ul class="list">
+                <li>Live production product</li>
+                <li>End-to-end upload, extraction, reporting, Dashboards, and subscription flow operating</li>
+                <li>Early user testing and workflow validation in progress</li>
+                <li>Repeated product, security, and UX hardening already underway</li>
+              </ul>
+              <div class="placeholder">
+                Replace with verified metrics before external circulation:<br />
+                [signups] [active users] [uploads processed] [reports generated] [paid conversions]
+              </div>
+            </div>
+            <div class="card pad-lg">
+              <div class="small accent" style="letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 12px;">Current proof points</div>
+              <div class="timeline">
+                <div class="timeline-item">
+                  <div class="timeline-badge">Built</div>
+                  <div class="timeline-card"><strong>Core workflow shipped</strong><br /><span class="small">Upload, extraction, reports, Dashboards, auth, subscriptions, and deletion flows.</span></div>
+                </div>
+                <div class="timeline-item">
+                  <div class="timeline-badge">Hardened</div>
+                  <div class="timeline-card"><strong>Security and lifecycle controls</strong><br /><span class="small">Sensitive paths have been repeatedly reviewed and reinforced.</span></div>
+                </div>
+                <div class="timeline-item">
+                  <div class="timeline-badge">Validating</div>
+                  <div class="timeline-card"><strong>Usage-to-payment transition</strong><br /><span class="small">Current focus is commercial validation, onboarding, and paid conversion.</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="page-num">09</div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <div class="slide-inner">
+          <div class="eyebrow">Team</div>
+          <div class="grid-2">
+            <div class="stack" style="gap: 18px;">
+              <h2>Founder-led execution with full-stack product velocity.</h2>
+              <p class="lede" style="font-size: 18px;">
+                AVIntelligence has been built through dense founder execution across product design, engineering, workflow logic, subscriptions, and security posture.
+              </p>
+              <div class="card pad-lg">
+                <h3>[Founder name] — Founder</h3>
+                <ul class="list" style="margin-top: 12px;">
+                  <li>Built and shipped AVIntelligence end-to-end</li>
+                  <li>Combines product direction, engineering execution, and AI-assisted delivery workflows</li>
+                  <li>Building not just a point feature, but a reusable product engine for multiple software products</li>
+                </ul>
+              </div>
+            </div>
+            <div class="stack">
+              <div class="metric">
+                <div class="metric-label">Execution density</div>
+                <div class="metric-value">Lean by design</div>
+                <div class="small">A small team can still be an advantage when velocity, iteration, and shipping discipline are the core story.</div>
+              </div>
+              <div class="placeholder">
+                Optional later additions:<br />
+                advisors, specialist contractors, GTM partners, or future leadership hires
+              </div>
+            </div>
+          </div>
+          <div class="page-num">10</div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <div class="slide-inner">
+          <div class="eyebrow">Financials</div>
+          <div class="stack" style="gap: 18px;">
+            <h2>AVIntelligence is at the transition point between product launch and commercial validation.</h2>
+            <p class="lede" style="font-size: 18px;">
+              The company is currently pre-revenue, with capital being used to refine the product, support runway, and convert early usage into recurring paid adoption.
+            </p>
+            <div class="grid-3">
+              <div class="metric">
+                <div class="metric-label">Current state</div>
+                <div class="metric-value">Pre-revenue</div>
+                <div class="small">Live product, early usage validation, and active product hardening.</div>
+              </div>
+              <div class="metric">
+                <div class="metric-label">Year 1 focus</div>
+                <div class="metric-value">Validation</div>
+                <div class="small">Product refinement, onboarding improvement, and first paid conversions.</div>
+              </div>
+              <div class="metric">
+                <div class="metric-label">Year 2 focus</div>
+                <div class="metric-value">Recurring revenue</div>
+                <div class="small">Stronger retention, clearer monetization, and a growing paid base.</div>
+              </div>
+            </div>
+            <div class="grid-2">
+              <div class="card pad-lg">
+                <h3>Projection inputs still required</h3>
+                <ul class="list" style="margin-top: 12px;">
+                  <li>[12-month revenue forecast]</li>
+                  <li>[24-month revenue forecast]</li>
+                  <li>[monthly burn estimate]</li>
+                  <li>[pricing and conversion assumptions]</li>
+                </ul>
+              </div>
+              <div class="card pad-lg">
+                <svg viewBox="0 0 420 220" width="100%" height="220" aria-label="Illustrative financial projection graphic">
+                  <defs>
+                    <linearGradient id="revLine" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0%" stop-color="rgba(195,43,31,0.3)" />
+                      <stop offset="100%" stop-color="rgba(195,43,31,0.9)" />
+                    </linearGradient>
+                  </defs>
+                  <rect x="18" y="18" width="384" height="184" rx="18" fill="rgba(255,255,255,0.44)" stroke="rgba(23,19,17,0.08)" />
+                  <line x1="52" y1="166" x2="370" y2="166" stroke="rgba(23,19,17,0.14)" />
+                  <line x1="52" y1="58" x2="52" y2="166" stroke="rgba(23,19,17,0.14)" />
+                  <path d="M52,160 C96,156 136,150 176,138 C220,124 248,112 286,88 C318,68 344,54 370,40" fill="none" stroke="url(#revLine)" stroke-width="4" stroke-linecap="round" />
+                  <path d="M52,144 C92,140 122,136 164,132 C206,128 248,122 288,118 C324,114 348,110 370,106" fill="none" stroke="rgba(23,19,17,0.18)" stroke-width="3" stroke-linecap="round" />
+                  <text x="56" y="38" font-size="12" fill="rgba(23,19,17,0.5)">Illustrative operating path</text>
+                  <text x="52" y="186" font-size="11" fill="rgba(23,19,17,0.42)">Launch</text>
+                  <text x="196" y="186" font-size="11" fill="rgba(23,19,17,0.42)">Validation</text>
+                  <text x="324" y="186" font-size="11" fill="rgba(23,19,17,0.42)">Paid growth</text>
+                </svg>
+              </div>
+            </div>
+            <p class="assumption-note">
+              Projection note: final investor version should disclose that forecasts are based on current pricing, expected conversion assumptions, early-stage operating estimates, and milestone-based growth planning.
+            </p>
+          </div>
+          <div class="page-num">11</div>
+          <div class="footer-note">Illustrative until verified numbers are inserted</div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <div class="slide-inner">
+          <div class="eyebrow">Ask &amp; Use of Funds</div>
+          <div class="stack" style="gap: 18px;">
+            <h2>We are raising [amount] to secure runway, continue product development, and validate the first repeatable growth engine for AVIntelligence.</h2>
+            <div class="fund-grid">
+              <div class="fund-list">
+                <div class="fund-item"><div class="fund-pct">35%</div><div><strong>Product development and R&amp;D</strong><div class="small">Refinement, reliability, deeper capability, and workflow maturity.</div></div></div>
+                <div class="fund-item"><div class="fund-pct">25%</div><div><strong>Runway and operating continuity</strong><div class="small">Founder continuity, core operations, and execution stability.</div></div></div>
+                <div class="fund-item"><div class="fund-pct">15%</div><div><strong>Security and infrastructure</strong><div class="small">Platform maturity, reliability, and reinforcement of sensitive paths.</div></div></div>
+                <div class="fund-item"><div class="fund-pct">15%</div><div><strong>Marketing and distribution</strong><div class="small">Early customer acquisition, content, and channel development.</div></div></div>
+                <div class="fund-item"><div class="fund-pct">10%</div><div><strong>Design and specialist support</strong><div class="small">UX polish, focused contractor work, and targeted expertise.</div></div></div>
+              </div>
+              <div class="stack">
+                <div class="card pad-lg">
+                  <h3>Round objectives</h3>
+                  <ul class="list" style="margin-top: 12px;">
+                    <li>Improve product readiness and reliability</li>
+                    <li>Convert early interest into active usage</li>
+                    <li>Validate first paid user growth</li>
+                    <li>Establish initial repeatable go-to-market motions</li>
+                    <li>Strengthen the platform for future expansion</li>
+                  </ul>
+                </div>
+                <div class="placeholder">
+                  Replace before circulation:<br />
+                  [Raise amount] [Runway target] [Milestones unlocked by this round]
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="page-num">12</div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

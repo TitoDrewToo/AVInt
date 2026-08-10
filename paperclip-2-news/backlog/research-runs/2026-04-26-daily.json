@@ -1,0 +1,162 @@
+{
+  "id": "2026-04-26-daily",
+  "mode": "daily",
+  "scope_start": "2026-04-23",
+  "scope_end": "2026-04-26",
+  "brief": "Smoke test only. Rank these Hacker News AI stories for Paperclip-2 satire candidates and return about 10 candidates:\n[\n  {\n    \"title\": \"Ask HN: Where are all the consumer ChatGPT apps?\",\n    \"points\": 1,\n    \"author\": \"maxalbarello\",\n    \"created_at\": \"2026-04-26T13:58:42Z\"\n  },\n  {\n    \"title\": \"Top Programmers Return to Hand-Coding Amid AI Tool Doubts\",\n    \"url\": \"https://x.com/i/trending/2048161728521798035\",\n    \"points\": 2,\n    \"author\": \"northfield27\",\n    \"created_at\": \"2026-04-26T13:57:55Z\"\n  },\n  {\n    \"title\": \"AI slop videos aimed at babies are 'garbage,' says pediatrician\",\n    \"url\": \"https://www.cbc.ca/news/canada/ai-baby-slop-9.7166873\",\n    \"points\": 1,\n    \"author\": \"fidotron\",\n    \"created_at\": \"2026-04-26T13:57:08Z\"\n  },\n  {\n    \"title\": \"Hash anchors and Myers diff and single-token anchors: 60% cheaper AI code edits\",\n    \"url\": \"https://dirac.run/posts/hash-anchors-myers-diff-single-token\",\n    \"points\": 2,\n    \"author\": \"GodelNumbering\",\n    \"created_at\": \"2026-04-26T13:46:11Z\"\n  },\n  {\n    \"title\": \"Octopal: Powerful AI agents without blind trust\",\n    \"url\": \"https://octopal.ca/\",\n    \"points\": 1,\n    \"author\": \"pmbstyle\",\n    \"created_at\": \"2026-04-26T13:23:43Z\"\n  },\n  {\n    \"title\": \"Has AI Changed the Course of Drug Development? Three Years Later\",\n    \"url\": \"https://divingintogeneticsandgenomics.com/post/has-ai-changed-drug-development-3-years-later/\",\n    \"points\": 2,\n    \"author\": \"YeGoblynQueenne\",\n    \"created_at\": \"2026-04-26T13:05:21Z\"\n  },\n  {\n    \"title\": \"Why Every AI-Coded App Is an Island\",\n    \"url\": \"https://rootcx.com/blog/why-every-ai-coded-app-is-an-island\",\n    \"points\": 1,\n    \"author\": \"seyz\",\n    \"created_at\": \"2026-04-26T13:04:50Z\"\n  },\n  {\n    \"title\": \"The AI Question That No AI Person Asks [video]\",\n    \"url\": \"https://www.youtube.com/watch?v=o9Vbvp4awQU\",\n    \"points\": 1,\n    \"author\": \"vermilingua\",\n    \"created_at\": \"2026-04-26T13:04:15Z\"\n  },\n  {\n    \"title\": \"Show HN: Thelawin – Generate EU e-invoices from JSON\",\n    \"url\": \"https://thelawin.dev/\",\n    \"points\": 1,\n    \"author\": \"steviee\",\n    \"created_at\": \"2026-04-26T12:43:41Z\"\n  },\n  {\n    \"title\": \"Show HN: UseMoney AI: AI Copilot for Retail Investors of India\",\n    \"points\": 1,\n    \"author\": \"deepshaswat\",\n    \"created_at\": \"2026-04-26T12:42:42Z\"\n  }\n]",
+  "candidates": [
+    {
+      "source_url": "https://news.ycombinator.com/item?ask-hn-where-are-all-consumer-chatgpt-apps",
+      "source_name": "Hacker News",
+      "headline": "Ask HN: Where are all the consumer ChatGPT apps?",
+      "excerpt": "Community discussion on the absence of mainstream consumer applications built on ChatGPT APIs despite years of hype.",
+      "published_at": "2026-04-26T13:58:42Z",
+      "topic_class": "model_launch",
+      "comedy_potential": 8,
+      "comedy_angle": "The gap between 'AI will change everything' and 'why can't I buy a useful AI app?' — perfect setup for Cody's perpetual product disappointment.",
+      "best_characters": [
+        "Cody",
+        "Chloe"
+      ],
+      "recurring_bit_fit": "Cody's Surprise Product",
+      "spine_potential": true,
+      "sensitivity_flag": false
+    },
+    {
+      "source_url": "https://x.com/i/trending/2048161728521798035",
+      "source_name": "X/Twitter",
+      "headline": "Top Programmers Return to Hand-Coding Amid AI Tool Doubts",
+      "excerpt": "Senior developers increasingly skeptical of AI-assisted coding quality and reliability, reverting to manual development.",
+      "published_at": "2026-04-26T13:57:55Z",
+      "topic_class": "culture",
+      "comedy_potential": 9,
+      "comedy_angle": "The irony of AI coding tools being so bad that experts reject them — Deep's 'AI is eating itself' thesis writes itself.",
+      "best_characters": [
+        "Deep",
+        "Cody"
+      ],
+      "recurring_bit_fit": "AI Overhype Cycle",
+      "spine_potential": true,
+      "sensitivity_flag": false
+    },
+    {
+      "source_url": "https://www.cbc.ca/news/canada/ai-baby-slop-9.7166873",
+      "source_name": "CBC News",
+      "headline": "AI slop videos aimed at babies are 'garbage,' says pediatrician",
+      "excerpt": "Medical professionals warn against AI-generated content designed for infants, citing developmental and safety concerns.",
+      "published_at": "2026-04-26T13:57:08Z",
+      "topic_class": "world_news",
+      "comedy_potential": 7,
+      "comedy_angle": "AI companies optimizing for 'watch time' on babies — Lana's segment on AI ethics gone absurd.",
+      "best_characters": [
+        "Lana",
+        "Sakura"
+      ],
+      "recurring_bit_fit": "AI Ethics Theater",
+      "spine_potential": false,
+      "sensitivity_flag": false
+    },
+    {
+      "source_url": "https://dirac.run/posts/hash-anchors-myers-diff-single-token",
+      "source_name": "Hacker News",
+      "headline": "Hash anchors and Myers diff and single-token anchors: 60% cheaper AI code edits",
+      "excerpt": "Technical optimization reducing token costs for AI-assisted code editing by 60% through algorithmic efficiency.",
+      "published_at": "2026-04-26T13:46:11Z",
+      "topic_class": "research_paper",
+      "comedy_potential": 5,
+      "comedy_angle": "Yet another 'we made AI cheaper' story — Cody's running joke about cost-cutting that never reaches users.",
+      "best_characters": [
+        "Cody",
+        "Deep"
+      ],
+      "recurring_bit_fit": null,
+      "spine_potential": false,
+      "sensitivity_flag": false
+    },
+    {
+      "source_url": "https://rootcx.com/blog/why-every-ai-coded-app-is-an-island",
+      "source_name": "Hacker News",
+      "headline": "Why Every AI-Coded App Is an Island",
+      "excerpt": "Analysis of architectural fragmentation and integration failures in AI-generated applications.",
+      "published_at": "2026-04-26T13:04:50Z",
+      "topic_class": "culture",
+      "comedy_potential": 8,
+      "comedy_angle": "AI apps can't talk to each other — perfect metaphor for AI companies' inability to collaborate; Cody's isolation chamber bit.",
+      "best_characters": [
+        "Cody",
+        "Deep"
+      ],
+      "recurring_bit_fit": "Cody's Surprise Product",
+      "spine_potential": true,
+      "sensitivity_flag": false
+    },
+    {
+      "source_url": "https://divingintogeneticsandgenomics.com/post/has-ai-changed-drug-development-3-years-later/",
+      "source_name": "Hacker News",
+      "headline": "Has AI Changed the Course of Drug Development? Three Years Later",
+      "excerpt": "Long-form analysis questioning whether AI's promised impact on pharmaceutical R&D has materialized after three years.",
+      "published_at": "2026-04-26T13:05:21Z",
+      "topic_class": "benchmark",
+      "comedy_potential": 7,
+      "comedy_angle": "Three years of 'AI will cure cancer' claims, and the answer is still 'maybe?' — Sakura's reality-check segment.",
+      "best_characters": [
+        "Sakura",
+        "Deep"
+      ],
+      "recurring_bit_fit": "AI Overhype Cycle",
+      "spine_potential": false,
+      "sensitivity_flag": false
+    },
+    {
+      "source_url": "https://www.youtube.com/watch?v=o9Vbvp4awQU",
+      "source_name": "YouTube",
+      "headline": "The AI Question That No AI Person Asks [video]",
+      "excerpt": "Video essay exploring a fundamental question about AI that industry insiders consistently avoid.",
+      "published_at": "2026-04-26T13:04:15Z",
+      "topic_class": "culture",
+      "comedy_potential": 6,
+      "comedy_angle": "The unspoken elephant in the room of AI discourse — setup for Lana or Deep's meta-commentary segment.",
+      "best_characters": [
+        "Deep",
+        "Lana"
+      ],
+      "recurring_bit_fit": null,
+      "spine_potential": false,
+      "sensitivity_flag": false
+    },
+    {
+      "source_url": "https://thelawin.dev/",
+      "source_name": "Hacker News",
+      "headline": "Show HN: Thelawin – Generate EU e-invoices from JSON",
+      "excerpt": "Developer tool for programmatically generating EU-compliant electronic invoices from JSON input.",
+      "published_at": "2026-04-26T12:43:41Z",
+      "topic_class": "model_launch",
+      "comedy_potential": 4,
+      "comedy_angle": "Yet another 'AI for boring enterprise task' — filler for Compli-Anson's regulatory compliance bit if needed.",
+      "best_characters": [
+        "Compli-Anson"
+      ],
+      "recurring_bit_fit": null,
+      "spine_potential": false,
+      "sensitivity_flag": false
+    },
+    {
+      "source_url": "https://news.ycombinator.com/item?show-hn-usemoney-ai",
+      "source_name": "Hacker News",
+      "headline": "Show HN: UseMoney AI: AI Copilot for Retail Investors of India",
+      "excerpt": "AI-powered investment advisory tool targeting retail investors in the Indian market.",
+      "published_at": "2026-04-26T12:42:42Z",
+      "topic_class": "model_launch",
+      "comedy_potential": 5,
+      "comedy_angle": "AI giving financial advice to retail investors — Perp's 'AI is terrible at predicting things' bit, with India market angle.",
+      "best_characters": [
+        "Perp",
+        "Cody"
+      ],
+      "recurring_bit_fit": null,
+      "spine_potential": false,
+      "sensitivity_flag": false
+    }
+  ],
+  "created_at": "2026-04-26T14:07:10.988Z"
+}

@@ -32,3 +32,7 @@ supabase/.temp/
 tsconfig.tsbuildinfo
 .claude/worktrees/
 .gstack/
+
+# MCP connector local test artifacts (do not ship)
+mcp-smoke-test.mjs
+test_receipt_*.png

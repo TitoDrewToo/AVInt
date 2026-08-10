@@ -1,0 +1,169 @@
+{
+  "id": "2026-04-26-daily-3",
+  "mode": "daily",
+  "scope_start": "2026-04-23",
+  "scope_end": "2026-04-26",
+  "brief": "Smoke test only. Rank these Hacker News AI stories for Paperclip-2 satire candidates and return about 10 candidates:\n[\n  {\n    \"title\": \"Claude Opus 4.6 vs. Opus 4.7 Effort Levels and Prompt Steering Benchmarks\",\n    \"url\": \"https://ai.georgeliu.com/p/claude-opus-46-vs-opus-47-effort\",\n    \"points\": 1,\n    \"author\": \"mszel\",\n    \"created_at\": \"2026-04-26T14:11:57Z\"\n  },\n  {\n    \"title\": \"Ask HN: Where are all the consumer ChatGPT apps?\",\n    \"points\": 1,\n    \"author\": \"maxalbarello\",\n    \"created_at\": \"2026-04-26T13:58:42Z\"\n  },\n  {\n    \"title\": \"Top Programmers Return to Hand-Coding Amid AI Tool Doubts\",\n    \"url\": \"https://x.com/i/trending/2048161728521798035\",\n    \"points\": 3,\n    \"author\": \"northfield27\",\n    \"created_at\": \"2026-04-26T13:57:55Z\"\n  },\n  {\n    \"title\": \"AI slop videos aimed at babies are 'garbage,' says pediatrician\",\n    \"url\": \"https://www.cbc.ca/news/canada/ai-baby-slop-9.7166873\",\n    \"points\": 1,\n    \"author\": \"fidotron\",\n    \"created_at\": \"2026-04-26T13:57:08Z\"\n  },\n  {\n    \"title\": \"Hash anchors and Myers diff and single-token anchors: 60% cheaper AI code edits\",\n    \"url\": \"https://dirac.run/posts/hash-anchors-myers-diff-single-token\",\n    \"points\": 2,\n    \"author\": \"GodelNumbering\",\n    \"created_at\": \"2026-04-26T13:46:11Z\"\n  },\n  {\n    \"title\": \"Octopal: Powerful AI agents without blind trust\",\n    \"url\": \"https://octopal.ca/\",\n    \"points\": 1,\n    \"author\": \"pmbstyle\",\n    \"created_at\": \"2026-04-26T13:23:43Z\"\n  },\n  {\n    \"title\": \"Has AI Changed the Course of Drug Development? Three Years Later\",\n    \"url\": \"https://divingintogeneticsandgenomics.com/post/has-ai-changed-drug-development-3-years-later/\",\n    \"points\": 2,\n    \"author\": \"YeGoblynQueenne\",\n    \"created_at\": \"2026-04-26T13:05:21Z\"\n  },\n  {\n    \"title\": \"Why Every AI-Coded App Is an Island\",\n    \"url\": \"https://rootcx.com/blog/why-every-ai-coded-app-is-an-island\",\n    \"points\": 1,\n    \"author\": \"seyz\",\n    \"created_at\": \"2026-04-26T13:04:50Z\"\n  },\n  {\n    \"title\": \"The AI Question That No AI Person Asks [video]\",\n    \"url\": \"https://www.youtube.com/watch?v=o9Vbvp4awQU\",\n    \"points\": 1,\n    \"author\": \"vermilingua\",\n    \"created_at\": \"2026-04-26T13:04:15Z\"\n  },\n  {\n    \"title\": \"Show HN: Thelawin – Generate EU e-invoices from JSON\",\n    \"url\": \"https://thelawin.dev/\",\n    \"points\": 1,\n    \"author\": \"steviee\",\n    \"created_at\": \"2026-04-26T12:43:41Z\"\n  }\n]",
+  "candidates": [
+    {
+      "source_url": "https://www.cbc.ca/news/canada/ai-baby-slop-9.7166873",
+      "source_name": "Hacker News",
+      "headline": "AI slop videos aimed at babies are 'garbage,' says pediatrician",
+      "excerpt": "Pediatrician criticizes low-quality AI-generated content targeting infants, raising concerns about developmental impact and content quality standards.",
+      "published_at": "2026-04-26T13:57:08Z",
+      "topic_class": "culture",
+      "comedy_potential": 8,
+      "comedy_angle": "The absurdity of AI generating intentionally-bad content for babies while parents pay for it; ripe for a 'Cody's Surprise Product' bit where he unveils the worst possible AI baby video.",
+      "best_characters": [
+        "Cody",
+        "Lana",
+        "Sakura"
+      ],
+      "recurring_bit_fit": "Cody's Surprise Product",
+      "spine_potential": false,
+      "sensitivity_flag": false
+    },
+    {
+      "source_url": "https://x.com/i/trending/2048161728521798035",
+      "source_name": "Hacker News",
+      "headline": "Top Programmers Return to Hand-Coding Amid AI Tool Doubts",
+      "excerpt": "Elite developers increasingly skeptical of AI coding assistants, reverting to manual coding practices and questioning productivity gains.",
+      "published_at": "2026-04-26T13:57:55Z",
+      "topic_class": "culture",
+      "comedy_potential": 7,
+      "comedy_angle": "The irony of AI hype promising to replace coders, only for top programmers to reject the tools; perfect setup for Deep's 'AI is oversold' character arc.",
+      "best_characters": [
+        "Deep",
+        "Cody",
+        "Sakura"
+      ],
+      "recurring_bit_fit": null,
+      "spine_potential": true,
+      "sensitivity_flag": false
+    },
+    {
+      "source_url": "https://ai.georgeliu.com/p/claude-opus-46-vs-opus-47-effort",
+      "source_name": "Hacker News",
+      "headline": "Claude Opus 4.6 vs. Opus 4.7 Effort Levels and Prompt Steering Benchmarks",
+      "excerpt": "Detailed benchmark comparison of Anthropic's latest Claude models, analyzing effort levels and prompt steering capabilities.",
+      "published_at": "2026-04-26T14:11:57Z",
+      "topic_class": "benchmark",
+      "comedy_potential": 6,
+      "comedy_angle": "Obsessive benchmarking culture; the comedy is in the minutiae of 'effort levels' — setup for Cody's pedantic product-launch speak.",
+      "best_characters": [
+        "Cody",
+        "Sakura"
+      ],
+      "recurring_bit_fit": null,
+      "spine_potential": false,
+      "sensitivity_flag": false
+    },
+    {
+      "source_url": "https://rootcx.com/blog/why-every-ai-coded-app-is-an-island",
+      "source_name": "Hacker News",
+      "headline": "Why Every AI-Coded App Is an Island",
+      "excerpt": "Analysis of fragmentation and isolation issues in AI-generated applications, highlighting integration and maintainability challenges.",
+      "published_at": "2026-04-26T13:04:50Z",
+      "topic_class": "culture",
+      "comedy_potential": 7,
+      "comedy_angle": "Metaphor-rich complaint about AI code being isolated and broken; perfect for Perp's weather/geography metaphors ('islands of dysfunction').",
+      "best_characters": [
+        "Perp",
+        "Deep",
+        "Sakura"
+      ],
+      "recurring_bit_fit": null,
+      "spine_potential": false,
+      "sensitivity_flag": false
+    },
+    {
+      "source_url": "https://divingintogeneticsandgenomics.com/post/has-ai-changed-drug-development-3-years-later/",
+      "source_name": "Hacker News",
+      "headline": "Has AI Changed the Course of Drug Development? Three Years Later",
+      "excerpt": "Three-year retrospective on AI's actual impact on pharmaceutical R&D, examining hype vs. reality in drug discovery.",
+      "published_at": "2026-04-26T13:05:21Z",
+      "topic_class": "research_paper",
+      "comedy_potential": 6,
+      "comedy_angle": "The 'three years later' angle implies AI promised to revolutionize pharma but didn't; setup for Cody's failed-prediction character bit.",
+      "best_characters": [
+        "Cody",
+        "Sakura",
+        "Deep"
+      ],
+      "recurring_bit_fit": null,
+      "spine_potential": false,
+      "sensitivity_flag": false
+    },
+    {
+      "source_url": "https://dirac.run/posts/hash-anchors-myers-diff-single-token",
+      "source_name": "Hacker News",
+      "headline": "Hash anchors and Myers diff and single-token anchors: 60% cheaper AI code edits",
+      "excerpt": "Technical optimization for reducing token costs in AI-assisted code editing through novel anchoring and diffing strategies.",
+      "published_at": "2026-04-26T13:46:11Z",
+      "topic_class": "benchmark",
+      "comedy_potential": 5,
+      "comedy_angle": "Niche optimization obsession; the humor is in the specificity and the fact that 60% savings still means people are paying for incremental AI edits.",
+      "best_characters": [
+        "Sakura",
+        "Deep"
+      ],
+      "recurring_bit_fit": null,
+      "spine_potential": false,
+      "sensitivity_flag": false
+    },
+    {
+      "source_url": "https://octopal.ca/",
+      "source_name": "Hacker News",
+      "headline": "Octopal: Powerful AI agents without blind trust",
+      "excerpt": "New AI agent framework emphasizing transparency and reduced blind trust in autonomous AI decision-making.",
+      "published_at": "2026-04-26T13:23:43Z",
+      "topic_class": "model_launch",
+      "comedy_potential": 5,
+      "comedy_angle": "Marketing speak: 'without blind trust' is code for 'we know you don't trust AI agents'; setup for Cody's corporate-speak deconstruction.",
+      "best_characters": [
+        "Cody",
+        "Sakura"
+      ],
+      "recurring_bit_fit": null,
+      "spine_potential": false,
+      "sensitivity_flag": false
+    },
+    {
+      "source_url": "https://www.youtube.com/watch?v=o9Vbvp4awQU",
+      "source_name": "Hacker News",
+      "headline": "The AI Question That No AI Person Asks [video]",
+      "excerpt": "Video essay exploring a fundamental question about AI that industry insiders avoid discussing.",
+      "published_at": "2026-04-26T13:04:15Z",
+      "topic_class": "culture",
+      "comedy_potential": 6,
+      "comedy_angle": "Mysterious framing ('the question no one asks') is inherently comedic; setup for Lana or Deep to 'finally ask the forbidden question' in mock-serious tone.",
+      "best_characters": [
+        "Lana",
+        "Deep",
+        "Sakura"
+      ],
+      "recurring_bit_fit": null,
+      "spine_potential": false,
+      "sensitivity_flag": false
+    },
+    {
+      "source_url": "https://rootcx.com/blog/why-every-ai-coded-app-is-an-island",
+      "source_name": "Hacker News",
+      "headline": "Ask HN: Where are all the consumer ChatGPT apps?",
+      "excerpt": "Community discussion questioning the absence of successful consumer applications built on ChatGPT API despite widespread hype.",
+      "published_at": "2026-04-26T13:58:42Z",
+      "topic_class": "culture",
+      "comedy_potential": 7,
+      "comedy_angle": "The gap between 'ChatGPT will power 1000 apps' hype and the reality of zero breakout consumer apps; perfect for Cody's failed-prediction bit.",
+      "best_characters": [
+        "Cody",
+        "Deep",
+        "Sakura"
+      ],
+      "recurring_bit_fit": null,
+      "spine_potential": true,
+      "sensitivity_flag": false
+    }
+  ],
+  "created_at": "2026-04-26T14:20:55.044Z"
+}

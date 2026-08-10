@@ -1,0 +1,9 @@
+[project]
+name = "ai-after-dark-animation-pipeline"
+version = "0.1.0"
+description = "Local helper environment for parallax-maker and smoke-test fixtures."
+requires-python = ">=3.11,<3.12"
+dependencies = []
+
+[tool.uv]
+package = false

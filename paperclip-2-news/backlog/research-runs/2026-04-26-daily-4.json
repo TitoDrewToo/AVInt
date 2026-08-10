@@ -1,0 +1,180 @@
+{
+  "id": "2026-04-26-daily-4",
+  "mode": "daily",
+  "scope_start": "2026-04-23",
+  "scope_end": "2026-04-26",
+  "brief": "Smoke test only. Rank these Hacker News AI stories for Paperclip-2 satire candidates and return about 10 candidates:\n[\n  {\n    \"title\": \"Ask HN: How I find a job where what is needed is solid code, not firefighting?\",\n    \"hn_url\": \"https://news.ycombinator.com/item?id=47910597\",\n    \"points\": 1,\n    \"author\": \"speeder\",\n    \"created_at\": \"2026-04-26T14:23:50Z\"\n  },\n  {\n    \"title\": \"Show HN: Are AI competitor newsletters useful?\",\n    \"url\": \"https://newsletrix.com/\",\n    \"hn_url\": \"https://news.ycombinator.com/item?id=47910582\",\n    \"points\": 2,\n    \"author\": \"beledev\",\n    \"created_at\": \"2026-04-26T14:21:58Z\"\n  },\n  {\n    \"title\": \"Claude Opus 4.6 vs. Opus 4.7 Effort Levels and Prompt Steering Benchmarks\",\n    \"url\": \"https://ai.georgeliu.com/p/claude-opus-46-vs-opus-47-effort\",\n    \"hn_url\": \"https://news.ycombinator.com/item?id=47910494\",\n    \"points\": 1,\n    \"author\": \"mszel\",\n    \"created_at\": \"2026-04-26T14:11:57Z\"\n  },\n  {\n    \"title\": \"Ask HN: Where are all the consumer ChatGPT apps?\",\n    \"hn_url\": \"https://news.ycombinator.com/item?id=47910395\",\n    \"points\": 1,\n    \"author\": \"maxalbarello\",\n    \"created_at\": \"2026-04-26T13:58:42Z\"\n  },\n  {\n    \"title\": \"Top Programmers Return to Hand-Coding Amid AI Tool Doubts\",\n    \"url\": \"https://x.com/i/trending/2048161728521798035\",\n    \"hn_url\": \"https://news.ycombinator.com/item?id=47910382\",\n    \"points\": 4,\n    \"author\": \"northfield27\",\n    \"created_at\": \"2026-04-26T13:57:55Z\"\n  },\n  {\n    \"title\": \"AI slop videos aimed at babies are 'garbage,' says pediatrician\",\n    \"url\": \"https://www.cbc.ca/news/canada/ai-baby-slop-9.7166873\",\n    \"hn_url\": \"https://news.ycombinator.com/item?id=47910375\",\n    \"points\": 1,\n    \"author\": \"fidotron\",\n    \"created_at\": \"2026-04-26T13:57:08Z\"\n  },\n  {\n    \"title\": \"Hash anchors and Myers diff and single-token anchors: 60% cheaper AI code edits\",\n    \"url\": \"https://dirac.run/posts/hash-anchors-myers-diff-single-token\",\n    \"hn_url\": \"https://news.ycombinator.com/item?id=47910295\",\n    \"points\": 2,\n    \"author\": \"GodelNumbering\",\n    \"created_at\": \"2026-04-26T13:46:11Z\"\n  },\n  {\n    \"title\": \"Octopal: Powerful AI agents without blind trust\",\n    \"url\": \"https://octopal.ca/\",\n    \"hn_url\": \"https://news.ycombinator.com/item?id=47910134\",\n    \"points\": 1,\n    \"author\": \"pmbstyle\",\n    \"created_at\": \"2026-04-26T13:23:43Z\"\n  },\n  {\n    \"title\": \"Has AI Changed the Course of Drug Development? Three Years Later\",\n    \"url\": \"https://divingintogeneticsandgenomics.com/post/has-ai-changed-drug-development-3-years-later/\",\n    \"hn_url\": \"https://news.ycombinator.com/item?id=47910009\",\n    \"points\": 2,\n    \"author\": \"YeGoblynQueenne\",\n    \"created_at\": \"2026-04-26T13:05:21Z\"\n  },\n  {\n    \"title\": \"Why Every AI-Coded App Is an Island\",\n    \"url\": \"https://rootcx.com/blog/why-every-ai-coded-app-is-an-island\",\n    \"hn_url\": \"https://news.ycombinator.com/item?id=47910005\",\n    \"points\": 1,\n    \"author\": \"seyz\",\n    \"created_at\": \"2026-04-26T13:04:50Z\"\n  }\n]",
+  "candidates": [
+    {
+      "source_url": "https://news.ycombinator.com/item?id=47910382",
+      "source_name": "Hacker News",
+      "headline": "Top Programmers Return to Hand-Coding Amid AI Tool Doubts",
+      "excerpt": "Senior developers abandoning AI coding assistants and returning to manual coding practices due to reliability and quality concerns.",
+      "published_at": "2026-04-26T13:57:55Z",
+      "topic_class": "ai_culture",
+      "comedy_potential": 8,
+      "comedy_angle": "The irony of AI hype cycles: expensive tools promise to replace developers, but experts reject them and code by hand anyway—a perfect setup for Cody's 'AI solves nothing' bit.",
+      "best_characters": [
+        "Cody",
+        "Deep"
+      ],
+      "recurring_bit_fit": "Cody's Surprise Product",
+      "spine_potential": true,
+      "sensitivity_flag": false
+    },
+    {
+      "source_url": "https://www.cbc.ca/news/canada/ai-baby-slop-9.7166873",
+      "source_name": "Hacker News",
+      "headline": "AI slop videos aimed at babies are 'garbage,' says pediatrician",
+      "excerpt": "Medical professionals warn that AI-generated content targeting infants is low-quality and potentially harmful to child development.",
+      "published_at": "2026-04-26T13:57:08Z",
+      "topic_class": "ai_culture",
+      "comedy_potential": 7,
+      "comedy_angle": "AI companies optimizing for engagement over ethics, now targeting the one demographic that can't complain—babies. Sakura's 'AI ethics theater' angle.",
+      "best_characters": [
+        "Sakura",
+        "Lana"
+      ],
+      "recurring_bit_fit": null,
+      "spine_potential": false,
+      "sensitivity_flag": false
+    },
+    {
+      "source_url": "https://ai.georgeliu.com/p/claude-opus-46-vs-opus-47-effort",
+      "source_name": "Hacker News",
+      "headline": "Claude Opus 4.6 vs. Opus 4.7 Effort Levels and Prompt Steering Benchmarks",
+      "excerpt": "Detailed benchmark comparison of Anthropic's latest Claude models showing marginal improvements and effort-level trade-offs.",
+      "published_at": "2026-04-26T14:11:57Z",
+      "topic_class": "benchmark",
+      "comedy_potential": 6,
+      "comedy_angle": "Incremental version bumps with marginal gains—the AI industry's version of smartphone releases where the only difference is the camera.",
+      "best_characters": [
+        "Chloe",
+        "Deep"
+      ],
+      "recurring_bit_fit": null,
+      "spine_potential": false,
+      "sensitivity_flag": false
+    },
+    {
+      "source_url": "https://divingintogeneticsandgenomics.com/post/has-ai-changed-drug-development-3-years-later/",
+      "source_name": "Hacker News",
+      "headline": "Has AI Changed the Course of Drug Development? Three Years Later",
+      "excerpt": "Analysis of AI's actual impact on pharmaceutical R&D three years into the hype cycle, with sobering reality checks.",
+      "published_at": "2026-04-26T13:05:21Z",
+      "topic_class": "research_paper",
+      "comedy_potential": 7,
+      "comedy_angle": "AI promised to revolutionize drug discovery; three years later, reality is messier. Perfect for Deep's 'AI overpromise' segment.",
+      "best_characters": [
+        "Deep",
+        "Sakura"
+      ],
+      "recurring_bit_fit": null,
+      "spine_potential": true,
+      "sensitivity_flag": false
+    },
+    {
+      "source_url": "https://rootcx.com/blog/why-every-ai-coded-app-is-an-island",
+      "source_name": "Hacker News",
+      "headline": "Why Every AI-Coded App Is an Island",
+      "excerpt": "Technical analysis of why AI-generated code creates isolated, non-interoperable systems that can't integrate with existing infrastructure.",
+      "published_at": "2026-04-26T13:04:50Z",
+      "topic_class": "ai_culture",
+      "comedy_potential": 6,
+      "comedy_angle": "AI code is siloed and incompatible—ironic given the industry's promise of seamless automation and integration.",
+      "best_characters": [
+        "Cody",
+        "Deep"
+      ],
+      "recurring_bit_fit": null,
+      "spine_potential": false,
+      "sensitivity_flag": false
+    },
+    {
+      "source_url": "https://dirac.run/posts/hash-anchors-myers-diff-single-token",
+      "source_name": "Hacker News",
+      "headline": "Hash anchors and Myers diff and single-token anchors: 60% cheaper AI code edits",
+      "excerpt": "Technical optimization reducing the cost of AI-assisted code editing by 60% through novel anchor and diff strategies.",
+      "published_at": "2026-04-26T13:46:11Z",
+      "topic_class": "research_paper",
+      "comedy_potential": 5,
+      "comedy_angle": "Engineers obsessing over micro-optimizations to make AI tools slightly less expensive—a niche technical win that won't change the fundamental problems.",
+      "best_characters": [
+        "Deep",
+        "Chloe"
+      ],
+      "recurring_bit_fit": null,
+      "spine_potential": false,
+      "sensitivity_flag": false
+    },
+    {
+      "source_url": "https://news.ycombinator.com/item?id=47910395",
+      "source_name": "Hacker News",
+      "headline": "Ask HN: Where are all the consumer ChatGPT apps?",
+      "excerpt": "Community discussion questioning why consumer-facing ChatGPT applications remain sparse despite years of hype.",
+      "published_at": "2026-04-26T13:58:42Z",
+      "topic_class": "ai_culture",
+      "comedy_potential": 6,
+      "comedy_angle": "ChatGPT promised to be everywhere; instead, it's mostly a web tab. The app ecosystem never materialized—classic AI hype gap.",
+      "best_characters": [
+        "Cody",
+        "Lana"
+      ],
+      "recurring_bit_fit": "Cody's Surprise Product",
+      "spine_potential": false,
+      "sensitivity_flag": false
+    },
+    {
+      "source_url": "https://news.ycombinator.com/item?id=47910597",
+      "source_name": "Hacker News",
+      "headline": "Ask HN: How I find a job where what is needed is solid code, not firefighting?",
+      "excerpt": "Developer seeking employment where quality engineering matters more than crisis management and technical debt patching.",
+      "published_at": "2026-04-26T14:23:50Z",
+      "topic_class": "ai_culture",
+      "comedy_potential": 5,
+      "comedy_angle": "The AI industry's dirty secret: even with 'productivity tools,' engineers still spend most time fixing broken systems instead of building.",
+      "best_characters": [
+        "Cody",
+        "Deep"
+      ],
+      "recurring_bit_fit": null,
+      "spine_potential": false,
+      "sensitivity_flag": false
+    },
+    {
+      "source_url": "https://octopal.ca/",
+      "source_name": "Hacker News",
+      "headline": "Octopal: Powerful AI agents without blind trust",
+      "excerpt": "New AI agent framework emphasizing transparency and control over black-box automation.",
+      "published_at": "2026-04-26T13:23:43Z",
+      "topic_class": "model_launch",
+      "comedy_potential": 4,
+      "comedy_angle": "Yet another AI agent tool claiming to solve trust issues—the same promise every startup makes before users realize they still don't understand what it's doing.",
+      "best_characters": [
+        "Chloe",
+        "Sakura"
+      ],
+      "recurring_bit_fit": null,
+      "spine_potential": false,
+      "sensitivity_flag": false
+    },
+    {
+      "source_url": "https://news.ycombinator.com/item?id=47910582",
+      "source_name": "Hacker News",
+      "headline": "Show HN: Are AI competitor newsletters useful?",
+      "excerpt": "New newsletter product analyzing the utility and market saturation of AI industry competitive intelligence newsletters.",
+      "published_at": "2026-04-26T14:21:58Z",
+      "topic_class": "ai_culture",
+      "comedy_potential": 5,
+      "comedy_angle": "Meta: a newsletter about whether AI newsletters are useful. The AI industry eating its own tail in real time.",
+      "best_characters": [
+        "Lana",
+        "Cody"
+      ],
+      "recurring_bit_fit": null,
+      "spine_potential": false,
+      "sensitivity_flag": false
+    }
+  ],
+  "created_at": "2026-04-26T14:32:26.213Z"
+}

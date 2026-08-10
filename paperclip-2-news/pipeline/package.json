@@ -1,0 +1,27 @@
+{
+  "name": "ai-after-dark-animation-pipeline",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local headless animation pipeline for AI After Dark smoke tests.",
+  "scripts": {
+    "render:smoke": "remotion render src/index.tsx smoke-test assets/renders/smoke-test.mp4 --gl=swangle --concurrency=1",
+    "preview": "remotion studio src/index.tsx"
+  },
+  "dependencies": {
+    "@react-three/drei": "latest",
+    "@react-three/fiber": "latest",
+    "@react-three/postprocessing": "^3.0.4",
+    "@remotion/cli": "latest",
+    "@remotion/three": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "gsap": "latest",
+    "postprocessing": "^6.39.1",
+    "react": "latest",
+    "react-dom": "latest",
+    "remotion": "latest",
+    "three": "latest",
+    "typescript": "latest",
+    "zod": "^4.3.6"
+  }
+}

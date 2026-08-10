@@ -22,7 +22,7 @@
 ## reports — tax bundle & report generator
 - **Purpose:** map documented expenses to IRS Schedule C; income partitioning; report generator + CSV exports.
 - **Core:** `lib/tax-bundle.ts` (`computeTaxBundle`) is pure/tested (135 tests). Schedule-C net = **business income only** (income_statement docs) − deductible expenses. **Wage income (payslips) is never netted** against Schedule C. Meals (Line 24b) halved (50%). Uncategorized excluded; review-flagged included. `app/api/reports/[report]/route.ts` gates on entitlement + folder targeting (`getFileIds` walks the folder subtree).
-- **Gotchas:** report **default year** picks the most-active tax year (not `max(year)`) — a Jan-issued 1099 dated the following year used to hijack the view (fixed). CSV exports: **QuickBooks (`Date,Description,Amount`)** + **Xero (`Date,Amount,Payee,Description`)**, US dates, **expenses NEGATIVE, meals at RAW amount** (not the 50% deductible — bookkeeping uses actual spend). QB/Xero export is gated to Day Pass/Pro/Business.
+- **Gotchas:** report **default year** picks the most-active tax year (not `max(year)`) — a Jan-issued 1099 dated the following year used to hijack the view (fixed). CSV exports: **QuickBooks (`Date,Description,Amount`)** + **Xero (`Date,Amount,Payee,Description`)**, US dates, **expenses NEGATIVE, meals at RAW amount** (not the 50% deductible — bookkeeping uses actual spend). QB/Xero export is gated to Day Pass/Pro/Business. QuickBooks also offers an optional **4-column** layout (`Date,Description,Credit,Debit`; default stays 3-column; QB zero cells export **blank**) — `lib/accounting-csv.ts` `generateQuickBooksCSV(rows, "3col"|"4col")`. **Assumption:** these exports treat every row as an **expense** — in 4-column the amount goes in **Debit** (Credit blank), in 3-column it's written negative. If income/inflow rows are ever added to these exports, 4-column must route inflows to **Credit** (and 3-column to a positive amount) — otherwise the books flip. (commit 9778bd4)
 
 ## billing — entitlement, tiers & usage metering
 - **Purpose:** plan access + document/report usage limits.
@@ -43,6 +43,7 @@
 ---
 
 ## TIMELINE
+- 2026-08-09 · feature · avint/smart-storage · Optional QuickBooks 4-column export (`Date,Description,Credit,Debit`); 3-column stays default, QB zero cells blank. Exports assume all rows are expenses (→ Debit / negative); revisit if income rows are added.
 - 2026-08-08 · monitoring triage · avint/systems · Added two-axis journal retrieval design: time windows and topic scopes remain independently selectable.
 - 2026-08-08 · deployment · avint/systems · Systems diagnosis uses the dedicated internal secret and remains observation-only.
 - 2026-08-08 · migration · avint/error-monitoring · Added context_scope storage for diagnosis retrieval observability.

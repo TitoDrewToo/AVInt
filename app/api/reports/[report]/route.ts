@@ -8,6 +8,7 @@ import { serverError } from "@/lib/api-error"
 import { checkRateLimit } from "@/lib/rate-limit"
 import { selectTaxBundleDefaultYear } from "@/lib/tax-bundle-default-year"
 import { PLAN_LIMITS, usageWindowForTier } from "@/supabase/functions/_shared/plan-limits"
+import { getExport, getReport } from "@/lib/report-engine"
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -158,7 +159,7 @@ export async function GET(
   const auth = await authorizeReportRequest(req, report, exportFormat)
   if ("error" in auth) return auth.error
 
-  const { user } = auth
+  const { user, ent } = auth
 
   // 30 reports / minute / user — expensive SQL, shouldn't fire on a loop.
   const allowed = await checkRateLimit("reports", user.id, 60, 30)
@@ -167,6 +168,19 @@ export async function GET(
   const { dateFrom, dateTo, targetFolder } = getFilters(req)
 
   try {
+    // Shared server engine used by both the JWT route and the MCP connector.
+    // Keep the HTTP response format stable while the MCP layer consumes the
+    // same user-scoped data and CSV generators.
+    if (report === "business-expense" || report === "tax-bundle") {
+      const reportKey = report as "business-expense" | "tax-bundle"
+      if (exportFormat) {
+        const target = exportFormat === "xero" ? "xero" : qbLayout === "4col" ? "quickbooks_4col" : "quickbooks_3col"
+        const csv = await getExport(user.id, ent, reportKey, target, { dateFrom, dateTo })
+        return new NextResponse(csv, { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="${report}-${exportFormat}.csv"`, "Cache-Control": "no-store" } })
+      }
+      return NextResponse.json(await getReport(user.id, ent, reportKey, { dateFrom, dateTo }))
+    }
+
     switch (report) {
       case "expense-summary": {
         const fileIds = await getFileIds(user.id, ["receipt", "invoice"], targetFolder)

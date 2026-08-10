@@ -1,0 +1,15 @@
+{
+  "id": "007",
+  "episode_number": 7,
+  "status": "gate1_locked",
+  "gate1": {
+    "decision": "lock",
+    "notes": "Smoke-test lock.",
+    "decided_at": "2026-04-26T14:33:46.460Z"
+  },
+  "gate2": null,
+  "ad_slot_offer": "Extension Rescue $199",
+  "spine": "The AI hype cycle eats itself: the tools that were supposed to replace developers are being abandoned by the very experts who tried them, while AI-generated content targets babies and still can't build apps anyone actually uses.",
+  "created_at": "2026-04-26T14:21:49.204Z",
+  "updated_at": "2026-04-26T14:33:46.460Z"
+}

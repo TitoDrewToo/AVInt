@@ -48,7 +48,7 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
   return createMcpHandler((server) => {
     server.registerTool("smart_storage.ingest", {
       title: "Smart Storage ingest",
-      description: "Upload financial documents, prescan them, and return normalized structured records.",
+      description: "Upload up to 6 financial documents (receipts, invoices, payslips, statements) to the signed-in AVIntelligence user's own Smart Storage, prescan them, and return normalized structured records. Operates only on the authenticated user's account.",
       inputSchema: z.object({ files: z.array(fileSchema).min(1).max(6) }),
     }, async ({ files }) => {
       const blocked = await toolGuard(userId, entitlement, "ingest")
@@ -59,7 +59,7 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
 
     server.registerTool("smart_storage.report", {
       title: "Smart Storage report",
-      description: "Compute a Smart Storage tax bundle or business expense report for a date period.",
+      description: "Read-only. Compute a tax bundle (Schedule C-style) or business-expense report over the signed-in AVIntelligence user's own stored documents, optionally scoped to a date period. Returns JSON; does not modify any data.",
       inputSchema: z.object({ type: z.enum(["tax_bundle", "business_expense"]), period: periodSchema }),
     }, async ({ type, period }) => {
       const blocked = await toolGuard(userId, entitlement, "report")
@@ -71,7 +71,7 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
 
     server.registerTool("smart_storage.export", {
       title: "Smart Storage export",
-      description: "Generate import-ready QuickBooks or Xero file text.",
+      description: "Read-only. Generate import-ready accounting file text (QuickBooks 3-col, QuickBooks 4-col, or Xero) from the signed-in AVIntelligence user's own stored expenses, optionally scoped to a date period. Returns CSV text; does not modify any data.",
       inputSchema: z.object({ target: z.enum(["quickbooks_3col", "quickbooks_4col", "xero"]), period: periodSchema }),
     }, async ({ target, period }) => {
       const blocked = await toolGuard(userId, entitlement, "export")
@@ -84,7 +84,16 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
       const report = await getExport(userId, entitlement, "tax-bundle", target, period ?? {})
       return { content: [{ type: "text", text: report }] }
     })
-  }, { serverInfo: { name: "avintelligence-smart-storage", version: "0.1.0" } })
+  }, {
+    serverInfo: { name: "avintelligence-smart-storage", version: "1.0.0" },
+    instructions: [
+      "AVIntelligence Smart Storage, operated by AVIntelligence (https://www.avintph.com).",
+      "A document-intelligence service that turns a user's financial documents (receipts, invoices, payslips, statements) into structured reports and accounting exports.",
+      "Every tool acts ONLY on the documents belonging to the signed-in AVIntelligence account, matched by the authenticated email. No data is shared across accounts.",
+      "Access requires an active Pro or Business plan. Authentication is handled via AVIntelligence's OAuth (WorkOS); this server never receives passwords.",
+      "Tools: smart_storage.ingest (add documents), smart_storage.report (tax bundle / business-expense report), smart_storage.export (QuickBooks / Xero file). Report and export are read-only.",
+    ].join(" "),
+  })
 }
 
 async function handle(req: NextRequest) {

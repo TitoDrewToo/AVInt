@@ -184,9 +184,10 @@ function ProductCard({ name, description, status, href, external, disabled, icon
 const products: ProductCardProps[] = [
   {
     name: "Smart Storage",
-    description: "Upload your receipts and invoices. AI reads and organizes them. Reports ready. Turn your files into tax-ready summaries — export-ready for QuickBooks & Xero.",
+    description: "Upload your receipts and invoices. AI reads and organizes them. Reports ready. Turn your files into tax-ready summaries — export-ready for QuickBooks & Xero. Now works inside Claude — run your tax bundle and pull a QuickBooks export right from chat.",
     href: "/products/smart-storage",
     icon: <StorageIcon className="h-5 w-5" />,
+    badges: ["Works in Claude"],
   },
   {
     name: "Smart Dashboard",

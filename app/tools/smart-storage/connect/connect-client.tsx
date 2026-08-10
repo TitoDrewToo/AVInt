@@ -95,6 +95,32 @@ export default function ConnectClient({ oauthEnabled }: { oauthEnabled: boolean 
 
   const paid = entitlement.tier === "pro" || entitlement.tier === "business"
 
+  const apiKeyPanel = (
+    <>
+      <h2 className="text-lg font-medium">{paid ? "API keys for advanced clients" : "API-key access is Pro-only"}</h2>
+      {!entitlement.loading && !paid ? (
+        <div className="mt-4">
+          <p className="text-sm text-muted-foreground">The Claude connector is a Pro feature. Upgrade to generate and use connector keys.</p>
+          <Button className="mt-4" asChild><Link href="/pricing">Upgrade to Pro</Link></Button>
+        </div>
+      ) : (
+        <>
+          <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Key name" maxLength={80} />
+            <select value={expiresIn} onChange={(e) => setExpiresIn(e.target.value as ExpiryChoice)} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+              <option value="30d">Expires in 30 days</option>
+              <option value="90d">Expires in 90 days</option>
+              <option value="1y">Expires in 1 year</option>
+              <option value="never">Never expires</option>
+            </select>
+          </div>
+          <Button className="mt-3" onClick={() => void create("generate")} disabled={loading || !name.trim()}>{loading ? "Creating…" : "Generate key"}</Button>
+        </>
+      )}
+      {secret && <div className="mt-4 rounded-lg border border-primary/40 bg-primary/5 p-4"><p className="text-sm font-medium">Copy this key now — it will not be shown again.</p><code className="mt-2 block break-all text-sm">{secret}</code></div>}
+    </>
+  )
+
   return (
     <main className="mx-auto min-h-screen max-w-3xl px-6 py-16">
       <Link href="/tools/smart-storage" className="text-sm text-muted-foreground hover:text-foreground">← Smart Storage</Link>
@@ -105,35 +131,37 @@ export default function ConnectClient({ oauthEnabled }: { oauthEnabled: boolean 
           <p className="mt-3 max-w-xl text-muted-foreground">{oauthEnabled ? "Connect Claude to Smart Storage with WorkOS OAuth, while keeping API keys available for advanced programmatic clients." : "Connect programmatic clients to Smart Storage with a private, expiring API key."}</p>
         </div>
 
-        {oauthEnabled && <section className="rounded-xl border border-primary/30 bg-primary/5 p-6">
-          <h2 className="text-lg font-medium">Connect Claude with OAuth</h2>
-          <p className="mt-2 text-sm text-muted-foreground">In Claude, choose Add custom connector, paste this URL, then choose Add → Sign in with Google → connected.</p>
-          <code className="mt-4 block break-all rounded-md border border-border bg-background p-3 text-sm">{`${process.env.NEXT_PUBLIC_APP_URL ?? ""}/api/mcp`}</code>
+        {oauthEnabled && <section className="rounded-2xl border border-primary/30 bg-primary/5 p-6 shadow-[0_18px_60px_-36px_var(--retro-glow-red)]">
+          <p className="text-xs font-medium uppercase tracking-[0.2em] text-primary">Primary connection</p>
+          <h2 className="mt-2 text-xl font-medium">Connect to Claude</h2>
+          <ol className="mt-5 space-y-4 text-sm text-muted-foreground">
+            <li className="flex gap-3"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-primary/40 text-xs font-medium text-primary">1</span><span>In Claude, open <strong className="font-medium text-foreground">Settings → Connectors → Add custom connector</strong>.</span></li>
+            <li className="flex gap-3"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-primary/40 text-xs font-medium text-primary">2</span><span>Paste this URL and click <strong className="font-medium text-foreground">Add</strong>. Leave the optional OAuth Client ID and Secret blank — Claude registers itself.</span></li>
+            <li className="flex gap-3"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-primary/40 text-xs font-medium text-primary">3</span><span>Click <strong className="font-medium text-foreground">Connect</strong>, then sign in with the Google account (or email) that matches your AVIntelligence account. Approve access — done.</span></li>
+          </ol>
+          <code className="mt-5 block break-all rounded-lg border border-border bg-background/80 p-3 text-sm">https://www.avintph.com/api/mcp</code>
+          <div className="mt-6 border-t border-primary/15 pt-5">
+            <p className="text-sm font-medium text-foreground">What you can do from Claude</p>
+            <ul className="mt-3 grid gap-2 text-sm text-muted-foreground sm:grid-cols-2">
+              <li>• Ingest documents into Smart Storage</li>
+              <li>• Run your Tax Bundle or Business Expense report</li>
+              <li>• Export to QuickBooks or Xero</li>
+              <li>• Every call acts on your own account</li>
+            </ul>
+            <p className="mt-4 text-xs text-muted-foreground">Available on Pro and Business plans. If the email does not match an AVIntelligence account, you’ll see: <span className="font-medium text-foreground">“Connect requires a Smart Storage account with this email”</span>.</p>
+          </div>
         </section>}
 
-        <section className="rounded-xl border border-border bg-card p-6">
-          <h2 className="text-lg font-medium">{paid ? "API keys for advanced clients" : "API-key access is Pro-only"}</h2>
-          {!entitlement.loading && !paid ? (
-            <div className="mt-4">
-              <p className="text-sm text-muted-foreground">The Claude connector is a Pro feature. Upgrade to generate and use connector keys.</p>
-              <Button className="mt-4" asChild><Link href="/pricing">Upgrade to Pro</Link></Button>
-            </div>
-          ) : (
-            <>
-              <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
-                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Key name" maxLength={80} />
-                <select value={expiresIn} onChange={(e) => setExpiresIn(e.target.value as ExpiryChoice)} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
-                  <option value="30d">Expires in 30 days</option>
-                  <option value="90d">Expires in 90 days</option>
-                  <option value="1y">Expires in 1 year</option>
-                  <option value="never">Never expires</option>
-                </select>
-              </div>
-              <Button className="mt-3" onClick={() => void create("generate")} disabled={loading || !name.trim()}>{loading ? "Creating…" : "Generate key"}</Button>
-            </>
-          )}
-          {secret && <div className="mt-4 rounded-lg border border-primary/40 bg-primary/5 p-4"><p className="text-sm font-medium">Copy this key now — it will not be shown again.</p><code className="mt-2 block break-all text-sm">{secret}</code></div>}
-        </section>
+        {oauthEnabled ? (
+          <details className="group rounded-xl border border-border bg-card">
+            <summary className="cursor-pointer list-none px-6 py-4 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
+              <span className="flex items-center justify-between gap-4">Advanced: programmatic API keys <span className="text-xs text-muted-foreground/70 group-open:rotate-180">⌄</span></span>
+            </summary>
+            <div className="border-t border-border px-6 py-5">{apiKeyPanel}</div>
+          </details>
+        ) : (
+          <section className="rounded-xl border border-border bg-card p-6">{apiKeyPanel}</section>
+        )}
 
         <section className="rounded-xl border border-border bg-card p-6">
           <h2 className="text-lg font-medium">Your keys</h2>

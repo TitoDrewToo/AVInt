@@ -11,10 +11,10 @@ import { PrivacySecuritySection } from "@/components/sections/privacy-security"
 
 export const metadata = {
   title: "Smart Storage — Clean Expense Reports from Your Documents | AVIntelligence",
-  description: "Extract vendors, dates, amounts, categories, and recurring expenses from receipts and invoices into searchable records and exportable reports.",
+  description: "Extract vendors, dates, amounts, categories, and recurring expenses from receipts and invoices into searchable records and exportable reports. Now available as a Claude connector.",
   openGraph: {
     title: "Smart Storage — Clean Expense Reports from Your Documents | AVIntelligence",
-    description: "Extract vendors, dates, amounts, categories, and recurring expenses from receipts and invoices into searchable records and exportable reports.",
+    description: "Extract vendors, dates, amounts, categories, and recurring expenses from receipts and invoices into searchable records and exportable reports. Now available as a Claude connector.",
     url: "https://www.avintph.com/products/smart-storage",
     siteName: "AVIntelligence",
     type: "website",
@@ -22,7 +22,7 @@ export const metadata = {
   twitter: {
     card: "summary_large_image",
     title: "Smart Storage — Clean Expense Reports from Your Documents | AVIntelligence",
-    description: "Extract vendors, dates, amounts, categories, and recurring expenses from receipts and invoices.",
+    description: "Extract vendors, dates, amounts, categories, and recurring expenses from receipts and invoices. Now available as a Claude connector.",
   },
 }
 
@@ -373,6 +373,42 @@ export default function SmartStorageProductPage() {
           </div>
         </section>
 
+        {/* Claude connector */}
+        <section className="marketing-scroll-section relative px-6">
+          <div className="relative mx-auto max-w-5xl">
+            <FadeUp className="text-center">
+              <h2 className="text-sm font-medium uppercase tracking-wider text-primary">Now works inside Claude</h2>
+              <h3 className="mt-4 text-balance text-3xl font-semibold tracking-tight text-foreground md:text-4xl">Your documents, inside Claude.</h3>
+              <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
+                Connect Smart Storage to Claude and work in plain language. Ask Claude to file a receipt, run your Schedule C tax bundle, or hand you a QuickBooks-ready export — no dashboards, no exports to download by hand. It runs securely on your own account, and it&apos;s included with Pro.
+              </p>
+            </FadeUp>
+
+            <StaggerContainer className="mt-10 grid gap-4 md:grid-cols-3">
+              {[
+                { icon: <IconUpload />, title: "Ingest", body: "Drop documents into Claude; they land in Smart Storage, classified and extracted." },
+                { icon: <IconFileText />, title: "Report", body: "Ask for your Tax Bundle or Business Expense report and get the numbers back in chat." },
+                { icon: <IconFileOutput />, title: "Export", body: "Generate an import-ready QuickBooks or Xero file without leaving the conversation." },
+              ].map((item) => (
+                <StaggerItem key={item.title} className="h-full">
+                  <div className="glass-surface hover-bloom h-full rounded-2xl p-5">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">{item.icon}</div>
+                    <h4 className="mt-5 text-base font-semibold text-foreground">{item.title}</h4>
+                    <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{item.body}</p>
+                  </div>
+                </StaggerItem>
+              ))}
+            </StaggerContainer>
+
+            <FadeUp className="mt-10 text-center">
+              <Link href="/tools/smart-storage/connect">
+                <Button size="lg" className="rounded-xl bg-primary text-primary-foreground hover:bg-primary/90">Connect to Claude</Button>
+              </Link>
+              <p className="mt-3 text-xs text-muted-foreground">Pro &amp; Business plans. Secure OAuth sign-in — AVIntelligence never sees your password.</p>
+            </FadeUp>
+          </div>
+        </section>
+
         {/* Infrastructure & Security */}
         <section className="marketing-scroll-section relative px-6">
           <div className="relative mx-auto max-w-4xl">
@@ -394,7 +430,7 @@ export default function SmartStorageProductPage() {
                     <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
                     <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Database & Storage</span>
                   </div>
-                  <p className="mt-3 text-sm font-medium text-foreground">SOC 2 Type II Certified</p>
+                  <p className="mt-3 text-sm font-medium text-foreground">Built on SOC 2 Type II-certified infrastructure</p>
                   <p className="mt-1 text-xs text-muted-foreground">Account-level access controls keep each user's files and structured records separated.</p>
                 </div>
               </StaggerItem>

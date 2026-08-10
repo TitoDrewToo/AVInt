@@ -8,6 +8,7 @@ import { MCP_CONNECTOR_ENABLED, MCP_OAUTH_ENABLED, MCP_RATE_LIMITS, oauthProtect
 import { checkRateLimit, type RateLimitBucket } from "@/lib/rate-limit"
 import { ingestFiles } from "@/lib/smart-storage-ingest"
 import { getExport, getReport } from "@/lib/report-engine"
+import { shapeMcpReportResult } from "@/lib/mcp-report-shaping"
 import { PLAN_LIMITS, usageWindowForTier } from "@/supabase/functions/_shared/plan-limits"
 
 export const runtime = "nodejs"
@@ -60,13 +61,13 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
     server.registerTool("smart_storage.report", {
       title: "Smart Storage report",
       description: "Read-only. Compute a tax bundle (Schedule C-style) or business-expense report over the signed-in AVIntelligence user's own stored documents, optionally scoped to a date period. Returns JSON; does not modify any data.",
-      inputSchema: z.object({ type: z.enum(["tax_bundle", "business_expense"]), period: periodSchema }),
-    }, async ({ type, period }) => {
+      inputSchema: z.object({ type: z.enum(["tax_bundle", "business_expense"]), period: periodSchema, includeRows: z.boolean().optional().default(false) }),
+    }, async ({ type, period, includeRows }) => {
       const blocked = await toolGuard(userId, entitlement, "report")
       if (blocked) return blocked
       const report = type === "tax_bundle" ? "tax-bundle" : "business-expense"
       const result = await getReport(userId, entitlement, report, period ?? {})
-      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] }
+      return { content: [{ type: "text", text: JSON.stringify(shapeMcpReportResult(result, includeRows), null, 2) }] }
     })
 
     server.registerTool("smart_storage.export", {

@@ -50,4 +50,4 @@ The WorkOS Google/email login must use the same email address as the user’s ex
 - Compatibility authorization-server metadata proxy: `/.well-known/oauth-authorization-server`
 - MCP resource: `/api/mcp`
 
-Keep `ENABLE_MCP_OAUTH=false` until the WorkOS dashboard configuration and a real Claude “Add custom connector” flow have been reviewed. API-key clients continue to work when OAuth is enabled.
+Keep `ENABLE_MCP_OAUTH=false` until the WorkOS dashboard configuration and a real Claude “Add custom connector” flow have been reviewed. The MCP connector is OAuth-only; legacy API-key records remain dormant for audit/history.

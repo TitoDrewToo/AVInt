@@ -3,7 +3,7 @@ import { z } from "zod"
 import { NextRequest, NextResponse } from "next/server"
 
 import { computeEntitlement } from "@/lib/entitlement"
-import { entitlementForUser, OAuthAccountRequiredError, resolveApiKey, resolveOAuthToken, supabaseAdmin } from "@/lib/mcp-auth"
+import { entitlementForUser, OAuthAccountRequiredError, resolveOAuthToken, supabaseAdmin } from "@/lib/mcp-auth"
 import { MCP_CONNECTOR_ENABLED, MCP_OAUTH_ENABLED, MCP_RATE_LIMITS, oauthProtectedResourceUrl, upgradeMessage } from "@/lib/mcp-config"
 import { checkRateLimit, type RateLimitBucket } from "@/lib/rate-limit"
 import { ingestFiles } from "@/lib/smart-storage-ingest"
@@ -99,14 +99,13 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
 
 async function handle(req: NextRequest) {
   if (!MCP_CONNECTOR_ENABLED) return NextResponse.json({ error: "Not found" }, { status: 404 })
-  let identity: { userId: string } | null = null
+  let identity: { userId: string } | null
   try {
     identity = await resolveOAuthToken(req)
   } catch (error) {
     if (error instanceof OAuthAccountRequiredError) return NextResponse.json({ error: error.message }, { status: 403 })
     return NextResponse.json({ error: "OAuth authentication failed" }, { status: 401 })
   }
-  identity ??= await resolveApiKey(req)
   if (!identity) {
     const headers = new Headers()
     if (MCP_OAUTH_ENABLED) {

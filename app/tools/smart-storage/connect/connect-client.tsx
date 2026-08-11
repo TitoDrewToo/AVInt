@@ -94,6 +94,14 @@ export default function ConnectClient({ oauthEnabled }: { oauthEnabled: boolean 
   }
 
   const paid = entitlement.tier === "pro" || entitlement.tier === "business"
+  const mcpUrl = "https://www.avintph.com/api/mcp"
+  const [copied, setCopied] = useState(false)
+
+  async function copyMcpUrl() {
+    await navigator.clipboard.writeText(mcpUrl)
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 2000)
+  }
 
   const apiKeyPanel = (
     <>
@@ -160,7 +168,12 @@ export default function ConnectClient({ oauthEnabled }: { oauthEnabled: boolean 
             <li className="flex gap-3"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-primary/40 text-xs font-medium text-primary">2</span><span>Paste this URL and click <strong className="font-medium text-foreground">Add</strong>. Leave the optional OAuth Client ID and Secret blank — Claude registers itself.</span></li>
             <li className="flex gap-3"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-primary/40 text-xs font-medium text-primary">3</span><span>Click <strong className="font-medium text-foreground">Connect</strong>, then sign in with the Google account (or email) that matches your AVIntelligence account. Approve access — done.</span></li>
           </ol>
-          <code className="mt-5 block break-all rounded-lg border border-border bg-background/80 p-3 text-sm">https://www.avintph.com/api/mcp</code>
+          <div className="mt-5 flex items-center gap-2 rounded-lg border border-border bg-background/80 p-2">
+            <code className="min-w-0 flex-1 break-all px-1 text-sm">{mcpUrl}</code>
+            <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => void copyMcpUrl()}>
+              {copied ? "Copied!" : "Copy"}
+            </Button>
+          </div>
           <div className="mt-6 border-t border-primary/15 pt-5">
             <p className="text-sm font-medium text-foreground">What you can do from Claude</p>
             <ul className="mt-3 grid gap-2 text-sm text-muted-foreground sm:grid-cols-2">

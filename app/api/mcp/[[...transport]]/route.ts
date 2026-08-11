@@ -77,11 +77,16 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
     }, async ({ target, period }) => {
       const blocked = await toolGuard(userId, entitlement, "export")
       if (blocked) return blocked
-      if (!PLAN_LIMITS[entitlement.tier].accountingExports) return capResult(`You've hit your ${entitlement.tier} export access limit. Upgrade at ${process.env.NEXT_PUBLIC_APP_URL ?? "https://www.avintph.com/pricing"}; your records are saved.`)
-      const window = usageWindowForTier(entitlement.tier, new Date(), entitlement.expiresAt)
-      const { data, error } = await supabaseAdmin.rpc("avint_claim_report_export", { p_user_id: userId, p_report_key: `mcp:${target}`, p_period_start: window.start, p_period_end: window.end, p_limit: PLAN_LIMITS[entitlement.tier].reportExports ?? 1 })
-      if (error) throw new Error(error.message)
-      if (!data?.[0]?.allowed) return capResult(upgradeMessage(entitlement.tier, data?.[0]?.limit_count ?? 1, "report export"))
+      if (!PLAN_LIMITS[entitlement.tier].accountingExports) return capResult(`Accounting export isn't available on the ${entitlement.tier} plan. Upgrade at ${process.env.NEXT_PUBLIC_APP_URL ?? "https://www.avintph.com/pricing"}; your records are saved.`)
+      // Only meter tiers with a finite export limit. null = unlimited (Day Pass / Pro / Business) —
+      // mirror the web report route, which skips the claim entirely when reportExports is null.
+      const exportLimit = PLAN_LIMITS[entitlement.tier].reportExports
+      if (exportLimit !== null) {
+        const window = usageWindowForTier(entitlement.tier, new Date(), entitlement.expiresAt)
+        const { data, error } = await supabaseAdmin.rpc("avint_claim_report_export", { p_user_id: userId, p_report_key: `mcp:${target}`, p_period_start: window.start, p_period_end: window.end, p_limit: exportLimit })
+        if (error) throw new Error(error.message)
+        if (!data?.[0]?.allowed) return capResult(upgradeMessage(entitlement.tier, data?.[0]?.limit_count ?? exportLimit, "report export"))
+      }
       const report = await getExport(userId, entitlement, "tax-bundle", target, period ?? {})
       return { content: [{ type: "text", text: report }] }
     })

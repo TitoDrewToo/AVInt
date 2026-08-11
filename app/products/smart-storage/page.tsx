@@ -289,7 +289,7 @@ export default function SmartStorageProductPage() {
         })}}
       />
       <Navbar />
-      <main className="marketing-scroll-stage relative z-[1] flex-1">
+      <main className="marketing-scroll-stage relative z-[1] flex flex-1 flex-col">
         {/* Hero */}
         <section className="marketing-hero-section marketing-hero-section-spacious relative px-6">
           <div aria-hidden className="pointer-events-none absolute inset-0 retro-grid-bg opacity-40" />
@@ -470,7 +470,7 @@ export default function SmartStorageProductPage() {
         </section>
 
         {/* FAQ */}
-        <section className="marketing-scroll-section relative px-6">
+        <section className="order-2 marketing-scroll-section relative px-6">
           <div aria-hidden className="pointer-events-none absolute inset-0 retro-grid-bg opacity-30" />
           <div className="relative mx-auto max-w-3xl">
             <FadeUp className="text-center">
@@ -495,7 +495,7 @@ export default function SmartStorageProductPage() {
         </section>
 
         {/* Infrastructure & Security */}
-        <section className="marketing-scroll-section relative px-6">
+        <section className="order-1 marketing-scroll-section relative px-6">
           <div className="relative mx-auto max-w-4xl">
             <FadeUp className="text-center">
               <h2 className="text-sm font-medium uppercase tracking-wider text-primary">
@@ -585,7 +585,7 @@ export default function SmartStorageProductPage() {
         </section>
 
         {/* CTA */}
-        <section className="marketing-scroll-section relative px-6">
+        <section className="order-3 marketing-scroll-section relative px-6">
           <div aria-hidden className="pointer-events-none absolute inset-0 retro-grid-bg opacity-30" />
           <div className="relative mx-auto max-w-4xl">
             <div className="text-left">

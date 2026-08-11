@@ -8,6 +8,7 @@ import { PomelliClip } from "@/components/ui/pomelli-clip"
 import { HomeDefaultSphere } from "@/components/home-default-sphere"
 import { SampleReportsSection } from "@/components/sections/sample-reports"
 import { PrivacySecuritySection } from "@/components/sections/privacy-security"
+import { ChevronDown } from "lucide-react"
 
 export const metadata = {
   title: "Smart Storage — Clean Expense Reports from Your Documents | AVIntelligence",
@@ -202,6 +203,61 @@ const workflowSteps = [
   { icon: <IconUpload />,     title: "Upload",                            step: "01" },
   { icon: <IconLayers />,     title: "AI extracts & categorizes",         step: "02" },
   { icon: <IconFileOutput />, title: "Export an accountant-ready report", step: "03" },
+]
+
+const smartStorageFaq = [
+  {
+    question: "What does Smart Storage actually do?",
+    answer: `Upload receipts, invoices, payslips, statements, and contracts, and Smart Storage turns them into clean structured records — vendor, date, amount, category — and then into reports you can actually use. No manual data entry, no spreadsheets.`,
+  },
+  {
+    question: "What can I upload?",
+    answer: `Receipts, invoices, payslips, income and bank statements, transaction records, and contracts — as PDF, photo (JPG/PNG/HEIC/WEBP), CSV, or Excel, up to 60 MB each. Snap a photo of a receipt or drop in a whole spreadsheet; both work.`,
+  },
+  {
+    question: "What reports do I get?",
+    answer: `Seven, all built from your own documents: Expense Summary, Income Summary, Profit & Loss, Business Expense, Contract Summary, Key Terms, and a Schedule C–style Tax Bundle. Every one is exportable.`,
+  },
+  {
+    question: "Can I export to QuickBooks or Xero?",
+    answer: `Yes — Smart Storage generates import-ready files for QuickBooks (3- and 4-column) and Xero, so your bookkeeping tool gets clean data without manual entry. (These are files you import; live two-way sync is on the roadmap.)`,
+  },
+  {
+    question: "Why subscribe instead of staying on Free?",
+    answer: `Free is for trying it out — 10 documents a month. Paid plans unlock the parts that actually save time: unlimited report exports, QuickBooks/Xero export, advanced analytics and custom dashboards, recurring-expense detection, priority processing — and the Claude connector. If you handle more than a handful of documents a month, it pays for itself in the data entry you stop doing.`,
+  },
+  {
+    question: "What is the Claude connector — and why is it a big deal?",
+    answer: `It connects Smart Storage directly to Claude, so your books become something you can just talk to. Instead of opening dashboards and clicking through exports, you ask — "run my tax bundle for 2025" or "give me a QuickBooks export for this quarter" — and Claude does it against your own account, right in the chat. It turns a multi-step workflow into a single sentence.`,
+  },
+  {
+    question: "What can I actually do from inside Claude?",
+    answer: `Three things, all on your own documents: add new documents to Smart Storage, run your Tax Bundle and Business Expense reports, and generate an import-ready QuickBooks or Xero file — without leaving the conversation. Your other reports and full dashboards live in the web app.`,
+  },
+  {
+    question: "Do I need to be technical to connect Claude?",
+    answer: `No. In Claude you choose "Add custom connector," paste one URL, and sign in with the email on your AVIntelligence account. No keys, no code, no setup — about a minute.`,
+  },
+  {
+    question: "Which plan do I need for the Claude connector?",
+    answer: `Pro or Business. It's included with both.`,
+  },
+  {
+    question: "Is my data private and secure?",
+    answer: `Yes. Each account's documents are isolated at the database level, processing runs server-side, and the Claude connection uses secure OAuth sign-in — AVIntelligence never sees your password, and the connector only ever touches your own account. Reports and exports through Claude are read-only. Built on SOC 2 Type II-certified infrastructure.`,
+  },
+  {
+    question: "What if I have expenses in more than one currency?",
+    answer: `Your dashboards handle multiple currencies. The Tax Bundle is intentionally USD-only for filing accuracy — any non-USD items are listed separately so nothing gets silently mixed into your totals.`,
+  },
+  {
+    question: "How accurate is the extraction, and what if something's off?",
+    answer: `High-confidence items flow straight through; anything uncertain is flagged for you to review and reclassify, so a questionable line never quietly lands in a report. You always keep control of the final numbers.`,
+  },
+  {
+    question: "Is this tax advice or a replacement for my accountant?",
+    answer: `No — and we're deliberate about that. Smart Storage organizes your records and hands your accountant a clean, Schedule C–style starting point. It's built to save you both hours, not to replace a licensed preparer. Always confirm filings with a professional.`,
+  },
 ]
 
 // ── Page ───────────────────────────────────────────────────────────────────────
@@ -406,6 +462,31 @@ export default function SmartStorageProductPage() {
               </Link>
               <p className="mt-3 text-xs text-muted-foreground">Pro &amp; Business plans. Secure OAuth sign-in — AVIntelligence never sees your password.</p>
             </FadeUp>
+          </div>
+        </section>
+
+        {/* FAQ */}
+        <section className="marketing-scroll-section relative px-6">
+          <div aria-hidden className="pointer-events-none absolute inset-0 retro-grid-bg opacity-30" />
+          <div className="relative mx-auto max-w-3xl">
+            <FadeUp className="text-center">
+              <h2 className="text-sm font-medium uppercase tracking-wider text-primary">FAQ</h2>
+              <p className="mt-4 text-3xl font-semibold tracking-tight text-foreground md:text-4xl">Questions, answered.</p>
+            </FadeUp>
+
+            <StaggerContainer className="mt-10 space-y-3">
+              {smartStorageFaq.map((item) => (
+                <StaggerItem key={item.question}>
+                  <details className="group glass-surface-sm hover-bloom rounded-xl border border-border/60 p-5">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-6 font-medium text-foreground [&::-webkit-details-marker]:hidden">
+                      <span>{item.question}</span>
+                      <ChevronDown className="h-4 w-4 shrink-0 text-primary transition-transform duration-200 group-open:rotate-180" aria-hidden="true" />
+                    </summary>
+                    <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{item.answer}</p>
+                  </details>
+                </StaggerItem>
+              ))}
+            </StaggerContainer>
           </div>
         </section>
 

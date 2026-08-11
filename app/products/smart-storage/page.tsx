@@ -235,6 +235,10 @@ const smartStorageFaq = [
     answer: `Three things, all on your own documents: add new documents to Smart Storage, run your Tax Bundle and Business Expense reports, and generate an import-ready QuickBooks or Xero file — without leaving the conversation. Your other reports and full dashboards live in the web app.`,
   },
   {
+    question: "Why use Smart Storage if I can just upload files to Claude directly?",
+    answer: `Because Smart Storage is where your records live — organized, extracted, and always current. Upload a document once and it stays; you never re-upload, re-search, or re-explain your history each session. Claude then works off that structured, up-to-date store on demand. Files dropped into a one-off chat disappear when it closes — Smart Storage is the memory and structure that makes every future question, and every report, instant. Using both is the point: Smart Storage remembers and organizes; Claude acts on it.`,
+  },
+  {
     question: "Do I need to be technical to connect Claude?",
     answer: `No. In Claude you choose "Add custom connector," paste one URL, and sign in with the email on your AVIntelligence account. No keys, no code, no setup — about a minute.`,
   },

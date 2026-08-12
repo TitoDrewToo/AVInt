@@ -90,6 +90,24 @@ function HooperIcon({ className }: { className?: string }) {
   )
 }
 
+function ChromaFairyIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <style>{`
+        @keyframes fairy-glow { 0%,100%{opacity:.35;transform:scale(.9)} 50%{opacity:1;transform:scale(1.08)} }
+        .fairy-spark { transform-origin: 18.7px 14.3px; animation: fairy-glow 2.2s ease-in-out infinite; }
+      `}</style>
+      <circle cx="11" cy="4.3" r="1.55" className="fill-primary" />
+      <path d="M11 6c-.7 2.1-.5 4.1.4 6l-2.7 3.6h4.7l-1.7-3.6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M10.6 7.7C7.6 6 4.4 6.5 3.4 8.7c2.5 1.25 5.1 1 7.2-.45M11.8 7.7c3-1.7 6.2-1.2 7.2 1-2.5 1.25-5.1 1-7.2-.45" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+      <g className="fairy-spark" stroke="rgb(220,38,38)" strokeWidth="1.1" strokeLinecap="round">
+        <path d="M18.7 12.8v3M17.2 14.3h3" />
+      </g>
+      <path d="M6 17.6l.02 2M5 18.6l2 .02" stroke="currentColor" strokeWidth="1" strokeLinecap="round" opacity=".6" />
+    </svg>
+  )
+}
+
 function StorageIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -218,6 +236,14 @@ const products: ProductCardProps[] = [
     disabled: true,
     icon: <HooperIcon className="h-5 w-5" />,
     badges: ["iOS", "Android"],
+  },
+  {
+    name: "Chroma Fairy",
+    description: "A catalogue and studio for fluid-abstract artist Samantha Ty — animated shop, sales and customer CRM, with a custom WebGL/Three.js painting engine.",
+    status: "live",
+    href: "/products/chroma-fairy",
+    icon: <ChromaFairyIcon className="h-5 w-5 text-primary" />,
+    badges: ["Client build"],
   },
 ]
 

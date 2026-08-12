@@ -239,7 +239,7 @@ const products: ProductCardProps[] = [
   },
   {
     name: "Chroma Fairy",
-    description: "A catalogue and studio for fluid-abstract artist Samantha Ty — animated shop, sales and customer CRM, with a custom WebGL/Three.js painting engine.",
+    description: "A catalogue and studio for fluid-abstract artist Samantha Ty — animated shop, sales and CRM, with a custom WebGL/Three.js painting engine.",
     status: "live",
     href: "/products/chroma-fairy",
     icon: <ChromaFairyIcon className="h-5 w-5 text-primary" />,

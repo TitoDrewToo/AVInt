@@ -25,7 +25,7 @@ const designHighlights = [
   { icon: <Palette className="h-5 w-5" />, title: "Living backgrounds", description: "The gallery is designed to feel atmospheric and alive, with artwork shaping the visitor’s sense of place." },
   { icon: <Workflow className="h-5 w-5" />, title: "Cinematic scroll", description: "The page moves like a camera through the work, carrying the visitor from discovery into the studio." },
   { icon: <Quote className="h-5 w-5" />, title: "Tactile detail", description: "Small interactions—from transitions to the contact experience—keep the site feeling made by hand." },
-  { icon: <CalendarDays className="h-5 w-5" />, title: "A daily verse", description: "A quiet rotating scripture moment gives the gallery a pause between visual chapters." },
+  { icon: <Store className="h-5 w-5" />, title: "Shop + studio foundation", description: "The storefront is supported by a private studio foundation for originals, checkout, commission scheduling, a catalogue, sales, customer records, and insights." },
 ]
 
 const buildHighlights = [

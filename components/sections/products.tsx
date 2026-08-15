@@ -215,9 +215,8 @@ const products: ProductCardProps[] = [
   },
   {
     name: "Smart Security",
-    description: "AI-powered security layer extension for file storage, built first for AVIntelligence.",
-    status: "development",
-    disabled: true,
+    description: "A defensive ingestion layer built into Smart Storage to screen, isolate, and safely route uploaded documents before extraction.",
+    href: "/products/smart-storage#smart-security",
     icon: <ShieldCheck className="h-5 w-5 text-primary" />,
   },
   {

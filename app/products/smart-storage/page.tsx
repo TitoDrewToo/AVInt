@@ -546,13 +546,13 @@ export default function SmartStorageProductPage() {
 
               {/* Smart Security */}
               <StaggerItem className="h-full">
-                <div className="glass-surface hover-bloom h-full rounded-2xl p-5">
+                <div id="smart-security" className="glass-surface hover-bloom h-full rounded-2xl p-5">
                   <div className="flex items-center gap-2">
                     <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
                     <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Smart Security</span>
                   </div>
-                  <p className="mt-3 text-sm font-medium text-foreground">Defensive screening layer</p>
-                  <p className="mt-1 text-xs text-muted-foreground">Uploads and sensitive actions are checked by a dedicated security service before deeper processing begins.</p>
+                  <p className="mt-3 text-sm font-medium text-foreground">A defensive ingestion layer built into Smart Storage</p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Uploads enter a controlled screening path before extraction. Files are checked for type, structure, and content safety, while documents that need attention can be isolated rather than sent deeper into the workflow.</p>
                 </div>
               </StaggerItem>
 

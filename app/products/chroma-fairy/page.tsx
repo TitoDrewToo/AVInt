@@ -1,4 +1,5 @@
 import { ArrowUpRight, CalendarDays, LayoutDashboard, Palette, Quote, Store, Workflow } from "lucide-react"
+import Link from "next/link"
 import { Navbar } from "@/components/navbar"
 import { Footer } from "@/components/footer"
 import { Button } from "@/components/ui/button"
@@ -147,6 +148,25 @@ export default function ChromaFairyProductPage() {
                   <p className="mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground">Designed and built for Samantha Ty by AVIntelligence, with the freedom to keep sales and commissions personal while the studio grows into its next chapter.</p>
                 </div>
                 <ExternalButton href="https://www.chromafairy.com/">Visit Chroma Fairy</ExternalButton>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="marketing-scroll-section marketing-scroll-section-final relative px-6">
+          <div className="relative mx-auto max-w-4xl">
+            <div className="glass-surface rounded-3xl p-8 text-center md:p-12">
+              <p className="text-sm font-medium uppercase tracking-wider text-primary">The studio behind the build</p>
+              <h2 className="mx-auto mt-6 max-w-3xl text-balance text-3xl font-semibold leading-[1.1] text-foreground md:text-5xl">Chroma Fairy is one example of what we build.</h2>
+              <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground">AVIntelligence is a systems and web development studio. Chroma Fairy was a client build; the same craft — custom apps, internal tools, and AI systems — is available for yours.</p>
+              <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
+                <Link href="/studio">
+                  <Button variant="outline" size="lg" className="glass-surface-sm rounded-xl hover:text-primary">
+                    Explore the studio
+                    <ArrowUpRight className="h-4 w-4" />
+                  </Button>
+                </Link>
+                <ExternalButton href="mailto:support@avintph.com">Start a project</ExternalButton>
               </div>
             </div>
           </div>

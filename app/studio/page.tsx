@@ -34,7 +34,7 @@ const capabilities = [
   {
     icon: <Database className="h-5 w-5" />,
     title: "Custom ingestion → intelligence systems",
-    description: "The engine behind Smart Storage, built for any workflow: turn your documents, forms, or data into structured, usable output. It doesn't have to be finance — we shape it to how your business actually runs.",
+    description: "The engine behind Smart Storage, built for any workflow: turn your documents, forms, or data into structured, usable output. We shape it to how your business actually runs.",
   },
   {
     icon: <LayoutDashboard className="h-5 w-5" />,
@@ -49,7 +49,7 @@ const capabilities = [
   {
     icon: <Workflow className="h-5 w-5" />,
     title: "AI workflow automation",
-    description: "Multi-step pipelines that validate, score, route, and act on your incoming data — then write results back and notify the right people. Like the PicklePal partner-onboarding review: applications checked by AI, decided, recorded, and emailed automatically.",
+    description: "Multi-step pipelines that validate, score, route, and act on your incoming data — then write results back and notify the right people. Like the PicklePal partner-onboarding review: Submissions checked by AI, decided, recorded, and emailed automatically.",
   },
 ]
 

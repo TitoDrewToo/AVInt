@@ -6,7 +6,7 @@ import { HomeDefaultSphere } from "@/components/home-default-sphere"
 import { Navbar } from "@/components/navbar"
 import { Button } from "@/components/ui/button"
 
-const studioDescription = "AVIntelligence is a systems and web development studio. We design and build web apps, internal tools, and AI systems end to end — agency-grade work at solo speed, without the agency overhead."
+const studioDescription = "AVIntelligence is a systems and web development studio. We design and build web apps, internal tools, and AI systems end to end — agency-grade work, without the agency overhead."
 
 export const metadata: Metadata = {
   title: "AVIntelligence Studio — Production Software, Built End to End",

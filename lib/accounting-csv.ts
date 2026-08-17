@@ -24,6 +24,11 @@ function normalizedCategory(value: string | null | undefined): string {
   return value?.trim() || "Uncategorized"
 }
 
+function normalizedDescription(row: AccountingExportRow, separator = " — ", maxLength?: number): string {
+  const description = `${normalizedVendor(row.vendor_name)}${separator}${normalizedCategory(row.expense_category)}`
+  return maxLength === undefined ? description : description.slice(0, maxLength)
+}
+
 function normalizedAmount(value: number | null | undefined): string {
   const amount = Math.abs(value ?? 0)
   return amount === 0 ? "0.00" : `-${amount.toFixed(2)}`
@@ -37,7 +42,7 @@ export function generateQuickBooksCSV(rows: AccountingExportRow[], layout: "3col
   const lines = [layout === "4col" ? "Date,Description,Credit,Debit" : "Date,Description,Amount"]
   for (const row of orderedRows(rows)) {
     const date = normalizedDate(row.document_date)
-    const description = csvCell(`${normalizedVendor(row.vendor_name)} — ${normalizedCategory(row.expense_category)}`)
+    const description = csvCell(normalizedDescription(row))
     const amount = Math.abs(row.total_amount ?? 0)
     if (layout === "4col") {
       lines.push([date, description, "", amount === 0 ? "" : amount.toFixed(2)].join(","))
@@ -49,13 +54,12 @@ export function generateQuickBooksCSV(rows: AccountingExportRow[], layout: "3col
 }
 
 export function generateXeroCSV(rows: AccountingExportRow[]): string {
-  const lines = ["Date,Amount,Payee,Description"]
+  const lines = ["Date,Description,Amount"]
   for (const row of orderedRows(rows)) {
     lines.push([
       normalizedDate(row.document_date),
+      csvCell(normalizedDescription(row, " - ", 500)),
       normalizedAmount(row.total_amount),
-      csvCell(normalizedVendor(row.vendor_name)),
-      csvCell(normalizedCategory(row.expense_category).slice(0, 500)),
     ].join(","))
   }
   return lines.join("\n")

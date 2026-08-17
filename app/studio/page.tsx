@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 import Link from "next/link"
-import { ArrowUpRight, Database, LayoutDashboard, Palette, Sparkles, Store, Workflow } from "lucide-react"
+import { ArrowUpRight, Database, LayoutDashboard, Palette, ShieldCheck, Sparkles, Store, Workflow } from "lucide-react"
 import { Footer } from "@/components/footer"
 import { HomeDefaultSphere } from "@/components/home-default-sphere"
 import { Navbar } from "@/components/navbar"
@@ -45,6 +45,11 @@ const capabilities = [
     icon: <Sparkles className="h-5 w-5" />,
     title: "Interactive & motion design",
     description: "Custom WebGL and reel-tier interaction when the work calls for something memorable, like Chroma Fairy's living painting.",
+  },
+  {
+    icon: <Workflow className="h-5 w-5" />,
+    title: "AI workflow automation",
+    description: "Multi-step pipelines that validate, score, route, and act on your incoming data — then write results back and notify the right people. Like the PicklePal partner-onboarding review: applications checked by AI, decided, recorded, and emailed automatically.",
   },
 ]
 
@@ -128,7 +133,7 @@ export default function StudioPage() {
               <p className="text-sm font-medium uppercase tracking-wider text-primary">What we build</p>
               <h2 className="mt-6 text-balance text-3xl font-semibold tracking-tight text-foreground md:text-5xl">Systems that fit the way your work actually moves.</h2>
             </div>
-            <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {capabilities.map((item) => (
                 <article key={item.title} className="glass-surface hover-bloom h-full rounded-2xl p-6">
                   <div className="glass-surface-sm flex h-10 w-10 items-center justify-center rounded-xl text-primary">{item.icon}</div>
@@ -145,7 +150,7 @@ export default function StudioPage() {
             <div className="glass-surface rounded-3xl p-8 md:p-12">
               <div className="flex items-start gap-4">
                 <div className="glass-surface-sm flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-primary">
-                  <Workflow className="h-5 w-5" />
+                  <ShieldCheck className="h-5 w-5" />
                 </div>
                 <div>
                   <p className="text-sm font-medium uppercase tracking-wider text-primary">How we work</p>

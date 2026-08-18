@@ -79,7 +79,7 @@ Fields to return:
       Vehicle Rental, Equipment Rental, Machinery Rental,                (→ Line 20a Rent Vehicles/Equipment)
       Rent, Coworking, Office Rent,                                      (→ Line 20b Rent Other Property)
       Repairs, Maintenance,                                              (→ Line 21)
-      Subscriptions, SaaS, Cloud Services, Software,                     (→ Line 22 Supplies)
+      Subscriptions, SaaS, Cloud Services, Software,                     (→ Line 27a Other expenses)
       Tax, Taxes, Business License, Permit,                              (→ Line 23 Taxes & Licenses)
       Travel, Accommodation, Airfare, Lodging,                           (→ Line 24a Travel)
       Meals, Business Meals, Client Meals,                               (→ Line 24b Meals, 50% deductible)

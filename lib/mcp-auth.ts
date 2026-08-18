@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js"
 import { createRemoteJWKSet, decodeJwt, jwtVerify, type JWTPayload } from "jose"
 
 import { MCP_OAUTH_ENABLED, mcpResourceUrl, workosIssuer } from "@/lib/mcp-config"
-import { computeEntitlement, type Entitlement } from "@/lib/entitlement"
+import { computeEntitlement, computeFirmClientEntitlement, type Entitlement } from "@/lib/entitlement"
 import { getWorkOSClient } from "@/lib/workos"
 
 export class OAuthAccountRequiredError extends Error {
@@ -85,5 +85,16 @@ export async function resolveOAuthToken(req: Request): Promise<{ userId: string 
 export async function entitlementForUser(userId: string): Promise<Entitlement> {
   const { data, error } = await supabaseAdmin.from("subscriptions").select("status, plan, current_period_end").eq("user_id", userId).maybeSingle()
   if (error) throw new Error(error.message)
-  return computeEntitlement(data)
+  const subscriptionEntitlement = computeEntitlement(data)
+  if (subscriptionEntitlement.isActive) return subscriptionEntitlement
+  const { data: firmClient, error: firmError } = await supabaseAdmin
+    .from("firm_clients")
+    .select("created_at, firms!inner(status)")
+    .eq("user_id", userId)
+    .eq("firms.status", "active")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (firmError) throw new Error(firmError.message)
+  return computeFirmClientEntitlement(firmClient?.created_at)
 }

@@ -20,9 +20,9 @@ export interface ScheduleCLineDef {
 // https://www.irs.gov/pub/irs-pdf/f1040sc.pdf
 //
 // Notes:
-// - Line 27b ("Other expenses") is the catch-all from Part V. Line 27a is the
-//   narrow Energy-Efficient Commercial Buildings deduction and is NOT a
-//   general "other" bucket — we do not route anything there.
+// - Software and SaaS are surfaced under Line 27a "Other expenses" by our
+//   default convention. The preparer can reclassify them to Line 18 when that
+//   better matches the firm's preferred transcription workflow.
 // - Entertainment is intentionally absent. The Tax Cuts and Jobs Act (TCJA,
 //   effective 2018+) eliminated the business entertainment deduction entirely.
 //   Only meals remain (50%, Line 24b). Entertainment categories fall through
@@ -43,12 +43,13 @@ export const SCHEDULE_C_LINES: ScheduleCLineDef[] = [
   { line: "Line 20a",label: "Rent (Vehicles/Equipment)", categories: ["Vehicle Rental", "Equipment Rental", "Machinery Rental"] },
   { line: "Line 20b",label: "Rent (Other Business Property)", categories: ["Rent", "Coworking", "Office Rent"] },
   { line: "Line 21", label: "Repairs & Maintenance", categories: ["Repairs", "Maintenance"] },
-  { line: "Line 22", label: "Supplies",              categories: ["Subscriptions", "SaaS", "Cloud Services", "Software"] },
+  { line: "Line 22", label: "Supplies",              categories: [] },
   { line: "Line 23", label: "Taxes & Licenses",      categories: ["Tax", "Taxes", "Business License", "Permit"] },
   { line: "Line 24a",label: "Travel",                categories: ["Travel", "Accommodation", "Airfare", "Lodging"] },
   { line: "Line 24b",label: "Meals (50% deductible)",categories: ["Meals", "Business Meals", "Client Meals"] },
   { line: "Line 25", label: "Utilities",             categories: ["Utilities", "Internet", "Phone", "Electricity"] },
   { line: "Line 26", label: "Wages",                 categories: ["Wages", "Employee Wages", "Payroll"] },
+  { line: "Line 27a",label: "Other Expenses",        categories: ["Subscriptions", "SaaS", "Cloud Services", "Software"] },
   { line: "Line 27b",label: "Other Expenses",        categories: ["Training", "Education", "Conferences", "Bank Fees", "Dues"] },
   { line: "Line 30", label: "Home Office",           categories: ["Home Office"] },
 ]
@@ -69,6 +70,18 @@ export function getScheduleCLine(category: string | null): string | null {
 
 export function getScheduleCLabel(lineNum: string): string {
   return SCHEDULE_C_LINES.find(l => l.line === lineNum)?.label ?? "Other"
+}
+
+export function getScheduleCLineDescription(lineNum: string): string {
+  const line = SCHEDULE_C_LINES.find(l => l.line === lineNum)
+  if (!line) return "No default mapping. Reclassify this item before relying on the proposed amount."
+  const categories = line.categories.length > 0 ? line.categories.join(", ") : "No default categories"
+  const convention = line.line === "Line 24b"
+    ? " Meals are shown raw and proposed deductible at 50%."
+    : line.line === "Line 27a"
+      ? " Our default places recurring software and SaaS here; reclassify to Line 18 when that better fits your firm's convention."
+      : ""
+  return `${line.label}: captures ${categories.toLowerCase()} in our mapping.${convention}`
 }
 
 // ── Deductibility Confidence ──────────────────────────────────────────────────

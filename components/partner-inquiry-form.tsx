@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from "react"
 import { ArrowUpRight } from "lucide-react"
-import { submitPartnerInquiry } from "@/app/for-accountants/actions"
+import { submitPartnerInquiry } from "@/app/partners/actions"
 import { Button } from "@/components/ui/button"
 
 type FormStatus = "idle" | "sending" | "success" | "error"

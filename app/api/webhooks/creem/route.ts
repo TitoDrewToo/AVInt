@@ -27,6 +27,14 @@ function getProductMap(): Record<string, { status: string; plan: string; isGiftC
   return map
 }
 
+function firmSeatProductId() {
+  return process.env.CREEM_FIRM_SEAT_PRODUCT_ID ?? ""
+}
+
+function metadataValue(obj: any, key: string) {
+  return obj?.metadata?.[key] ?? obj?.order?.metadata?.[key] ?? obj?.checkout?.metadata?.[key]
+}
+
 // Generates a human-readable gift code: AVINT-XXXX-XXXX-XXXX.
 // crypto.randomBytes so fallback codes are not predictable when Creem doesn't
 // return a license key. Rejection sampling avoids the modulo-bias that would
@@ -188,6 +196,29 @@ export async function POST(req: NextRequest) {
       const productName: string = obj.product?.name ?? ""
 
       console.log("checkout.completed — email:", redactEmail(email), "product:", productId)
+
+      if (productId === firmSeatProductId()) {
+        const firmId = metadataValue(obj, "firm_id")
+        const unitsRaw = metadataValue(obj, "units") ?? obj.order?.quantity ?? obj.quantity
+        const units = Number(unitsRaw)
+        const amountRaw = obj.order?.amount ?? obj.amount ?? null
+        const amountCents = Number.isSafeInteger(Number(amountRaw)) ? Number(amountRaw) : null
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(firmId)) || !Number.isSafeInteger(units) || units < 1 || units > 10000) {
+          console.warn("Invalid firm seat checkout metadata", { eventId, productId })
+          return NextResponse.json({ received: true })
+        }
+        const { data: seatResult, error: seatError } = await supabaseAdmin.rpc("record_firm_seat_purchase", {
+          p_firm_id: firmId,
+          p_event_id: eventId,
+          p_order_id: orderId,
+          p_product_id: productId,
+          p_units: units,
+          p_amount_cents: amountCents,
+        })
+        if (seatError || !seatResult?.ok) throw new Error(seatError?.message ?? "Firm seat purchase could not be recorded")
+        console.log("Firm seats recorded", { firmId, units, duplicate: seatResult.duplicate === true })
+        return NextResponse.json({ received: true })
+      }
 
       const mapping = getProductMap()[productId]
       if (!mapping) {

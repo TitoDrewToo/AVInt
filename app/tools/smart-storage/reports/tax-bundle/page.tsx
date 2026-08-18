@@ -10,7 +10,7 @@ import { AuthGuardModal } from "@/components/auth-guard-modal"
 import type { Session } from "@supabase/supabase-js"
 import {
   ArrowLeft, Download, FolderOpen, AlertTriangle, CheckCircle2,
-  XCircle, Copy, FileWarning, Ban, Printer, Archive, Save, Loader2,
+  XCircle, Copy, FileWarning, Ban, Printer, Archive, Save, Loader2, Info,
 } from "lucide-react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
@@ -20,8 +20,8 @@ import { printReportOutput } from "@/lib/report-print"
 import { trackActivationEvent } from "@/lib/analytics"
 import {
   getScheduleCLine,
+  getScheduleCLineDescription,
   getDeductStatus,
-  getDeductibleAmount,
   getReviewReason,
   getSubstantiationNotes,
   getTaxRowAmount,
@@ -51,6 +51,30 @@ function formatDate(dateStr: string) {
   return new Date(dateStr + "T00:00:00").toLocaleDateString("en-US", {
     year: "numeric", month: "short", day: "2-digit",
   })
+}
+
+function InfoTip({ label, text }: { label: string; text: string }) {
+  return (
+    <Tip text={text}>
+      <button type="button" aria-label={`More information about ${label}`} className="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground/70 transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary">
+        <Info className="h-3 w-3" />
+      </button>
+    </Tip>
+  )
+}
+
+function readinessDescription(label: string): string {
+  if (label === "Income documents uploaded") return "At least one income document is present. Add the missing statement or payslip if this is not expected."
+  if (label === "Expense documents uploaded") return "At least one expense document is present. Add receipts or invoices before handing the packet to a preparer."
+  if (label === "Single currency across records") return "All rows are in one recognized currency, so the report does not need an FX decision. Convert or separately review excluded currencies."
+  if (label === "No uncategorized expenses") return "Every expense has a category that maps to a Schedule C line. Assign a category to any uncategorized row to clear this check."
+  if (label === "No items pending review") return "No expense is below the confidence threshold or otherwise unmapped. Review flagged rows and save a category when appropriate."
+  if (label === "No potential duplicates") return "No same-vendor, same-date, same-amount cluster was detected. Confirm or remove duplicate source documents if this fails."
+  if (label === "No month gaps in records") return "Every month between the first and last expense has at least one record. Confirm missing months are intentional."
+  if (label === "Meals (Line 24b) adjusted to 50%") return "The report applied its 50% proposed-deductible convention to meal rows. Confirm business purpose and attendees."
+  if (label === "Schedule C has a business-income base") return "A Schedule C-style net requires business income. Add or classify the relevant income statement before relying on this figure."
+  if (label.includes("missing AI classification")) return "This legacy income row is using a document-type fallback. Re-normalize it so the income source is explicit."
+  return "This check describes the report's readiness state. Resolve the highlighted rows or confirm the exception with the preparer."
 }
 
 const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
@@ -836,6 +860,7 @@ function TaxBundleContent() {
                           : <XCircle className="h-3.5 w-3.5 shrink-0 text-red-500" />
                         }
                         <span className={check.pass ? "text-muted-foreground" : "text-foreground"}>{check.label}</span>
+                        <InfoTip label={check.label} text={readinessDescription(check.label)} />
                       </div>
                     ))}
                   </div>
@@ -954,6 +979,62 @@ function TaxBundleContent() {
                 </div>
               )}
 
+              {/* ── Preparer Summary ── */}
+              <div className="print:break-inside-avoid">
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div>
+                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                      Preparer Summary
+                    </p>
+                    <p className="text-xs leading-relaxed text-muted-foreground">
+                      A one-page transcription surface for the Schedule C lines currently present in this packet.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-3 text-[10px] text-muted-foreground">
+                    <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-green-500" /> clean <InfoTip label="clean" text="A mapped row above the review-confidence threshold. It is still a proposal for preparer review." /></span>
+                    <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-yellow-500" /> needs review <InfoTip label="needs review" text="A mapped row with low extraction confidence or another review condition. It remains included in the proposed deductible total." /></span>
+                    <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-muted-foreground" /> uncategorized <InfoTip label="uncategorized" text="A row without a Schedule C category. Its raw amount is shown for reconciliation but proposed deductible is zero." /></span>
+                  </div>
+                </div>
+                <div className="mt-4 overflow-x-auto rounded border border-border">
+                  <table className="w-full text-xs">
+                    <thead className="border-b border-border bg-muted/20 text-left text-[10px] uppercase tracking-wider text-muted-foreground">
+                      <tr>
+                        <th className="px-3 py-2 font-medium">Line</th>
+                        <th className="px-3 py-2 font-medium">IRS category</th>
+                        <th className="px-3 py-2 text-right font-medium">Raw</th>
+                        <th className="px-3 py-2 text-right font-medium">Proposed deductible <InfoTip label="Proposed Deductible" text="Our pre-review proposal after the report's conventions, including the 50% meals haircut. The preparer decides whether and how it is used." /></th>
+                        <th className="px-3 py-2 text-right font-medium">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/50">
+                      {sortedScheduleC.map((sc) => (
+                        <tr key={sc.line}>
+                          <td className="px-3 py-2 font-mono text-muted-foreground">
+                            <span className="inline-flex items-center gap-1">{sc.line}<InfoTip label={sc.line} text={getScheduleCLineDescription(sc.line)} /></span>
+                          </td>
+                          <td className="px-3 py-2 text-foreground">{sc.label}</td>
+                          <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground">{fmt(sc.grossAmount, currency)}</td>
+                          <td className="px-3 py-2 text-right font-mono tabular-nums text-foreground">{fmt(sc.amount, currency)}</td>
+                          <td className="px-3 py-2 text-right">{sc.reviewCount > 0 ? <span className="text-yellow-500">{sc.reviewCount} review</span> : <span className="text-green-500">clean</span>}</td>
+                        </tr>
+                      ))}
+                      <tr className="border-t border-border font-semibold">
+                        <td className="px-3 py-2" colSpan={2}>Totals</td>
+                        <td className="px-3 py-2 text-right font-mono tabular-nums">{fmt(sortedScheduleC.reduce((sum, sc) => sum + sc.grossAmount, 0), currency)}</td>
+                        <td className="px-3 py-2 text-right font-mono tabular-nums">{fmt(deductibleExpenses, currency)}</td>
+                        <td />
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div className="mt-3 grid gap-2 rounded border border-border/60 bg-muted/10 p-3 text-xs sm:grid-cols-3">
+                  <span>Business Income <strong className="float-right font-mono">{fmt(selfEmploymentGross, currency)}</strong></span>
+                  <span>Proposed Deductible <strong className="float-right font-mono">{fmt(deductibleExpenses, currency)}</strong></span>
+                  <span>Estimated Net <InfoTip label="Estimated Net" text="Business income minus proposed deductible expenses. This is a Schedule-C-style estimate, not Schedule C Line 31 net profit." /><strong className="float-right font-mono">{estimatedNetScheduleC >= 0 ? fmt(estimatedNetScheduleC, currency) : `(${fmt(Math.abs(estimatedNetScheduleC), currency)})`}</strong></span>
+                </div>
+              </div>
+
               {/* ── Summary Strip (Schedule C only) ── */}
               <div>
                 <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
@@ -986,7 +1067,7 @@ function TaxBundleContent() {
                   },
                 ].map(item => (
                   <div key={item.label} className="px-5 py-4">
-                    <p className="text-[10px] uppercase tracking-widest text-muted-foreground">{item.label}</p>
+                    <p className="inline-flex items-center gap-1 text-[10px] uppercase tracking-widest text-muted-foreground">{item.label}{item.label.startsWith("Estimated Net") ? <InfoTip label="Estimated Net" text="Business income minus proposed deductible expenses. This is a Schedule-C-style estimate, not Schedule C Line 31 net profit." /> : item.label.startsWith("Proposed Deductible") ? <InfoTip label="Proposed Deductible" text="Our pre-review proposal after the report's conventions. The preparer decides whether and how it is used." /> : null}</p>
                     <p className={`mt-1.5 font-mono text-base font-medium tabular-nums ${item.loss ? "text-destructive" : "text-foreground"}`}>
                       {item.value}
                     </p>
@@ -1161,7 +1242,7 @@ function TaxBundleContent() {
                         <th className="pb-2 font-medium">Type</th>
                         <th className="pb-2 text-right font-medium">Gross Income</th>
                         <th className="pb-2 text-right font-medium">Net Income</th>
-                        <th className="pb-2 text-right font-medium">Payroll Deductions</th>
+                        <th className="pb-2 text-right font-medium">Payroll Deductions <InfoTip label="Payroll Deductions" text="Gross minus net on payslip rows. This is an informational differential, not verified withholding." /></th>
                         <th className="pb-2 text-right font-medium">Docs</th>
                       </tr>
                     </thead>
@@ -1272,7 +1353,7 @@ function TaxBundleContent() {
                         <th className="pb-2 font-medium">Line</th>
                         <th className="pb-2 font-medium">IRS Category</th>
                         <th className="pb-2 text-right font-medium">Raw</th>
-                        <th className="pb-2 text-right font-medium">Proposed Deductible</th>
+                        <th className="pb-2 text-right font-medium">Proposed Deductible <InfoTip label="Proposed Deductible" text="Our pre-review proposal after the report's conventions, including the 50% meals haircut. The preparer decides whether and how it is used." /></th>
                         <th className="pb-2 text-right font-medium">Items</th>
                         <th className="pb-2 text-right font-medium">Status</th>
                       </tr>
@@ -1280,7 +1361,9 @@ function TaxBundleContent() {
                     <tbody className="divide-y divide-border/50">
                       {sortedScheduleC.map(sc => (
                         <tr key={sc.line}>
-                          <td className="py-2.5 font-mono text-xs text-muted-foreground">{sc.line}</td>
+                          <td className="py-2.5 font-mono text-xs text-muted-foreground">
+                            <span className="inline-flex items-center gap-1">{sc.line}<InfoTip label={sc.line} text={getScheduleCLineDescription(sc.line)} /></span>
+                          </td>
                           <td className="py-2.5 text-foreground">
                             {sc.label}
                             {sc.line === "Line 24b" && (
@@ -1309,6 +1392,18 @@ function TaxBundleContent() {
                           </td>
                         </tr>
                       ))}
+                      {uncategorizedItems.length > 0 && (
+                        <tr className="bg-muted/10 text-muted-foreground">
+                          <td className="py-2.5 font-mono text-xs">—</td>
+                          <td className="py-2.5">
+                            <span className="inline-flex items-center gap-1">Uncategorized (excluded from deductible)<InfoTip label="uncategorized" text="These expenses have no Schedule C category in our mapping. Their raw amount is included for reconciliation, but proposed deductible is $0 until a preparer reclassifies them." /></span>
+                          </td>
+                          <td className="py-2.5 text-right font-mono tabular-nums">{fmt(uncategorizedItems.reduce((sum, row) => sum + (row.total_amount ?? 0), 0), currency)}</td>
+                          <td className="py-2.5 text-right font-mono tabular-nums">{fmt(0, currency)}</td>
+                          <td className="py-2.5 text-right">{uncategorizedItems.length}</td>
+                          <td className="py-2.5 text-right"><span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px]">excluded</span></td>
+                        </tr>
+                      )}
                     </tbody>
                     <tfoot>
                       <tr className="border-t-2 border-border font-semibold">
@@ -1320,7 +1415,7 @@ function TaxBundleContent() {
                         <td className="pt-2.5 text-right font-mono tabular-nums text-foreground">
                           ({fmt(deductibleExpenses, currency)})
                         </td>
-                        <td className="pt-2.5 text-right text-muted-foreground">{expenseRows.length - uncategorizedItems.length}</td>
+                        <td className="pt-2.5 text-right text-muted-foreground">{expenseRows.length}</td>
                         <td className="pt-2.5" />
                       </tr>
                     </tfoot>
@@ -1475,7 +1570,7 @@ function TaxBundleContent() {
                         <>
                           <tr><td colSpan={2} className="py-2" /></tr>
                           <tr>
-                            <td className="py-1.5 text-foreground/80">Payroll Deductions (Gross − Net, informational)</td>
+                            <td className="py-1.5 text-foreground/80">Payroll Deductions (Gross − Net, informational) <InfoTip label="Payroll Deductions" text="Gross minus net on payslip rows. This is an informational differential, not verified withholding." /></td>
                             <td className="py-1.5 text-right font-mono tabular-nums text-muted-foreground">
                               ({fmt(wagePayrollDeductions, currency)})
                             </td>
@@ -1498,7 +1593,7 @@ function TaxBundleContent() {
               {rows.length > 0 && (
                 <div className="border-t border-border pt-6">
                   <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                    Audit Trail — Supporting Documents ({rows.length})
+                    Audit Trail — Supporting Documents ({incomeRows.length + expenseRows.length} listed{excludedNonUsdRows.length > 0 ? `; ${excludedNonUsdRows.length} excluded non-USD` : ""})
                   </p>
                   <table className="w-full text-xs">
                     <thead>

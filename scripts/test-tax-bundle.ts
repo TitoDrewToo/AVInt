@@ -132,7 +132,7 @@ function reconcile(name: string, rows: TaxRow[]) {
   const rows: TaxRow[] = [
     businessIncome({ gross: 5000 }),
     expense({ amount: 300, category: "Office" }),          // Line 18
-    expense({ amount: 200, category: "Subscriptions" }),   // Line 22
+    expense({ amount: 200, category: "Subscriptions" }),   // Line 27a
   ]
   const s = reconcile("clean-baseline", rows)
 
@@ -408,7 +408,7 @@ function reconcile(name: string, rows: TaxRow[]) {
   for (const [line, amount] of Object.entries({
     "Line 8": 450, "Line 9": 85, "Line 11": 2000, "Line 13": 2499,
     "Line 15": 1200, "Line 17": 850, "Line 18": 125, "Line 20b": 600,
-    "Line 22": 45, "Line 24a": 650, "Line 24b": 200, "Line 25": 120,
+    "Line 27a": 45, "Line 24a": 650, "Line 24b": 200, "Line 25": 120,
     "Line 27b": 300,
   })) {
     assert(`stress: ${line} deductible = ${amount}`, lineAmount(line) === amount)
@@ -456,7 +456,7 @@ function csvLacks(csv: string, needle: string, label: string) {
   csvHas(csv, "File ID,Source File,Zip Path", "csv-clean: accountant traceability columns present")
   csvHas(csv, "SCHEDULE C SUMMARY", "csv-clean: summary header present")
   csvHas(csv, `Line 18,"Office Expense",300.00,300.00`, "csv-clean: Line 18 raw+deductible")
-  csvHas(csv, `Line 22,"Supplies",200.00,200.00`, "csv-clean: Line 22 raw+deductible")
+  csvHas(csv, `Line 27a,"Other Expenses",200.00,200.00`, "csv-clean: Line 27a raw+deductible")
   csvHas(csv, `,"TOTAL (all documented expenses, raw)",500.00,`, "csv-clean: raw total")
   csvHas(csv, `,"PROPOSED DEDUCTIBLE EXPENSES (Schedule C)",,500.00,500.00,0.00`, "csv-clean: proposed deductible total")
   csvHas(csv, `,"Business Income (income statements — Schedule C base)",5000.00,`,

@@ -326,11 +326,11 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
               Studio
             </Link>
             <Link
-              href="/for-accountants"
+              href="/partners"
               className="text-sm font-medium text-foreground/75 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
               style={geistFontStyle}
             >
-              For Accountants
+              Partners
             </Link>
               </>
             )}
@@ -437,12 +437,12 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
                 Studio
               </Link>
               <Link
-                href="/for-accountants"
+                href="/partners"
                 className="text-sm text-foreground"
                 style={geistFontStyle}
                 onClick={() => setMobileMenuOpen(false)}
               >
-                For Accountants
+                Partners
               </Link>
             </div>
           </div>

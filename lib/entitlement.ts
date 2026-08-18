@@ -120,6 +120,27 @@ export function computeEntitlement(row: EntitlementRow | null | undefined): Enti
   }
 }
 
+/** Annual Pro-equivalent access funded by a firm's consumed seat. */
+export function computeFirmClientEntitlement(createdAt: string | null | undefined, now = new Date()): Entitlement {
+  if (!createdAt) return INACTIVE
+  const start = new Date(createdAt)
+  if (Number.isNaN(start.getTime())) return INACTIVE
+  const expires = new Date(start)
+  expires.setUTCFullYear(expires.getUTCFullYear() + 1)
+  if (expires.getTime() <= now.getTime()) return { ...INACTIVE, status: "firm_expired", expiresAt: expires.toISOString() }
+  return {
+    status: "firm_pro",
+    isActive: true,
+    isPro: true,
+    isBusiness: false,
+    isDayPass: false,
+    isGiftCode: false,
+    expiresAt: expires.toISOString(),
+    plan: "firm-seat",
+    tier: "pro",
+  }
+}
+
 export function isUnlimitedEntitlement(entitlement: Pick<Entitlement, "expiresAt">): boolean {
   return !!entitlement.expiresAt && new Date(entitlement.expiresAt).getFullYear() >= 2099
 }

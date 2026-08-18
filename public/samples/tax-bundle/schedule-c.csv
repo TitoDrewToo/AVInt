@@ -1,0 +1,36 @@
+"ASSUMPTION: income_statement rows are treated as self-employment/business income (Schedule C base). Non-business income_statement documents (e.g. investment or interest statements) would make the Schedule-C-style net incorrect — verify with a preparer."
+
+"Currency",USD
+
+Schedule C Line,IRS Category,Our Category,Vendor,Document Type,Date,Period Start,Period End,Currency,Raw Amount,Proposed Deductible Amount,Status,Review Reason,Substantiation Notes,Confidence,Income Source,Classification Rationale,File ID,Source File,Zip Path
+Line 8,"Advertising","Advertising","Meta Ads","receipt",2026-01-15,,,USD,420.00,420.00,deductible,"","",0.98,,"Demo fixture: explicitly classified and reviewed.",demo-5,"2026-01-15-advertising.pdf",""
+Line 8,"Advertising","Marketing","LinkedIn Ads","receipt",2026-10-22,,,USD,380.00,380.00,deductible,"","",0.98,,"Demo fixture: explicitly classified and reviewed.",demo-14,"2026-10-22-marketing.pdf",""
+Line 11,"Contract Labor","Contract Labor","Mason Reed Consulting","invoice",2026-02-12,,,USD,1200.00,1200.00,deductible,"","",0.98,,"Demo fixture: explicitly classified and reviewed.",demo-6,"2026-02-12-contract-labor.pdf",""
+Line 15,"Insurance","Insurance","Hiscox","invoice",2026-05-05,,,USD,900.00,900.00,deductible,"","",0.98,,"Demo fixture: explicitly classified and reviewed.",demo-9,"2026-05-05-insurance.pdf",""
+Line 17,"Legal & Professional","Accounting","Clear Ledger CPA","invoice",2026-11-11,,,USD,750.00,750.00,deductible,"","",0.98,,"Demo fixture: explicitly classified and reviewed.",demo-15,"2026-11-11-accounting.pdf",""
+Line 18,"Office Expense","Office Supplies","Staples","invoice",2026-04-08,,,USD,260.00,260.00,deductible,"","",0.98,,"Demo fixture: explicitly classified and reviewed.",demo-8,"2026-04-08-office.pdf",""
+Line 24a,"Travel","Airfare","Delta Air Lines","receipt",2026-06-20,,,USD,640.00,640.00,deductible,"","",0.98,,"Demo fixture: explicitly classified and reviewed.",demo-10,"2026-06-20-travel.pdf",""
+Line 24b,"Meals (50% deductible)","Business Meals","Union Square Cafe","receipt",2026-07-14,,,USD,220.00,110.00,deductible,"","Meals: confirm business purpose and attendees; 50% limit applied.",0.98,,"Demo fixture: explicitly classified and reviewed.",demo-11,"2026-07-14-meals.pdf",""
+Line 25,"Utilities","Internet","Verizon Business","invoice",2026-08-10,,,USD,120.00,120.00,deductible,"","",0.98,,"Demo fixture: explicitly classified and reviewed.",demo-12,"2026-08-10-internet.pdf",""
+Line 27a,"Other Expenses","Software","Figma","receipt",2026-03-18,,,USD,180.00,180.00,deductible,"","",0.98,,"Demo fixture: explicitly classified and reviewed.",demo-7,"2026-03-18-software.pdf",""
+Line 27a,"Other Expenses","Cloud Services","AWS","receipt",2026-12-03,,,USD,210.00,210.00,deductible,"","",0.98,,"Demo fixture: explicitly classified and reviewed.",demo-16,"2026-12-03-cloud-services.pdf",""
+Line 27b,"Other Expenses","Training","Coursera","receipt",2026-09-19,,,USD,300.00,300.00,deductible,"","",0.98,,"Demo fixture: explicitly classified and reviewed.",demo-13,"2026-09-19-training.pdf",""
+
+SCHEDULE C SUMMARY
+Line,Category,Raw Total,Proposed Deductible Total,Clean Proposed Deductible,Needs-Review Proposed Deductible
+Line 8,"Advertising",800.00,800.00,800.00,0.00
+Line 11,"Contract Labor",1200.00,1200.00,1200.00,0.00
+Line 15,"Insurance",900.00,900.00,900.00,0.00
+Line 17,"Legal & Professional",750.00,750.00,750.00,0.00
+Line 18,"Office Expense",260.00,260.00,260.00,0.00
+Line 24a,"Travel",640.00,640.00,640.00,0.00
+Line 24b,"Meals (50% deductible)",220.00,110.00,110.00,0.00
+Line 25,"Utilities",120.00,120.00,120.00,0.00
+Line 27a,"Other Expenses",390.00,390.00,390.00,0.00
+Line 27b,"Other Expenses",300.00,300.00,300.00,0.00
+,"TOTAL (all documented expenses, raw)",5580.00,
+,"PROPOSED DEDUCTIBLE EXPENSES (Schedule C)",,5470.00,5470.00,0.00
+,"  of which Meals (Line 24b) raw",220.00,110.00
+
+,"Business Income (income statements — Schedule C base)",66000.00,
+,"Estimated Net (Schedule C, before adjustments)",60530.00,

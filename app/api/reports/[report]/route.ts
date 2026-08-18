@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
 
-import { computeEntitlement } from "@/lib/entitlement"
+import { computeEntitlement, computeFirmClientEntitlement } from "@/lib/entitlement"
 import { generateQuickBooksCSV, generateXeroCSV } from "@/lib/accounting-csv"
 import { overlapsDateRange } from "@/lib/report-utils"
 import { serverError } from "@/lib/api-error"
@@ -34,7 +34,19 @@ async function authorizeReportRequest(req: NextRequest, reportKey: string, expor
     return { error: serverError(subErr, { route: "reports/[report]", stage: "entitlement", userId: user.id }) }
   }
 
-  const ent = computeEntitlement(subRow)
+  let ent = computeEntitlement(subRow)
+  if (!ent.isActive) {
+    const { data: firmClient, error: firmError } = await supabaseAdmin
+      .from("firm_clients")
+      .select("created_at, firms!inner(status)")
+      .eq("user_id", user.id)
+      .eq("firms.status", "active")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (firmError) return { error: serverError(firmError, { route: "reports/[report]", stage: "firm_entitlement", userId: user.id }) }
+    ent = computeFirmClientEntitlement(firmClient?.created_at)
+  }
   if (exportFormat && !["quickbooks", "xero"].includes(exportFormat)) {
     return { error: NextResponse.json({ error: "Unsupported export format" }, { status: 400 }) }
   }

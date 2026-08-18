@@ -15,7 +15,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Smart Storage for Accounting Firms | AVIntelligence",
     description: pageDescription,
-    url: "https://www.avintph.com/for-accountants",
+    url: "https://www.avintph.com/partners",
     siteName: "AVIntelligence",
     type: "website",
   },
@@ -86,7 +86,7 @@ export default function ForAccountantsPage() {
                 provider: { "@type": "Organization", name: "AVIntelligence", url: "https://www.avintph.com" },
                 serviceType: "Accounting workflow organization and document intelligence",
                 audience: { "@type": "Audience", audienceType: "Accounting firms" },
-                url: "https://www.avintph.com/for-accountants",
+                url: "https://www.avintph.com/partners",
               },
             ],
           }),
@@ -170,17 +170,17 @@ export default function ForAccountantsPage() {
           <div className="relative mx-auto max-w-5xl">
             <div className="glass-surface rounded-3xl p-8 md:p-12">
               <p className="text-sm font-medium uppercase tracking-wider text-primary">How it works</p>
-              <h2 className="mt-6 max-w-3xl text-balance text-3xl font-semibold tracking-tight text-foreground md:text-5xl">Start light. Build the workflow when it proves itself.</h2>
+              <h2 className="mt-6 max-w-3xl text-balance text-3xl font-semibold tracking-tight text-foreground md:text-5xl">Give every client a structured path into your firm.</h2>
               <div className="mt-12 grid gap-4 md:grid-cols-2">
                 <article className="glass-surface-sm rounded-2xl p-6">
                   <div className="flex items-center gap-3 text-primary"><span className="flex h-8 w-8 items-center justify-center rounded-full border border-primary/40 text-sm">1</span><ArrowRight className="h-4 w-4" /></div>
-                  <h3 className="mt-6 font-medium text-foreground">Start with a referral link</h3>
-                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">Give clients a simple path into Smart Storage with no commitment from your firm while you learn how adoption fits your intake process.</p>
+                  <h3 className="mt-6 font-medium text-foreground">Provision a co-branded intake link</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">Share one firm-branded link with your clients so each enrolled account is connected to your firm from its first upload.</p>
                 </article>
                 <article className="glass-surface-sm rounded-2xl p-6">
                   <div className="flex items-center gap-3 text-primary"><span className="flex h-8 w-8 items-center justify-center rounded-full border border-primary/40 text-sm">2</span><LockKeyhole className="h-4 w-4" /></div>
-                  <h3 className="mt-6 font-medium text-foreground">Grow into bulk seats</h3>
-                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">Bundle the workflow into your intake fee, keep your margin, and lock in a founding-partner introductory rate for your term.</p>
+                  <h3 className="mt-6 font-medium text-foreground">Add annual client seats</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">Buy the capacity your firm needs, bundle it into your intake fee, keep your margin, and lock in a founding-partner introductory rate for your term.</p>
                 </article>
               </div>
             </div>
@@ -214,7 +214,7 @@ export default function ForAccountantsPage() {
             <div className="mb-10 max-w-2xl">
               <p className="text-sm font-medium uppercase tracking-wider text-primary">Partner with us</p>
               <h2 className="mt-6 text-balance text-3xl font-semibold tracking-tight text-foreground md:text-5xl">Tell us how your firm works today.</h2>
-              <p className="mt-6 text-lg leading-relaxed text-muted-foreground">We’ll help you find the right starting point, whether that is a referral link for a few clients or a broader intake workflow.</p>
+              <p className="mt-6 text-lg leading-relaxed text-muted-foreground">We’ll help you provision the right seat capacity and co-branded intake workflow for your firm.</p>
             </div>
             <PartnerInquiryForm />
           </div>

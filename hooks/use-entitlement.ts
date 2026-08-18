@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import type { Session } from "@supabase/supabase-js"
 import { supabase } from "@/lib/supabase"
-import { computeEntitlement, type Entitlement } from "@/lib/entitlement"
+import { computeEntitlement, computeFirmClientEntitlement, type Entitlement } from "@/lib/entitlement"
 
 const INACTIVE: Entitlement = {
   status: "none",
@@ -45,9 +45,22 @@ export function useEntitlement(session: Session | null | undefined): UseEntitlem
       .select("status, plan, current_period_end")
       .eq("user_id", userId)
       .maybeSingle()
-      .then(({ data }) => {
+      .then(async ({ data }) => {
         if (cancelled) return
-        setEntitlement(computeEntitlement(data))
+        const subscriptionEntitlement = computeEntitlement(data)
+        if (subscriptionEntitlement.isActive) {
+          setEntitlement(subscriptionEntitlement)
+          setLoading(false)
+          return
+        }
+        const { data: firmClients } = await supabase
+          .from("firm_clients")
+          .select("created_at")
+          .eq("user_id", userId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+        if (cancelled) return
+        setEntitlement(computeFirmClientEntitlement(firmClients?.[0]?.created_at))
         setLoading(false)
       })
 

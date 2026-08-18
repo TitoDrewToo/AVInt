@@ -57,6 +57,13 @@ const nextConfig = {
       },
     ]
   },
+  async redirects() {
+    return [
+      { source: "/for-accountants", destination: "/partners", permanent: true },
+      { source: "/cpa/:slug", destination: "/partner/:slug", permanent: true },
+      { source: "/cpa/:slug/dashboard", destination: "/partner/:slug/dashboard", permanent: true },
+    ]
+  },
 }
 
 export default nextConfig

@@ -8,7 +8,7 @@ const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY")!
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!
-const PRESCAN_PROVIDERS = providerChain("PRESCAN", "gemini", "openai")
+const PRESCAN_PROVIDERS = providerChain("PRESCAN", "openai", "gemini")
 const SMART_SECURITY_URL = (Deno.env.get("SMART_SECURITY_URL") ?? "").replace(/\/+$/, "")
 const SMART_SECURITY_API_KEY = Deno.env.get("SMART_SECURITY_API_KEY") ?? ""
 const SMART_SECURITY_REQUIRED = (Deno.env.get("SMART_SECURITY_REQUIRED") ?? "false").toLowerCase() === "true"

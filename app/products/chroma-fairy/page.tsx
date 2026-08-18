@@ -166,7 +166,10 @@ export default function ChromaFairyProductPage() {
                     <ArrowUpRight className="h-4 w-4" />
                   </Button>
                 </Link>
-                <ExternalButton href="mailto:support@avintph.com">Start a project</ExternalButton>
+                <div className="flex flex-col items-center gap-1">
+                  <ExternalButton href="mailto:support@avintph.com">Start a project</ExternalButton>
+                  <span className="select-text text-xs text-muted-foreground">or email support@avintph.com</span>
+                </div>
               </div>
             </div>
           </div>

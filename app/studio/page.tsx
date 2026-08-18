@@ -119,7 +119,10 @@ export default function StudioPage() {
               </h1>
               <p className="mt-7 max-w-3xl text-lg leading-relaxed text-muted-foreground md:text-xl">{studioDescription}</p>
               <div className="mt-10 flex flex-col items-start gap-4 sm:flex-row">
-                <ExternalButton href="mailto:support@avintph.com">Start a project</ExternalButton>
+                <div className="flex flex-col items-start gap-1">
+                  <ExternalButton href="mailto:support@avintph.com">Start a project</ExternalButton>
+                  <span className="select-text text-xs text-muted-foreground">or email support@avintph.com</span>
+                </div>
                 <InternalButton href="/products/chroma-fairy">See a live build</InternalButton>
               </div>
             </div>
@@ -194,7 +197,10 @@ export default function StudioPage() {
             <div className="glass-surface rounded-3xl p-8 text-center md:p-12">
               <p className="text-sm font-medium uppercase tracking-wider text-primary">Have something you want built?</p>
               <div className="mt-8 flex justify-center">
-                <ExternalButton href="mailto:support@avintph.com">Start a project</ExternalButton>
+                <div className="flex flex-col items-center gap-1">
+                  <ExternalButton href="mailto:support@avintph.com">Start a project</ExternalButton>
+                  <span className="select-text text-xs text-muted-foreground">or email support@avintph.com</span>
+                </div>
               </div>
             </div>
           </div>

@@ -31,7 +31,11 @@ export function FirmIntake({ slug, firmName }: { slug: string; firmName: string 
     setStatus("working")
     setMessage("")
     const result = mode === "sign-up"
-      ? await supabase.auth.signUp({ email, password })
+      ? await supabase.auth.signUp({
+          email,
+          password,
+          options: { emailRedirectTo: `${window.location.origin}/partner/${slug}` },
+        })
       : await supabase.auth.signInWithPassword({ email, password })
     if (result.error) {
       setStatus("error")

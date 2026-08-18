@@ -4,6 +4,7 @@ import { ArrowUpRight, Database, LayoutDashboard, Palette, ShieldCheck, Sparkles
 import { Footer } from "@/components/footer"
 import { HomeDefaultSphere } from "@/components/home-default-sphere"
 import { Navbar } from "@/components/navbar"
+import { StudioInquiryForm } from "@/components/studio-inquiry-form"
 import { Button } from "@/components/ui/button"
 
 const studioDescription = "AVIntelligence is a systems and web development studio. We design and build web apps, internal tools, and AI systems end to end — agency-grade work, without the agency overhead."
@@ -52,21 +53,6 @@ const capabilities = [
     description: "Multi-step pipelines that validate, score, route, and act on your incoming data — then write results back and notify the right people. Like the PicklePal partner-onboarding review: Submissions checked by AI, decided, recorded, and emailed automatically.",
   },
 ]
-
-function ExternalButton({ href, children, variant = "default" }: { href: string; children: React.ReactNode; variant?: "default" | "outline" }) {
-  return (
-    <a href={href} target="_blank" rel="noopener noreferrer">
-      <Button
-        variant={variant}
-        size="lg"
-        className={`rounded-xl ${variant === "outline" ? "glass-surface-sm hover:text-primary" : "bg-primary text-primary-foreground hover:bg-primary/90"}`}
-      >
-        {children}
-        <ArrowUpRight className="h-4 w-4" />
-      </Button>
-    </a>
-  )
-}
 
 function InternalButton({ href, children }: { href: string; children: React.ReactNode }) {
   return (
@@ -120,7 +106,7 @@ export default function StudioPage() {
               <p className="mt-7 max-w-3xl text-lg leading-relaxed text-muted-foreground md:text-xl">{studioDescription}</p>
               <div className="mt-10 flex flex-col items-start gap-4 sm:flex-row">
                 <div className="flex flex-col items-start gap-1">
-                  <ExternalButton href="mailto:support@avintph.com">Start a project</ExternalButton>
+                  <a href="#studio-inquiry"><Button size="lg" className="rounded-xl bg-primary text-primary-foreground hover:bg-primary/90">Start a project<ArrowUpRight className="h-4 w-4" /></Button></a>
                   <span className="select-text text-xs text-muted-foreground">or email support@avintph.com</span>
                 </div>
                 <InternalButton href="/products/chroma-fairy">See a live build</InternalButton>
@@ -192,14 +178,13 @@ export default function StudioPage() {
           </div>
         </section>
 
-        <section className="marketing-scroll-section marketing-scroll-section-final relative px-6">
+        <section id="studio-inquiry" className="marketing-scroll-section marketing-scroll-section-final relative scroll-mt-24 px-6">
           <div className="relative mx-auto max-w-4xl">
             <div className="glass-surface rounded-3xl p-8 text-center md:p-12">
               <p className="text-sm font-medium uppercase tracking-wider text-primary">Have something you want built?</p>
               <div className="mt-8 flex justify-center">
                 <div className="flex flex-col items-center gap-1">
-                  <ExternalButton href="mailto:support@avintph.com">Start a project</ExternalButton>
-                  <span className="select-text text-xs text-muted-foreground">or email support@avintph.com</span>
+                  <StudioInquiryForm />
                 </div>
               </div>
             </div>

@@ -1,13 +1,15 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { AlertTriangle, Bot, CircleAlert, LockKeyhole, Play, RefreshCw, RotateCcw, Search, ShieldCheck } from "lucide-react"
+import { AlertTriangle, BarChart3, Bot, BriefcaseBusiness, CircleAlert, LockKeyhole, Mail, Play, RefreshCw, RotateCcw, Search, ShieldCheck } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Navbar } from "@/components/navbar"
 import { supabase } from "@/lib/supabase"
 import { ERROR_GROUP_STATUSES, type ErrorGroupStatus } from "@/lib/system-admin"
 import { diagnoseErrorGroup, setErrorGroupReviewVerdict, updateErrorGroupStatus } from "./actions"
+import { InquiriesConsole } from "./inquiries-console"
+import { PartnerAdminConsole } from "@/app/admin/partners/partner-admin-console"
 
 type Group = {
   fingerprint: string
@@ -133,6 +135,7 @@ export default function SystemsPage() {
   const [error, setError] = useState<string | null>(null)
   const [updating, setUpdating] = useState(false)
   const [diagnosing, setDiagnosing] = useState(false)
+  const [tab, setTab] = useState<"errors" | "partners" | "inquiries" | "analytics">("errors")
 
   const loadGroups = useCallback(async () => {
     setLoading(true)
@@ -276,15 +279,26 @@ export default function SystemsPage() {
             <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.2em] text-primary">
               <ShieldCheck className="h-4 w-4" /> Systems
             </div>
-            <h1 className="text-3xl font-semibold tracking-tight">Error monitoring</h1>
+            <h1 className="text-3xl font-semibold tracking-tight">Systems hub</h1>
             <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-              Grouped production failures and occurrence context. Read and triage only; AI diagnosis and execution are reserved for later phases.
+              Internal operations for monitoring, partner provisioning, and the inbound lead pipeline.
             </p>
           </div>
-          <Button variant="outline" onClick={() => void loadGroups()} disabled={loading} className="gap-2" title="Reload the latest error groups and counts.">
+          {tab === "errors" ? <Button variant="outline" onClick={() => void loadGroups()} disabled={loading} className="gap-2" title="Reload the latest error groups and counts.">
             {loading ? <><DiagnosisSpinner /><span>Refreshing…</span></> : <><RefreshCw className="h-4 w-4" /><span>Refresh</span></>}
-          </Button>
+          </Button> : null}
         </header>
+
+        <nav aria-label="Systems sections" className="mb-6 flex flex-wrap gap-2 border-b border-border pb-3">
+          {([
+            ["errors", "Error Monitoring", ShieldCheck],
+            ["partners", "Partner Admin", BriefcaseBusiness],
+            ["inquiries", "Inquiries", Mail],
+            ["analytics", "Analytics", BarChart3],
+          ] as const).map(([value, label, Icon]) => <button key={value} type="button" onClick={() => setTab(value)} className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm transition-colors ${tab === value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"}`}><Icon className="h-4 w-4" />{label}</button>)}
+        </nav>
+
+        {tab === "partners" ? <PartnerAdminConsole /> : tab === "inquiries" ? <InquiriesConsole /> : tab === "analytics" ? <section className="glass-surface rounded-3xl p-8 md:p-12"><BarChart3 className="h-7 w-7 text-primary" /><p className="mt-6 text-xs font-medium uppercase tracking-[0.2em] text-primary">Roadmap</p><h2 className="mt-3 text-2xl font-semibold">Analytics hub</h2><p className="mt-3 max-w-xl text-muted-foreground">This surface is reserved for product, partner, and workflow analytics. Data wiring will be added when the underlying metrics are defined.</p></section> : <>
 
         <div className="mb-5 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-muted-foreground">
           Alerting is deferred to Phase 2.5 until Resend email delivery is configured.
@@ -360,6 +374,7 @@ export default function SystemsPage() {
             <div><div className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Action</div><div className="space-y-2"><ObservationActionButton label="Execute fix" Icon={Play} title="Disabled in observation mode. When enabled, opens a PR with the proposed fix and runs tests before merge." /><ObservationActionButton label="Rollback to last working deployment" Icon={RotateCcw} title="Re-promote the last known-good production deployment. Reverts code, not the database." /></div><p className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground"><LockKeyhole className="h-3.5 w-3.5" />observation mode — execution not enabled</p><div className="mt-4 text-xs font-medium uppercase tracking-wider text-muted-foreground">Review verdict</div><div className="mt-2 flex flex-wrap gap-2">{(["matched", "partial", "wrong"] as const).map((verdict) => <Button key={verdict} size="sm" variant={selectedGroup.review_verdict === verdict ? "default" : "outline"} onClick={() => void recordVerdict(verdict)} disabled={updating} title="Rate the AI's proposed fix vs. what you'd actually do — tracks agreement before Execute is enabled.">{verdict}</Button>)}</div>{selectedGroup.reviewed_at && <div className="mt-2">{dualTimestamp(selectedGroup.reviewed_at)}<span className="mt-1 block text-xs text-muted-foreground">by {selectedGroup.reviewed_by ?? "admin"}</span></div>}</div>
           </div>}
         </section>
+        </>}
         </div>
       </main>
     </>

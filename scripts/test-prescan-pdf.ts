@@ -26,7 +26,7 @@ assert(
 )
 assert(
   "JavaScript in direct OpenAction is rejected",
-  !analyzePdf(pdf("/OpenAction << /S /JavaScript /JS (app.alert\(1\)) >>")).ok,
+  !analyzePdf(pdf("/OpenAction << /S /JavaScript /JS (app.alert(1)) >>")).ok,
 )
 assert(
   "JavaScript in indirect OpenAction is rejected",

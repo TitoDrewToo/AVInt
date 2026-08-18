@@ -62,6 +62,7 @@ const nextConfig = {
       { source: "/for-accountants", destination: "/partners", permanent: true },
       { source: "/cpa/:slug", destination: "/partner/:slug", permanent: true },
       { source: "/cpa/:slug/dashboard", destination: "/partner/:slug/dashboard", permanent: true },
+      { source: "/admin/partners", destination: "/systems", permanent: false },
     ]
   },
 }

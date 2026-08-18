@@ -5,7 +5,7 @@ import { isUuid } from "@/lib/firm-partnership"
 
 type EnrollmentResult =
   | { ok: true; firmId: string }
-  | { ok: false; code: "invalid" | "unauthorized" | "not_found" | "seats_full" | "unavailable" | "error" }
+  | { ok: false; code: "invalid" | "unauthorized" | "not_found" | "seats_full" | "firm_admin" | "unavailable" | "error" }
 
 export async function enrollClientByFirmSlug(slugInput: unknown, accessTokenInput: unknown): Promise<EnrollmentResult> {
   const slug = typeof slugInput === "string" ? slugInput.trim().toLowerCase() : ""
@@ -23,6 +23,14 @@ export async function enrollClientByFirmSlug(slugInput: unknown, accessTokenInpu
   if (firmError) return { ok: false, code: "error" }
   if (!firm) return { ok: false, code: "not_found" }
   if (firm.status !== "active") return { ok: false, code: "unavailable" }
+
+  const { data: firmAdmin } = await supabaseAdmin
+    .from("firm_admins")
+    .select("firm_id")
+    .eq("firm_id", firm.id)
+    .eq("user_id", authData.user.id)
+    .maybeSingle()
+  if (firmAdmin) return { ok: false, code: "firm_admin" }
 
   const { data, error } = await supabaseAdmin.rpc("enroll_firm_client", {
     p_firm_id: firm.id,

@@ -470,7 +470,7 @@ export default function SmartStorageProductPage() {
         </section>
 
         {/* FAQ */}
-        <section className="order-2 marketing-scroll-section relative px-6">
+        <section id="faq" className="order-2 marketing-scroll-section relative scroll-mt-24 px-6">
           <div aria-hidden className="pointer-events-none absolute inset-0 retro-grid-bg opacity-30" />
           <div className="relative mx-auto max-w-3xl">
             <FadeUp className="text-center">

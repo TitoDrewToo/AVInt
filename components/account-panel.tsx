@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { X, User, ChevronDown, AlertTriangle, LogOut, ExternalLink, ShieldCheck } from "lucide-react"
+import { X, User, ChevronDown, AlertTriangle, BriefcaseBusiness, LogOut, ExternalLink, ShieldCheck } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -290,6 +290,7 @@ function resolveDisplayPlan(sub: SubRecord | null): { label: string; note: strin
 export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelProps) {
   const [session, setSession] = useState<Session | null>(null)
   const [isSystemAdmin, setIsSystemAdmin] = useState(false)
+  const [isFirmAdmin, setIsFirmAdmin] = useState(false)
   const isSignedIn = session !== null
   const [subRecord, setSubRecord] = useState<SubRecord | null>(null)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
@@ -333,6 +334,7 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
   useEffect(() => {
     if (!session?.user?.id) {
       setIsSystemAdmin(false)
+      setIsFirmAdmin(false)
       return
     }
     supabase
@@ -341,6 +343,19 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
       .eq("user_id", session.user.id)
       .maybeSingle()
       .then(({ data }) => setIsSystemAdmin(data?.user_id === session.user.id))
+  }, [session])
+
+  useEffect(() => {
+    if (!session?.user?.id) {
+      setIsFirmAdmin(false)
+      return
+    }
+    supabase
+      .from("firm_admins")
+      .select("firm_id")
+      .eq("user_id", session.user.id)
+      .limit(1)
+      .then(({ data }) => setIsFirmAdmin(Boolean(data?.length)))
   }, [session])
 
   useEffect(() => {
@@ -720,6 +735,17 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                     </div>
 
                     {/* Systems — RLS-backed allowlist; page and actions also enforce access server-side. */}
+                    {isFirmAdmin && (
+                      <>
+                        <div className="retro-divider h-px" />
+                        <div className="space-y-1">
+                          <Link href="/partner/dashboard" onClick={onClose} className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground/85 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]" style={chromeFontStyle}>
+                            Firm Dashboard
+                            <BriefcaseBusiness className="h-4 w-4 text-muted-foreground" />
+                          </Link>
+                        </div>
+                      </>
+                    )}
                     {isSystemAdmin && (
                       <>
                         <div className="retro-divider h-px" />

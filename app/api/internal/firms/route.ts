@@ -42,22 +42,30 @@ export async function POST(req: NextRequest) {
   }
 
   let resolvedUserId = typeof adminUserId === "string" ? adminUserId : null
+  let inviteSent = false
   if (!resolvedUserId) {
-    const { data: invited, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(adminEmail, {
-      data: { firm_id: firm.id, role: "firm_admin" },
-    })
-    if (inviteError || !invited.user) {
-      await supabaseAdmin.from("firms").delete().eq("id", firm.id)
-      return NextResponse.json({ error: "Firm created, but the admin invitation could not be sent" }, { status: 502 })
+    const { data: users, error: usersError } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 })
+    if (!usersError) {
+      resolvedUserId = users.users.find((user) => user.email?.toLowerCase() === adminEmail)?.id ?? null
+      if (resolvedUserId) inviteSent = true
     }
-    resolvedUserId = invited.user.id
+    if (!resolvedUserId) {
+      const { data: invited, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(adminEmail, {
+        data: { firm_id: firm.id, role: "firm_admin" },
+      })
+      if (!inviteError && invited.user) {
+        resolvedUserId = invited.user.id
+        inviteSent = true
+      }
+    }
   }
 
-  const { error: adminError } = await supabaseAdmin.from("firm_admins").insert({ firm_id: firm.id, user_id: resolvedUserId })
-  if (adminError) {
-    await supabaseAdmin.from("firms").delete().eq("id", firm.id)
-    return NextResponse.json({ error: "Could not link firm administrator" }, { status: 500 })
+  if (resolvedUserId) {
+    const { error: adminError } = await supabaseAdmin.from("firm_admins").insert({ firm_id: firm.id, user_id: resolvedUserId })
+    if (adminError) {
+      return NextResponse.json({ error: "Firm was created, but the administrator could not be linked" }, { status: 500 })
+    }
   }
 
-  return NextResponse.json({ firm, admin_user_id: resolvedUserId }, { status: 201 })
+  return NextResponse.json({ firm, admin_user_id: resolvedUserId, invite_sent: inviteSent }, { status: 201 })
 }

@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 import Link from "next/link"
-import { ArrowRight, ArrowUpRight, BriefcaseBusiness, FileArchive, FileSpreadsheet, LockKeyhole, ShieldCheck, Users, Workflow } from "lucide-react"
+import { ArrowRight, ArrowUpRight, BriefcaseBusiness, ChevronDown, FileArchive, FileSpreadsheet, LockKeyhole, ShieldCheck, Users, Workflow } from "lucide-react"
 import { Footer } from "@/components/footer"
 import { HomeDefaultSphere } from "@/components/home-default-sphere"
 import { Navbar } from "@/components/navbar"
@@ -51,6 +51,23 @@ const securityCommitments = [
   "Data is retained briefly for the workflow, then deleted according to the system’s retention policy.",
   "Smart Storage is an organization tool — not tax advice and not a substitute for Circular 230 judgment.",
 ]
+
+const partnerFaq = [
+  ["How does pricing work for a firm?", "Firms buy annual client seats — one seat per client you enroll. Founding partners lock an introductory rate for their term (grandfathered, not a temporary discount). You bundle the seat into your own intake or engagement fee and keep your margin and the client relationship. Partner seat pricing is quoted directly and isn't listed on the public pricing page."],
+  ["How do my clients get in?", "You get one co-branded intake link (e.g. avintph.com/partner/your-firm). Every client who creates an account through that link is connected to your firm from their first upload and uses one seat. No software for them to install."],
+  ["What does my client actually experience?", "They open your link, create an account, and upload receipts, invoices, statements, and contracts — the same Smart Storage workspace and reports as any user. Their organized output flows back to your firm dashboard."],
+  ["What do I get back as the firm?", "A firm dashboard showing seats used and remaining, your enrolled clients, and per-client downloads: a tax-ready Schedule C CSV and an organized audit-evidence ZIP. You can add more seats anytime."],
+  ["Is each client's data isolated — from other clients and from other firms?", "Yes. Row-level security isolates every account at the database level. One client can never see another's documents, and no firm can see another firm's clients. Processing runs server-side."],
+  ["Do you train AI models on our clients' documents?", "No. Processing uses commercial, paid APIs under no-training terms. Client data is not used to train models."],
+  ["What can clients upload, and what formats come out?", "Upload PDFs, photos (JPG/PNG/HEIC/WEBP), CSV, or Excel up to 60 MB each. Outputs include a Schedule C–style CSV, QuickBooks (3- and 4-column) and Xero import-ready files, and an audit-evidence ZIP that keeps the source documents grouped alongside the structured results."],
+  ["How accurate is the extraction, and what if something's off?", "High-confidence items flow straight through; anything uncertain is flagged for review and reclassification, so a questionable line never quietly lands in a report. Your team keeps control of the final numbers."],
+  ["Does this give tax advice or replace our judgment?", "No — deliberately. Smart Storage is an organization tool that hands your team a clean, Schedule C–style starting point. Circular 230 judgment stays with your firm; it is not a substitute for a licensed preparer."],
+  ["What about clients with expenses in more than one currency?", "Dashboards handle multiple currencies. The Tax Bundle is intentionally USD-only for filing accuracy — any non-USD items are listed separately so nothing is silently mixed into totals."],
+  ["What if a client already has an AVIntelligence account?", "We connect the existing account to your firm — no duplicate account and no double seat charge."],
+  ["Do we need to sign anything?", "Before you enroll clients we can provide a partnership agreement and a data processing addendum (aligned to IRC §7216 consent-to-disclose expectations). This is handled at onboarding."],
+  ["How long does it take to get started?", "We provision your co-branded link in minutes. Clients self-serve from there — no install, no setup project on your side."],
+  ["Why not just have staff drop documents into ChatGPT or Claude directly?", "A chat session is stateless: files and structure disappear when it closes, so every client, every period, gets re-uploaded and re-explained — and a model re-derives the numbers each run, which can drift. Smart Storage keeps each client's records in a persistent, structured store, so extraction is done once and stays current, the Schedule C math is reproducible and auditable, and every client's data is isolated with a retention policy and audit trail behind it. It's the system of record across your whole book — not a one-off conversation. For firms that like working in Claude, Smart Storage connects to it: staff can run a client's tax bundle or a QuickBooks export by asking, read-only, against the live account."],
+] as const
 
 function InternalButton({ href, children }: { href: string; children: React.ReactNode }) {
   return (
@@ -206,6 +223,25 @@ export default function ForAccountantsPage() {
                 </ul>
               </div>
             </div>
+          </div>
+        </section>
+
+        <section className="marketing-scroll-section relative px-6">
+          <div aria-hidden className="pointer-events-none absolute inset-0 retro-grid-bg opacity-20" />
+          <div className="relative mx-auto max-w-3xl">
+            <div className="text-center">
+              <p className="text-sm font-medium uppercase tracking-wider text-primary">Partner FAQ</p>
+              <h2 className="mt-6 text-balance text-3xl font-semibold tracking-tight text-foreground md:text-5xl">Questions from careful firms.</h2>
+            </div>
+            <div className="mt-10 space-y-3">
+              {partnerFaq.map(([question, answer]) => (
+                <details key={question} className="group glass-surface-sm hover-bloom rounded-xl border border-border/60 p-5">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-6 font-medium text-foreground [&::-webkit-details-marker]:hidden"><span>{question}</span><ChevronDown className="h-4 w-4 shrink-0 text-primary transition-transform duration-200 group-open:rotate-180" aria-hidden="true" /></summary>
+                  <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{answer}</p>
+                </details>
+              ))}
+            </div>
+            <p className="mt-8 text-center text-sm text-muted-foreground">Looking for the individual product details? <Link href="/products/smart-storage#faq" className="text-primary underline-offset-4 hover:underline">See the full Smart Storage FAQ →</Link></p>
           </div>
         </section>
 

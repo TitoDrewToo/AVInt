@@ -23,7 +23,7 @@ export function Footer() {
         <div className="mx-auto grid max-w-6xl gap-5 px-6 py-6 md:grid-cols-[0.9fr_auto_1.35fr] md:items-center">
           <div className="flex items-center justify-center gap-6 md:justify-start">
             <Link
-              href="https://github.com/TitoDrewToo/AVInt"
+              href="https://github.com/TitoDrewToo"
               target="_blank"
               rel="noopener noreferrer"
               aria-label="AVIntelligence on GitHub"

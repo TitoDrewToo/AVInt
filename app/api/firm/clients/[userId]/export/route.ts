@@ -12,7 +12,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ user
   const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim()
   const { data: auth, error: authError } = token ? await supabaseAdmin.auth.getUser(token) : { data: { user: null }, error: new Error("missing token") }
   if (authError || !auth.user) return NextResponse.json({ error: "Authentication required" }, { status: 401 })
-  const { data: admin } = await supabaseAdmin.from("firm_admins").select("firm_id").eq("user_id", auth.user.id).maybeSingle()
+  const slug = new URL(req.url).searchParams.get("slug")?.trim().toLowerCase() ?? ""
+  const { data: firm } = await supabaseAdmin.from("firms").select("id").eq("slug", slug).maybeSingle()
+  const { data: admin } = firm
+    ? await supabaseAdmin.from("firm_admins").select("firm_id").eq("user_id", auth.user.id).eq("firm_id", firm.id).maybeSingle()
+    : { data: null }
   if (!admin) return NextResponse.json({ error: "Firm administrator access required" }, { status: 403 })
   const { userId } = await params
   const { data: client } = await supabaseAdmin.from("firm_clients").select("user_id, created_at").eq("firm_id", admin.firm_id).eq("user_id", userId).maybeSingle()

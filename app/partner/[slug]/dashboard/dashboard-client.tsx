@@ -32,7 +32,7 @@ export function FirmDashboard({ slug }: { slug: string }) {
     setBusy(`${userId}:${format}`)
     const { data } = await supabase.auth.getSession()
     if (!data.session) { setError("Your session has expired."); setBusy(null); return }
-    const response = await fetch(`/api/firm/clients/${userId}/export?format=${format}`, { headers: { Authorization: `Bearer ${data.session.access_token}` } })
+    const response = await fetch(`/api/firm/clients/${userId}/export?format=${format}&slug=${encodeURIComponent(slug)}`, { headers: { Authorization: `Bearer ${data.session.access_token}` } })
     if (!response.ok) { setError((await response.json()).error ?? "Download failed"); setBusy(null); return }
     const blob = await response.blob(); const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = format === "csv" ? "schedule-c.csv" : "audit-evidence.zip"; anchor.click(); URL.revokeObjectURL(url); setBusy(null)
   }
@@ -41,7 +41,7 @@ export function FirmDashboard({ slug }: { slug: string }) {
     const units = window.prompt("How many annual client seats should be added?", "10")
     if (!units) return
     const { data } = await supabase.auth.getSession(); if (!data.session) return
-    const response = await fetch("/api/firm/checkout", { method: "POST", headers: { Authorization: `Bearer ${data.session.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ units: Number(units), success_url: `${window.location.origin}/partner/${slug}/dashboard` }) })
+    const response = await fetch("/api/firm/checkout", { method: "POST", headers: { Authorization: `Bearer ${data.session.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ units: Number(units), slug, success_url: `${window.location.origin}/partner/${slug}/dashboard` }) })
     const body = await response.json(); if (!response.ok) { setError(body.error ?? "Checkout failed"); return }; if (body.checkout_url) window.location.href = body.checkout_url
   }
 

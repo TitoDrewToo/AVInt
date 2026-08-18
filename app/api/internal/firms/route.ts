@@ -51,6 +51,7 @@ export async function POST(req: NextRequest) {
     }
     if (!resolvedUserId) {
       const { data: invited, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(adminEmail, {
+        redirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? new URL(req.url).origin}/auth/callback?next=${encodeURIComponent(`/partner/${slug}/dashboard`)}`,
         data: { firm_id: firm.id, role: "firm_admin" },
       })
       if (!inviteError && invited.user) {

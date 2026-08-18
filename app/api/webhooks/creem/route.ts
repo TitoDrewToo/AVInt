@@ -215,7 +215,13 @@ export async function POST(req: NextRequest) {
           p_units: units,
           p_amount_cents: amountCents,
         })
-        if (seatError || !seatResult?.ok) throw new Error(seatError?.message ?? "Firm seat purchase could not be recorded")
+        if (seatError || !seatResult?.ok) {
+          // The ledger row is inserted before branch side effects for global
+          // webhook replay protection. If the atomic seat RPC fails, remove
+          // this marker so Creem's retry can safely credit the seats.
+          await supabaseAdmin.from("processed_webhook_events").delete().eq("provider", "creem").eq("event_id", eventId)
+          throw new Error(seatError?.message ?? "Firm seat purchase could not be recorded")
+        }
         console.log("Firm seats recorded", { firmId, units, duplicate: seatResult.duplicate === true })
         return NextResponse.json({ received: true })
       }

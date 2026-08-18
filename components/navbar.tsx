@@ -319,18 +319,18 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
               Pricing
             </Link>
             <Link
-              href="/studio"
-              className="text-sm font-medium text-foreground/75 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
-              style={geistFontStyle}
-            >
-              Studio
-            </Link>
-            <Link
               href="/partners"
               className="text-sm font-medium text-foreground/75 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
               style={geistFontStyle}
             >
               Partners
+            </Link>
+            <Link
+              href="/studio"
+              className="text-sm font-medium text-foreground/75 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+              style={geistFontStyle}
+            >
+              Studio
             </Link>
               </>
             )}
@@ -429,20 +429,20 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
                 Pricing
               </Link>
               <Link
-                href="/studio"
-                className="text-sm text-foreground"
-                style={geistFontStyle}
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                Studio
-              </Link>
-              <Link
                 href="/partners"
                 className="text-sm text-foreground"
                 style={geistFontStyle}
                 onClick={() => setMobileMenuOpen(false)}
               >
                 Partners
+              </Link>
+              <Link
+                href="/studio"
+                className="text-sm text-foreground"
+                style={geistFontStyle}
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Studio
               </Link>
             </div>
           </div>

@@ -21,14 +21,17 @@ export async function POST(req: NextRequest) {
   const { data: auth, error: authError } = token ? await supabaseAdmin.auth.getUser(token) : { data: { user: null }, error: new Error("missing token") }
   if (authError || !auth.user) return NextResponse.json({ error: "Authentication required" }, { status: 401 })
 
-  const { data: admin, error: adminError } = await supabaseAdmin.from("firm_admins").select("firm_id").eq("user_id", auth.user.id).maybeSingle()
+  let body: Record<string, unknown>
+  try { body = await req.json() } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }) }
+  const slug = typeof body.slug === "string" ? body.slug.trim().toLowerCase() : ""
+  const { data: firm } = await supabaseAdmin.from("firms").select("id").eq("slug", slug).maybeSingle()
+  const { data: admin, error: adminError } = firm
+    ? await supabaseAdmin.from("firm_admins").select("firm_id").eq("user_id", auth.user.id).eq("firm_id", firm.id).maybeSingle()
+    : { data: null, error: null }
   if (adminError || !admin) return NextResponse.json({ error: "Firm administrator access required" }, { status: 403 })
 
   const allowed = await checkRateLimit("checkout", auth.user.id, 60, 10)
   if (!allowed) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 })
-
-  let body: Record<string, unknown>
-  try { body = await req.json() } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }) }
   const units = typeof body.units === "number" ? body.units : Number(body.units)
   if (!Number.isSafeInteger(units) || units < 1 || units > 1000) return NextResponse.json({ error: "units must be an integer from 1 to 1000" }, { status: 400 })
   if (!CREEM_FIRM_SEAT_PRODUCT_ID || !process.env.CREEM_API_KEY) return NextResponse.json({ error: "Firm seat checkout is not configured" }, { status: 503 })

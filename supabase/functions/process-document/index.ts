@@ -846,8 +846,29 @@ serve(async (req) => {
 
     if (subscriptionError) throw new Error(`Subscription lookup failed: ${subscriptionError.message}`)
 
-    const tier = planTierForSubscription(subscription?.status, subscription?.current_period_end)
-    const usageWindow = usageWindowForTier(tier, new Date(), subscription?.current_period_end)
+    let tier = planTierForSubscription(subscription?.status, subscription?.current_period_end)
+    let entitlementEnd = subscription?.current_period_end ?? null
+    if (tier === "free") {
+      const { data: firmClient, error: firmError } = await supabase
+        .from("firm_clients")
+        .select("created_at, firms!inner(status)")
+        .eq("user_id", file.user_id)
+        .eq("firms.status", "active")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (firmError) throw new Error(`Firm entitlement lookup failed: ${firmError.message}`)
+      if (firmClient?.created_at) {
+        const firmStart = new Date(firmClient.created_at)
+        const firmEnd = new Date(firmStart)
+        firmEnd.setUTCFullYear(firmEnd.getUTCFullYear() + 1)
+        if (!Number.isNaN(firmEnd.getTime()) && firmEnd.getTime() > Date.now()) {
+          tier = "pro"
+          entitlementEnd = firmEnd.toISOString()
+        }
+      }
+    }
+    const usageWindow = usageWindowForTier(tier, new Date(), entitlementEnd)
     const { data: usageRows, error: usageError } = await supabase.rpc("avint_claim_document_processing", {
       p_user_id: file.user_id,
       p_file_id: file_id,

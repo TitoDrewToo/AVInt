@@ -18,7 +18,8 @@ export default function FirmDashboardResolverPage() {
   useEffect(() => {
     let active = true
     void (async () => {
-      const { data } = await supabase.auth.getSession()
+      const { data, error: sessionError } = await supabase.auth.getSession().catch(() => ({ data: { session: null }, error: new Error("session unavailable") }))
+      if (sessionError) { if (active) setState("error"); return }
       if (!data.session) {
         if (active) setState("signed-out")
         return

@@ -62,6 +62,8 @@ export function SmartStoragePrefetcher() {
     supabase.auth.getSession().then(({ data }) => {
       if (!active) return
       prefetchForUser(data.session?.user.id)
+    }).catch(() => {
+      // Prefetch is optional and must not surface auth lock contention.
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {

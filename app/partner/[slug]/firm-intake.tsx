@@ -10,52 +10,78 @@ export function FirmIntake({ slug, firmName }: { slug: string; firmName: string 
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-up")
-  const [status, setStatus] = useState<"idle" | "working" | "success" | "full" | "admin" | "error">("idle")
+  const [status, setStatus] = useState<"idle" | "existing" | "working" | "success" | "full" | "admin" | "error">("idle")
   const [message, setMessage] = useState("")
+  const [currentEmail, setCurrentEmail] = useState("")
+
+  function applyEnrollmentResult(result: Awaited<ReturnType<typeof enrollClientByFirmSlug>>) {
+    setStatus(result.ok ? "success" : result.code === "seats_full" ? "full" : result.code === "firm_admin" ? "admin" : "error")
+    if (!result.ok && result.code === "seats_full") setMessage("This firm's seats are full — contact your firm.")
+    if (!result.ok && result.code === "firm_admin") setMessage("You manage this firm — open your dashboard.")
+  }
 
   useEffect(() => {
     let active = true
-    void supabase.auth.getSession().then(async ({ data }) => {
-      if (!active || !data.session) return
-      setStatus("working")
-      const result = await enrollClientByFirmSlug(slug, data.session.access_token)
-      if (!active) return
-      setStatus(result.ok ? "success" : result.code === "seats_full" ? "full" : result.code === "firm_admin" ? "admin" : "error")
-      if (!result.ok && result.code === "seats_full") setMessage("This firm's seats are full — contact your firm.")
-      if (!result.ok && result.code === "firm_admin") setMessage("You manage this firm — open your dashboard.")
+    void supabase.auth.getSession().then(({ data, error }) => {
+      if (!active || error || !data.session) return
+      setCurrentEmail(data.session.user.email ?? "this account")
+      setStatus("existing")
+    }).catch(() => {
+      // Auth lock contention is recoverable; the user can still sign in below.
     })
     return () => { active = false }
   }, [slug])
+
+  async function continueWithCurrentAccount() {
+    setStatus("working")
+    setMessage("")
+    try {
+      const { data, error } = await supabase.auth.getSession()
+      if (error || !data.session) {
+        setStatus("error")
+        setMessage("Your session is no longer available. Please sign in again.")
+        return
+      }
+      applyEnrollmentResult(await enrollClientByFirmSlug(slug, data.session.access_token))
+    } catch {
+      setStatus("error")
+      setMessage("We could not verify this account. Please try again.")
+    }
+  }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setStatus("working")
     setMessage("")
-    const result = mode === "sign-up"
-      ? await supabase.auth.signUp({
-          email,
-          password,
-          options: { emailRedirectTo: `${window.location.origin}/partner/${slug}` },
-        })
-      : await supabase.auth.signInWithPassword({ email, password })
-    if (result.error) {
+    try {
+      const result = mode === "sign-up"
+        ? await supabase.auth.signUp({
+            email,
+            password,
+            options: { emailRedirectTo: `${window.location.origin}/partner/${slug}` },
+          })
+        : await supabase.auth.signInWithPassword({ email, password })
+      if (result.error) {
+        setStatus("error")
+        setMessage(result.error.message)
+        return
+      }
+      if (!result.data.session) {
+        setStatus("error")
+        setMessage("Check your email to confirm your account, then return to this link.")
+        return
+      }
+      const enrollment = await enrollClientByFirmSlug(slug, result.data.session.access_token)
+      if (!enrollment.ok) {
+        applyEnrollmentResult(enrollment)
+        if (enrollment.code === "firm_admin") setMessage("You manage this firm — open your dashboard.")
+        return
+      }
+      setStatus("success")
+    } catch {
       setStatus("error")
-      setMessage(result.error.message)
-      return
+      setMessage("We could not complete the account connection. Please try again.")
     }
-    if (!result.data.session) {
-      setStatus("error")
-      setMessage("Check your email to confirm your account, then return to this link.")
-      return
-    }
-    const enrollment = await enrollClientByFirmSlug(slug, result.data.session.access_token)
-    if (!enrollment.ok) {
-      setStatus(enrollment.code === "seats_full" ? "full" : enrollment.code === "firm_admin" ? "admin" : "error")
-      setMessage(enrollment.code === "seats_full" ? "This firm's seats are full — contact your firm." : "We could not enroll this account. Please try again.")
-      if (enrollment.code === "firm_admin") setMessage("You manage this firm — open your dashboard.")
-      return
-    }
-    setStatus("success")
   }
 
   if (status === "success") {
@@ -64,6 +90,19 @@ export function FirmIntake({ slug, firmName }: { slug: string; firmName: string 
 
   if (status === "admin") {
     return <div className="glass-surface rounded-3xl p-8 text-center md:p-12" role="status"><LockKeyhole className="mx-auto h-8 w-8 text-primary" /><h2 className="mt-5 text-2xl font-semibold text-foreground">You manage this firm.</h2><p className="mt-3 text-muted-foreground">Open your dashboard to manage seats and enrolled clients.</p><Button className="mt-7 rounded-xl" onClick={() => { window.location.href = `/partner/${slug}/dashboard` }}>Open firm dashboard <ArrowRight className="h-4 w-4" /></Button></div>
+  }
+
+  if (status === "existing") {
+    return <div className="glass-surface rounded-3xl p-8 text-center md:p-12" role="status">
+      <LockKeyhole className="mx-auto h-8 w-8 text-primary" />
+      <h2 className="mt-5 text-2xl font-semibold text-foreground">You’re signed in as {currentEmail}.</h2>
+      <p className="mt-3 text-muted-foreground">Continue with this account to connect it to {firmName}, or sign out first to use a different account.</p>
+      <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
+        <Button className="rounded-xl" onClick={() => void continueWithCurrentAccount()}>Continue with this account <ArrowRight className="h-4 w-4" /></Button>
+        <Button variant="outline" className="rounded-xl" onClick={() => void supabase.auth.signOut().then(() => { setCurrentEmail(""); setStatus("idle") }).catch(() => setMessage("We could not sign out. Please try again."))}>Use a different account</Button>
+      </div>
+      {message ? <p className="mt-4 text-sm text-destructive" role="alert">{message}</p> : null}
+    </div>
   }
 
   return <form onSubmit={submit} className="glass-surface rounded-3xl p-6 md:p-10">

@@ -18,7 +18,8 @@ export function FirmDashboard({ slug }: { slug: string }) {
   useEffect(() => {
     void load()
     async function load() {
-      const { data } = await supabase.auth.getSession()
+      const { data, error: sessionError } = await supabase.auth.getSession().catch(() => ({ data: { session: null }, error: new Error("session unavailable") }))
+      if (sessionError) { setError("Could not verify your firm administrator session."); setLoading(false); return }
       if (!data.session) { setError("Sign in with your firm administrator account."); setLoading(false); return }
       const response = await fetch(`/api/firm/dashboard?slug=${encodeURIComponent(slug)}`, { headers: { Authorization: `Bearer ${data.session.access_token}` } })
       const body = await response.json()
@@ -30,7 +31,8 @@ export function FirmDashboard({ slug }: { slug: string }) {
 
   async function download(userId: string, format: "csv" | "zip") {
     setBusy(`${userId}:${format}`)
-    const { data } = await supabase.auth.getSession()
+    const { data, error: sessionError } = await supabase.auth.getSession().catch(() => ({ data: { session: null }, error: new Error("session unavailable") }))
+    if (sessionError) { setError("Your session could not be verified."); setBusy(null); return }
     if (!data.session) { setError("Your session has expired."); setBusy(null); return }
     const response = await fetch(`/api/firm/clients/${userId}/export?format=${format}&slug=${encodeURIComponent(slug)}`, { headers: { Authorization: `Bearer ${data.session.access_token}` } })
     if (!response.ok) { setError((await response.json()).error ?? "Download failed"); setBusy(null); return }
@@ -40,7 +42,7 @@ export function FirmDashboard({ slug }: { slug: string }) {
   async function buySeats() {
     const units = window.prompt("How many annual client seats should be added?", "10")
     if (!units) return
-    const { data } = await supabase.auth.getSession(); if (!data.session) return
+    const { data, error: sessionError } = await supabase.auth.getSession().catch(() => ({ data: { session: null }, error: new Error("session unavailable") })); if (sessionError || !data.session) { setError("Your session could not be verified."); return }
     const response = await fetch("/api/firm/checkout", { method: "POST", headers: { Authorization: `Bearer ${data.session.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ units: Number(units), slug, success_url: `${window.location.origin}/partner/${slug}/dashboard` }) })
     const body = await response.json(); if (!response.ok) { setError(body.error ?? "Checkout failed"); return }; if (body.checkout_url) window.location.href = body.checkout_url
   }

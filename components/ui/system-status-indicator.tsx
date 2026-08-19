@@ -129,8 +129,11 @@ export function SystemStatusIndicator() {
   useEffect(() => {
     const ownerEmail = process.env.NEXT_PUBLIC_AA_BETA_EMAIL
     if (!ownerEmail) return
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (error) return
       if (data.session?.user?.email === ownerEmail) setIsOwner(true)
+    }).catch(() => {
+      setIsOwner(false)
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
       setIsOwner(s?.user?.email === ownerEmail)

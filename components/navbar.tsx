@@ -87,13 +87,17 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
   }, [])
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (error) return
       setSession(data.session)
       if (data.session?.user?.email) {
         void fetchSubscription(data.session.user.email)
       } else {
         setHasActiveSubscription(false)
       }
+    }).catch(() => {
+      setSession(null)
+      setHasActiveSubscription(false)
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
@@ -109,14 +113,18 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
   }, [])
 
   async function fetchSubscription(email: string) {
-    const { data } = await supabase
-      .from("subscriptions")
-      .select("status, current_period_end")
-      .eq("email", email)
-      .maybeSingle()
+    try {
+      const { data } = await supabase
+        .from("subscriptions")
+        .select("status, current_period_end")
+        .eq("email", email)
+        .maybeSingle()
 
-    const ent = computeEntitlement(data)
-    setHasActiveSubscription(ent.isActive)
+      const ent = computeEntitlement(data)
+      setHasActiveSubscription(ent.isActive)
+    } catch {
+      setHasActiveSubscription(false)
+    }
   }
 
   function cancelProductsClose() {

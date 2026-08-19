@@ -12,7 +12,9 @@ export function ReferralAttribution() {
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      void handleAuthSessionReferral(event, session)
+      void handleAuthSessionReferral(event, session).catch(() => {
+        // Referral attribution is best effort and must not affect auth UX.
+      })
     })
 
     return () => subscription.unsubscribe()

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { descendantFolderIds } from "@/lib/report-folder-scope"
+import { descendantFolderIds, folderBelongsToUser } from "@/lib/report-folder-scope"
 
 const folders = [
   { id: "root", parent_id: null },
@@ -13,5 +13,7 @@ assert.deepEqual(descendantFolderIds(folders, "root").sort(), ["child", "grandch
 assert.deepEqual(descendantFolderIds(folders, "child"), ["child", "grandchild"])
 assert.deepEqual(descendantFolderIds(folders, "grandchild"), ["grandchild"])
 assert.deepEqual(descendantFolderIds(folders, "other-root"), ["other-root"])
+assert.equal(folderBelongsToUser(folders, "root"), true)
+assert.equal(folderBelongsToUser(folders, "foreign-folder"), false)
 
-console.log("report folder scope tests: 4 passed")
+console.log("report folder scope tests: 6 passed")

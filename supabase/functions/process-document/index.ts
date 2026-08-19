@@ -3,6 +3,7 @@ import { type AiProvider, isProviderFailure, providerChain } from "../_shared/ai
 import { logError, logEvent } from "../_shared/log.ts"
 import { fetchWithTimeout } from "../_shared/fetch.ts"
 import { PLAN_LIMITS, planTierForSubscription, usageWindowForTier } from "../_shared/plan-limits.ts"
+import { asExtractedDocumentRows, type ExtractedDocumentRow } from "../_shared/extraction-boundary.ts"
 
 const FN = "process-document"
 
@@ -226,7 +227,7 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(binary)
 }
 
-function parseExtractionRows(rawText: string): any[] {
+function parseExtractionRows(rawText: string): unknown[] {
   const stripped = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim()
 
   if (stripped.startsWith("[")) {
@@ -469,14 +470,14 @@ async function extractSpreadsheetRows(
   mimeType: string,
   filename: string,
   fileId: string,
-): Promise<{ extractedRows: any[]; sourceRows: any[] }> {
+): Promise<{ extractedRows: ExtractedDocumentRow[]; sourceRows: any[] }> {
   const XLSX = await import("https://esm.sh/xlsx@0.18.5")
   const isCsv = mimeType === "text/csv" || /\.csv$/i.test(filename ?? "")
   const workbook = isCsv
     ? XLSX.read(new TextDecoder().decode(bytes), { type: "string" })
     : XLSX.read(bytes, { type: "array" })
 
-  const extractedRows: any[] = []
+  const extractedRows: ExtractedDocumentRow[] = []
   const sourceRows: any[] = []
   const explicitCurrencyCounts: Record<string, number> = {}
   let sourceIndex = 0
@@ -938,17 +939,18 @@ serve(async (req) => {
     const arrayBuffer = await fileData.arrayBuffer()
     const uint8Array = new Uint8Array(arrayBuffer)
     let mimeType = file.file_type || "application/pdf"
-    let extractedRows: any[] = []
+    let extractedRows: ExtractedDocumentRow[] = []
     let sourceRows: any[] | null = null
     let extractionProvider: AiProvider | "deterministic" = "gemini"
     let isCsv = false
+    const normalizationBatchId = crypto.randomUUID()
 
     // 4b. Spreadsheet extraction.
     // SheetJS deterministically splits spreadsheet rows; AI only maps headers.
     if (isSpreadsheetInput(mimeType, file.filename ?? "")) {
       try {
         const spreadsheetResult = await extractSpreadsheetRows(uint8Array, mimeType, file.filename ?? "", file_id)
-        extractedRows = spreadsheetResult.extractedRows
+        extractedRows = asExtractedDocumentRows(spreadsheetResult.extractedRows)
         sourceRows = spreadsheetResult.sourceRows
         extractionProvider = "deterministic"
         isCsv = true
@@ -979,7 +981,7 @@ serve(async (req) => {
         // Top-level array = CSV export; top-level object = single document.
         // IMPORTANT: use startsWith('[') to detect arrays because document objects
         // can contain arrays inside line_items.
-        extractedRows = parseExtractionRows(rawText)
+        extractedRows = asExtractedDocumentRows(parseExtractionRows(rawText))
       } catch {
         throw new Error(`Failed to parse extraction output: ${rawText}`)
       }
@@ -1018,6 +1020,7 @@ serve(async (req) => {
           custom_fields: row._custom_fields ?? null,
           ...(row.raw_json_extras ?? {}),
         },
+        normalization_batch_id: normalizationBatchId,
         normalization_status: "raw",
       }
     })
@@ -1049,21 +1052,23 @@ serve(async (req) => {
 
     // 8. Update files.document_type after rows are safely persisted.
     // For CSVs use the first row's type; mark as csv_export for clarity.
-    await supabase
+    const { error: fileStateError } = await supabase
       .from("files")
       .update({
         document_type: isCsv ? "csv_export" : normalizeExtractedDocumentType(extracted, mimeType),
+        normalization_batch_id: normalizationBatchId,
         // Extraction is complete, but normalization may still be running for
         // multi-row inputs. The normalizer advances this to `normalized` only
         // after the final raw row reaches a terminal state.
         upload_status: "processing",
       })
       .eq("id", file_id)
+    if (fileStateError) throw new Error(`File normalization state update failed: ${fileStateError.message}`)
 
     // 10. Call normalize-document for each row
     // CSVs have multiple rows — normalize each individually using inline fields
     const rowsForNormalization = insertedRows ?? []
-    const normalizeResponse = await fetch(
+    const normalizeOne = (row: any, currentJobId?: string) => fetch(
       `${SUPABASE_URL}/functions/v1/normalize-document`,
       {
         method: "POST",
@@ -1071,47 +1076,30 @@ serve(async (req) => {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
         },
-        body: JSON.stringify({
-          file_id,
-          job_id: rowsForNormalization.length === 1 ? job_id : undefined,
-          fields: rowsForNormalization.length === 1 ? rowsForNormalization[0] : undefined,
-        }),
-      }
+        body: JSON.stringify({ file_id, job_id: currentJobId, fields: row }),
+      },
     )
 
-    // For CSV multi-row: normalize remaining rows in parallel (fire and forget)
+    if (rowsForNormalization.length === 1) {
+      const normalizeResponse = await normalizeOne(rowsForNormalization[0], job_id)
+      if (!normalizeResponse.ok) {
+        // normalize-document handles its own failure state in document_fields
+        // process-document still returns success — extraction completed.
+        const errText = await normalizeResponse.text()
+        logError(FN, "normalize_nonfatal", new Error(errText), { file_id, job_id })
+      }
+    }
+
+    // For CSV multi-row: normalize every inserted row exactly once in parallel.
     if (rowsForNormalization.length > 1) {
       const normalizeChain = Promise.all(
         rowsForNormalization.map((row: any) =>
-          fetch(`${SUPABASE_URL}/functions/v1/normalize-document`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-            },
-            body: JSON.stringify({ file_id, fields: row }),
-          })
+          normalizeOne(row)
         )
       ).catch(() => {/* non-blocking — normalization failures handled per-row */})
       // @ts-ignore - EdgeRuntime is a Supabase runtime global
       if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(normalizeChain)
-    }
-
-    if (!normalizeResponse.ok) {
-      // normalize-document handles its own failure state in document_fields
-      // process-document still returns success — Gemini extraction completed
-      const errText = await normalizeResponse.text()
-      logError(FN, "normalize_nonfatal", new Error(errText), { file_id, job_id })
-    }
-
-    // Single-row files complete here. Multi-row CSV jobs remain processing until
-    // the last normalize-document invocation clears the final raw row.
-    if (rowsForNormalization.length <= 1) {
-      await supabase
-        .from("processing_jobs")
-        .update({ status: "completed" })
-        .eq("file_id", file_id)
-        .in("status", ["uploaded", "processing"])
+      else await normalizeChain
     }
 
     return new Response(JSON.stringify({ success: true, file_id }), {

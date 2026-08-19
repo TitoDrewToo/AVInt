@@ -28,29 +28,13 @@ function buildCorsHeaders(req: Request) {
 // normalization_version can be lazily re-normalized by scripts/renormalize.ts.
 const NORMALIZATION_VERSION = 3
 
-async function closeFileProcessingJobIfNoRawRows(supabase: any, file_id: string) {
-  const { count: rawCount } = await supabase
-    .from("document_fields")
-    .select("id", { count: "exact", head: true })
-    .eq("file_id", file_id)
-    .eq("normalization_status", "raw")
-
-  if ((rawCount ?? 0) === 0) {
-    // Keep files in `processing` until every extracted row has settled. A
-    // failed row is terminal and remains visible for retry; only raw rows
-    // indicate that normalization is still in flight.
-    await supabase
-      .from("files")
-      .update({ upload_status: "normalized" })
-      .eq("id", file_id)
-      .in("upload_status", ["processing", "done"])
-
-    await supabase
-      .from("processing_jobs")
-      .update({ status: "completed", completed_at: new Date().toISOString() })
-      .eq("file_id", file_id)
-      .in("status", ["uploaded", "processing"])
-  }
+async function settleNormalizationBatch(supabase: any, file_id: string, batchId: string | null | undefined) {
+  const { data, error } = await supabase.rpc("avint_settle_document_normalization", {
+    p_file_id: file_id,
+    p_batch_id: batchId ?? null,
+  })
+  if (error) throw new Error(`Normalization settlement failed: ${error.message}`)
+  return data
 }
 
 const SYSTEM_PROMPT = `You are a financial document normalization AI.
@@ -230,7 +214,7 @@ serve(async (req) => {
           })
           .eq("id", job_id)
       }
-      await closeFileProcessingJobIfNoRawRows(supabase, file_id)
+      await settleNormalizationBatch(supabase, file_id, fields.normalization_batch_id)
       return new Response(
         JSON.stringify({ skipped: true, reason: "retry_ceiling", attempts: priorAttempts, file_id }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -450,7 +434,7 @@ serve(async (req) => {
         .update({ status: "completed", completed_at: now })
         .eq("id", job_id)
     }
-    await closeFileProcessingJobIfNoRawRows(supabase, file_id)
+    await settleNormalizationBatch(supabase, file_id, fields.normalization_batch_id)
 
     return new Response(JSON.stringify({ success: true, file_id }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -495,7 +479,7 @@ serve(async (req) => {
           })
           .eq("id", job_id)
       }
-      await closeFileProcessingJobIfNoRawRows(supabase, file_id)
+      await settleNormalizationBatch(supabase, file_id, fields?.normalization_batch_id)
     } catch (innerErr: any) {
       logError(FN, "failure_state_update", innerErr, { file_id, job_id })
     }

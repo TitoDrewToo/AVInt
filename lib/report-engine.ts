@@ -1,11 +1,12 @@
-import { generateQuickBooksCSV, generateXeroCSV, type AccountingExportRow } from "@/lib/accounting-csv"
+import { generateQuickBooksCSV, generateXeroCSV } from "@/lib/accounting-csv"
 import { computeTaxBundle, type TaxRow } from "@/lib/tax-bundle"
 import { type Entitlement } from "@/lib/entitlement"
 import { supabaseAdmin } from "@/lib/mcp-auth"
 import { overlapsDateRange } from "@/lib/report-utils"
 import { selectTaxBundleDefaultYear } from "@/lib/tax-bundle-default-year"
-import { isExportableExpenseRow, isExpenseRow, isUsdRow } from "@/lib/document-classification"
-import { getReportFileIds } from "@/lib/report-folder-scope-server"
+import { isExpenseRow, isUsdRow } from "@/lib/document-classification"
+import { createReportQueryContext } from "@/lib/report-query-context-server"
+import { accountingExportRows } from "@/lib/report-export-shaping"
 
 export type ReportFilters = { dateFrom?: string; dateTo?: string; targetFolder?: string }
 export type ExportTarget = "quickbooks_3col" | "quickbooks_4col" | "xero"
@@ -15,7 +16,8 @@ function inPeriod(row: { document_date?: string | null; period_start?: string | 
 }
 
 async function taxRows(userId: string, filters: ReportFilters): Promise<TaxRow[]> {
-  const fileIds = await getReportFileIds(userId, [], filters.targetFolder)
+  const context = await createReportQueryContext(userId, filters)
+  const fileIds = await context.fileIds()
   if (filters.targetFolder && fileIds.length === 0) return []
 
   let query = supabaseAdmin
@@ -48,9 +50,7 @@ export async function getReport(userId: string, _entitlement: Entitlement, repor
 
 export async function getExport(userId: string, entitlement: Entitlement, report: "tax-bundle" | "business-expense", target: ExportTarget, filters: ReportFilters = {}) {
   const result = await getReport(userId, entitlement, report, filters)
-  const rows = ("expenses" in result && result.expenses ? result.expenses : result.rows)
-    .filter((row) => isExportableExpenseRow(row) && isUsdRow(row))
-    .map((row): AccountingExportRow => ({ document_date: row.document_date, vendor_name: row.vendor_name, expense_category: row.expense_category, total_amount: row.total_amount }))
+  const rows = accountingExportRows("expenses" in result && result.expenses ? result.expenses : result.rows)
   if (target === "xero") return generateXeroCSV(rows)
   return generateQuickBooksCSV(rows, target === "quickbooks_4col" ? "4col" : "3col")
 }

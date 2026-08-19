@@ -178,3 +178,14 @@ The first implementation slice was completed without waiting for the Claude revi
 - Verification: folder scope 4/4, tax bundle 151/151, accounting CSV 17/17, MCP shaping 5/5, TypeScript, lint, and production build pass. Lint retains the four pre-existing warnings documented above.
 
 P1-D/E/F remain staged for the next slice: gradual report-query/output-adapter convergence, stricter extraction-boundary schemas, and Supabase-backed integration/concurrency tests. The verified tax math and export logic were not changed.
+
+## Follow-up implementation slice — 2026-08-19
+
+- Added `supabase/functions/_shared/extraction-boundary.ts` and validated model/spreadsheet extraction rows before persistence. Malformed scalar, null, or nested-array rows now fail explicitly instead of reaching field mapping through an unsafe `any` boundary.
+- Expanded folder-scope tests to cover owned and foreign/unknown folder identifiers. These remain deterministic boundary tests; Supabase-backed ownership and report/export parity tests are still required before P1-F is closed.
+- Extracted a shared `accountingExportRows` adapter so Tax Bundle and Business Expense exports apply one centralized USD/exportability policy. Its focused test confirms income and non-USD rows cannot enter accounting output.
+- Added a normalization batch UUID to each extraction run and a service-role Postgres settlement function that locks the file row, counts terminal/raw rows for that batch, and advances the file/job only when the batch is settled. The remaining integration test gap is now specifically database-backed execution of this function.
+- Removed the duplicate multi-row normalization request: each inserted row is now submitted exactly once, with EdgeRuntime background execution and a synchronous fallback outside EdgeRuntime.
+- Added a strict, hourly reconciliation path for stale unreferenced `documents/<user>/_inbox/*` objects. It is conservative by construction (UUID user prefix, exact `_inbox` scope, one-hour age floor, and a `files.storage_path` reference check), dry-run by default for system-admin review, and protected by `CRON_SECRET` for scheduled execution.
+- Added a shared report query context so every HTTP report branch resolves ownership and descendant-folder scope once per request. The tax-bundle HTTP export now uses the same centralized accounting export adapter as the shared engine, preserving USD/category/document-type policy across screen and export paths.
+- Added deterministic reconciliation tests, extraction-boundary tests, folder ownership tests, and nested-file export parity coverage. Supabase-backed RPC/concurrency tests remain environment-dependent because Docker was unavailable in this workspace; the migration and test seam are ready for the project-linked Supabase test runner.

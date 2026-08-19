@@ -9,7 +9,10 @@ import { checkRateLimit } from "@/lib/rate-limit"
 import { selectTaxBundleDefaultYear } from "@/lib/tax-bundle-default-year"
 import { PLAN_LIMITS, usageWindowForTier } from "@/supabase/functions/_shared/plan-limits"
 import { getExport, getReport } from "@/lib/report-engine"
-import { getReportFileIds, InvalidReportFolderError } from "@/lib/report-folder-scope-server"
+import { InvalidReportFolderError } from "@/lib/report-folder-scope-server"
+import { createReportQueryContext } from "@/lib/report-query-context-server"
+import { accountingExportRows } from "@/lib/report-export-shaping"
+import type { AccountingExportRow } from "@/lib/accounting-csv"
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -91,7 +94,7 @@ async function authorizeReportRequest(req: NextRequest, reportKey: string, expor
   return { user, ent }
 }
 
-function accountingCsvResponse(format: "quickbooks" | "xero", rows: any[], filename: string, qbLayout: "3col" | "4col" = "3col") {
+function accountingCsvResponse(format: "quickbooks" | "xero", rows: AccountingExportRow[], filename: string, qbLayout: "3col" | "4col" = "3col") {
   const csv = format === "quickbooks" ? generateQuickBooksCSV(rows, qbLayout) : generateXeroCSV(rows)
   return new NextResponse(csv, {
     headers: {
@@ -138,6 +141,7 @@ export async function GET(
   const { dateFrom, dateTo, targetFolder } = getFilters(req)
 
   try {
+    const reportContext = await createReportQueryContext(user.id, { dateFrom, dateTo, targetFolder })
     // Shared server engine used by both the JWT route and the MCP connector.
     // Keep the HTTP response format stable while the MCP layer consumes the
     // same user-scoped data and CSV generators.
@@ -153,7 +157,7 @@ export async function GET(
 
     switch (report) {
       case "expense-summary": {
-        const fileIds = await getReportFileIds(user.id, ["receipt", "invoice"], targetFolder)
+        const fileIds = await reportContext.fileIds(["receipt", "invoice"])
         if (fileIds.length === 0) return NextResponse.json({ expenses: [] })
 
         let query = supabaseAdmin
@@ -176,7 +180,7 @@ export async function GET(
       }
 
       case "income-summary": {
-        const fileIds = await getReportFileIds(user.id, ["payslip", "income_statement"], targetFolder)
+        const fileIds = await reportContext.fileIds(["payslip", "income_statement"])
         if (fileIds.length === 0) return NextResponse.json({ income: [] })
 
         let query = supabaseAdmin
@@ -199,8 +203,8 @@ export async function GET(
       }
 
       case "profit-loss": {
-        const incomeFileIds = await getReportFileIds(user.id, ["payslip", "income_statement"], targetFolder)
-        const expenseFileIds = await getReportFileIds(user.id, ["receipt", "invoice"], targetFolder)
+        const incomeFileIds = await reportContext.fileIds(["payslip", "income_statement"])
+        const expenseFileIds = await reportContext.fileIds(["receipt", "invoice"])
 
         let incomeRows: unknown[] = []
         let expenseRows: unknown[] = []
@@ -237,7 +241,7 @@ export async function GET(
       }
 
       case "business-expense": {
-        const fileIds = await getReportFileIds(user.id, ["receipt", "invoice"], targetFolder)
+        const fileIds = await reportContext.fileIds(["receipt", "invoice"])
         if (fileIds.length === 0) {
           if (exportFormat) return accountingCsvResponse(exportFormat as "quickbooks" | "xero", [], `business-expense-${exportFormat}.csv`, qbLayout)
           return NextResponse.json({ expenses: [] })
@@ -273,7 +277,7 @@ export async function GET(
       }
 
       case "contract-summary": {
-        const fileIds = await getReportFileIds(user.id, ["contract", "agreement"], targetFolder)
+        const fileIds = await reportContext.fileIds(["contract", "agreement"])
         if (fileIds.length === 0) return NextResponse.json({ contracts: [], obligations: {} })
 
         const { data: contractRows, error: contractErr } = await supabaseAdmin
@@ -329,7 +333,7 @@ export async function GET(
       }
 
       case "key-terms": {
-        const fileIds = await getReportFileIds(user.id, ["contract", "agreement"], targetFolder)
+        const fileIds = await reportContext.fileIds(["contract", "agreement"])
         if (fileIds.length === 0) return NextResponse.json({ docs: [] })
 
         const { data, error } = await supabaseAdmin
@@ -369,7 +373,7 @@ export async function GET(
       }
 
       case "tax-bundle": {
-        const fileIds = await getReportFileIds(user.id, [], targetFolder)
+        const fileIds = await reportContext.fileIds()
         const totalOwnedDocs = fileIds.length
 
         let detectedYears: number[] = []
@@ -435,14 +439,7 @@ export async function GET(
         )
 
         if (exportFormat) {
-          const exportRows = rows
-            .filter((row) => ["receipt", "invoice"].includes(row.files?.[0]?.document_type))
-            .map((row) => ({
-              document_date: row.document_date,
-              vendor_name: row.vendor_name,
-              expense_category: row.expense_category,
-              total_amount: row.total_amount,
-            }))
+          const exportRows = accountingExportRows(rows)
           return accountingCsvResponse(exportFormat as "quickbooks" | "xero", exportRows, `tax-bundle-${exportFormat}.csv`, qbLayout)
         }
 

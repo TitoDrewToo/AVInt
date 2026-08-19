@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/mcp-auth"
-import { descendantFolderIds } from "@/lib/report-folder-scope"
+import { descendantFolderIds, folderBelongsToUser } from "@/lib/report-folder-scope"
 
 export class InvalidReportFolderError extends Error {
   constructor() {
@@ -18,7 +18,7 @@ export async function resolveReportFolderScope(userId: string, targetFolder?: st
 
   if (error) throw new Error(error.message)
   const folders = data ?? []
-  if (!folders.some((folder) => folder.id === targetFolder)) {
+  if (!folderBelongsToUser(folders, targetFolder)) {
     throw new InvalidReportFolderError()
   }
 

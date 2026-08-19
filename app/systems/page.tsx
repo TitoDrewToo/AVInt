@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Navbar } from "@/components/navbar"
 import { supabase } from "@/lib/supabase"
 import { ERROR_GROUP_STATUSES, type ErrorGroupStatus } from "@/lib/system-admin"
-import { diagnoseErrorGroup, setErrorGroupReviewVerdict, updateErrorGroupStatus } from "./actions"
+import { diagnoseErrorGroup, setErrorGroupReviewVerdict, updateErrorGroupAction, updateErrorGroupStatus } from "./actions"
 import { InquiriesConsole } from "./inquiries-console"
 import { PartnerAdminConsole } from "@/app/admin/partners/partner-admin-console"
 
@@ -20,6 +20,9 @@ type Group = {
   status: ErrorGroupStatus
   ai_analysis: string | null
   proposed_fix: string | null
+  action_taken: string | null
+  action_taken_at: string | null
+  action_taken_by: string | null
   risk_level: "low" | "medium" | "high" | null
   confidence: number | null
   severity: string | null
@@ -134,6 +137,8 @@ export default function SystemsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [updating, setUpdating] = useState(false)
+  const [actionTaken, setActionTaken] = useState("")
+  const [savingAction, setSavingAction] = useState(false)
   const [diagnosing, setDiagnosing] = useState(false)
   const [tab, setTab] = useState<"errors" | "partners" | "inquiries" | "analytics">("errors")
 
@@ -141,7 +146,7 @@ export default function SystemsPage() {
     setLoading(true)
     setError(null)
     const [{ data: groupRows, error: groupError }, { data: eventRows, error: eventError }] = await Promise.all([
-      supabase.from("error_groups").select("fingerprint, title, first_seen, last_seen, count, status, ai_analysis, proposed_fix, risk_level, confidence, severity, diagnosed_at, ai_model, review_verdict, reviewed_at, reviewed_by").order("last_seen", { ascending: false }),
+      supabase.from("error_groups").select("fingerprint, title, first_seen, last_seen, count, status, ai_analysis, proposed_fix, action_taken, action_taken_at, action_taken_by, risk_level, confidence, severity, diagnosed_at, ai_model, review_verdict, reviewed_at, reviewed_by").order("last_seen", { ascending: false }),
       supabase.from("error_events").select("id, occurred_at, occurred_at_manila, user_id, tool, fn, action, route, level, message, stack, fingerprint, context").order("occurred_at", { ascending: false }).limit(2_000),
     ])
     if (groupError || eventError) {
@@ -217,6 +222,10 @@ export default function SystemsPage() {
   const selectedGroup = groups.find((group) => group.fingerprint === selectedFingerprint) ?? null
   const tools = [...new Set(groups.flatMap((group) => group.tools))].sort()
 
+  useEffect(() => {
+    setActionTaken(selectedGroup?.action_taken ?? "")
+  }, [selectedGroup?.action_taken, selectedFingerprint])
+
   async function changeStatus(status: ErrorGroupStatus) {
     if (!selectedGroup) return
     setUpdating(true)
@@ -258,6 +267,17 @@ export default function SystemsPage() {
     if (!result.ok) setError(result.error)
     else await loadGroups()
     setUpdating(false)
+  }
+
+  async function saveActionTaken() {
+    if (!selectedGroup) return
+    setSavingAction(true)
+    setError(null)
+    const { data: { session } } = await supabase.auth.getSession()
+    const result = await updateErrorGroupAction(selectedGroup.fingerprint, actionTaken, session?.access_token)
+    if (!result.ok) setError(result.error)
+    else await loadGroups()
+    setSavingAction(false)
   }
 
   if (access !== "allowed") {
@@ -360,6 +380,15 @@ export default function SystemsPage() {
                     {event.context && <details className="mt-3"><summary className="cursor-pointer text-xs text-muted-foreground">Context</summary><pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-muted/50 p-3 text-[11px] leading-relaxed text-muted-foreground">{JSON.stringify(event.context, null, 2)}</pre></details>}
                   </article>
                 ))}
+              </div>
+              <div className="border-t border-border px-5 py-5">
+                <div className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Action taken</div>
+                <textarea value={actionTaken} onChange={(event) => setActionTaken(event.target.value)} placeholder="Record the investigation, fix, rollback, or decision taken…" className="min-h-28 w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary" />
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <p className="text-xs text-muted-foreground">Internal record for future Claude review and self-fix readiness.</p>
+                  <Button size="sm" onClick={() => void saveActionTaken()} disabled={savingAction}>{savingAction ? "Saving…" : "Save action"}</Button>
+                </div>
+                {selectedGroup.action_taken_at ? <p className="mt-2 text-xs text-muted-foreground">Last updated {dualTimestamp(selectedGroup.action_taken_at)}{selectedGroup.action_taken_by ? <span className="mt-1 block">by {selectedGroup.action_taken_by}</span> : null}</p> : null}
               </div>
             </>}
           </aside>

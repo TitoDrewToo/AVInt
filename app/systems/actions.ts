@@ -165,3 +165,31 @@ export async function setErrorGroupReviewVerdict(
   if (error || !data) return { ok: false as const, error: error?.message ?? "Error group not found" }
   return { ok: true as const, group: data }
 }
+
+export async function updateErrorGroupAction(
+  fingerprint: string,
+  actionTaken: string,
+  accessToken?: string | null,
+) {
+  if (!isErrorGroupFingerprint(fingerprint) || actionTaken.length > 8_000) {
+    return { ok: false as const, error: "Invalid action record" }
+  }
+  const requestHeaders = await headers()
+  const token = accessToken ?? bearerToken(requestHeaders.get("authorization"))
+  const user = await getSystemAdminUser(token)
+  if (!user) return { ok: false as const, error: "Forbidden" }
+  const client = adminClient()
+  if (!client) return { ok: false as const, error: "Monitoring storage is unavailable" }
+  const { data, error } = await client
+    .from("error_groups")
+    .update({
+      action_taken: actionTaken.trim() || null,
+      action_taken_at: actionTaken.trim() ? new Date().toISOString() : null,
+      action_taken_by: actionTaken.trim() ? user.id : null,
+    })
+    .eq("fingerprint", fingerprint)
+    .select("fingerprint, action_taken, action_taken_at, action_taken_by")
+    .maybeSingle()
+  if (error || !data) return { ok: false as const, error: error?.message ?? "Error group not found" }
+  return { ok: true as const, group: data }
+}

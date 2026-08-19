@@ -26,10 +26,20 @@ export async function ingestFiles(userId: string, entitlement: Entitlement, file
     const storagePath = `${userId}/_inbox/${randomUUID()}-${input.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`
     const { error: uploadError } = await supabaseAdmin.storage.from("documents").upload(storagePath, bytes, { contentType: input.mimeType, upsert: false })
     if (uploadError) throw new Error(uploadError.message)
-    const { data: file, error: fileError } = await supabaseAdmin.from("files").insert({ user_id: userId, filename: input.name, storage_path: storagePath, file_type: input.mimeType, file_size: bytes.length, document_type: "unknown", upload_status: "pending_scan" }).select("id, filename, storage_path").single()
-    if (fileError || !file) throw new Error(fileError?.message ?? "Could not create file record")
-    const { error: jobError } = await supabaseAdmin.from("processing_jobs").insert({ file_id: file.id, status: "uploaded" })
-    if (jobError) throw new Error(jobError.message)
+    let file: { id: string; filename: string; storage_path: string } | null = null
+    try {
+      const { data: fileRecord, error: fileError } = await supabaseAdmin.from("files").insert({ user_id: userId, filename: input.name, storage_path: storagePath, file_type: input.mimeType, file_size: bytes.length, document_type: "unknown", upload_status: "pending_scan" }).select("id, filename, storage_path").single()
+      if (fileError || !fileRecord) throw new Error(fileError?.message ?? "Could not create file record")
+      file = fileRecord
+      const { error: jobError } = await supabaseAdmin.from("processing_jobs").insert({ file_id: file.id, status: "uploaded" })
+      if (jobError) throw new Error(jobError.message)
+    } catch (metadataError) {
+      if (file) await supabaseAdmin.from("files").delete().eq("id", file.id)
+      const { error: cleanupError } = await supabaseAdmin.storage.from("documents").remove([storagePath])
+      if (cleanupError) console.error("MCP ingest inbox cleanup failed:", cleanupError)
+      throw metadataError
+    }
+    if (!file) throw new Error("Could not create file record")
     const { data: claim, error: claimError } = await supabaseAdmin.rpc("avint_claim_document_processing", { p_user_id: userId, p_file_id: file.id, p_period_start: window.start, p_period_end: window.end, p_limit: limit, p_soft_cap: PLAN_LIMITS[entitlement.tier].softCap })
     if (claimError) throw new Error(claimError.message)
     if (!claim?.[0]?.allowed) {

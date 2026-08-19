@@ -5,8 +5,9 @@ import { supabaseAdmin } from "@/lib/mcp-auth"
 import { overlapsDateRange } from "@/lib/report-utils"
 import { selectTaxBundleDefaultYear } from "@/lib/tax-bundle-default-year"
 import { isExportableExpenseRow, isExpenseRow, isUsdRow } from "@/lib/document-classification"
+import { getReportFileIds } from "@/lib/report-folder-scope-server"
 
-export type ReportFilters = { dateFrom?: string; dateTo?: string }
+export type ReportFilters = { dateFrom?: string; dateTo?: string; targetFolder?: string }
 export type ExportTarget = "quickbooks_3col" | "quickbooks_4col" | "xero"
 
 function inPeriod(row: { document_date?: string | null; period_start?: string | null; period_end?: string | null }, filters: ReportFilters) {
@@ -14,12 +15,18 @@ function inPeriod(row: { document_date?: string | null; period_start?: string | 
 }
 
 async function taxRows(userId: string, filters: ReportFilters): Promise<TaxRow[]> {
-  const { data, error } = await supabaseAdmin
+  const fileIds = await getReportFileIds(userId, [], filters.targetFolder)
+  if (filters.targetFolder && fileIds.length === 0) return []
+
+  let query = supabaseAdmin
     .from("document_fields")
     .select("file_id, vendor_name, vendor_normalized, employer_name, document_date, period_start, period_end, total_amount, gross_income, net_income, expense_category, currency, income_source, classification_rationale, jurisdiction, confidence_score, raw_json, files!inner(filename, document_type, storage_path, user_id)")
     .eq("files.user_id", userId)
     .neq("normalization_status", "excluded")
     .order("document_date", { ascending: false })
+  if (fileIds.length > 0) query = query.in("file_id", fileIds)
+
+  const { data, error } = await query
   if (error) throw new Error(error.message)
   return (data ?? []).filter((row) => inPeriod(row, filters)).map((row: any) => ({
     ...row,

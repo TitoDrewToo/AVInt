@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic"
 export const maxDuration = 300
 
 const fileSchema = z.object({ name: z.string().min(1).max(255), mimeType: z.string().min(1), data: z.string().min(1) })
-const periodSchema = z.object({ dateFrom: z.string().optional(), dateTo: z.string().optional() }).optional()
+const periodSchema = z.object({ dateFrom: z.string().optional(), dateTo: z.string().optional(), targetFolder: z.string().uuid().optional() }).optional()
 
 function capResult(message: string) {
   return { content: [{ type: "text" as const, text: message }], isError: false }
@@ -60,7 +60,7 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
 
     server.registerTool("smart_storage.report", {
       title: "Smart Storage report",
-      description: "Read-only. Compute a tax bundle (Schedule C-style) or business-expense report over the signed-in AVIntelligence user's own stored documents, optionally scoped to a date period. Returns JSON; does not modify any data.",
+      description: "Read-only. Compute a tax bundle (Schedule C-style) or business-expense report over the signed-in AVIntelligence user's own stored documents, optionally scoped to a date period and folder (including descendants). Returns JSON; does not modify any data.",
       inputSchema: z.object({ type: z.enum(["tax_bundle", "business_expense"]), period: periodSchema, includeRows: z.boolean().optional().default(false) }),
     }, async ({ type, period, includeRows }) => {
       const blocked = await toolGuard(userId, entitlement, "report")
@@ -72,7 +72,7 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
 
     server.registerTool("smart_storage.export", {
       title: "Smart Storage export",
-      description: "Read-only. Generate import-ready accounting file text (QuickBooks 3-col, QuickBooks 4-col, or Xero) from the signed-in AVIntelligence user's own stored expenses, optionally scoped to a date period. Returns CSV text; does not modify any data.",
+      description: "Read-only. Generate import-ready accounting file text (QuickBooks 3-col, QuickBooks 4-col, or Xero) from the signed-in AVIntelligence user's own stored expenses, optionally scoped to a date period and folder (including descendants). Returns CSV text; does not modify any data.",
       inputSchema: z.object({ target: z.enum(["quickbooks_3col", "quickbooks_4col", "xero"]), period: periodSchema }),
     }, async ({ target, period }) => {
       const blocked = await toolGuard(userId, entitlement, "export")

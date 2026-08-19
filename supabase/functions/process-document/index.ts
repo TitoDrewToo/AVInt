@@ -1053,7 +1053,10 @@ serve(async (req) => {
       .from("files")
       .update({
         document_type: isCsv ? "csv_export" : normalizeExtractedDocumentType(extracted, mimeType),
-        upload_status: "done",
+        // Extraction is complete, but normalization may still be running for
+        // multi-row inputs. The normalizer advances this to `normalized` only
+        // after the final raw row reaches a terminal state.
+        upload_status: "processing",
       })
       .eq("id", file_id)
 

@@ -987,49 +987,62 @@ export default function SmartStoragePage() {
       const storagePath = `${session.user.id}/_inbox/${uniqueName}`
       const { error: storageError } = await supabase.storage.from("documents").upload(storagePath, file)
       if (storageError) throw storageError
-      const { data: fileRecord, error: fileError } = await supabase
-        .from("files")
-        .insert({
-          user_id: session.user.id,
-          filename: file.name,
-          storage_path: storagePath,
-          file_type: file.type,
-          file_size: file.size,
-          document_type: "unknown",
-          upload_status: "pending_scan",
-          folder_id: targetFolderId,
-        })
-        .select().single()
-      if (fileError) throw fileError
-      const { data: jobRecord, error: jobError } = await supabase
-        .from("processing_jobs")
-        .insert({ file_id: fileRecord.id, status: "uploaded" })
-        .select()
-        .single()
-      if (jobError) throw jobError
+      let fileId: string | null = null
+      try {
+        const { data: fileRecord, error: fileError } = await supabase
+          .from("files")
+          .insert({
+            user_id: session.user.id,
+            filename: file.name,
+            storage_path: storagePath,
+            file_type: file.type,
+            file_size: file.size,
+            document_type: "unknown",
+            upload_status: "pending_scan",
+            folder_id: targetFolderId,
+          })
+          .select().single()
+        if (fileError || !fileRecord) throw fileError ?? new Error("File record was not created")
+        fileId = fileRecord.id
+        const { data: jobRecord, error: jobError } = await supabase
+          .from("processing_jobs")
+          .insert({ file_id: fileRecord.id, status: "uploaded" })
+          .select()
+          .single()
+        if (jobError || !jobRecord) throw jobError ?? new Error("Processing job was not created")
 
-      // Trigger prescan — it will chain into process-document on approval.
-      // Uses the user JWT so prescan can verify ownership.
-      const userToken = (await supabase.auth.getSession()).data.session?.access_token
-      fetch(`${supabaseUrl}/functions/v1/prescan-document`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${userToken ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
-          "apikey": process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
-        },
-        body: JSON.stringify({ file_id: fileRecord.id }),
-      }).catch((err) => console.error("prescan-document fetch error:", err))
+        // Trigger prescan — it will chain into process-document on approval.
+        // Uses the user JWT so prescan can verify ownership.
+        const userToken = (await supabase.auth.getSession()).data.session?.access_token
+        fetch(`${supabaseUrl}/functions/v1/prescan-document`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${userToken ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+            "apikey": process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
+          },
+          body: JSON.stringify({ file_id: fileRecord.id }),
+        }).catch((err) => console.error("prescan-document fetch error:", err))
 
-      return {
-        ...fileRecord,
-        document_fields_count: 0,
-        processing_job: {
-          status: jobRecord.status,
-          created_at: jobRecord.created_at,
-          error_message: jobRecord.error_message,
-        },
-      } as UploadedFile
+        return {
+          ...fileRecord,
+          document_fields_count: 0,
+          processing_job: {
+            status: jobRecord.status,
+            created_at: jobRecord.created_at,
+            error_message: jobRecord.error_message,
+          },
+        } as UploadedFile
+      } catch (metadataError) {
+        const cleanupToken = (await supabase.auth.getSession()).data.session?.access_token
+        const cleanupResponse = await fetch("/api/uploads/cleanup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...(cleanupToken ? { Authorization: `Bearer ${cleanupToken}` } : {}) },
+          body: JSON.stringify({ storagePath, fileId }),
+        }).catch(() => null)
+        if (!cleanupResponse?.ok) console.error("upload inbox cleanup failed", { fileId, storagePath })
+        throw metadataError
+      }
     }
 
     // Upload all files, then prepend the new records instead of refetching the full file history.

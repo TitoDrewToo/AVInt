@@ -36,6 +36,15 @@ async function closeFileProcessingJobIfNoRawRows(supabase: any, file_id: string)
     .eq("normalization_status", "raw")
 
   if ((rawCount ?? 0) === 0) {
+    // Keep files in `processing` until every extracted row has settled. A
+    // failed row is terminal and remains visible for retry; only raw rows
+    // indicate that normalization is still in flight.
+    await supabase
+      .from("files")
+      .update({ upload_status: "normalized" })
+      .eq("id", file_id)
+      .in("upload_status", ["processing", "done"])
+
     await supabase
       .from("processing_jobs")
       .update({ status: "completed", completed_at: new Date().toISOString() })
@@ -221,6 +230,7 @@ serve(async (req) => {
           })
           .eq("id", job_id)
       }
+      await closeFileProcessingJobIfNoRawRows(supabase, file_id)
       return new Response(
         JSON.stringify({ skipped: true, reason: "retry_ceiling", attempts: priorAttempts, file_id }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },

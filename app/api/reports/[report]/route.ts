@@ -9,6 +9,7 @@ import { checkRateLimit } from "@/lib/rate-limit"
 import { selectTaxBundleDefaultYear } from "@/lib/tax-bundle-default-year"
 import { PLAN_LIMITS, usageWindowForTier } from "@/supabase/functions/_shared/plan-limits"
 import { getExport, getReport } from "@/lib/report-engine"
+import { getReportFileIds, InvalidReportFolderError } from "@/lib/report-folder-scope-server"
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -118,49 +119,6 @@ function getQuickBooksLayout(req: NextRequest): "3col" | "4col" {
   return new URL(req.url).searchParams.get("qbColumns") === "4" ? "4col" : "3col"
 }
 
-async function getFileIds(userId: string, documentTypes: string[], targetFolder: string) {
-  let targetFolderIds: string[] = []
-  if (targetFolder) {
-    const { data: folders, error: folderErr } = await supabaseAdmin
-      .from("folders")
-      .select("id, parent_id")
-      .eq("user_id", userId)
-
-    if (folderErr) throw new Error(folderErr.message)
-
-    const childrenByParent = new Map<string | null, string[]>()
-    for (const folder of folders ?? []) {
-      const parentId = folder.parent_id ?? null
-      childrenByParent.set(parentId, [...(childrenByParent.get(parentId) ?? []), folder.id])
-    }
-
-    const queue = [targetFolder]
-    const seen = new Set<string>()
-    while (queue.length > 0) {
-      const folderId = queue.shift()!
-      if (seen.has(folderId)) continue
-      seen.add(folderId)
-      queue.push(...(childrenByParent.get(folderId) ?? []))
-    }
-    targetFolderIds = Array.from(seen)
-  }
-
-  let query = supabaseAdmin
-    .from("files")
-    .select("id")
-    .eq("user_id", userId)
-
-  if (documentTypes.length > 0) {
-    query = query.in("document_type", documentTypes)
-  }
-
-  if (targetFolderIds.length > 0) query = query.in("folder_id", targetFolderIds)
-
-  const { data, error } = await query
-  if (error) throw new Error(error.message)
-  return (data ?? []).map((row) => row.id)
-}
-
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ report: string }> },
@@ -187,15 +145,15 @@ export async function GET(
       const reportKey = report as "business-expense" | "tax-bundle"
       if (exportFormat) {
         const target = exportFormat === "xero" ? "xero" : qbLayout === "4col" ? "quickbooks_4col" : "quickbooks_3col"
-        const csv = await getExport(user.id, ent, reportKey, target, { dateFrom, dateTo })
+        const csv = await getExport(user.id, ent, reportKey, target, { dateFrom, dateTo, targetFolder })
         return new NextResponse(csv, { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="${report}-${exportFormat}.csv"`, "Cache-Control": "no-store" } })
       }
-      return NextResponse.json(await getReport(user.id, ent, reportKey, { dateFrom, dateTo }))
+      return NextResponse.json(await getReport(user.id, ent, reportKey, { dateFrom, dateTo, targetFolder }))
     }
 
     switch (report) {
       case "expense-summary": {
-        const fileIds = await getFileIds(user.id, ["receipt", "invoice"], targetFolder)
+        const fileIds = await getReportFileIds(user.id, ["receipt", "invoice"], targetFolder)
         if (fileIds.length === 0) return NextResponse.json({ expenses: [] })
 
         let query = supabaseAdmin
@@ -218,7 +176,7 @@ export async function GET(
       }
 
       case "income-summary": {
-        const fileIds = await getFileIds(user.id, ["payslip", "income_statement"], targetFolder)
+        const fileIds = await getReportFileIds(user.id, ["payslip", "income_statement"], targetFolder)
         if (fileIds.length === 0) return NextResponse.json({ income: [] })
 
         let query = supabaseAdmin
@@ -241,8 +199,8 @@ export async function GET(
       }
 
       case "profit-loss": {
-        const incomeFileIds = await getFileIds(user.id, ["payslip", "income_statement"], targetFolder)
-        const expenseFileIds = await getFileIds(user.id, ["receipt", "invoice"], targetFolder)
+        const incomeFileIds = await getReportFileIds(user.id, ["payslip", "income_statement"], targetFolder)
+        const expenseFileIds = await getReportFileIds(user.id, ["receipt", "invoice"], targetFolder)
 
         let incomeRows: unknown[] = []
         let expenseRows: unknown[] = []
@@ -279,7 +237,7 @@ export async function GET(
       }
 
       case "business-expense": {
-        const fileIds = await getFileIds(user.id, ["receipt", "invoice"], targetFolder)
+        const fileIds = await getReportFileIds(user.id, ["receipt", "invoice"], targetFolder)
         if (fileIds.length === 0) {
           if (exportFormat) return accountingCsvResponse(exportFormat as "quickbooks" | "xero", [], `business-expense-${exportFormat}.csv`, qbLayout)
           return NextResponse.json({ expenses: [] })
@@ -315,7 +273,7 @@ export async function GET(
       }
 
       case "contract-summary": {
-        const fileIds = await getFileIds(user.id, ["contract", "agreement"], targetFolder)
+        const fileIds = await getReportFileIds(user.id, ["contract", "agreement"], targetFolder)
         if (fileIds.length === 0) return NextResponse.json({ contracts: [], obligations: {} })
 
         const { data: contractRows, error: contractErr } = await supabaseAdmin
@@ -371,7 +329,7 @@ export async function GET(
       }
 
       case "key-terms": {
-        const fileIds = await getFileIds(user.id, ["contract", "agreement"], targetFolder)
+        const fileIds = await getReportFileIds(user.id, ["contract", "agreement"], targetFolder)
         if (fileIds.length === 0) return NextResponse.json({ docs: [] })
 
         const { data, error } = await supabaseAdmin
@@ -411,7 +369,7 @@ export async function GET(
       }
 
       case "tax-bundle": {
-        const fileIds = await getFileIds(user.id, [], targetFolder)
+        const fileIds = await getReportFileIds(user.id, [], targetFolder)
         const totalOwnedDocs = fileIds.length
 
         let detectedYears: number[] = []
@@ -500,6 +458,9 @@ export async function GET(
         return NextResponse.json({ error: "Unknown report" }, { status: 404 })
     }
   } catch (error) {
+    if (error instanceof InvalidReportFolderError) {
+      return NextResponse.json({ error: error.message, code: "INVALID_REPORT_FOLDER" }, { status: 400 })
+    }
     return serverError(error, { route: "reports/[report]", stage: report, userId: user.id })
   }
 }

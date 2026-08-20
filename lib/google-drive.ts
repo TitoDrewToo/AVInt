@@ -17,7 +17,7 @@ const MAX_FILE_BYTES = 50 * 1024 * 1024
 type DriveTokenResponse = { access_token: string; expires_in: number; refresh_token?: string }
 export type DriveFile = { id: string; name: string; mimeType: string; size?: string; modifiedTime?: string; webViewLink?: string; parents?: string[] }
 
-type RequiredDriveConfig = { clientId: string; clientSecret: string; redirectUri: string; encryptionKey: string; scope: string; enabled: true }
+type RequiredDriveConfig = { clientId: string; clientSecret: string; redirectUri: string; encryptionKey: string; pickerApiKey?: string; appId?: string; pickerEnabled?: boolean; scope: string; enabled: true }
 
 function configOrThrow(): RequiredDriveConfig {
   const config = googleDriveConfig()
@@ -139,4 +139,12 @@ export async function getGoogleDriveUser(userId: string) {
   const { data, error } = await supabaseAdmin.from("google_drive_connections").select("google_email").eq("user_id", userId).maybeSingle()
   if (error) throw new Error(error.message)
   return data
+}
+
+export async function getGoogleDrivePickerConfig(userId: string) {
+  const config = configOrThrow()
+  if (!config.pickerEnabled || !config.pickerApiKey || !config.appId) throw new Error("Google Drive Picker is not configured")
+  const connection = await getGoogleDriveUser(userId)
+  if (!connection) throw new Error("Google Drive is not connected")
+  return { accessToken: await accessTokenForUser(userId), apiKey: config.pickerApiKey, appId: config.appId }
 }

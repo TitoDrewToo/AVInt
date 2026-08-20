@@ -48,7 +48,7 @@ openssl rand -base64 32
 
 ## Marketplace hardening still required
 
-The importer uses the Google Picker for selection and requests the narrower `drive.file` scope. Users explicitly select files in the Picker; the server validates and downloads only those selected files before sending them through Smart Storage.
+The importer uses the Google Picker for selection and requests `drive.readonly` because the server must validate and download user-selected files from existing Drive folders. This is a broader scope and requires Google OAuth verification before public launch; do not present the current app as fully verified until that review is approved.
 
 Required listing materials: privacy policy, terms, support URL, screenshots, test account, exact data-flow description, retention/deletion explanation, and a clear explanation of why the app needs each scope.
 

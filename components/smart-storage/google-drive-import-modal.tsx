@@ -40,11 +40,12 @@ export function GoogleDriveImportModal({ session, onImported }: Props) {
   const [connected, setConnected] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [status, setStatus] = useState<string | null>(null)
   const [selectedCount, setSelectedCount] = useState(0)
 
   async function openModal() {
     if (!session) return
-    setOpen(true); setError(null); setSelectedCount(0)
+    setOpen(true); setError(null); setStatus(null); setSelectedCount(0)
     const response = await api("/api/integrations/google-drive/status", session)
     const body = await response.json() as { connected?: boolean; error?: string }
     if (!response.ok) { setError(body.error ?? "Could not check Drive connection"); return }
@@ -77,7 +78,7 @@ export function GoogleDriveImportModal({ session, onImported }: Props) {
         const view = new pickerApi.DocsView(pickerApi.ViewId.DOCS)
         view.setIncludeFolders(true); view.setSelectFolderEnabled(false); view.setMimeTypes(DRIVE_MIME_TYPES)
         const builder = new pickerApi.PickerBuilder()
-        builder.addView(view); builder.setOAuthToken(accessToken); builder.setDeveloperKey(apiKey); builder.setAppId(appId); builder.enableFeature(pickerApi.Feature.MULTISELECT_ENABLED); builder.setCallback((response) => { if (response.action === pickerApi.Action.PICKED) void importSelection(response.docs ?? []); else setBusy(false) }); builder.build().setVisible(true)
+        builder.addView(view); builder.setOAuthToken(accessToken); builder.setDeveloperKey(apiKey); builder.setAppId(appId); builder.enableFeature(pickerApi.Feature.MULTISELECT_ENABLED); builder.setCallback((response) => { const documents = response.docs ?? []; if (response.action === pickerApi.Action.PICKED || documents.length > 0) void importSelection(documents); else setBusy(false) }); builder.build().setVisible(true)
         setBusy(false)
       })
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not open Google Drive Picker"); setBusy(false) }
@@ -86,13 +87,15 @@ export function GoogleDriveImportModal({ session, onImported }: Props) {
   async function importSelection(documents: PickerDocument[]) {
     if (!session) return
     const fileIds = documents.map((document) => document.id).filter((id): id is string => Boolean(id))
-    if (!fileIds.length) return
-    setSelectedCount(fileIds.length); setBusy(true); setError(null)
+    if (!fileIds.length) { setError("Google Picker returned no file IDs. Please select a file, not just a folder."); setBusy(false); return }
+    setSelectedCount(fileIds.length); setBusy(true); setError(null); setStatus(`Selected ${fileIds.length} file${fileIds.length === 1 ? "" : "s"}. Starting the security scan…`)
     try {
       const response = await api("/api/integrations/google-drive/import", session, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fileIds }) })
-      const body = await response.json() as { error?: string }
+      const body = await response.json() as { error?: string; results?: Array<{ status?: string }> }
       if (!response.ok) throw new Error(body.error ?? "Drive import failed")
-      setOpen(false); onImported()
+      const queued = body.results?.filter((result) => result.status === "processing").length ?? fileIds.length
+      setStatus(`${queued} file${queued === 1 ? "" : "s"} queued. Prescan and processing are continuing in the workspace.`)
+      onImported()
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Drive import failed") } finally { setBusy(false) }
   }
 
@@ -102,6 +105,7 @@ export function GoogleDriveImportModal({ session, onImported }: Props) {
       <DialogContent className="max-w-lg" aria-describedby="google-drive-import-description">
         <DialogHeader><DialogTitle>Import from Google Drive</DialogTitle><DialogDescription id="google-drive-import-description">Choose files or folders in Google’s Drive picker. Imported files follow the same security scan and processing workflow as uploads.</DialogDescription></DialogHeader>
         {error && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
+        {status && <p role="status" className="rounded-lg border border-primary/25 bg-primary/5 px-3 py-2 text-sm text-foreground">{status}</p>}
         {!connected ? <div className="rounded-xl border border-border bg-muted/30 p-5"><p className="text-sm text-foreground">Connect the Google account that contains the documents you want to process.</p><Button type="button" className="mt-4" onClick={() => void connect()} disabled={busy}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <HardDrive className="h-4 w-4" />} Connect Google Drive</Button></div> : <div className="rounded-xl border border-primary/25 bg-primary/5 p-5"><p className="flex items-center gap-2 text-sm font-medium text-foreground"><Check className="h-4 w-4 text-primary" /> Google Drive connected</p><p className="mt-2 text-sm text-muted-foreground">Open Google’s native picker, open the folder you want, then select the files inside it for import.</p><Button type="button" className="mt-4" onClick={() => void openPicker()} disabled={busy}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <HardDrive className="h-4 w-4" />} Open Google Drive picker</Button>{selectedCount > 0 && <p className="mt-3 text-xs text-muted-foreground">{selectedCount} file{selectedCount === 1 ? "" : "s"} selected for import.</p>}</div>}
       </DialogContent>
     </Dialog>

@@ -6,7 +6,8 @@ import { googleDriveConfig } from "@/lib/google-drive-config"
 
 const STATE_COOKIE = "avint_google_drive_state"
 const STATE_TTL_SECONDS = 10 * 60
-const DRIVE_FILES_FIELDS = "files(id,name,mimeType,size,modifiedTime,webViewLink,parents),nextPageToken"
+const DRIVE_FILE_FIELDS = "id,name,mimeType,size,modifiedTime,webViewLink,parents"
+const DRIVE_FILES_FIELDS = `files(${DRIVE_FILE_FIELDS}),nextPageToken`
 const FOLDER_MIME = "application/vnd.google-apps.folder"
 const ALLOWED_MIME = new Set([
   "application/pdf", "image/jpeg", "image/png", "image/webp", "image/heic",
@@ -99,7 +100,7 @@ export async function listGoogleDriveFiles(userId: string, parentId?: string) {
 
 async function getDriveFile(userId: string, fileId: string) {
   const accessToken = await accessTokenForUser(userId)
-  const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?${new URLSearchParams({ fields: DRIVE_FILES_FIELDS, alt: "json" })}`, { headers: { Authorization: `Bearer ${accessToken}` } })
+  const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?${new URLSearchParams({ fields: DRIVE_FILE_FIELDS, alt: "json" })}`, { headers: { Authorization: `Bearer ${accessToken}` } })
   if (!response.ok) throw new Error(`Google Drive metadata request failed (${response.status})`)
   return { accessToken, file: await response.json() as DriveFile }
 }

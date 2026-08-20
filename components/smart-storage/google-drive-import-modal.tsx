@@ -78,7 +78,8 @@ export function GoogleDriveImportModal({ session, onImported }: Props) {
         const view = new pickerApi.DocsView(pickerApi.ViewId.DOCS)
         view.setIncludeFolders(true); view.setSelectFolderEnabled(false); view.setMimeTypes(DRIVE_MIME_TYPES)
         const builder = new pickerApi.PickerBuilder()
-        builder.addView(view); builder.setOAuthToken(accessToken); builder.setDeveloperKey(apiKey); builder.setAppId(appId); builder.enableFeature(pickerApi.Feature.MULTISELECT_ENABLED); builder.setCallback((response) => { const documents = response.docs ?? []; if (response.action === pickerApi.Action.PICKED || documents.length > 0) void importSelection(documents); else setBusy(false) }); builder.build().setVisible(true)
+        builder.addView(view); builder.setOAuthToken(accessToken); builder.setDeveloperKey(apiKey); builder.setAppId(appId); builder.enableFeature(pickerApi.Feature.MULTISELECT_ENABLED); builder.setCallback((response) => { const documents = response.docs ?? []; setStatus(`Drive picker returned ${documents.length} selected file${documents.length === 1 ? "" : "s"}.`); if (response.action === pickerApi.Action.PICKED || documents.length > 0) void importSelection(documents); else setBusy(false) }); builder.build().setVisible(true)
+        setStatus("Drive picker opened. Open a folder, select the files, then choose Select.")
         setBusy(false)
       })
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not open Google Drive Picker"); setBusy(false) }

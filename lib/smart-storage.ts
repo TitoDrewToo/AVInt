@@ -87,6 +87,9 @@ const DOCUMENT_TYPE_ALIASES: Record<string, DocumentType> = {
 
 export const CONFIDENCE_THRESHOLD = 0.7
 export const MAX_FILE_SIZE = 60 * 1024 * 1024 // 60 MB — matches bucket file_size_limit
+// The database sweeper marks jobs failed after 30 minutes. Keep the UI window
+// slightly longer so a slow but still-live job never disappears first.
+export const PROCESSING_ACTIVITY_WINDOW_MS = 35 * 60 * 1000
 export const ALLOWED_MIME_TYPES = new Set([
   "application/pdf",
   "image/jpeg",

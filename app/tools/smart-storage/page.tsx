@@ -56,6 +56,7 @@ import {
   PRESET_LABELS,
   REPORTS,
   REPORT_ROUTES,
+  PROCESSING_ACTIVITY_WINDOW_MS,
   fileExtension,
   findFreeGridSlot,
   getDisplayedSmartStorageFiles,
@@ -104,7 +105,6 @@ const HOVER_PREVIEW_WIDTH = 208
 const HOVER_PREVIEW_ESTIMATED_HEIGHT = 248
 const HOVER_PREVIEW_CURSOR_GAP = 28
 const HOVER_PREVIEW_VIEWPORT_PAD = 8
-const ACTIVE_PROCESSING_WINDOW_MS = 2 * 60 * 1000
 const SMART_STORAGE_BACKGROUND_REFRESH_AFTER_MS = 30 * 1000
 const ACTIONABLE_JOB_WINDOW_MS = 60 * 60 * 1000
 const SLOW_PROCESSING_STATUSES = ["uploaded", "processing"]
@@ -232,7 +232,7 @@ function processingBadgeState(file: UploadedFile): ProcessingBadgeState | null {
   const ageMs = Date.now() - createdAt
   if (ageMs >= ACTIONABLE_JOB_WINDOW_MS) return null
   if (job.status === "failed") return "failed"
-  if (SLOW_PROCESSING_STATUSES.includes(job.status) && ageMs > ACTIVE_PROCESSING_WINDOW_MS) {
+  if (SLOW_PROCESSING_STATUSES.includes(job.status) && ageMs > PROCESSING_ACTIVITY_WINDOW_MS) {
     return "working_slow"
   }
   return null
@@ -434,7 +434,7 @@ export default function SmartStoragePage() {
     if (processing.isProcessing) {
       const now = Date.now()
       const delays = processing.activeJobs
-        .map((job) => Date.parse(job.created_at ?? "") + ACTIVE_PROCESSING_WINDOW_MS - now)
+        .map((job) => Date.parse(job.created_at ?? "") + PROCESSING_ACTIVITY_WINDOW_MS - now)
         .filter((delay) => Number.isFinite(delay) && delay > 0)
       if (delays.length > 0) {
         processingExpiryTimeoutRef.current = setTimeout(() => {
@@ -1014,7 +1014,7 @@ export default function SmartStoragePage() {
         // Trigger prescan — it will chain into process-document on approval.
         // Uses the user JWT so prescan can verify ownership.
         const userToken = (await supabase.auth.getSession()).data.session?.access_token
-        fetch(`${supabaseUrl}/functions/v1/prescan-document`, {
+        const prescanResponse = await fetch(`${supabaseUrl}/functions/v1/prescan-document`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -1022,7 +1022,11 @@ export default function SmartStoragePage() {
             "apikey": process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
           },
           body: JSON.stringify({ file_id: fileRecord.id }),
-        }).catch((err) => console.error("prescan-document fetch error:", err))
+        })
+        if (!prescanResponse.ok) {
+          const detail = await prescanResponse.text().catch(() => "")
+          throw new Error(detail || `Prescan failed (${prescanResponse.status})`)
+        }
 
         return {
           ...fileRecord,
@@ -1049,9 +1053,16 @@ export default function SmartStoragePage() {
     try {
       const results = await Promise.allSettled(uploadList.map(uploadOne))
       const uploadedFiles: UploadedFile[] = []
+      let failedUploads = 0
       for (const r of results) {
-        if (r.status === "rejected") console.error("Upload failed:", r.reason)
+        if (r.status === "rejected") {
+          failedUploads += 1
+          console.error("Upload failed:", r.reason)
+        }
         if (r.status === "fulfilled" && r.value) uploadedFiles.push(r.value)
+      }
+      if (failedUploads > 0) {
+        setUploadNotice(`${failedUploads} upload${failedUploads === 1 ? "" : "s"} could not be started for processing. Please retry the upload.`)
       }
       upsertLoadedFiles(uploadedFiles)
       for (const file of uploadedFiles) {

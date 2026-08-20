@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase"
-import { REPORTS, type UploadedFile, type VirtualFolder } from "@/lib/smart-storage"
+import { PROCESSING_ACTIVITY_WINDOW_MS, REPORTS, type UploadedFile, type VirtualFolder } from "@/lib/smart-storage"
 
 export const SMART_STORAGE_PAGE_SIZE = 100
 const SMART_STORAGE_CACHE_TTL_MS = 5 * 60 * 1000
@@ -170,7 +170,7 @@ export async function fetchSmartStorageFolders(userId: string): Promise<VirtualF
 }
 
 export async function fetchSmartStorageProcessingState(userId: string): Promise<SmartStorageProcessingState> {
-  const activeCutoff = new Date(Date.now() - 2 * 60 * 1000).toISOString()
+  const activeCutoff = new Date(Date.now() - PROCESSING_ACTIVITY_WINDOW_MS).toISOString()
   const { data, error } = await supabase
     .from("processing_jobs")
     .select("status, created_at, files!inner(user_id)")

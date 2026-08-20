@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     const downloaded = await downloadGoogleDriveSelection(user.id, parsed.data.fileIds)
     if (!downloaded.length) return NextResponse.json({ error: "No supported files were found in that Drive selection" }, { status: 400 })
     const entitlement = await entitlementForUser(user.id)
-    const results = await ingestFiles(user.id, entitlement, downloaded.map(({ file, data, mimeType }) => ({ name: file.name, mimeType, data, source: { provider: "google_drive" as const, fileId: file.id, url: file.webViewLink, modifiedAt: file.modifiedTime } })))
+    const results = await ingestFiles(user.id, entitlement, downloaded.map(({ file, data, mimeType }) => ({ name: file.name, mimeType, data, source: { provider: "google_drive" as const, fileId: file.id, url: file.webViewLink, modifiedAt: file.modifiedTime } })), { waitForNormalization: false })
     return NextResponse.json({ results })
   } catch (error) {
     console.error("Google Drive import failed", { userId: user.id, reason: error instanceof Error ? error.message : "unknown" })

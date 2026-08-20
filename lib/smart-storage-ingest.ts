@@ -13,7 +13,7 @@ function decode(file: IngestFile) {
   return Buffer.from(match?.[1] ?? file.data, "base64")
 }
 
-export async function ingestFiles(userId: string, entitlement: Entitlement, files: IngestFile[]) {
+export async function ingestFiles(userId: string, entitlement: Entitlement, files: IngestFile[], options: { waitForNormalization?: boolean } = {}) {
   const results: any[] = []
   const window = usageWindowForTier(entitlement.tier, new Date(), entitlement.expiresAt)
   const limit = PLAN_LIMITS[entitlement.tier].documents
@@ -49,6 +49,10 @@ export async function ingestFiles(userId: string, entitlement: Entitlement, file
     const edgeUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/prescan-document`
     const prescan = await fetch(edgeUrl, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}` }, body: JSON.stringify({ file_id: file.id, user_id: userId }) })
     if (!prescan.ok) throw new Error(`prescan-document failed: ${await prescan.text()}`)
+    if (options.waitForNormalization === false) {
+      results.push({ file_id: file.id, filename: file.filename, status: "processing", fair_use_warning: Boolean(claim?.[0]?.fair_use_warning) })
+      continue
+    }
     const deadline = Date.now() + TIMEOUT_MS
     let fields: any[] = []
     while (Date.now() < deadline) {

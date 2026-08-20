@@ -15,14 +15,16 @@ export async function POST(request: NextRequest) {
   if (!(await checkRateLimit("google-drive-import", user.id, 10, 60))) return NextResponse.json({ error: "Too many Drive import requests" }, { status: 429 })
   const parsed = requestSchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: "Choose at least one Drive file or folder" }, { status: 400 })
+  let stage = "download"
   try {
     const downloaded = await downloadGoogleDriveSelection(user.id, parsed.data.fileIds)
     if (!downloaded.length) return NextResponse.json({ error: "No supported files were found in that Drive selection" }, { status: 400 })
+    stage = "queue"
     const entitlement = await entitlementForUser(user.id)
     const results = await ingestFiles(user.id, entitlement, downloaded.map(({ file, data, mimeType }) => ({ name: file.name, mimeType, data, source: { provider: "google_drive" as const, fileId: file.id, url: file.webViewLink, modifiedAt: file.modifiedTime } })), { waitForNormalization: false })
     return NextResponse.json({ results })
   } catch (error) {
-    console.error("Google Drive import failed", { userId: user.id, reason: error instanceof Error ? error.message : "unknown" })
-    return NextResponse.json({ error: "Google Drive import could not be completed" }, { status: 502 })
+    console.error("Google Drive import failed", { userId: user.id, stage, reason: error instanceof Error ? error.message : "unknown" })
+    return NextResponse.json({ error: `Google Drive import failed during ${stage}. Please retry.` }, { status: 502 })
   }
 }

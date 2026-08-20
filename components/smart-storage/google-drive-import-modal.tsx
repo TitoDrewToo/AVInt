@@ -100,7 +100,7 @@ export function GoogleDriveImportModal({ session, onImported }: Props) {
   }
 
   return <>
-    <button type="button" onClick={() => void openModal()} disabled={!session || busy} className="flex h-7 items-center gap-1.5 rounded px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50"><HardDrive className="h-3.5 w-3.5" /> Import from Drive</button>
+    <button type="button" onClick={() => void openModal()} disabled className="flex h-7 cursor-not-allowed items-center gap-1.5 rounded px-2 text-xs text-muted-foreground opacity-50" title="Google Drive import is temporarily unavailable"><HardDrive className="h-3.5 w-3.5" /> Import from Drive</button>
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="max-w-lg" aria-describedby="google-drive-import-description">
         <DialogHeader><DialogTitle>Import from Google Drive</DialogTitle><DialogDescription id="google-drive-import-description">Choose files or folders in Google’s Drive picker. Imported files follow the same security scan and processing workflow as uploads.</DialogDescription></DialogHeader>

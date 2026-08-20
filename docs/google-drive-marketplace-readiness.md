@@ -48,7 +48,7 @@ openssl rand -base64 32
 
 ## Marketplace hardening still required
 
-The importer uses the Google Picker for selection. The server currently retains the Drive read-only scope so selected folders can be expanded reliably. Before public Marketplace submission, test the Picker with `drive.file`, remove the broader scope if folder behavior remains correct, then complete Google OAuth verification and the public listing review.
+The importer uses the Google Picker for selection and requests the narrower `drive.file` scope. Users explicitly select files in the Picker; the server validates and downloads only those selected files before sending them through Smart Storage.
 
 Required listing materials: privacy policy, terms, support URL, screenshots, test account, exact data-flow description, retention/deletion explanation, and a clear explanation of why the app needs each scope.
 

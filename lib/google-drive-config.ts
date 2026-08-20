@@ -1,4 +1,4 @@
-const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.readonly"
+const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file"
 
 export function googleDriveConfig() {
   const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID

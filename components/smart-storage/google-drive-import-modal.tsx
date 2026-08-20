@@ -65,7 +65,7 @@ export function GoogleDriveImportModal({ session, onImported }: Props) {
 
   async function openPicker() {
     if (!session) return
-    setBusy(true); setError(null)
+    setBusy(true); setError(null); setStatus(null); setOpen(false)
     try {
       const configResponse = await api("/api/integrations/google-drive/picker-config", session)
       const config = await configResponse.json() as PickerConfig
@@ -78,18 +78,17 @@ export function GoogleDriveImportModal({ session, onImported }: Props) {
         const view = new pickerApi.DocsView(pickerApi.ViewId.DOCS)
         view.setIncludeFolders(true); view.setSelectFolderEnabled(false); view.setMimeTypes(DRIVE_MIME_TYPES)
         const builder = new pickerApi.PickerBuilder()
-        builder.addView(view); builder.setOAuthToken(accessToken); builder.setDeveloperKey(apiKey); builder.setAppId(appId); builder.enableFeature(pickerApi.Feature.MULTISELECT_ENABLED); builder.setCallback((response) => { const payload = response as PickerResponse & Record<string, unknown>; const action = response.action ?? (payload[pickerApi.Response.ACTION] as string | undefined); const documents = response.docs ?? (payload[pickerApi.Response.DOCUMENTS] as PickerDocument[] | undefined) ?? []; setStatus(`Drive picker returned ${documents.length} selected file${documents.length === 1 ? "" : "s"}.`); if (action === pickerApi.Action.PICKED || documents.length > 0) void importSelection(documents); else setBusy(false) }); builder.build().setVisible(true)
-        setStatus("Drive picker opened. Open a folder, select the files, then choose Select.")
+        builder.addView(view); builder.setOAuthToken(accessToken); builder.setDeveloperKey(apiKey); builder.setAppId(appId); builder.enableFeature(pickerApi.Feature.MULTISELECT_ENABLED); builder.setCallback((response) => { const payload = response as PickerResponse & Record<string, unknown>; const action = response.action ?? (payload[pickerApi.Response.ACTION] as string | undefined); const documents = response.docs ?? (payload[pickerApi.Response.DOCUMENTS] as PickerDocument[] | undefined) ?? []; setOpen(true); setStatus(`Drive picker returned ${documents.length} selected file${documents.length === 1 ? "" : "s"}.`); if (action === pickerApi.Action.PICKED || documents.length > 0) void importSelection(documents); else setBusy(false) }); builder.build().setVisible(true)
         setBusy(false)
       })
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not open Google Drive Picker"); setBusy(false) }
+    } catch (caught) { setOpen(true); setError(caught instanceof Error ? caught.message : "Could not open Google Drive Picker"); setBusy(false) }
   }
 
   async function importSelection(documents: PickerDocument[]) {
     if (!session) return
     const fileIds = documents.map((document) => document.id).filter((id): id is string => Boolean(id))
-    if (!fileIds.length) { setError("Google Picker returned no file IDs. Please select a file, not just a folder."); setBusy(false); return }
-    setSelectedCount(fileIds.length); setBusy(true); setError(null); setStatus(`Selected ${fileIds.length} file${fileIds.length === 1 ? "" : "s"}. Starting the security scan…`)
+    if (!fileIds.length) { setOpen(true); setError("Google Picker returned no file IDs. Please select a file, not just a folder."); setBusy(false); return }
+    setOpen(true); setSelectedCount(fileIds.length); setBusy(true); setError(null); setStatus(`Selected ${fileIds.length} file${fileIds.length === 1 ? "" : "s"}. Starting the security scan…`)
     try {
       const response = await api("/api/integrations/google-drive/import", session, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fileIds }) })
       const body = await response.json() as { error?: string; results?: Array<{ status?: string }> }
@@ -97,7 +96,7 @@ export function GoogleDriveImportModal({ session, onImported }: Props) {
       const queued = body.results?.filter((result) => result.status === "processing").length ?? fileIds.length
       setStatus(`${queued} file${queued === 1 ? "" : "s"} queued. Prescan and processing are continuing in the workspace.`)
       onImported()
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "Drive import failed") } finally { setBusy(false) }
+    } catch (caught) { setOpen(true); setError(caught instanceof Error ? caught.message : "Drive import failed") } finally { setBusy(false) }
   }
 
   return <>

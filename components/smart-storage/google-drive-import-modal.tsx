@@ -14,7 +14,7 @@ type PickerConfig = { accessToken?: string; apiKey?: string; appId?: string; err
 declare global {
   interface Window {
     gapi?: { load: (name: string, callback: () => void) => void }
-    google?: { picker?: { DocsView: new (viewId: string) => { setIncludeFolders: (value: boolean) => unknown; setSelectFolderEnabled: (value: boolean) => unknown; setMimeTypes: (value: string) => unknown }; ViewId: { DOCS: string }; PickerBuilder: new () => { addView: (view: unknown) => unknown; setOAuthToken: (value: string) => unknown; setDeveloperKey: (value: string) => unknown; setAppId: (value: string) => unknown; enableFeature: (value: string) => unknown; setCallback: (value: (response: PickerResponse) => void) => unknown; build: () => { setVisible: (value: boolean) => void } }; Feature: { MULTISELECT_ENABLED: string }; Action: { PICKED: string } } }
+    google?: { picker?: { DocsView: new (viewId: string) => { setIncludeFolders: (value: boolean) => unknown; setSelectFolderEnabled: (value: boolean) => unknown; setMimeTypes: (value: string) => unknown }; ViewId: { DOCS: string }; PickerBuilder: new () => { addView: (view: unknown) => unknown; setOAuthToken: (value: string) => unknown; setDeveloperKey: (value: string) => unknown; setAppId: (value: string) => unknown; enableFeature: (value: string) => unknown; setCallback: (value: (response: PickerResponse) => void) => unknown; build: () => { setVisible: (value: boolean) => void } }; Feature: { MULTISELECT_ENABLED: string }; Action: { PICKED: string }; Response: { ACTION: string; DOCUMENTS: string } } }
   }
 }
 
@@ -78,7 +78,7 @@ export function GoogleDriveImportModal({ session, onImported }: Props) {
         const view = new pickerApi.DocsView(pickerApi.ViewId.DOCS)
         view.setIncludeFolders(true); view.setSelectFolderEnabled(false); view.setMimeTypes(DRIVE_MIME_TYPES)
         const builder = new pickerApi.PickerBuilder()
-        builder.addView(view); builder.setOAuthToken(accessToken); builder.setDeveloperKey(apiKey); builder.setAppId(appId); builder.enableFeature(pickerApi.Feature.MULTISELECT_ENABLED); builder.setCallback((response) => { const documents = response.docs ?? []; setStatus(`Drive picker returned ${documents.length} selected file${documents.length === 1 ? "" : "s"}.`); if (response.action === pickerApi.Action.PICKED || documents.length > 0) void importSelection(documents); else setBusy(false) }); builder.build().setVisible(true)
+        builder.addView(view); builder.setOAuthToken(accessToken); builder.setDeveloperKey(apiKey); builder.setAppId(appId); builder.enableFeature(pickerApi.Feature.MULTISELECT_ENABLED); builder.setCallback((response) => { const payload = response as PickerResponse & Record<string, unknown>; const action = response.action ?? (payload[pickerApi.Response.ACTION] as string | undefined); const documents = response.docs ?? (payload[pickerApi.Response.DOCUMENTS] as PickerDocument[] | undefined) ?? []; setStatus(`Drive picker returned ${documents.length} selected file${documents.length === 1 ? "" : "s"}.`); if (action === pickerApi.Action.PICKED || documents.length > 0) void importSelection(documents); else setBusy(false) }); builder.build().setVisible(true)
         setStatus("Drive picker opened. Open a folder, select the files, then choose Select.")
         setBusy(false)
       })

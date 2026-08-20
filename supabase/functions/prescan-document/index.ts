@@ -298,7 +298,7 @@ function openAiFilePart(mimeType: string, base64: string) {
     return {
       type: "input_file",
       filename: "document.pdf",
-      file_data: base64,
+      file_data: `data:${mimeType};base64,${base64}`,
     }
   }
   if (mimeType.startsWith("image/")) {

@@ -4,7 +4,7 @@ AVIntelligence is an AI-powered financial document workspace. It turns receipts,
 
 The product is organized around two core experiences:
 
-- **Smart Storage** — upload, import from Google Drive, organize, and work with financial documents in one workspace
+- **Smart Storage** — upload, organize, and work with financial documents in one workspace
 - **Smart Dashboard** — an AI-contextualized financial view built on the user's own records, designed to help people understand what their numbers mean rather than just seeing totals
 
 ## Product Capabilities
@@ -25,7 +25,6 @@ The product is organized around two core experiences:
 - Advanced dashboard analytics for spend, income, currency-aware trends, document mix, and AI-assisted narrative context
 - Account authentication, subscription access, gift-code redemption, and payment flows
 - Account controls for deleting individual files or removing account data
-- Google Drive import through the native Google Picker, with imported files entering the same security scan and processing workflow as uploads
 - Claude connector for conversational reports, exports, and document filing against the user's own Smart Storage account
 
 ## Privacy and Security Posture

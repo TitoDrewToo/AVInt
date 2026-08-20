@@ -41,6 +41,7 @@ import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { DateRangeSelector } from "@/components/smart-storage/date-range-selector"
 import { LeftFolderItem } from "@/components/smart-storage/left-folder-item"
 import { StorageItemMenu } from "@/components/smart-storage/storage-item-menu"
+import { GoogleDriveImportModal } from "@/components/smart-storage/google-drive-import-modal"
 import { useRouter } from "next/navigation"
 import {
   formatStorageAllowance,
@@ -1651,7 +1652,7 @@ export default function SmartStoragePage() {
                 <ChevronDown className="h-3.5 w-3.5" />
               </button>
             </DropdownMenuTrigger></Tip>
-            <DropdownMenuContent align="start" className="min-w-[176px] rounded-xl">
+              <DropdownMenuContent align="start" className="min-w-[176px] rounded-xl">
               <Tip text="Pick individual files — PDF, images, XLSX or CSV, up to 60 MB each."><DropdownMenuItem onSelect={() => fileInputRef.current?.click()}>
                 <Upload className="h-3.5 w-3.5" />
                 Upload files
@@ -1660,8 +1661,9 @@ export default function SmartStoragePage() {
                 <FolderOpen className="h-3.5 w-3.5" />
                 Upload folder
               </DropdownMenuItem></Tip>
-            </DropdownMenuContent>
+              </DropdownMenuContent>
           </DropdownMenu>
+          <GoogleDriveImportModal session={session} onImported={() => { void loadFiles(); void checkProcessingState() }} />
           <Tip text="Enter a document by hand when you don't have a file to upload."><button
             onClick={() => setManualEntryOpen(true)}
             className="flex h-7 items-center gap-1.5 rounded px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"

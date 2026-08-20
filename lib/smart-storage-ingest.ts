@@ -3,7 +3,7 @@ import { supabaseAdmin } from "@/lib/mcp-auth"
 import { type Entitlement } from "@/lib/entitlement"
 import { PLAN_LIMITS, usageWindowForTier } from "@/supabase/functions/_shared/plan-limits"
 
-export type IngestFile = { name: string; mimeType: string; data: string }
+export type IngestFile = { name: string; mimeType: string; data: string; source?: { provider: "google_drive"; fileId: string; url?: string; modifiedAt?: string } }
 const POLL_MS = 1000
 const TIMEOUT_MS = 60_000
 const MAX_FILE_BYTES = 15 * 1024 * 1024   // per-file cap for the synchronous MCP ingest path
@@ -28,7 +28,7 @@ export async function ingestFiles(userId: string, entitlement: Entitlement, file
     if (uploadError) throw new Error(uploadError.message)
     let file: { id: string; filename: string; storage_path: string } | null = null
     try {
-      const { data: fileRecord, error: fileError } = await supabaseAdmin.from("files").insert({ user_id: userId, filename: input.name, storage_path: storagePath, file_type: input.mimeType, file_size: bytes.length, document_type: "unknown", upload_status: "pending_scan" }).select("id, filename, storage_path").single()
+      const { data: fileRecord, error: fileError } = await supabaseAdmin.from("files").insert({ user_id: userId, filename: input.name, storage_path: storagePath, file_type: input.mimeType, file_size: bytes.length, document_type: "unknown", upload_status: "pending_scan", source_provider: input.source?.provider ?? null, source_file_id: input.source?.fileId ?? null, source_url: input.source?.url ?? null, source_modified_at: input.source?.modifiedAt ?? null }).select("id, filename, storage_path").single()
       if (fileError || !fileRecord) throw new Error(fileError?.message ?? "Could not create file record")
       file = fileRecord
       const { error: jobError } = await supabaseAdmin.from("processing_jobs").insert({ file_id: file.id, status: "uploaded" })

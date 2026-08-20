@@ -6,7 +6,7 @@ Smart Storage now has an `Import from Drive` entry beside the existing upload co
 
 1. authenticates the signed-in AVIntelligence user;
 2. connects a Google account through a separate Drive OAuth flow;
-3. lists Drive files and folders in a modal;
+3. opens Google’s native Drive Picker so users can browse folders, preview files, and select supported documents;
 4. downloads selected supported files server-side;
 5. writes them to the existing Smart Storage landing zone;
 6. preserves `source_provider`, Drive file ID, Drive URL, and Drive modification time;

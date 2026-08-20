@@ -12,10 +12,10 @@ import { ChevronDown } from "lucide-react"
 
 export const metadata = {
   title: "Smart Storage — Clean Expense Reports from Your Documents | AVIntelligence",
-  description: "Extract vendors, dates, amounts, categories, and recurring expenses from receipts and invoices into searchable records and exportable reports. Now available as a Claude connector.",
+  description: "Extract vendors, dates, amounts, categories, and recurring expenses from receipts and invoices into searchable records and exportable reports. Import from Google Drive and use it through Claude.",
   openGraph: {
     title: "Smart Storage — Clean Expense Reports from Your Documents | AVIntelligence",
-    description: "Extract vendors, dates, amounts, categories, and recurring expenses from receipts and invoices into searchable records and exportable reports. Now available as a Claude connector.",
+    description: "Extract vendors, dates, amounts, categories, and recurring expenses from receipts and invoices into searchable records and exportable reports. Import from Google Drive and use it through Claude.",
     url: "https://www.avintph.com/products/smart-storage",
     siteName: "AVIntelligence",
     type: "website",
@@ -23,7 +23,7 @@ export const metadata = {
   twitter: {
     card: "summary_large_image",
     title: "Smart Storage — Clean Expense Reports from Your Documents | AVIntelligence",
-    description: "Extract vendors, dates, amounts, categories, and recurring expenses from receipts and invoices. Now available as a Claude connector.",
+    description: "Extract vendors, dates, amounts, categories, and recurring expenses from receipts and invoices. Import from Google Drive and use it through Claude.",
   },
 }
 
@@ -213,6 +213,10 @@ const smartStorageFaq = [
   {
     question: "What can I upload?",
     answer: `Receipts, invoices, payslips, income and bank statements, transaction records, and contracts — as PDF, photo (JPG/PNG/HEIC/WEBP), CSV, or Excel, up to 60 MB each. Snap a photo of a receipt or drop in a whole spreadsheet; both work.`,
+  },
+  {
+    question: "Can I import files from Google Drive?",
+    answer: `Yes. Connect Google Drive from the Smart Storage workspace, open the folder you want in Google’s native picker, and select your files. They enter the same security scan, extraction, normalization, and reporting workflow as regular uploads.`,
   },
   {
     question: "What reports do I get?",
@@ -440,7 +444,7 @@ export default function SmartStorageProductPage() {
               <h2 className="text-sm font-medium uppercase tracking-wider text-primary">Now works inside Claude</h2>
               <h3 className="mt-4 text-balance text-3xl font-semibold tracking-tight text-foreground md:text-4xl">Your Smart Storage, now operable from Claude.</h3>
               <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
-                Your documents already live in Smart Storage. Connect it to Claude and run the whole workflow in plain language — pull your Schedule C tax bundle and get back an import-ready QuickBooks or Xero file, without opening the dashboard. It works securely on your own account and it&apos;s included with Pro.
+                Bring files in from Google Drive, keep them organized in Smart Storage, then connect it to Claude and run the workflow in plain language — pull your Schedule C tax bundle and get back an import-ready QuickBooks or Xero file, without opening the dashboard. It works securely on your own account and it&apos;s included with Pro.
               </p>
             </FadeUp>
 

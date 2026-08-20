@@ -100,7 +100,7 @@ export async function listGoogleDriveFiles(userId: string, parentId?: string) {
 async function getDriveFile(userId: string, fileId: string) {
   const accessToken = await accessTokenForUser(userId)
   const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?${new URLSearchParams({ fields: DRIVE_FILES_FIELDS, alt: "json" })}`, { headers: { Authorization: `Bearer ${accessToken}` } })
-  if (!response.ok) throw new Error("The selected Drive file is unavailable")
+  if (!response.ok) throw new Error(`Google Drive metadata request failed (${response.status})`)
   return { accessToken, file: await response.json() as DriveFile }
 }
 
@@ -127,7 +127,7 @@ export async function downloadGoogleDriveSelection(userId: string, ids: string[]
     if (declaredSize > MAX_FILE_BYTES) continue
     const { accessToken } = await getDriveFile(userId, file.id)
     const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}?alt=media`, { headers: { Authorization: `Bearer ${accessToken}` } })
-    if (!response.ok) continue
+    if (!response.ok) throw new Error(`Google Drive file download failed (${response.status})`)
     const bytes = Buffer.from(await response.arrayBuffer())
     if (bytes.length > MAX_FILE_BYTES) continue
     downloaded.push({ file, data: `data:${file.mimeType};base64,${bytes.toString("base64")}`, mimeType: file.mimeType })

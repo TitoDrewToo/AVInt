@@ -25,6 +25,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ results })
   } catch (error) {
     console.error("Google Drive import failed", { userId: user.id, stage, reason: error instanceof Error ? error.message : "unknown" })
-    return NextResponse.json({ error: `Google Drive import failed during ${stage}. Please retry.` }, { status: 502 })
+    const detail = error instanceof Error && /Google Drive (metadata request|file download) failed \(\d+\)/.test(error.message) ? `: ${error.message}` : ""
+    return NextResponse.json({ error: `Google Drive import failed during ${stage}${detail}. Please retry.` }, { status: 502 })
   }
 }

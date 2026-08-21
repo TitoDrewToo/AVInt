@@ -3,10 +3,10 @@
 import Link from "next/link"
 import Image from "next/image"
 import type { MouseEvent, ReactNode } from "react"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
 import { useTheme } from "next-themes"
-import { ChevronDown, Menu, X, Sun, Moon, User } from "lucide-react"
+import { Menu, X, Sun, Moon, User } from "lucide-react"
 import type { Session } from "@supabase/supabase-js"
 import { AccountPanel } from "@/components/account-panel"
 import {
@@ -21,18 +21,6 @@ import { computeEntitlement } from "@/lib/entitlement"
 const geistFontStyle = {
   fontFamily: 'var(--font-aldrich), "Aldrich", var(--font-geist), "Geist", "Geist Fallback", sans-serif',
 } as const
-
-const products = [
-  { name: "PicklePal", href: "https://picklepalph.com", external: true },
-  { name: "Hooper", href: "#", disabled: true },
-  { name: "Smart Storage", href: "/products/smart-storage" },
-  { name: "Smart Dashboard", href: "/products/smart-dashboard" },
-]
-
-const tools = [
-  { name: "Smart Storage", href: "/tools/smart-storage" },
-  { name: "Smart Dashboard", href: "/tools/smart-dashboard" },
-]
 
 function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme()
@@ -64,13 +52,9 @@ function AccountMenuButton({ onClick }: { onClick: () => void }) {
 export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: ReactNode }) {
   const pathname = usePathname()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [productsOpen, setProductsOpen] = useState(false)
-  const [toolsOpen, setToolsOpen] = useState(false)
   const [accountPanelOpen, setAccountPanelOpen] = useState(false)
   const [session, setSession] = useState<Session | null>(null)
   const [hasActiveSubscription, setHasActiveSubscription] = useState(false)
-  const productsCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const toolsCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Product assistant rollout plan:
   // 1. Keep the navbar assistant implementation in the codebase.
   // 2. Keep it hidden for all users until the wiki-backed knowledge source is ready.
@@ -78,13 +62,6 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
   //    `session && hasActiveSubscription` to enable it only for active subscribers.
   const assistantRolloutEnabled = false
   const showAssistantPreview = assistantRolloutEnabled && Boolean(session && hasActiveSubscription)
-
-  useEffect(() => {
-    return () => {
-      if (productsCloseTimerRef.current) clearTimeout(productsCloseTimerRef.current)
-      if (toolsCloseTimerRef.current) clearTimeout(toolsCloseTimerRef.current)
-    }
-  }, [])
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data, error }) => {
@@ -125,36 +102,6 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
     } catch {
       setHasActiveSubscription(false)
     }
-  }
-
-  function cancelProductsClose() {
-    if (productsCloseTimerRef.current) {
-      clearTimeout(productsCloseTimerRef.current)
-      productsCloseTimerRef.current = null
-    }
-  }
-
-  function cancelToolsClose() {
-    if (toolsCloseTimerRef.current) {
-      clearTimeout(toolsCloseTimerRef.current)
-      toolsCloseTimerRef.current = null
-    }
-  }
-
-  function scheduleProductsClose() {
-    cancelProductsClose()
-    productsCloseTimerRef.current = setTimeout(() => {
-      setProductsOpen(false)
-      productsCloseTimerRef.current = null
-    }, 180)
-  }
-
-  function scheduleToolsClose() {
-    cancelToolsClose()
-    toolsCloseTimerRef.current = setTimeout(() => {
-      setToolsOpen(false)
-      toolsCloseTimerRef.current = null
-    }, 180)
   }
 
   function handleMarketingLinkClick(
@@ -213,119 +160,6 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
             <div className="ml-auto flex shrink-0 items-center gap-6">
             {!toolSlot && (
               <>
-            {/* Products Dropdown */}
-            <div
-              className="relative"
-              onMouseEnter={() => {
-                cancelProductsClose()
-                cancelToolsClose()
-                setProductsOpen(true)
-                setToolsOpen(false)
-              }}
-              onMouseLeave={scheduleProductsClose}
-            >
-              <button
-                onClick={() => {
-                  cancelProductsClose()
-                  setProductsOpen(!productsOpen)
-                  setToolsOpen(false)
-                }}
-                className="flex items-center gap-1 text-sm font-medium text-foreground/75 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
-                style={geistFontStyle}
-              >
-                Products
-                <ChevronDown className="h-4 w-4" />
-              </button>
-              {productsOpen && (
-                <div className="glass-surface absolute left-0 top-full mt-3 w-48 rounded-xl p-2" style={geistFontStyle}>
-                  {products.map((product) => (
-                    product.external ? (
-                      <a
-                        key={product.name}
-                        href={product.href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="block rounded-lg px-3 py-2 text-sm text-foreground/80 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
-                        style={geistFontStyle}
-                        onClick={() => setProductsOpen(false)}
-                      >
-                        {product.name}
-                      </a>
-                    ) : (
-                      <Link
-                        key={product.name}
-                        href={product.disabled ? "#" : product.href}
-                        className={`block rounded-lg px-3 py-2 text-sm transition-all ${
-                          product.disabled
-                            ? "cursor-not-allowed text-muted-foreground"
-                            : "text-foreground/80 hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
-                        }`}
-                        style={geistFontStyle}
-                        onClickCapture={(event) => {
-                          if (product.disabled) {
-                            event.preventDefault()
-                            return
-                          }
-                          handleMarketingLinkClick(product.href, event, () => setProductsOpen(false))
-                        }}
-                      >
-                        {product.name}
-                      </Link>
-                    )
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Tools Dropdown */}
-            <div
-              className="relative"
-              onMouseEnter={() => {
-                cancelToolsClose()
-                cancelProductsClose()
-                setToolsOpen(true)
-                setProductsOpen(false)
-              }}
-              onMouseLeave={scheduleToolsClose}
-            >
-              <button
-                onClick={() => {
-                  cancelToolsClose()
-                  setToolsOpen(!toolsOpen)
-                  setProductsOpen(false)
-                }}
-                className="flex items-center gap-1 text-sm font-medium text-foreground/75 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
-                style={geistFontStyle}
-              >
-                Tools
-                <ChevronDown className="h-4 w-4" />
-              </button>
-              {toolsOpen && (
-                <div className="glass-surface absolute left-0 top-full mt-3 w-48 rounded-xl p-2" style={geistFontStyle}>
-                  {tools.map((tool) => (
-                    <a
-                      key={tool.name}
-                      href={tool.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block rounded-lg px-3 py-2 text-sm text-foreground/80 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
-                      style={geistFontStyle}
-                      onClick={() => setToolsOpen(false)}
-                    >
-                      {tool.name}
-                    </a>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <Link
-              href="/pricing"
-              className="text-sm font-medium text-foreground/75 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
-              style={geistFontStyle}
-            >
-              Pricing
-            </Link>
             <Link
               href="/partners"
               className="text-sm font-medium text-foreground/75 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
@@ -372,70 +206,6 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
         {mobileMenuOpen && (
           <div className="glass-surface mx-4 mt-2 rounded-2xl px-6 py-4 md:hidden">
             <div className="flex flex-col gap-4">
-              <div className="flex flex-col gap-2">
-                <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  Products
-                </span>
-                {products.map((product) => (
-                  product.external ? (
-                    <a
-                      key={product.name}
-                      href={product.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-foreground"
-                      style={geistFontStyle}
-                      onClick={() => setMobileMenuOpen(false)}
-                    >
-                      {product.name}
-                    </a>
-                  ) : (
-                    <Link
-                      key={product.name}
-                      href={product.disabled ? "#" : product.href}
-                      className={`text-sm ${
-                        product.disabled ? "text-muted-foreground" : "text-foreground"
-                      }`}
-                      style={geistFontStyle}
-                      onClickCapture={(event) => {
-                        if (product.disabled) {
-                          event.preventDefault()
-                          return
-                        }
-                        handleMarketingLinkClick(product.href, event, () => setMobileMenuOpen(false))
-                      }}
-                    >
-                      {product.name}
-                    </Link>
-                  )
-                ))}
-              </div>
-              <div className="flex flex-col gap-2">
-                <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  Tools
-                </span>
-                {tools.map((tool) => (
-                  <a
-                    key={tool.name}
-                    href={tool.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm text-foreground"
-                    style={geistFontStyle}
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    {tool.name}
-                  </a>
-                ))}
-              </div>
-              <Link
-                href="/pricing"
-                className="text-sm text-foreground"
-                style={geistFontStyle}
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                Pricing
-              </Link>
               <Link
                 href="/partners"
                 className="text-sm text-foreground"

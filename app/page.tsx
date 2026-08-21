@@ -1,34 +1,20 @@
-import type { Metadata } from 'next'
-import { Navbar } from "@/components/navbar"
+import type { Metadata } from "next"
+import StudioPage from "./studio/page"
 
 export const metadata: Metadata = {
-  title: 'AVIntelligence — AI Powered file storage and reports generator and analytics',
-  description: 'Upload receipts, invoices, and payslips. AVIntelligence extracts, categorizes, and analyzes your financial documents automatically. Smart Storage, Smart Dashboard.',
+  title: "AVIntelligence Studio — Production Software, Built End to End",
+  description: "AVIntelligence is a systems and web development studio. We design and build web apps, internal tools, and AI systems end to end — agency-grade work, without the agency overhead.",
+  openGraph: {
+    title: "AVIntelligence Studio — Production Software, Built End to End",
+    description: "AVIntelligence is a systems and web development studio. We design and build web apps, internal tools, and AI systems end to end — agency-grade work, without the agency overhead.",
+    url: "https://www.avintph.com/",
+    siteName: "AVIntelligence",
+    type: "website",
+  },
 }
-import { Footer } from "@/components/footer"
-import { HeroSection } from "@/components/sections/hero"
-import { WhatWeDoSection } from "@/components/sections/what-we-do"
-import { HowItWorksSection } from "@/components/sections/how-it-works"
-import { ProductsSection } from "@/components/sections/products"
-import { PricingPreviewSection } from "@/components/sections/pricing-preview"
-import { HomeInteractiveTrail } from "@/components/home-interactive-trail"
-import { HomeDefaultSphere } from "@/components/home-default-sphere"
 
+// The studio is now the company's public front door. Product routes remain
+// available as proof-of-work and R&D surfaces.
 export default function HomePage() {
-  return (
-    <div className="relative flex min-h-screen flex-col">
-      <HomeDefaultSphere className="pointer-events-none fixed inset-0 z-0" />
-      <Navbar />
-      <main className="marketing-scroll-stage relative z-[1] flex-1">
-        <HeroSection />
-        <WhatWeDoSection />
-        <HomeInteractiveTrail>
-          <HowItWorksSection />
-          <ProductsSection />
-          <PricingPreviewSection />
-        </HomeInteractiveTrail>
-      </main>
-      <Footer />
-    </div>
-  )
+  return <StudioPage />
 }

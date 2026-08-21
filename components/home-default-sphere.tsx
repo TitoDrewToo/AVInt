@@ -388,6 +388,46 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
       return positions
     }
 
+    function sampleRadialBurst(count: number) {
+      const positions = new Float32Array(count * 3)
+      const armCount = 13
+      const armAngles = Array.from({ length: armCount }, (_, index) =>
+        (index / armCount) * Math.PI * 2 + (index % 2 === 0 ? -0.035 : 0.04),
+      )
+      const armLengths = [1.32, 1.58, 1.18, 1.72, 1.34, 1.52, 1.22, 1.7, 1.28, 1.48, 1.2, 1.62, 1.3]
+
+      for (let i = 0; i < count; i += 1) {
+        const mode = Math.random()
+        let x: number
+        let y: number
+        let z: number
+
+        if (mode < 0.28) {
+          const angle = Math.random() * Math.PI * 2
+          const radius = Math.sqrt(Math.random()) * 0.38
+          x = Math.cos(angle) * radius
+          y = Math.sin(angle) * radius
+          z = (Math.random() - 0.5) * 0.2
+        } else {
+          const armIndex = Math.floor(Math.random() * armCount)
+          const angle = armAngles[armIndex]
+          const length = armLengths[armIndex]
+          const distance = 0.18 + Math.pow(Math.random(), 0.72) * (length - 0.18)
+          const spread = (Math.random() - 0.5) * (0.11 + (distance / length) * 0.075)
+
+          x = Math.cos(angle) * distance + Math.cos(angle + Math.PI / 2) * spread
+          y = Math.sin(angle) * distance + Math.sin(angle + Math.PI / 2) * spread
+          z = (Math.random() - 0.5) * (0.12 + distance / length * 0.12)
+        }
+
+        positions[i * 3] = x
+        positions[i * 3 + 1] = y
+        positions[i * 3 + 2] = z
+      }
+
+      return positions
+    }
+
     function sampleTerminalCloud(count: number) {
       const positions = new Float32Array(count * 3)
       const lobes = [
@@ -444,6 +484,7 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
     const locationPositions = sampleLocation(particleCount)
     const visualizationPositions = sampleVisualization(particleCount)
     const signalDiamondPositions = sampleSignalDiamond(particleCount)
+    const radialBurstPositions = sampleRadialBurst(particleCount)
     const terminalCloudPositions = sampleTerminalCloud(particleCount)
     const positions = new Float32Array(spherePositions)
     const colors = new Float32Array(particleCount * 3)
@@ -729,6 +770,8 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
         abstractHoldDuration +
         morphDuration +
         abstractHoldDuration +
+        morphDuration +
+        abstractHoldDuration +
         morphDuration
       const cycleTime = elapsed % cycleDuration
       let source: Float32Array
@@ -742,7 +785,9 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
       const visualizationHoldStart = visualizationStart + morphDuration
       const signalDiamondStart = visualizationHoldStart + visualizationHoldDuration
       const signalDiamondHoldStart = signalDiamondStart + morphDuration
-      const terminalCloudStart = signalDiamondHoldStart + abstractHoldDuration
+      const radialBurstStart = signalDiamondHoldStart + abstractHoldDuration
+      const radialBurstHoldStart = radialBurstStart + morphDuration
+      const terminalCloudStart = radialBurstHoldStart + abstractHoldDuration
       const terminalCloudHoldStart = terminalCloudStart + morphDuration
       const sphereReturnStart = terminalCloudHoldStart + abstractHoldDuration
 
@@ -807,15 +852,23 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
         material.uniforms.uLocationSignal.value = 0
         material.uniforms.uVisualizationSignal.value = 1 - progress
         material.uniforms.uVisualizationStage.value = 1 - progress
-      } else if (cycleTime < terminalCloudStart) {
+      } else if (cycleTime < radialBurstStart) {
         source = signalDiamondPositions
-        target = signalDiamondPositions
+        target = radialBurstPositions
+        progress = easeInOutCubic((cycleTime - signalDiamondHoldStart) / morphDuration)
+        material.uniforms.uDocumentSignal.value = 0
+        material.uniforms.uLocationSignal.value = 0
+        material.uniforms.uVisualizationSignal.value = 0
+        material.uniforms.uVisualizationStage.value = 0
+      } else if (cycleTime < radialBurstHoldStart) {
+        source = radialBurstPositions
+        target = radialBurstPositions
         material.uniforms.uDocumentSignal.value = 0
         material.uniforms.uLocationSignal.value = 0
         material.uniforms.uVisualizationSignal.value = 0
         material.uniforms.uVisualizationStage.value = 0
       } else if (cycleTime < terminalCloudHoldStart) {
-        source = signalDiamondPositions
+        source = radialBurstPositions
         target = terminalCloudPositions
         progress = easeInOutCubic((cycleTime - terminalCloudStart) / morphDuration)
         material.uniforms.uDocumentSignal.value = 0

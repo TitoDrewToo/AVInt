@@ -17,7 +17,7 @@ function PricingCard({ name, price, annualPrice, features, isAnnual }: PricingCa
   const displayPrice = isAnnual && annualPrice ? annualPrice : price
 
   return (
-    <Link href="/pricing" className="group block h-full">
+    <Link href="/studio#studio-inquiry" className="group block h-full">
       <div className="glass-surface hover-bloom flex h-full flex-col rounded-2xl p-6 transition-all group-hover:border-primary/20 group-hover:[box-shadow:0_0_30px_-14px_var(--retro-glow-red)]">
         <h3 className="text-lg font-semibold text-foreground">{name}</h3>
         {displayPrice && (

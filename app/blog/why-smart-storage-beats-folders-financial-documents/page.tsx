@@ -264,7 +264,7 @@ export default function ArticlePage() {
                 Try it free →
               </Link>
               <Link
-                href="/pricing"
+                href="/studio#studio-inquiry"
                 className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
               >
                 View pricing

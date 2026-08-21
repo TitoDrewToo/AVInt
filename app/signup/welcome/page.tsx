@@ -95,7 +95,7 @@ function SignupWelcomeContent() {
                   Return to AVIntelligence
                 </Link>
                 <Link
-                  href="/pricing"
+                  href="/studio#studio-inquiry"
                   className="cw-button-flow inline-flex items-center rounded-xl border border-border/70 px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground"
                 >
                   View pricing

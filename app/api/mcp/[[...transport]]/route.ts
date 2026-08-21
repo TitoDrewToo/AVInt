@@ -32,7 +32,7 @@ function limitedResult(message: string) {
 
 async function toolGuard(userId: string, entitlement: ReturnType<typeof computeEntitlement>, tool: "ingest" | "report" | "export") {
   if (entitlement.tier !== "pro" && entitlement.tier !== "business") {
-    return featureResult(`The Claude connector is a Pro feature — upgrade at ${process.env.NEXT_PUBLIC_APP_URL ?? "https://www.avintph.com/pricing"}.`)
+    return featureResult(`The Claude connector is a Pro feature — contact AVIntelligence at ${process.env.NEXT_PUBLIC_APP_URL ?? "https://www.avintph.com"}/studio#studio-inquiry.`)
   }
   const config = MCP_RATE_LIMITS[tool]
   const bucket = `mcp-${tool}` as RateLimitBucket
@@ -77,7 +77,7 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
     }, async ({ target, period }) => {
       const blocked = await toolGuard(userId, entitlement, "export")
       if (blocked) return blocked
-      if (!PLAN_LIMITS[entitlement.tier].accountingExports) return capResult(`Accounting export isn't available on the ${entitlement.tier} plan. Upgrade at ${process.env.NEXT_PUBLIC_APP_URL ?? "https://www.avintph.com/pricing"}; your records are saved.`)
+      if (!PLAN_LIMITS[entitlement.tier].accountingExports) return capResult(`Accounting export isn't available on the ${entitlement.tier} plan; your records are saved. Contact AVIntelligence at ${process.env.NEXT_PUBLIC_APP_URL ?? "https://www.avintph.com"}/studio#studio-inquiry.`)
       // Only meter tiers with a finite export limit. null = unlimited (Day Pass / Pro / Business) —
       // mirror the web report route, which skips the claim entirely when reportExports is null.
       const exportLimit = PLAN_LIMITS[entitlement.tier].reportExports

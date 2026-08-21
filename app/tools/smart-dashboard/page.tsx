@@ -2374,7 +2374,7 @@ export default function SmartDashboardPage() {
             </div>
           ) : (
             <Link
-              href="/pricing"
+              href="/studio#studio-inquiry"
               title="Upgrade to Pro to unlock Advanced Analytics"
               className="flex h-7 items-center gap-1.5 rounded-lg border border-border px-3 text-xs text-muted-foreground opacity-40 transition-opacity hover:opacity-70"
             >
@@ -2562,7 +2562,7 @@ export default function SmartDashboardPage() {
                     </button>
                   ) : (
                     <Link
-                      href="/pricing"
+                      href="/studio#studio-inquiry"
                       title="Upgrade to Pro to unlock Advanced Analytics"
                       className="flex h-7 items-center gap-1.5 rounded-lg border border-border px-3 text-xs text-muted-foreground opacity-40 transition-opacity hover:opacity-70"
                     >
@@ -2969,7 +2969,7 @@ export default function SmartDashboardPage() {
                           return (
                             <Link
                               key={item.type}
-                              href="/pricing"
+                              href="/studio#studio-inquiry"
                               title="Upgrade to Pro to unlock Context Summary"
                               className="flex w-full items-start justify-between rounded-lg px-3 py-2.5 text-left opacity-40 transition-opacity hover:opacity-70"
                             >
@@ -3044,7 +3044,7 @@ export default function SmartDashboardPage() {
                   <p className="text-xs text-muted-foreground mb-2">
                     Unlock AI-powered Context Summary and Advanced Analytics.
                   </p>
-                  <Link href="/pricing">
+                  <Link href="/studio#studio-inquiry">
                     <Button size="sm" className="w-full rounded-lg text-xs">Upgrade to Pro</Button>
                   </Link>
                 </div>
@@ -3111,7 +3111,7 @@ export default function SmartDashboardPage() {
                         return (
                           <Link
                             key={item.type}
-                            href="/pricing"
+                            href="/studio#studio-inquiry"
                             onClick={() => setMobileWidgetPanelOpen(false)}
                             className="flex w-full items-start justify-between rounded-lg px-3 py-2.5 text-left opacity-40 transition-opacity hover:opacity-70"
                           >
@@ -3178,7 +3178,7 @@ export default function SmartDashboardPage() {
                   <p className="text-xs font-medium text-foreground">Pro Plan</p>
                 </div>
                 <p className="text-xs text-muted-foreground mb-2">Unlock AI-powered Context Summary and Advanced Analytics.</p>
-                <Link href="/pricing">
+                  <Link href="/studio#studio-inquiry">
                   <Button size="sm" className="w-full rounded-lg text-xs">Upgrade to Pro</Button>
                 </Link>
               </div>

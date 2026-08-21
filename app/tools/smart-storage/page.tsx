@@ -375,7 +375,7 @@ export default function SmartStoragePage() {
 
   function openReport(reportId: string, options?: { mode?: "schedule_c" | "employed" }) {
     if (!isPro) {
-      router.push("/pricing")
+      router.push("/studio#studio-inquiry")
       return
     }
 
@@ -2607,7 +2607,7 @@ export default function SmartStoragePage() {
                     <Tip text={locked ? "Upgrade to Pro to generate reports" : REPORT_HINTS[report.id] ?? report.description}><button
                       key={report.id}
                       onClick={() => {
-                        if (locked) { router.push("/pricing"); return }
+                        if (locked) { router.push("/studio#studio-inquiry"); return }
                         if (enabled) setSelectedReport(report.id)
                       }}
                       disabled={!locked && !enabled}

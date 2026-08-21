@@ -1,19 +1,19 @@
 import type { Metadata } from "next"
 
 export const metadata: Metadata = {
-  title: "Pricing — AVIntelligence",
-  description: "Simple, transparent pricing for AI financial document analysis. Start free, upgrade when you need reports, dashboards, and advanced analytics.",
+  title: "AVIntelligence Studio — Start a project",
+  description: "Talk to AVIntelligence about web apps, internal tools, and AI systems built around your workflow.",
   openGraph: {
-    title: "Pricing — AVIntelligence",
-    description: "Simple, transparent pricing for AI financial document analysis. Start free, upgrade when you need reports, dashboards, and advanced analytics.",
-    url: "https://www.avintph.com/pricing",
+    title: "AVIntelligence Studio — Start a project",
+    description: "Talk to AVIntelligence about web apps, internal tools, and AI systems built around your workflow.",
+    url: "https://www.avintph.com/studio#studio-inquiry",
     siteName: "AVIntelligence",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Pricing — AVIntelligence",
-    description: "Simple, transparent pricing for AI financial document analysis.",
+    title: "AVIntelligence Studio — Start a project",
+    description: "Talk to AVIntelligence about web apps, internal tools, and AI systems built around your workflow.",
   },
 }
 

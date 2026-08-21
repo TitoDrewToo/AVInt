@@ -390,34 +390,49 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
 
     function sampleRadialBurst(count: number) {
       const positions = new Float32Array(count * 3)
-      const armCount = 13
-      const armAngles = Array.from({ length: armCount }, (_, index) =>
-        (index / armCount) * Math.PI * 2 + (index % 2 === 0 ? -0.035 : 0.04),
-      )
-      const armLengths = [1.32, 1.58, 1.18, 1.72, 1.34, 1.52, 1.22, 1.7, 1.28, 1.48, 1.2, 1.62, 1.3]
+      // Hand-traced against the supplied AVIntelligence mark. The reference is
+      // intentionally irregular: it has twelve blunt rays rather than a
+      // mathematically even starburst.
+      const arms = [
+        { angle: 2.05, length: 1.42, width: 0.2 },
+        { angle: 1.38, length: 1.54, width: 0.22 },
+        { angle: 1.02, length: 1.36, width: 0.22 },
+        { angle: 0.16, length: 1.64, width: 0.2 },
+        { angle: -0.08, length: 1.58, width: 0.19 },
+        { angle: -0.69, length: 1.38, width: 0.2 },
+        { angle: -0.99, length: 1.28, width: 0.2 },
+        { angle: -1.6, length: 1.62, width: 0.22 },
+        { angle: -2.14, length: 1.45, width: 0.22 },
+        { angle: -2.51, length: 1.42, width: 0.2 },
+        { angle: 3.09, length: 1.58, width: 0.18 },
+        { angle: 2.54, length: 1.42, width: 0.2 },
+      ]
+
+      const seeded = (seed: number) => {
+        const value = Math.sin(seed * 12.9898) * 43758.5453
+        return value - Math.floor(value)
+      }
 
       for (let i = 0; i < count; i += 1) {
-        const mode = Math.random()
+        const mode = seeded(i + 1)
         let x: number
         let y: number
         let z: number
 
-        if (mode < 0.28) {
-          const angle = Math.random() * Math.PI * 2
-          const radius = Math.sqrt(Math.random()) * 0.38
+        if (mode < 0.34) {
+          const angle = seeded(i * 3 + 7) * Math.PI * 2
+          const radius = Math.sqrt(seeded(i * 5 + 11)) * 0.4
           x = Math.cos(angle) * radius
           y = Math.sin(angle) * radius
-          z = (Math.random() - 0.5) * 0.2
+          z = (seeded(i * 7 + 13) - 0.5) * 0.2
         } else {
-          const armIndex = Math.floor(Math.random() * armCount)
-          const angle = armAngles[armIndex]
-          const length = armLengths[armIndex]
-          const distance = 0.18 + Math.pow(Math.random(), 0.72) * (length - 0.18)
-          const spread = (Math.random() - 0.5) * (0.11 + (distance / length) * 0.075)
+          const arm = arms[Math.floor(seeded(i * 2 + 3) * arms.length)]
+          const distance = 0.2 + Math.pow(seeded(i * 5 + 17), 0.68) * (arm.length - 0.2)
+          const spread = (seeded(i * 11 + 19) - 0.5) * arm.width
 
-          x = Math.cos(angle) * distance + Math.cos(angle + Math.PI / 2) * spread
-          y = Math.sin(angle) * distance + Math.sin(angle + Math.PI / 2) * spread
-          z = (Math.random() - 0.5) * (0.12 + distance / length * 0.12)
+          x = Math.cos(arm.angle) * distance + Math.cos(arm.angle + Math.PI / 2) * spread
+          y = Math.sin(arm.angle) * distance + Math.sin(arm.angle + Math.PI / 2) * spread
+          z = (seeded(i * 13 + 23) - 0.5) * (0.1 + distance / arm.length * 0.12)
         }
 
         positions[i * 3] = x

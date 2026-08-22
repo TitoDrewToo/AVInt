@@ -26,6 +26,8 @@ A human stays on the high-value decisions — *what to build, is it correct, is 
 ## Stack
 Next.js · React · TypeScript · Supabase (Postgres, RLS, Auth, Storage, Edge Functions) · Vercel · WebGL / GLSL / Three.js for interactive visuals · payment integrations (Creem, Stripe) · AI APIs (Anthropic and others). Open-source-first and cost-conscious — runs on free/low tiers wherever possible.
 
+The studio web architecture and future-project tech direction live in [`docs/AVIntelligence_Studio_Architecture_Tech_Stack.md`](./AVIntelligence_Studio_Architecture_Tech_Stack.md). That document extends this capability brief with the creative rendering, GSAP-inspired interaction system, motion, media, performance, QA, and handoff standards. It is intentionally separate from the Smart Storage and universal workflow data architecture handoffs.
+
 ---
 
 ## Portfolio

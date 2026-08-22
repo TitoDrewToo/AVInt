@@ -57,7 +57,7 @@ const capabilities = [
 function InternalButton({ href, children }: { href: string; children: React.ReactNode }) {
   return (
     <Link href={href}>
-      <Button variant="outline" size="lg" className="glass-surface-sm rounded-xl hover:text-primary">
+      <Button variant="outline" size="lg" className="cw-button-flow glass-surface-sm rounded-xl hover:text-primary">
         {children}
         <ArrowUpRight className="h-4 w-4" />
       </Button>
@@ -106,7 +106,7 @@ export default function StudioPage() {
               <p className="mt-7 max-w-3xl text-lg leading-relaxed text-muted-foreground md:text-xl">{studioDescription}</p>
               <div className="mt-10 flex flex-col items-start gap-4 sm:flex-row">
                 <div className="flex flex-col items-start gap-1">
-                  <a href="#studio-inquiry"><Button size="lg" className="rounded-xl bg-primary text-primary-foreground hover:bg-primary/90">Start a project<ArrowUpRight className="h-4 w-4" /></Button></a>
+                  <a href="#studio-inquiry"><Button size="lg" className="cw-button-flow rounded-xl bg-primary text-primary-foreground hover:bg-primary/90">Start a project<ArrowUpRight className="h-4 w-4" /></Button></a>
                   <span className="select-text text-xs text-muted-foreground">or email support@avintph.com</span>
                 </div>
                 <InternalButton href="/products/chroma-fairy">See a live build</InternalButton>
@@ -124,8 +124,8 @@ export default function StudioPage() {
             </div>
             <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {capabilities.map((item) => (
-                <article key={item.title} className="glass-surface hover-bloom h-full rounded-2xl p-6">
-                  <div className="glass-surface-sm flex h-10 w-10 items-center justify-center rounded-xl text-primary">{item.icon}</div>
+                <article key={item.title} className="cw-launcher-card glass-surface group h-full rounded-2xl p-6">
+                  <div className="cw-button-flow glass-surface-sm flex h-10 w-10 items-center justify-center rounded-xl text-primary transition-all group-hover:[box-shadow:0_0_24px_-4px_var(--retro-glow-red)]">{item.icon}</div>
                   <h3 className="mt-5 font-medium text-foreground">{item.title}</h3>
                   <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{item.description}</p>
                 </article>
@@ -158,7 +158,7 @@ export default function StudioPage() {
               <h2 className="mt-6 text-balance text-3xl font-semibold tracking-tight text-foreground md:text-5xl">Built in the open, shaped by real work.</h2>
             </div>
             <div className="mt-12 grid gap-4 md:grid-cols-2">
-              <Link href="/products/chroma-fairy" className="glass-surface hover-bloom group rounded-2xl p-7">
+              <Link href="/products/chroma-fairy" className="cw-launcher-card glass-surface group rounded-2xl p-7">
                 <div className="flex items-center justify-between gap-4">
                   <Palette className="h-6 w-6 text-primary" />
                   <ArrowUpRight className="h-5 w-5 text-muted-foreground transition-transform group-hover:-translate-y-1 group-hover:translate-x-1" />
@@ -166,7 +166,7 @@ export default function StudioPage() {
                 <h3 className="mt-8 text-xl font-medium text-foreground">Chroma Fairy</h3>
                 <p className="mt-2 text-sm leading-relaxed text-muted-foreground">A living online gallery designed and built end to end.</p>
               </Link>
-              <Link href="/products/smart-storage" className="glass-surface hover-bloom group rounded-2xl p-7">
+              <Link href="/products/smart-storage" className="cw-launcher-card glass-surface group rounded-2xl p-7">
                 <div className="flex items-center justify-between gap-4">
                   <Database className="h-6 w-6 text-primary" />
                   <ArrowUpRight className="h-5 w-5 text-muted-foreground transition-transform group-hover:-translate-y-1 group-hover:translate-x-1" />

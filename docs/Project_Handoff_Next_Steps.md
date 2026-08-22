@@ -10,6 +10,13 @@ Strategy is captured and de-hyped (`AVIntelligence_Strategy.md`). The dev-angle 
 `/studio` services page + Chroma Fairy pivot shipped (commit `ec1d7dc`). Two pitch decks
 scoped: studio bespoke-builds deck (#25, outlined) and Smart Storage CPA-firm deck (#21).
 
+For future studio web work, read `docs/AVIntelligence_Studio_Architecture_Tech_Stack.md` with
+`docs/AVIntelligence_Studio_Brief.md`. It is the web/creative architecture handoff: reusable
+motion orchestration, Three.js/WebGL scene systems, shader and media delivery, performance,
+visual QA, and the boundary between experience architecture and data architecture. The
+universal workflow and Smart Storage handoffs remain authoritative for data flow, persistence,
+security, extraction, reporting, and source-to-work continuity.
+
 ## Near-term roadmap (prioritized)
 
 **P0 — finish in flight**

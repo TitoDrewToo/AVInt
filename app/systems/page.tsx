@@ -1,7 +1,8 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { AlertTriangle, BarChart3, Bot, BriefcaseBusiness, CircleAlert, LockKeyhole, Mail, Play, RefreshCw, RotateCcw, Search, ShieldCheck } from "lucide-react"
+import Link from "next/link"
+import { AlertTriangle, ArrowUpRight, BarChart3, Bot, BriefcaseBusiness, CircleAlert, LockKeyhole, Mail, Play, RefreshCw, RotateCcw, Search, ShieldCheck, Sparkles } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Navbar } from "@/components/navbar"
@@ -304,9 +305,12 @@ export default function SystemsPage() {
               Internal operations for monitoring, partner provisioning, and the inbound lead pipeline.
             </p>
           </div>
-          {tab === "errors" ? <Button variant="outline" onClick={() => void loadGroups()} disabled={loading} className="gap-2" title="Reload the latest error groups and counts.">
-            {loading ? <><DiagnosisSpinner /><span>Refreshing…</span></> : <><RefreshCw className="h-4 w-4" /><span>Refresh</span></>}
-          </Button> : null}
+          <div className="flex flex-wrap items-center gap-3">
+            <Link href="/systems/studio" className="cw-button-flow glass-surface-sm inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-foreground transition-colors hover:text-primary"><Sparkles className="h-4 w-4 text-primary" />Studio Workspace<ArrowUpRight className="h-4 w-4" /></Link>
+            {tab === "errors" ? <Button variant="outline" onClick={() => void loadGroups()} disabled={loading} className="gap-2" title="Reload the latest error groups and counts.">
+              {loading ? <><DiagnosisSpinner /><span>Refreshing…</span></> : <><RefreshCw className="h-4 w-4" /><span>Refresh</span></>}
+            </Button> : null}
+          </div>
         </header>
 
         <nav aria-label="Systems sections" className="mb-6 flex flex-wrap gap-2 border-b border-border pb-3">

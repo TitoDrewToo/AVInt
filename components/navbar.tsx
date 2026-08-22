@@ -6,7 +6,7 @@ import type { MouseEvent, ReactNode } from "react"
 import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
 import { useTheme } from "next-themes"
-import { Menu, X, Sun, Moon, User } from "lucide-react"
+import { Sun, Moon, User } from "lucide-react"
 import type { Session } from "@supabase/supabase-js"
 import { AccountPanel } from "@/components/account-panel"
 import {
@@ -17,10 +17,6 @@ import { SystemStatusIndicator } from "@/components/ui/system-status-indicator"
 import { ProductAssistantPreview } from "@/components/product-assistant-preview"
 import { supabase } from "@/lib/supabase"
 import { computeEntitlement } from "@/lib/entitlement"
-
-const geistFontStyle = {
-  fontFamily: 'var(--font-aldrich), "Aldrich", var(--font-geist), "Geist", "Geist Fallback", sans-serif',
-} as const
 
 function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme()
@@ -51,7 +47,6 @@ function AccountMenuButton({ onClick }: { onClick: () => void }) {
 
 export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: ReactNode }) {
   const pathname = usePathname()
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [accountPanelOpen, setAccountPanelOpen] = useState(false)
   const [session, setSession] = useState<Session | null>(null)
   const [hasActiveSubscription, setHasActiveSubscription] = useState(false)
@@ -158,18 +153,6 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
               <div className="min-w-0 flex-1">{toolSlot}</div>
             ) : null}
             <div className="ml-auto flex shrink-0 items-center gap-6">
-            {!toolSlot && (
-              <>
-            <Link
-              href="/studio"
-              className="text-sm font-medium text-foreground/75 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
-              style={geistFontStyle}
-            >
-              Studio
-            </Link>
-              </>
-            )}
-
             <ThemeToggle />
 
             <SystemStatusIndicator />
@@ -183,33 +166,8 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
             <ThemeToggle />
             <SystemStatusIndicator />
             <AccountMenuButton onClick={() => setAccountPanelOpen(true)} />
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            >
-              {mobileMenuOpen ? (
-                <X className="h-6 w-6 text-foreground" />
-              ) : (
-                <Menu className="h-6 w-6 text-foreground" />
-              )}
-            </button>
           </div>
         </nav>
-
-        {/* Mobile Menu */}
-        {mobileMenuOpen && (
-          <div className="glass-surface mx-4 mt-2 rounded-2xl px-6 py-4 md:hidden">
-            <div className="flex flex-col gap-4">
-              <Link
-                href="/studio"
-                className="text-sm text-foreground"
-                style={geistFontStyle}
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                Studio
-              </Link>
-            </div>
-          </div>
-        )}
       </header>
 
       <AccountPanel

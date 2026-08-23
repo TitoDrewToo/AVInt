@@ -3,7 +3,7 @@
 **Status:** Studio-wide direction and handoff standard
 **Owner:** AVIntelligence / Andrew
 **Scope:** Public websites, product marketing surfaces, client builds, interactive showcases, storefronts, and studio delivery infrastructure
-**Last reviewed:** 2026-08-22
+**Last reviewed:** 2026-08-23
 
 ## Purpose
 
@@ -123,6 +123,19 @@ Every interactive surface should answer:
 5. What happens when the user interrupts it?
 
 The result should feel like one authored instrument. Buttons, hover states, modals, navigation, scene transitions, and page scroll should use a shared motion grammar even when they are implemented by different components.
+
+### 2.2 Experience flow library
+
+The Studio workspace now treats the beginning and movement of an experience as reusable inventory, alongside UI, layouts, motion, backgrounds, and environments. The flow library covers:
+
+- loading splashes and preflight states;
+- start menus and animated navigation reveals;
+- legal-age or audience-access gates with explicit consent and exit paths;
+- scroll chapters with visible progress and revisit behavior;
+- scene-to-scene transitions that preserve orientation;
+- progress navigation for guided product, editorial, and portfolio experiences.
+
+These are interaction studies, not copied pages. The implementation should preserve the useful pattern—threshold, orientation, movement, confirmation—while using AVIntelligence's own content, assets, timing, and visual language. Each flow needs a static or reduced-motion path, keyboard and touch behavior, and a clear interruption/re-entry state before it becomes production code.
 
 The GSAP site demonstrates this breadth through dedicated UI interaction, scroll, SVG, text, and React guidance, alongside its core animation system. [GSAP homepage](https://gsap.com/)
 

@@ -481,6 +481,156 @@
   opacity: 0.18;
   animation: cw-outline-spin 14s linear infinite;
 }
+@keyframes studio-modal-in {
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes studio-flow-menu-in {
+  from { opacity: 0; transform: translateY(-8px) scale(.985); clip-path: inset(0 0 100% 0 round 1rem); }
+  to { opacity: 1; transform: translateY(0) scale(1); clip-path: inset(0 0 0 0 round 1rem); }
+}
+
+@keyframes studio-flow-splash-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes studio-popover-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.96); transform-origin: top right; }
+  to { opacity: 1; transform: translateY(0) scale(1); transform-origin: top right; }
+}
+@keyframes studio-word-reveal {
+  0%, 18% { transform: translateY(0.5em); opacity: 0.2; filter: blur(8px); }
+  44%, 72% { transform: translateY(0); opacity: 1; filter: blur(0); }
+  100% { transform: translateY(-0.2em); opacity: 0.72; filter: blur(0); }
+}
+@keyframes studio-progress {
+  0%, 12% { transform: translateX(-100%); }
+  65%, 100% { transform: translateX(0); }
+}
+@keyframes studio-aurora {
+  0%, 100% { transform: translate3d(-8%, 4%, 0) scale(1); opacity: 0.64; }
+  50% { transform: translate3d(8%, -5%, 0) scale(1.12); opacity: 0.92; }
+}
+@keyframes studio-orbit {
+  from { transform: rotate(0deg) translateX(56px) rotate(0deg); }
+  to { transform: rotate(360deg) translateX(56px) rotate(-360deg); }
+}
+.studio-modal-backdrop {
+  background: color-mix(in oklab, var(--background) 54%, transparent);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+.studio-popover-in {
+  animation: studio-popover-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.studio-flow-menu-in { animation: studio-flow-menu-in 280ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.studio-flow-splash-in { animation: studio-flow-splash-in 420ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.studio-flow-preview { background: radial-gradient(circle at 80% 15%, color-mix(in oklab, var(--retro-glow-cyan) 10%, transparent), transparent 40%), var(--background); }
+.studio-flow-splash { background: radial-gradient(circle at 80% 20%, color-mix(in oklab, var(--retro-glow-red) 20%, transparent), transparent 42%), var(--background); }
+.studio-flow-splash .studio-progress-bar { transition: width 700ms cubic-bezier(0.22, 1, 0.36, 1); }
+.studio-scene-a { background: radial-gradient(circle at 75% 30%, color-mix(in oklab, var(--retro-glow-cyan) 18%, transparent), transparent 42%), var(--background); }
+.studio-scene-b { background: radial-gradient(circle at 25% 65%, color-mix(in oklab, var(--retro-glow-red) 18%, transparent), transparent 42%), var(--background); }
+.studio-scene-transition { animation: studio-flow-splash-in 360ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.studio-modal-backdrop > * {
+  animation: studio-modal-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.studio-motion-word {
+  animation: studio-word-reveal 4.8s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  will-change: transform, opacity, filter;
+}
+.studio-progress-bar {
+  animation: studio-progress 4.8s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  transform-origin: left center;
+}
+.studio-background-preview,
+.studio-environment-preview {
+  isolation: isolate;
+  background-color: var(--background);
+}
+.studio-background-preview::before,
+.studio-background-preview::after,
+.studio-environment-preview::before,
+.studio-environment-preview::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+}
+.studio-background-signal-grid {
+  background-image:
+    linear-gradient(color-mix(in oklab, var(--retro-glow-red) 22%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in oklab, var(--retro-glow-red) 22%, transparent) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+.studio-background-signal-grid::before {
+  inset: -20%;
+  background: radial-gradient(circle at 50% 50%, color-mix(in oklab, var(--retro-glow-red) 36%, transparent), transparent 46%);
+  animation: studio-aurora 6s ease-in-out infinite;
+}
+.studio-background-aurora-wash::before {
+  inset: -40%;
+  background:
+    radial-gradient(circle at 28% 32%, color-mix(in oklab, var(--retro-glow-red) 70%, transparent), transparent 32%),
+    radial-gradient(circle at 76% 62%, color-mix(in oklab, var(--retro-glow-cyan) 60%, transparent), transparent 34%),
+    radial-gradient(circle at 52% 86%, color-mix(in oklab, var(--primary) 30%, transparent), transparent 28%);
+  filter: blur(18px);
+  animation: studio-aurora 8s ease-in-out infinite;
+}
+.studio-background-particle-depth::before {
+  inset: 0;
+  background-image: radial-gradient(circle, color-mix(in oklab, var(--foreground) 58%, transparent) 0 1px, transparent 1.5px);
+  background-size: 17px 17px;
+  opacity: 0.3;
+  mask-image: radial-gradient(ellipse at center, black, transparent 76%);
+  transform: rotate(-8deg) scale(1.25);
+}
+.studio-background-particle-depth::after {
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 28%, color-mix(in oklab, var(--background) 80%, transparent) 84%);
+}
+.studio-environment-preview {
+  background:
+    linear-gradient(150deg, color-mix(in oklab, var(--background) 84%, var(--primary)) 0%, var(--background) 58%),
+    var(--background);
+}
+.studio-environment-preview::before {
+  inset: 20% 10% 10%;
+  border: 1px solid color-mix(in oklab, var(--retro-glow-red) 28%, transparent);
+  transform: perspective(260px) rotateX(58deg) rotateZ(-8deg);
+  background-image:
+    linear-gradient(color-mix(in oklab, var(--retro-glow-red) 16%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in oklab, var(--retro-glow-red) 16%, transparent) 1px, transparent 1px);
+  background-size: 22px 22px;
+  opacity: 0.7;
+}
+.studio-environment-orb {
+  position: absolute;
+  left: 52%;
+  top: 38%;
+  z-index: 1;
+  width: 72px;
+  height: 72px;
+  border: 1px solid color-mix(in oklab, var(--retro-glow-red) 70%, transparent);
+  border-radius: 999px;
+  background: radial-gradient(circle at 35% 28%, color-mix(in oklab, white 50%, var(--primary)), color-mix(in oklab, var(--primary) 28%, transparent) 38%, transparent 70%);
+  box-shadow: 0 0 36px -8px var(--retro-glow-red), inset -10px -10px 22px color-mix(in oklab, var(--background) 70%, transparent);
+  animation: studio-orbit 8s linear infinite;
+}
+.studio-environment-living-gallery .studio-environment-orb { border-radius: 38% 62% 55% 45%; background: linear-gradient(135deg, color-mix(in oklab, var(--retro-glow-cyan) 60%, transparent), color-mix(in oklab, var(--retro-glow-red) 70%, transparent)); }
+.studio-environment-signal-room .studio-environment-orb { width: 58px; height: 58px; border-radius: 18%; transform: rotate(45deg); background: repeating-linear-gradient(135deg, color-mix(in oklab, var(--retro-glow-red) 70%, transparent) 0 3px, transparent 3px 8px); }
+@media (prefers-reduced-motion: reduce) {
+  .studio-modal-backdrop > *,
+  .studio-popover-in,
+  .studio-flow-menu-in,
+  .studio-flow-splash-in,
+  .studio-scene-transition,
+  .studio-motion-word,
+  .studio-progress-bar,
+  .studio-background-signal-grid::before,
+  .studio-background-aurora-wash::before,
+  .studio-environment-orb { animation: none; }
+}
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .glass-surface, .glass-surface-sm { background: var(--card); }
 }

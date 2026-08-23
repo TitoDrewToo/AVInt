@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { ArrowLeft, Box, Layers3, LayoutTemplate, MousePointer2, Orbit, Sparkles } from "lucide-react"
+import { ArrowLeft, Box, Layers3, LayoutTemplate, MousePointer2, Orbit, Route, Sparkles } from "lucide-react"
 import type { ReactNode } from "react"
 import { Navbar } from "@/components/navbar"
 
@@ -13,6 +13,7 @@ const navigation = [
   { href: "/systems/studio/motion", label: "Motion", Icon: Orbit },
   { href: "/systems/studio/backgrounds", label: "Backgrounds", Icon: Layers3 },
   { href: "/systems/studio/environments", label: "Environments", Icon: Box },
+  { href: "/systems/studio/flows", label: "Experience Flows", Icon: Route },
 ]
 
 export function StudioWorkspaceShell({ children }: { children: ReactNode }) {

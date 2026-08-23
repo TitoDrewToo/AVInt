@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { ArrowUpRight, Layers3, MousePointer2, Orbit } from "lucide-react"
 import { studioSections } from "@/components/studio-catalog-section"
+import { studioAssetCount } from "@/components/studio-asset-data"
 
 export default function StudioWorkspacePage() {
   return (
@@ -19,9 +20,9 @@ export default function StudioWorkspacePage() {
       </section>
 
       <section>
-        <div className="mb-4 flex items-end justify-between gap-4"><div><p className="text-xs font-medium uppercase tracking-[0.2em] text-primary">Catalogue</p><h2 className="mt-2 text-2xl font-semibold tracking-tight">Choose a library</h2></div><span className="text-xs text-muted-foreground">5 foundations · 0 prototypes</span></div>
+        <div className="mb-4 flex items-end justify-between gap-4"><div><p className="text-xs font-medium uppercase tracking-[0.2em] text-primary">Catalogue</p><h2 className="mt-2 text-2xl font-semibold tracking-tight">Choose a library</h2></div><span className="text-xs text-muted-foreground">6 foundations · {studioSections.reduce((total, section) => total + studioAssetCount(section.slug), 0)} studies</span></div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {studioSections.map(({ slug, label, Icon, description, accent }) => <Link key={slug} href={`/systems/studio/${slug}`} className="glass-surface hover-bloom group rounded-2xl p-6"><div className="flex items-start justify-between gap-4"><div className="glass-surface-sm flex h-10 w-10 items-center justify-center rounded-xl text-primary"><Icon className="h-4 w-4" /></div><ArrowUpRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:-translate-y-1 group-hover:translate-x-1 group-hover:text-primary" /></div><p className="mt-6 text-xs font-medium uppercase tracking-[0.18em] text-primary">{accent}</p><h3 className="mt-2 text-lg font-semibold">{label}</h3><p className="mt-2 text-sm leading-relaxed text-muted-foreground">{description}</p><p className="mt-5 text-xs text-muted-foreground">Empty foundation · ready for assets</p></Link>)}
+          {studioSections.map(({ slug, label, Icon, description, accent }) => <Link key={slug} href={`/systems/studio/${slug}`} className="glass-surface hover-bloom group rounded-2xl p-6"><div className="flex items-start justify-between gap-4"><div className="glass-surface-sm flex h-10 w-10 items-center justify-center rounded-xl text-primary"><Icon className="h-4 w-4" /></div><ArrowUpRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:-translate-y-1 group-hover:translate-x-1 group-hover:text-primary" /></div><p className="mt-6 text-xs font-medium uppercase tracking-[0.18em] text-primary">{accent}</p><h3 className="mt-2 text-lg font-semibold">{label}</h3><p className="mt-2 text-sm leading-relaxed text-muted-foreground">{description}</p><p className="mt-5 text-xs text-muted-foreground">{studioAssetCount(slug)} studies · ready to extend</p></Link>)}
         </div>
       </section>
     </div>

@@ -451,6 +451,35 @@
     0 -1px 0 0 var(--glass-shadow) inset,
     0 14px 34px -18px var(--glass-shadow-far);
 }
+
+.chroma-carousel-control {
+  border: 1px solid color-mix(in oklab, white 28%, transparent);
+  background: color-mix(in oklab, black 30%, transparent);
+  color: white;
+  opacity: 0.72;
+  box-shadow: 0 8px 24px -16px rgb(0 0 0 / 0.8);
+  backdrop-filter: blur(10px);
+  transition: opacity 180ms ease, background-color 180ms ease, transform 180ms ease, box-shadow 180ms ease;
+}
+.chroma-carousel-control:hover:not(:disabled),
+.chroma-carousel-control:focus-visible {
+  background: color-mix(in oklab, black 46%, transparent);
+  opacity: 1;
+  box-shadow: 0 10px 28px -16px rgb(0 0 0 / 0.9);
+}
+.chroma-carousel-control:disabled {
+  opacity: 0.22;
+}
+.chroma-carousel-dot {
+  border: 0;
+  padding: 0;
+  opacity: 0.72;
+  transition: width 220ms cubic-bezier(0.22, 1, 0.36, 1), background-color 180ms ease, opacity 180ms ease;
+}
+.chroma-carousel-dot:hover,
+.chroma-carousel-dot:focus-visible {
+  opacity: 1;
+}
 .cw-input-flow {
   border-color: color-mix(in oklab, var(--border) 82%, transparent);
 }

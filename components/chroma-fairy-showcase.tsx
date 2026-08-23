@@ -76,7 +76,7 @@ export function ChromaFairyShowcase() {
           {previews.map((preview) => (
             <CarouselItem key={preview.eyebrow} className="pl-5">
               <article className="glass-surface overflow-hidden rounded-[2rem] border-primary/20 p-2 shadow-[0_28px_100px_-42px_var(--retro-glow-red)]">
-                <div className="relative aspect-[16/10] overflow-hidden rounded-[1.6rem] bg-black/30">
+                <div className={`relative overflow-hidden rounded-[1.6rem] bg-black/30 ${preview.type === "studio" ? "aspect-[2.52]" : "aspect-[16/10]"}`}>
                   {preview.type === "live" ? (
                     <iframe
                       className="pointer-events-none absolute left-1/2 top-1/2 h-[900px] w-[1440px] origin-center rounded-[1.6rem] border-0"
@@ -93,8 +93,8 @@ export function ChromaFairyShowcase() {
             </CarouselItem>
           ))}
         </CarouselContent>
-        <CarouselPrevious aria-label="Previous Chroma Fairy preview" className="cw-button-flow left-3 z-10 border-white/20 bg-black/55 text-white hover:bg-black/75 hover:text-white md:-left-5" />
-        <CarouselNext aria-label="Next Chroma Fairy preview" className="cw-button-flow right-3 z-10 border-white/20 bg-black/55 text-white hover:bg-black/75 hover:text-white md:-right-5" />
+        <CarouselPrevious aria-label="Previous Chroma Fairy preview" className="chroma-carousel-control left-3 z-10 md:-left-5" />
+        <CarouselNext aria-label="Next Chroma Fairy preview" className="chroma-carousel-control right-3 z-10 md:-right-5" />
       </Carousel>
 
       <div className="mt-5 flex items-center justify-center gap-2" aria-label="Chroma Fairy preview slides">
@@ -105,7 +105,7 @@ export function ChromaFairyShowcase() {
             aria-label={`Show ${preview.eyebrow}`}
             aria-current={selectedIndex === index ? "true" : undefined}
             onClick={() => api?.scrollTo(index)}
-            className={`cw-button-flow h-1.5 rounded-full transition-all ${selectedIndex === index ? "w-9 bg-primary" : "w-1.5 bg-muted-foreground/35 hover:bg-muted-foreground/65"}`}
+            className={`chroma-carousel-dot h-1.5 rounded-full transition-all ${selectedIndex === index ? "w-9 bg-primary" : "w-1.5 bg-muted-foreground/35 hover:bg-muted-foreground/65"}`}
           />
         ))}
       </div>

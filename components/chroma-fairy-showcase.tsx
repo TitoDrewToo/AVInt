@@ -87,14 +87,14 @@ export function ChromaFairyShowcase() {
                     />
                   ) : <Image fill className="bg-[#f5f2ec] object-contain object-center" sizes="(min-width: 768px) 55vw, 92vw" src={preview.src} alt={preview.alt} />}
                   <div className="pointer-events-none absolute inset-0 rounded-[1.6rem] ring-1 ring-inset ring-white/15" />
-                  {preview.type === "live" ? <a href={preview.href} target="_blank" rel="noopener noreferrer" className="absolute bottom-4 right-4 inline-flex items-center gap-2 rounded-full border border-white/20 bg-black/55 px-3 py-2 text-xs font-medium text-white backdrop-blur-md transition-colors hover:bg-black/75">Open preview<ArrowUpRight className="h-3.5 w-3.5" /></a> : null}
+                  {preview.type === "live" ? <a href={preview.href} target="_blank" rel="noopener noreferrer" className="cw-button-flow absolute bottom-4 right-4 inline-flex items-center gap-2 rounded-full border border-white/20 bg-black/55 px-3 py-2 text-xs font-medium text-white backdrop-blur-md transition-colors hover:bg-black/75">Open preview<ArrowUpRight className="h-3.5 w-3.5" /></a> : null}
                 </div>
               </article>
             </CarouselItem>
           ))}
         </CarouselContent>
-        <CarouselPrevious aria-label="Previous Chroma Fairy preview" className="left-3 z-10 border-white/20 bg-black/55 text-white hover:bg-black/75 hover:text-white md:-left-5" />
-        <CarouselNext aria-label="Next Chroma Fairy preview" className="right-3 z-10 border-white/20 bg-black/55 text-white hover:bg-black/75 hover:text-white md:-right-5" />
+        <CarouselPrevious aria-label="Previous Chroma Fairy preview" className="cw-button-flow left-3 z-10 border-white/20 bg-black/55 text-white hover:bg-black/75 hover:text-white md:-left-5" />
+        <CarouselNext aria-label="Next Chroma Fairy preview" className="cw-button-flow right-3 z-10 border-white/20 bg-black/55 text-white hover:bg-black/75 hover:text-white md:-right-5" />
       </Carousel>
 
       <div className="mt-5 flex items-center justify-center gap-2" aria-label="Chroma Fairy preview slides">
@@ -105,7 +105,7 @@ export function ChromaFairyShowcase() {
             aria-label={`Show ${preview.eyebrow}`}
             aria-current={selectedIndex === index ? "true" : undefined}
             onClick={() => api?.scrollTo(index)}
-            className={`h-1.5 rounded-full transition-all ${selectedIndex === index ? "w-9 bg-primary" : "w-1.5 bg-muted-foreground/35 hover:bg-muted-foreground/65"}`}
+            className={`cw-button-flow h-1.5 rounded-full transition-all ${selectedIndex === index ? "w-9 bg-primary" : "w-1.5 bg-muted-foreground/35 hover:bg-muted-foreground/65"}`}
           />
         ))}
       </div>

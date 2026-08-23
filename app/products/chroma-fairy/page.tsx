@@ -39,7 +39,7 @@ const buildHighlights = [
 function ExternalButton({ href, children, variant = "default" }: { href: string; children: React.ReactNode; variant?: "default" | "outline" }) {
   return (
     <a href={href} target="_blank" rel="noopener noreferrer">
-      <Button variant={variant} size="lg" className={`rounded-xl ${variant === "outline" ? "glass-surface-sm hover:text-primary" : "bg-primary text-primary-foreground hover:bg-primary/90"}`}>
+      <Button variant={variant} size="lg" className={`cw-button-flow rounded-xl ${variant === "outline" ? "glass-surface-sm hover:text-primary" : "bg-primary text-primary-foreground hover:bg-primary/90"}`}>
         {children}
         <ArrowUpRight className="h-4 w-4" />
       </Button>
@@ -150,7 +150,7 @@ export default function ChromaFairyProductPage() {
               <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground">AVIntelligence is a systems and web development studio. Chroma Fairy was a client build; the same craft — custom apps, internal tools, and AI systems — is available for yours.</p>
               <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
                 <Link href="/studio">
-                  <Button variant="outline" size="lg" className="glass-surface-sm rounded-xl hover:text-primary">
+                  <Button variant="outline" size="lg" className="cw-button-flow glass-surface-sm rounded-xl hover:text-primary">
                     Explore the studio
                     <ArrowUpRight className="h-4 w-4" />
                   </Button>

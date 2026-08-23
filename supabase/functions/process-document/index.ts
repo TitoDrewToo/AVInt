@@ -12,7 +12,7 @@ const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY")!
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!
-const PROCESS_PROVIDERS = providerChain("PROCESS", "openai", "gemini")
+const PROCESS_PROVIDERS = providerChain("PROCESS", "openai", "anthropic")
 
 const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") ?? "https://www.avintph.com,https://avintph.com").split(",").map(s => s.trim())
 function buildCorsHeaders(req: Request) {

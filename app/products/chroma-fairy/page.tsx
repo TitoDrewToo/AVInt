@@ -4,6 +4,7 @@ import { Navbar } from "@/components/navbar"
 import { Footer } from "@/components/footer"
 import { Button } from "@/components/ui/button"
 import { HomeDefaultSphere } from "@/components/home-default-sphere"
+import { ChromaFairyShowcase } from "@/components/chroma-fairy-showcase"
 
 export const metadata = {
   title: "Chroma Fairy — A Living Online Gallery | AVIntelligence",
@@ -67,7 +68,7 @@ export default function ChromaFairyProductPage() {
       <main className="marketing-scroll-stage relative z-[1] flex flex-1 flex-col">
         <section className="marketing-hero-section marketing-hero-section-spacious relative overflow-hidden px-6">
           <div aria-hidden className="pointer-events-none absolute inset-0 retro-grid-bg opacity-30" />
-          <div className="relative mx-auto grid max-w-6xl items-center gap-12 md:grid-cols-[1.1fr_0.9fr] md:gap-20">
+          <div className="relative mx-auto grid max-w-7xl items-center gap-14 md:grid-cols-[0.85fr_1.15fr] md:gap-16 lg:gap-24">
             <div className="max-w-3xl">
               <p className="text-sm font-medium uppercase tracking-[0.22em] text-primary">Client build · Chroma Fairy</p>
               <h1 className="mt-5 text-balance text-4xl font-semibold leading-[1.05] tracking-tight text-foreground md:text-6xl lg:text-7xl">
@@ -82,19 +83,7 @@ export default function ChromaFairyProductPage() {
               </div>
             </div>
 
-            <div className="relative mx-auto w-full max-w-[420px]">
-              <div className="glass-surface relative aspect-[16/10] overflow-hidden rounded-[2rem] border border-primary/20 p-2 shadow-[0_24px_90px_-40px_var(--retro-glow-red)]">
-                <div className="absolute inset-0 overflow-hidden rounded-[1.75rem] bg-black/20">
-                  <iframe
-                    className="absolute left-1/2 top-1/2 h-[900px] w-[1440px] origin-center -translate-x-1/2 -translate-y-1/2 scale-[0.34] rounded-[1.75rem] border-0"
-                    src="https://www.chromafairy.com/"
-                    title="Chroma Fairy desktop homepage preview"
-                    loading="lazy"
-                  />
-                </div>
-                <div className="pointer-events-none absolute inset-0 z-10 rounded-[1.75rem] ring-1 ring-inset ring-white/15" />
-              </div>
-            </div>
+            <ChromaFairyShowcase />
           </div>
         </section>
 

@@ -220,14 +220,8 @@ export async function getStatusOverview(): Promise<StatusOverview> {
     fetchStatusFeed("https://status.openai.com/api/v2/status.json"),
     fetchStatusFeed("https://status.anthropic.com/api/v2/status.json"),
   ])
-  // Reaching this server-rendered page is direct evidence that the public app
-  // is serving. A known failed deployment can still override that evidence;
-  // an unavailable deployment feed stays visible as Unknown below.
-  const webApplicationState = deployment.state === "down"
-    ? "down"
-    : deployment.state === "degraded"
-      ? "degraded"
-      : "operational"
+  // If this code is executing, the server rendered this page.
+  const webApplicationState: SurfaceState = "operational"
   const siteComponents: StatusComponent[] = [
     { name: "Web application", detail: `This status page rendered successfully · deployment: ${deployment.stateLabel}`, state: webApplicationState },
     { name: "Production deployment", detail: deployment.error ?? "Current production deployment state", state: deployment.state },

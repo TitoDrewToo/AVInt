@@ -12,7 +12,7 @@ export const systemsConfig = {
   vercel: {
     // Vercel accepts the project slug here; set VERCEL_PROJECT_ID when the
     // project uses a different identifier in the deployment environment.
-    projectId: process.env.VERCEL_PROJECT_ID ?? "avintph",
+    projectId: process.env.VERCEL_PROJECT_ID ?? "avint-site",
   },
   supabase: {
     projectRef: "njbxbltgtxvhmcctdluz",

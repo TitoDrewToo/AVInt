@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cursor field & sound toggle — Studio reference</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anybody:wght@500;700&family=Public+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="./contract.css">
+<style>
+  body {
+    margin: 0;
+    font-family: "Public Sans", system-ui, sans-serif;
+    background: #0E1218;
+    color: #DFE3EA;
+  }
+  .doc { max-width: 900px; margin: 0 auto; padding: 40px 24px 80px; }
+  .doc h1 {
+    font-family: "Anybody", system-ui, sans-serif;
+    font-size: 28px; font-weight: 700; letter-spacing: -.02em; margin: 0 0 6px;
+  }
+  .doc .src {
+    font-family: "DM Mono", monospace; font-size: 12px;
+    color: #8A93A3; margin: 0 0 20px; letter-spacing: .03em;
+  }
+  .doc pre.note {
+    font-family: "DM Mono", monospace; font-size: 12.5px; line-height: 1.6;
+    background: #161C25; border-left: 2px solid #7D97FF;
+    padding: 16px 18px; margin: 0 0 24px; white-space: pre-wrap; color: #B7C0CE;
+  }
+  .palbar { display: flex; gap: 8px; align-items: center; margin: 0 0 14px; flex-wrap: wrap; }
+  .palbar span {
+    font-family: "DM Mono", monospace; font-size: 10.5px; letter-spacing: .12em;
+    text-transform: uppercase; color: #8A93A3;
+  }
+  .palbar button {
+    font-family: "DM Mono", monospace; font-size: 11.5px;
+    padding: 5px 11px; border: 1px solid #2B3441; background: transparent;
+    color: #8A93A3; cursor: pointer; border-radius: 2px;
+  }
+  .palbar button[aria-pressed="true"] { border-color: #DFE3EA; color: #DFE3EA; }
+
+  /* when embedded in a catalogue card, the parent supplies the chrome:
+     hide the doc header and the local palette bar, keep only the stage */
+  body.embedded { background: transparent; }
+  body.embedded .doc { padding: 0; max-width: none; }
+  body.embedded .doc > h1,
+  body.embedded .doc > .src,
+  body.embedded .doc > pre.note,
+  body.embedded .palbar { display: none; }
+  body.embedded .studio { border: none; }
+
+  /* the sandbox the component ships into */
+  .studio {
+    padding: 48px 28px;
+    border: 1px solid #2B3441;
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 20px; min-height: 240px;
+  }
+  .studio .row { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
+  .studio .cap {
+    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--text-dim); margin: 0;
+  }
+  .studio h2 { font-family: var(--font-display); font-weight: 700; font-size: 26px; margin: 0 0 6px; }
+  .studio .replay {
+    border: 1px solid var(--line); background: transparent; color: var(--text-dim);
+    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .12em;
+    text-transform: uppercase; padding: 7px 13px; border-radius: 999px; cursor: pointer;
+  }
+  .studio .replay:hover { color: var(--text); border-color: var(--text-dim); }
+</style>
+<style>
+/* =====================================================================
+   Cursor field & sound toggle
+   the Active Theory experience layer
+   ↓ THIS is the part that becomes components/studio/. Everything above
+     is harness. Nothing below reads anything but contract tokens.
+   ===================================================================== */
+
+
+.curfield {
+  position: relative;
+  width: 100%;
+  height: 170px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  overflow: hidden;
+}
+@media (pointer: fine) { .curfield { cursor: none; } }
+
+.curdot {
+  position: absolute;
+  top: 0; left: 0;
+  width: 26px; height: 26px;
+  margin: -13px 0 0 -13px;
+  border: 1px solid var(--brand);
+  border-radius: 999px;
+  pointer-events: none;
+  opacity: 0;
+  display: grid; place-items: center;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--brand);
+  transition: opacity 200ms var(--ease), width 260ms var(--ease),
+              height 260ms var(--ease), margin 260ms var(--ease);
+}
+.curfield[data-in="true"] .curdot { opacity: 1; }
+.curfield[data-grow="true"] .curdot {
+  width: 66px; height: 66px; margin: -33px 0 0 -33px;
+  background: color-mix(in srgb, var(--brand) 16%, transparent);
+}
+.curtarget {
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-family: var(--font-body);
+  font-size: 14px;
+  padding: 14px 22px;
+  border-radius: var(--radius);
+  transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.curfield[data-grow="true"] .curtarget[data-hot] { color: var(--text); border-color: var(--brand); }
+
+.snd {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  padding: 9px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.snd[aria-pressed="true"] { color: var(--brand); border-color: var(--brand); }
+.snd__bars { display: flex; align-items: flex-end; gap: 2px; height: 12px; }
+.snd__bars i { width: 2px; background: currentColor; height: 3px; display: block; }
+.snd[aria-pressed="true"] .snd__bars i { animation: eq 900ms ease-in-out infinite alternate; }
+.snd[aria-pressed="true"] .snd__bars i:nth-child(2) { animation-delay: 150ms; }
+.snd[aria-pressed="true"] .snd__bars i:nth-child(3) { animation-delay: 300ms; }
+.snd[aria-pressed="true"] .snd__bars i:nth-child(4) { animation-delay: 90ms; }
+@keyframes eq { from { height: 3px; } to { height: 12px; } }
+</style>
+</head>
+<body>
+<div class="doc">
+  <h1>Cursor field & sound toggle</h1>
+  <p class="src">the Active Theory experience layer</p>
+  <pre class="note">Two halves of the same layer.
+CURSOR: a ring that LERPS toward the pointer (factor 0.18) rather than
+tracking it exactly — the lag is the effect. It grows and takes a label over
+anything marked data-hot. Only mount on (pointer: fine); a custom cursor on
+touch is dead weight.
+SOUND: off by default and the choice is remembered. Browsers block autoplay,
+so the toggle IS the unmute — never try to start audio before a gesture.</pre>
+
+  <div class="palbar">
+    <span>Palette</span>
+    <button data-pal="ember"   aria-pressed="true">ember</button>
+    <button data-pal="venue"   aria-pressed="false">venue</button>
+    <button data-pal="gallery" aria-pressed="false">gallery</button>
+    <button data-pal="clinic"  aria-pressed="false">clinic</button>
+  </div>
+
+  <div class="studio" id="studio" data-pal="ember">
+
+    <div class="curfield" id="curfield" data-in="false" data-grow="false">
+      <span class="curdot" id="curdot"></span>
+      <span class="curtarget">Gallery</span>
+      <span class="curtarget" data-hot>Book</span>
+      <span class="curtarget">Contact</span>
+    </div>
+
+    <button class="snd" id="snd" aria-pressed="false">
+      <span class="snd__bars"><i></i><i></i><i></i><i></i></span>
+      Sound
+    </button>
+  </div>
+</div>
+
+<script>
+/* harness — palette switcher. Not part of the component.
+   Also accepts the palette from a parent frame, so /systems/studio can embed
+   this file and drive every card from one page-level control:
+     iframe.contentWindow.postMessage({ studioPalette: "venue" }, location.origin)
+   And reports its content height back so the parent can size the frame to fit. */
+(function () {
+  var host = document.getElementById("studio");
+  var btns = document.querySelectorAll(".palbar button");
+
+  function apply(pal) {
+    if (!pal) return;
+    host.setAttribute("data-pal", pal);
+    btns.forEach(function (o) {
+      o.setAttribute("aria-pressed", String(o.getAttribute("data-pal") === pal));
+    });
+  }
+
+  btns.forEach(function (b) {
+    b.addEventListener("click", function () { apply(b.getAttribute("data-pal")); });
+  });
+
+  addEventListener("message", function (e) {
+    if (e.origin !== location.origin && e.origin !== "null") return;
+    var d = e.data;
+    if (d && typeof d === "object") {
+      if (d.studioPalette) apply(d.studioPalette);
+      if (d.studioChrome === "off") document.body.classList.add("embedded");
+    }
+  });
+
+  function report() {
+    if (parent === window) return;
+    parent.postMessage({ studioHeight: document.body.scrollHeight, studioId: location.pathname }, "*");
+  }
+  addEventListener("load", report);
+  addEventListener("resize", report);
+  setTimeout(report, 300);
+})();
+</script>
+<script>
+/* ---- component behaviour ---- */
+(function () {
+"use strict";
+
+var LERP = 0.18;
+var FINE = matchMedia("(pointer: fine)").matches;
+
+var cf = document.getElementById("curfield");
+var cd = document.getElementById("curdot");
+
+if (FINE) {
+  var tx = 0, ty = 0, cx = 0, cy = 0, raf = null;
+  function loop() {
+    cx += (tx - cx) * LERP;                 /* the lag IS the effect */
+    cy += (ty - cy) * LERP;
+    cd.style.transform = "translate(" + cx + "px," + cy + "px)";
+    raf = requestAnimationFrame(loop);
+  }
+  cf.addEventListener("mouseenter", function () {
+    cf.setAttribute("data-in", "true");
+    if (!raf) loop();
+  });
+  cf.addEventListener("mouseleave", function () {
+    cf.setAttribute("data-in", "false");
+    cf.setAttribute("data-grow", "false");
+    if (raf) { cancelAnimationFrame(raf); raf = null; }
+  });
+  cf.addEventListener("mousemove", function (e) {
+    var r = cf.getBoundingClientRect();
+    tx = e.clientX - r.left;
+    ty = e.clientY - r.top;
+    var hot = e.target.closest("[data-hot]");
+    cf.setAttribute("data-grow", hot ? "true" : "false");
+    cd.textContent = hot ? "Go" : "";
+  });
+}
+
+/* --- sound bus ---------------------------------------------------------
+   Off by default. Remembered. The toggle is the unmute — browsers will not
+   let audio start before a user gesture, so never attempt it earlier. */
+var snd = document.getElementById("snd");
+var KEY = "studio.sound";
+var on = false;
+try { on = localStorage.getItem(KEY) === "1"; } catch (e) {}
+snd.setAttribute("aria-pressed", String(on));
+
+snd.addEventListener("click", function () {
+  on = !on;
+  snd.setAttribute("aria-pressed", String(on));
+  try { localStorage.setItem(KEY, on ? "1" : "0"); } catch (e) {}
+  /* on ? audioBus.resume() : audioBus.suspend(); */
+});
+})();
+</script>
+</body>
+</html>

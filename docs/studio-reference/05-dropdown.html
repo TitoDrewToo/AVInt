@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dropdown — 45ms item stagger — Studio reference</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anybody:wght@500;700&family=Public+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="./contract.css">
+<style>
+  body {
+    margin: 0;
+    font-family: "Public Sans", system-ui, sans-serif;
+    background: #0E1218;
+    color: #DFE3EA;
+  }
+  .doc { max-width: 900px; margin: 0 auto; padding: 40px 24px 80px; }
+  .doc h1 {
+    font-family: "Anybody", system-ui, sans-serif;
+    font-size: 28px; font-weight: 700; letter-spacing: -.02em; margin: 0 0 6px;
+  }
+  .doc .src {
+    font-family: "DM Mono", monospace; font-size: 12px;
+    color: #8A93A3; margin: 0 0 20px; letter-spacing: .03em;
+  }
+  .doc pre.note {
+    font-family: "DM Mono", monospace; font-size: 12.5px; line-height: 1.6;
+    background: #161C25; border-left: 2px solid #7D97FF;
+    padding: 16px 18px; margin: 0 0 24px; white-space: pre-wrap; color: #B7C0CE;
+  }
+  .palbar { display: flex; gap: 8px; align-items: center; margin: 0 0 14px; flex-wrap: wrap; }
+  .palbar span {
+    font-family: "DM Mono", monospace; font-size: 10.5px; letter-spacing: .12em;
+    text-transform: uppercase; color: #8A93A3;
+  }
+  .palbar button {
+    font-family: "DM Mono", monospace; font-size: 11.5px;
+    padding: 5px 11px; border: 1px solid #2B3441; background: transparent;
+    color: #8A93A3; cursor: pointer; border-radius: 2px;
+  }
+  .palbar button[aria-pressed="true"] { border-color: #DFE3EA; color: #DFE3EA; }
+
+  /* when embedded in a catalogue card, the parent supplies the chrome:
+     hide the doc header and the local palette bar, keep only the stage */
+  body.embedded { background: transparent; }
+  body.embedded .doc { padding: 0; max-width: none; }
+  body.embedded .doc > h1,
+  body.embedded .doc > .src,
+  body.embedded .doc > pre.note,
+  body.embedded .palbar { display: none; }
+  body.embedded .studio { border: none; }
+
+  /* the sandbox the component ships into */
+  .studio {
+    padding: 48px 28px;
+    border: 1px solid #2B3441;
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 20px; min-height: 240px;
+  }
+  .studio .row { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
+  .studio .cap {
+    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--text-dim); margin: 0;
+  }
+  .studio h2 { font-family: var(--font-display); font-weight: 700; font-size: 26px; margin: 0 0 6px; }
+  .studio .replay {
+    border: 1px solid var(--line); background: transparent; color: var(--text-dim);
+    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .12em;
+    text-transform: uppercase; padding: 7px 13px; border-radius: 999px; cursor: pointer;
+  }
+  .studio .replay:hover { color: var(--text); border-color: var(--text-dim); }
+</style>
+<style>
+/* =====================================================================
+   Dropdown — 45ms item stagger
+   house pattern
+   ↓ THIS is the part that becomes components/studio/. Everything above
+     is harness. Nothing below reads anything but contract tokens.
+   ===================================================================== */
+
+
+.dd { position: relative; }
+.dd__btn {
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 14.5px;
+  padding: 11px 18px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  display: inline-flex; align-items: center; gap: 10px;
+}
+.dd__chev { transition: transform var(--dur) var(--ease); display: block; }
+.dd__btn[aria-expanded="true"] .dd__chev { transform: rotate(180deg); }
+
+.dd__menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 190px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 6px;
+  list-style: none;
+  margin: 0;
+  z-index: 5;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition: opacity var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+}
+.dd[data-open="true"] .dd__menu { opacity: 1; pointer-events: auto; transform: translateY(0); }
+.dd__menu li {
+  opacity: 0;
+  transform: translateY(7px);
+  transition: opacity 220ms var(--ease), transform 220ms var(--ease);
+  margin: 0;
+}
+.dd[data-open="true"] .dd__menu li { opacity: 1; transform: translateY(0); }
+.dd__menu button {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-family: var(--font-body);
+  font-size: 14px;
+  padding: 8px 12px;
+  border-radius: calc(var(--radius) * .7);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.dd__menu button:hover { background: var(--surface); color: var(--text); }
+</style>
+</head>
+<body>
+<div class="doc">
+  <h1>Dropdown — 45ms item stagger</h1>
+  <p class="src">house pattern</p>
+  <pre class="note">Items arrive one after another, never as a block. 45ms between items — far
+enough apart to read as a cascade, close enough that four items still land
+inside 400ms. The delays are cleared on close so it shuts as one piece.</pre>
+
+  <div class="palbar">
+    <span>Palette</span>
+    <button data-pal="ember"   aria-pressed="true">ember</button>
+    <button data-pal="venue"   aria-pressed="false">venue</button>
+    <button data-pal="gallery" aria-pressed="false">gallery</button>
+    <button data-pal="clinic"  aria-pressed="false">clinic</button>
+  </div>
+
+  <div class="studio" id="studio" data-pal="ember">
+
+    <div class="dd" id="dd" data-open="false">
+      <button class="dd__btn" id="ddbtn" aria-expanded="false" aria-haspopup="true">
+        Choose a court
+        <svg class="dd__chev" width="11" height="7" viewBox="0 0 11 7" fill="none" aria-hidden="true">
+          <path d="M1 1l4.5 4.5L10 1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <ul class="dd__menu" id="ddmenu">
+        <li><button type="button">Court 1 — indoor</button></li>
+        <li><button type="button">Court 2 — indoor</button></li>
+        <li><button type="button">Court 3 — covered</button></li>
+        <li><button type="button">Court 4 — covered</button></li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script>
+/* harness — palette switcher. Not part of the component.
+   Also accepts the palette from a parent frame, so /systems/studio can embed
+   this file and drive every card from one page-level control:
+     iframe.contentWindow.postMessage({ studioPalette: "venue" }, location.origin)
+   And reports its content height back so the parent can size the frame to fit. */
+(function () {
+  var host = document.getElementById("studio");
+  var btns = document.querySelectorAll(".palbar button");
+
+  function apply(pal) {
+    if (!pal) return;
+    host.setAttribute("data-pal", pal);
+    btns.forEach(function (o) {
+      o.setAttribute("aria-pressed", String(o.getAttribute("data-pal") === pal));
+    });
+  }
+
+  btns.forEach(function (b) {
+    b.addEventListener("click", function () { apply(b.getAttribute("data-pal")); });
+  });
+
+  addEventListener("message", function (e) {
+    if (e.origin !== location.origin && e.origin !== "null") return;
+    var d = e.data;
+    if (d && typeof d === "object") {
+      if (d.studioPalette) apply(d.studioPalette);
+      if (d.studioChrome === "off") document.body.classList.add("embedded");
+    }
+  });
+
+  function report() {
+    if (parent === window) return;
+    parent.postMessage({ studioHeight: document.body.scrollHeight, studioId: location.pathname }, "*");
+  }
+  addEventListener("load", report);
+  addEventListener("resize", report);
+  setTimeout(report, 300);
+})();
+</script>
+<script>
+/* ---- component behaviour ---- */
+(function () {
+"use strict";
+
+var STAGGER = 45;
+var dd = document.getElementById("dd");
+var ddbtn = document.getElementById("ddbtn");
+var ddmenu = document.getElementById("ddmenu");
+
+function setOpen(open) {
+  dd.setAttribute("data-open", String(open));
+  ddbtn.setAttribute("aria-expanded", String(open));
+  Array.prototype.forEach.call(ddmenu.children, function (li, i) {
+    li.style.transitionDelay = (open ? i * STAGGER : 0) + "ms";
+  });
+}
+ddbtn.addEventListener("click", function () {
+  setOpen(dd.getAttribute("data-open") !== "true");
+});
+document.addEventListener("click", function (e) {
+  if (!dd.contains(e.target)) setOpen(false);
+});
+document.addEventListener("keydown", function (e) {
+  if (e.key === "Escape") setOpen(false);
+});
+setOpen(false);
+})();
+</script>
+</body>
+</html>

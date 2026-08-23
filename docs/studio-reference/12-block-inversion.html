@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Block inversion — Studio reference</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anybody:wght@500;700&family=Public+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="./contract.css">
+<style>
+  body {
+    margin: 0;
+    font-family: "Public Sans", system-ui, sans-serif;
+    background: #0E1218;
+    color: #DFE3EA;
+  }
+  .doc { max-width: 900px; margin: 0 auto; padding: 40px 24px 80px; }
+  .doc h1 {
+    font-family: "Anybody", system-ui, sans-serif;
+    font-size: 28px; font-weight: 700; letter-spacing: -.02em; margin: 0 0 6px;
+  }
+  .doc .src {
+    font-family: "DM Mono", monospace; font-size: 12px;
+    color: #8A93A3; margin: 0 0 20px; letter-spacing: .03em;
+  }
+  .doc pre.note {
+    font-family: "DM Mono", monospace; font-size: 12.5px; line-height: 1.6;
+    background: #161C25; border-left: 2px solid #7D97FF;
+    padding: 16px 18px; margin: 0 0 24px; white-space: pre-wrap; color: #B7C0CE;
+  }
+  .palbar { display: flex; gap: 8px; align-items: center; margin: 0 0 14px; flex-wrap: wrap; }
+  .palbar span {
+    font-family: "DM Mono", monospace; font-size: 10.5px; letter-spacing: .12em;
+    text-transform: uppercase; color: #8A93A3;
+  }
+  .palbar button {
+    font-family: "DM Mono", monospace; font-size: 11.5px;
+    padding: 5px 11px; border: 1px solid #2B3441; background: transparent;
+    color: #8A93A3; cursor: pointer; border-radius: 2px;
+  }
+  .palbar button[aria-pressed="true"] { border-color: #DFE3EA; color: #DFE3EA; }
+
+  /* when embedded in a catalogue card, the parent supplies the chrome:
+     hide the doc header and the local palette bar, keep only the stage */
+  body.embedded { background: transparent; }
+  body.embedded .doc { padding: 0; max-width: none; }
+  body.embedded .doc > h1,
+  body.embedded .doc > .src,
+  body.embedded .doc > pre.note,
+  body.embedded .palbar { display: none; }
+  body.embedded .studio { border: none; }
+
+  /* the sandbox the component ships into */
+  .studio {
+    padding: 48px 28px;
+    border: 1px solid #2B3441;
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 20px; min-height: 240px;
+  }
+  .studio .row { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
+  .studio .cap {
+    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--text-dim); margin: 0;
+  }
+  .studio h2 { font-family: var(--font-display); font-weight: 700; font-size: 26px; margin: 0 0 6px; }
+  .studio .replay {
+    border: 1px solid var(--line); background: transparent; color: var(--text-dim);
+    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .12em;
+    text-transform: uppercase; padding: 7px 13px; border-radius: 999px; cursor: pointer;
+  }
+  .studio .replay:hover { color: var(--text); border-color: var(--text-dim); }
+</style>
+<style>
+/* =====================================================================
+   Block inversion
+   observed: both references
+   ↓ THIS is the part that becomes components/studio/. Everything above
+     is harness. Nothing below reads anything but contract tokens.
+   ===================================================================== */
+
+
+.blocks {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.blk {
+  padding: 26px 22px;
+  background: var(--surface);
+  color: var(--text);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.blk h3 { font-family: var(--font-display); font-weight: 700; font-size: 17px; margin: 0 0 6px; }
+.blk p  { font-size: 13.5px; color: var(--text-dim); margin: 0; }
+@media (max-width: 620px) { .blocks { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="doc">
+  <h1>Block inversion</h1>
+  <p class="src">observed: both references</p>
+  <pre class="note">Santioni alternates cream and charcoal down the page; GSAP drops a cream
+slab under a dark hero. Do NOT model that as two themes. One attribute swaps
+--surface and --text within the SAME token set, so every component nested
+inside inverts for free and none of them need to know.
+The swap itself lives in contract.css — this file only demonstrates it.</pre>
+
+  <div class="palbar">
+    <span>Palette</span>
+    <button data-pal="ember"   aria-pressed="true">ember</button>
+    <button data-pal="venue"   aria-pressed="false">venue</button>
+    <button data-pal="gallery" aria-pressed="false">gallery</button>
+    <button data-pal="clinic"  aria-pressed="false">clinic</button>
+  </div>
+
+  <div class="studio" id="studio" data-pal="ember">
+
+    <div class="blocks" id="blocks">
+      <div class="blk" data-block="normal">
+        <h3>Weekday rates</h3>
+        <p>₱400 per hour before 5pm. No membership, no minimum.</p>
+      </div>
+      <div class="blk" data-block="invert">
+        <h3>Weekend rates</h3>
+        <p>₱650 per hour. Book the whole court or join an open session.</p>
+      </div>
+    </div>
+    <button class="replay" id="replay">Flip</button>
+  </div>
+</div>
+
+<script>
+/* harness — palette switcher. Not part of the component.
+   Also accepts the palette from a parent frame, so /systems/studio can embed
+   this file and drive every card from one page-level control:
+     iframe.contentWindow.postMessage({ studioPalette: "venue" }, location.origin)
+   And reports its content height back so the parent can size the frame to fit. */
+(function () {
+  var host = document.getElementById("studio");
+  var btns = document.querySelectorAll(".palbar button");
+
+  function apply(pal) {
+    if (!pal) return;
+    host.setAttribute("data-pal", pal);
+    btns.forEach(function (o) {
+      o.setAttribute("aria-pressed", String(o.getAttribute("data-pal") === pal));
+    });
+  }
+
+  btns.forEach(function (b) {
+    b.addEventListener("click", function () { apply(b.getAttribute("data-pal")); });
+  });
+
+  addEventListener("message", function (e) {
+    if (e.origin !== location.origin && e.origin !== "null") return;
+    var d = e.data;
+    if (d && typeof d === "object") {
+      if (d.studioPalette) apply(d.studioPalette);
+      if (d.studioChrome === "off") document.body.classList.add("embedded");
+    }
+  });
+
+  function report() {
+    if (parent === window) return;
+    parent.postMessage({ studioHeight: document.body.scrollHeight, studioId: location.pathname }, "*");
+  }
+  addEventListener("load", report);
+  addEventListener("resize", report);
+  setTimeout(report, 300);
+})();
+</script>
+<script>
+/* ---- component behaviour ---- */
+(function () {
+"use strict";
+
+var blocks = document.getElementById("blocks");
+document.getElementById("replay").addEventListener("click", function () {
+  Array.prototype.forEach.call(blocks.children, function (b) {
+    b.setAttribute("data-block", b.getAttribute("data-block") === "invert" ? "normal" : "invert");
+  });
+});
+})();
+</script>
+</body>
+</html>

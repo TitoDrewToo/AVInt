@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stacked label converge — Studio reference</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anybody:wght@500;700&family=Public+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="./contract.css">
+<style>
+  body {
+    margin: 0;
+    font-family: "Public Sans", system-ui, sans-serif;
+    background: #0E1218;
+    color: #DFE3EA;
+  }
+  .doc { max-width: 900px; margin: 0 auto; padding: 40px 24px 80px; }
+  .doc h1 {
+    font-family: "Anybody", system-ui, sans-serif;
+    font-size: 28px; font-weight: 700; letter-spacing: -.02em; margin: 0 0 6px;
+  }
+  .doc .src {
+    font-family: "DM Mono", monospace; font-size: 12px;
+    color: #8A93A3; margin: 0 0 20px; letter-spacing: .03em;
+  }
+  .doc pre.note {
+    font-family: "DM Mono", monospace; font-size: 12.5px; line-height: 1.6;
+    background: #161C25; border-left: 2px solid #7D97FF;
+    padding: 16px 18px; margin: 0 0 24px; white-space: pre-wrap; color: #B7C0CE;
+  }
+  .palbar { display: flex; gap: 8px; align-items: center; margin: 0 0 14px; flex-wrap: wrap; }
+  .palbar span {
+    font-family: "DM Mono", monospace; font-size: 10.5px; letter-spacing: .12em;
+    text-transform: uppercase; color: #8A93A3;
+  }
+  .palbar button {
+    font-family: "DM Mono", monospace; font-size: 11.5px;
+    padding: 5px 11px; border: 1px solid #2B3441; background: transparent;
+    color: #8A93A3; cursor: pointer; border-radius: 2px;
+  }
+  .palbar button[aria-pressed="true"] { border-color: #DFE3EA; color: #DFE3EA; }
+
+  /* when embedded in a catalogue card, the parent supplies the chrome:
+     hide the doc header and the local palette bar, keep only the stage */
+  body.embedded { background: transparent; }
+  body.embedded .doc { padding: 0; max-width: none; }
+  body.embedded .doc > h1,
+  body.embedded .doc > .src,
+  body.embedded .doc > pre.note,
+  body.embedded .palbar { display: none; }
+  body.embedded .studio { border: none; }
+
+  /* the sandbox the component ships into */
+  .studio {
+    padding: 48px 28px;
+    border: 1px solid #2B3441;
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 20px; min-height: 240px;
+  }
+  .studio .row { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
+  .studio .cap {
+    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--text-dim); margin: 0;
+  }
+  .studio h2 { font-family: var(--font-display); font-weight: 700; font-size: 26px; margin: 0 0 6px; }
+  .studio .replay {
+    border: 1px solid var(--line); background: transparent; color: var(--text-dim);
+    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .12em;
+    text-transform: uppercase; padding: 7px 13px; border-radius: 999px; cursor: pointer;
+  }
+  .studio .replay:hover { color: var(--text); border-color: var(--text-dim); }
+</style>
+<style>
+/* =====================================================================
+   Stacked label converge
+   observed: gsap.com “Animate Anything”, 22 Aug 2026
+   ↓ THIS is the part that becomes components/studio/. Everything above
+     is harness. Nothing below reads anything but contract tokens.
+   ===================================================================== */
+
+
+.stack { position: relative; height: 74px; display: grid; place-items: center; width: 100%; }
+.stack__lab {
+  position: absolute;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 26px;
+  letter-spacing: -.01em;
+  padding: 9px 20px;
+  border-radius: var(--radius);
+  white-space: nowrap;
+  transition: transform 780ms var(--ease);
+}
+/* The back layers are TINTS OF THE BRAND, not neutrals. --text-dim and --line
+   are text and hairline tokens; using them as slabs produces grey, and a grey
+   slab behind a coloured one reads as a badly-offset drop shadow, not as
+   misregistration. Mixing toward --surface keeps this legible on light and
+   dark grounds alike. */
+.stack__lab.l1 { background: var(--brand); color: var(--brand-ink); z-index: 3; }
+.stack__lab.l2 {
+  background: color-mix(in srgb, var(--brand) 55%, var(--surface));
+  color: var(--brand-ink);
+  z-index: 2;
+}
+.stack__lab.l3 {
+  background: color-mix(in srgb, var(--brand) 28%, var(--surface));
+  color: var(--text);
+  z-index: 1;
+}
+
+.stack[data-run="false"] .l1 { transform: translate(-46px, 24px) rotate(-7deg); }
+.stack[data-run="false"] .l2 { transform: translate(30px, -18px) rotate(5deg); }
+.stack[data-run="false"] .l3 { transform: translate(-14px, 40px) rotate(11deg); }
+
+/* Settled, NOT stacked. The offset has to survive the animation or the whole
+   point of three layers disappears on the last frame. */
+.stack[data-run="true"] .l1 { transform: none; }
+.stack[data-run="true"] .l2 { transform: translate(16px, 11px) rotate(2.5deg); }
+.stack[data-run="true"] .l3 { transform: translate(31px, 21px) rotate(5deg); }
+</style>
+</head>
+<body>
+<div class="doc">
+  <h1>Stacked label converge</h1>
+  <p class="src">observed: gsap.com “Animate Anything”, 22 Aug 2026</p>
+  <pre class="note">Three duplicate labels start scattered and rotated, then settle into
+NEAR-register — deliberately not exact, so the stack keeps a printed
+misregistration feel. Scroll-driven in production; a button here to replay.
+
+Two traps, both of which make it read as a drop shadow instead:
+  - back layers must be TINTS OF --brand, never --text-dim / --line. Those
+    are text and hairline tokens; as slabs they come out grey.
+  - the settled offset must stay VISIBLE. Converge to near-register, not to
+    register, or the last frame throws away the other two layers.</pre>
+
+  <div class="palbar">
+    <span>Palette</span>
+    <button data-pal="ember"   aria-pressed="true">ember</button>
+    <button data-pal="venue"   aria-pressed="false">venue</button>
+    <button data-pal="gallery" aria-pressed="false">gallery</button>
+    <button data-pal="clinic"  aria-pressed="false">clinic</button>
+  </div>
+
+  <div class="studio" id="studio" data-pal="ember">
+
+    <div class="stack" id="stack" data-run="false">
+      <span class="stack__lab l3">Open late</span>
+      <span class="stack__lab l2">Open late</span>
+      <span class="stack__lab l1">Open late</span>
+    </div>
+    <button class="replay" id="replay">Replay</button>
+  </div>
+</div>
+
+<script>
+/* harness — palette switcher. Not part of the component.
+   Also accepts the palette from a parent frame, so /systems/studio can embed
+   this file and drive every card from one page-level control:
+     iframe.contentWindow.postMessage({ studioPalette: "venue" }, location.origin)
+   And reports its content height back so the parent can size the frame to fit. */
+(function () {
+  var host = document.getElementById("studio");
+  var btns = document.querySelectorAll(".palbar button");
+
+  function apply(pal) {
+    if (!pal) return;
+    host.setAttribute("data-pal", pal);
+    btns.forEach(function (o) {
+      o.setAttribute("aria-pressed", String(o.getAttribute("data-pal") === pal));
+    });
+  }
+
+  btns.forEach(function (b) {
+    b.addEventListener("click", function () { apply(b.getAttribute("data-pal")); });
+  });
+
+  addEventListener("message", function (e) {
+    if (e.origin !== location.origin && e.origin !== "null") return;
+    var d = e.data;
+    if (d && typeof d === "object") {
+      if (d.studioPalette) apply(d.studioPalette);
+      if (d.studioChrome === "off") document.body.classList.add("embedded");
+    }
+  });
+
+  function report() {
+    if (parent === window) return;
+    parent.postMessage({ studioHeight: document.body.scrollHeight, studioId: location.pathname }, "*");
+  }
+  addEventListener("load", report);
+  addEventListener("resize", report);
+  setTimeout(report, 300);
+})();
+</script>
+<script>
+/* ---- component behaviour ---- */
+(function () {
+"use strict";
+
+var stack = document.getElementById("stack");
+setTimeout(function () { stack.setAttribute("data-run", "true"); }, 400);
+document.getElementById("replay").addEventListener("click", function () {
+  stack.setAttribute("data-run", "false");
+  setTimeout(function () { stack.setAttribute("data-run", "true"); }, 60);
+});
+})();
+</script>
+</body>
+</html>

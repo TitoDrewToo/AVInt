@@ -1,0 +1,140 @@
+/* ============================================================================
+   AVIntelligence Studio Library — TOKEN CONTRACT
+   ----------------------------------------------------------------------------
+   This is the whole design system. Every component in components/studio/ reads
+   these custom properties and nothing else.
+
+   A component is DONE when it renders correctly under all four palettes below.
+   That switch is the acceptance test. Two of the four are light grounds on
+   purpose — a component that only works on dark is not finished.
+
+   Forbidden inside a component:
+     - any literal colour (#hex, rgb(), named)
+     - hard-coded durations or easing curves
+     - glass-surface, cw-button-flow, retro-grid-bg, hover-bloom, cw-ring-accent
+     - text-primary, bg-card, border-border
+     - anything imported from the avint app
+   ============================================================================ */
+
+.studio {
+  /* --- colour ------------------------------------------------------------ */
+  --brand:      #C2352B;   /* the accent. one per client.                    */
+  --brand-ink:  #FFFFFF;   /* text placed on --brand.                        */
+  --surface:    #17181C;   /* the block ground.                              */
+  --surface-2:  #212329;   /* raised: panels, menus, sheets.                 */
+  --line:       #34373F;   /* hairline borders and dividers.                 */
+  --text:       #F2F1EE;   /* primary text on --surface.                     */
+  --text-dim:   #9A9AA2;   /* secondary text, resting nav.                   */
+  --_ground:    #17181C;   /* private. never redefined. see BLOCK INVERSION.  */
+  --_ink:       #F2F1EE;   /* private. never redefined.                      */
+
+  /* --- shape ------------------------------------------------------------- */
+  --radius:     6px;       /* carries more brand character than you expect.  */
+
+  /* --- type -------------------------------------------------------------- */
+  --font-display: "Anybody", system-ui, sans-serif;
+  --font-body:    "Public Sans", system-ui, sans-serif;
+  --font-mono:    "DM Mono", ui-monospace, monospace;
+
+  /* --- motion ------------------------------------------------------------ */
+  --dur-fast:   120ms;     /* state flips, hover colour.                     */
+  --dur:        320ms;     /* the house speed.                               */
+  --dur-slow:   720ms;     /* entrances, gate exits.                         */
+  --ease:       cubic-bezier(.22, 1, .36, 1);    /* anything that enters.    */
+  --ease-io:    cubic-bezier(.65, 0, .35, 1);    /* travel between states.   */
+
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-body);
+}
+
+/* ============================================================================
+   BLOCK INVERSION
+   Both reference sites alternate light and dark sections down the page
+   (Santioni's cream against charcoal, GSAP's cream slab under the dark hero).
+   This is NOT a second theme. One attribute swaps --surface and --text inside
+   the same token set; every component nested inside inverts for free and none
+   of them need to know it happened.
+
+   NOTE ON THE MECHANISM
+   You cannot swap two custom properties by reading each other on the same
+   element — `--surface: var(--text); --text: var(--surface)` is a cycle and
+   both go invalid. So every palette also declares two PRIVATE anchors,
+   --_ground and --_ink, which are never redefined. The invert block reads
+   those. Do not use --_ground / --_ink inside a component; they are not part
+   of the public contract.
+   ============================================================================ */
+
+.studio [data-block="invert"] {
+  --surface:   var(--_ink);
+  --text:      var(--_ground);
+  --surface-2: color-mix(in srgb, var(--_ink) 92%, var(--_ground));
+  --line:      color-mix(in srgb, var(--_ink) 78%, var(--_ground));
+  --text-dim:  color-mix(in srgb, var(--_ground) 62%, var(--_ink));
+  background: var(--surface);
+  color: var(--text);
+}
+
+/* ============================================================================
+   THE FOUR CLIENT PALETTES — the acceptance test
+   Applied to any ancestor: <div class="studio" data-pal="venue">
+   ============================================================================ */
+
+.studio[data-pal="ember"] {
+  /* AVIntelligence itself. Dark, hot accent. */
+  --_ground: #17181C; --_ink: #F2F1EE;   /* private anchors for block inversion */
+  --brand: #C2352B; --brand-ink: #FFFFFF;
+  --surface: #17181C; --surface-2: #212329;
+  --line: #34373F; --text: #F2F1EE; --text-dim: #9A9AA2;
+  --radius: 6px;
+  --font-display: "Anybody", system-ui, sans-serif;
+}
+
+.studio[data-pal="venue"] {
+  /* Sports venue. Dark, high-energy, very round. */
+  --_ground: #101208; --_ink: #F4F6E8;   /* private anchors for block inversion */
+  --brand: #D8FF3E; --brand-ink: #10130A;
+  --surface: #101208; --surface-2: #1A1D0F;
+  --line: #2E331C; --text: #F4F6E8; --text-dim: #969B7E;
+  --radius: 22px;
+  --font-display: "Anybody", system-ui, sans-serif;
+}
+
+.studio[data-pal="gallery"] {
+  /* Art / studio. LIGHT ground. Soft, warm-violet. */
+  --_ground: #FBF7FF; --_ink: #241A33;   /* private anchors for block inversion */
+  --brand: #7B4BD8; --brand-ink: #FFFFFF;
+  --surface: #FBF7FF; --surface-2: #F2EAFC;
+  --line: #DFD2F0; --text: #241A33; --text-dim: #6F6187;
+  --radius: 14px;
+  --font-display: "Public Sans", system-ui, sans-serif;
+}
+
+.studio[data-pal="clinic"] {
+  /* Professional services. LIGHT ground. Near-square corners. */
+  --_ground: #FFFFFF; --_ink: #0F1B1D;   /* private anchors for block inversion */
+  --brand: #0E7C86; --brand-ink: #FFFFFF;
+  --surface: #FFFFFF; --surface-2: #F1F5F6;
+  --line: #D6E0E2; --text: #0F1B1D; --text-dim: #5C6E71;
+  --radius: 3px;
+  --font-display: "Public Sans", system-ui, sans-serif;
+}
+
+/* ============================================================================
+   REQUIRED OF EVERY COMPONENT
+   ============================================================================ */
+
+.studio :focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio *,
+  .studio *::before,
+  .studio *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+  }
+}

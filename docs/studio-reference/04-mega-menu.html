@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mega-menu — notch + morph — Studio reference</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anybody:wght@500;700&family=Public+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="./contract.css">
+<style>
+  body {
+    margin: 0;
+    font-family: "Public Sans", system-ui, sans-serif;
+    background: #0E1218;
+    color: #DFE3EA;
+  }
+  .doc { max-width: 900px; margin: 0 auto; padding: 40px 24px 80px; }
+  .doc h1 {
+    font-family: "Anybody", system-ui, sans-serif;
+    font-size: 28px; font-weight: 700; letter-spacing: -.02em; margin: 0 0 6px;
+  }
+  .doc .src {
+    font-family: "DM Mono", monospace; font-size: 12px;
+    color: #8A93A3; margin: 0 0 20px; letter-spacing: .03em;
+  }
+  .doc pre.note {
+    font-family: "DM Mono", monospace; font-size: 12.5px; line-height: 1.6;
+    background: #161C25; border-left: 2px solid #7D97FF;
+    padding: 16px 18px; margin: 0 0 24px; white-space: pre-wrap; color: #B7C0CE;
+  }
+  .palbar { display: flex; gap: 8px; align-items: center; margin: 0 0 14px; flex-wrap: wrap; }
+  .palbar span {
+    font-family: "DM Mono", monospace; font-size: 10.5px; letter-spacing: .12em;
+    text-transform: uppercase; color: #8A93A3;
+  }
+  .palbar button {
+    font-family: "DM Mono", monospace; font-size: 11.5px;
+    padding: 5px 11px; border: 1px solid #2B3441; background: transparent;
+    color: #8A93A3; cursor: pointer; border-radius: 2px;
+  }
+  .palbar button[aria-pressed="true"] { border-color: #DFE3EA; color: #DFE3EA; }
+
+  /* when embedded in a catalogue card, the parent supplies the chrome:
+     hide the doc header and the local palette bar, keep only the stage */
+  body.embedded { background: transparent; }
+  body.embedded .doc { padding: 0; max-width: none; }
+  body.embedded .doc > h1,
+  body.embedded .doc > .src,
+  body.embedded .doc > pre.note,
+  body.embedded .palbar { display: none; }
+  body.embedded .studio { border: none; }
+
+  /* the sandbox the component ships into */
+  .studio {
+    padding: 48px 28px;
+    border: 1px solid #2B3441;
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 20px; min-height: 240px;
+  }
+  .studio .row { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
+  .studio .cap {
+    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--text-dim); margin: 0;
+  }
+  .studio h2 { font-family: var(--font-display); font-weight: 700; font-size: 26px; margin: 0 0 6px; }
+  .studio .replay {
+    border: 1px solid var(--line); background: transparent; color: var(--text-dim);
+    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .12em;
+    text-transform: uppercase; padding: 7px 13px; border-radius: 999px; cursor: pointer;
+  }
+  .studio .replay:hover { color: var(--text); border-color: var(--text-dim); }
+</style>
+<style>
+/* =====================================================================
+   Mega-menu — notch + morph
+   observed: gsap.com nav, 22 Aug 2026
+   ↓ THIS is the part that becomes components/studio/. Everything above
+     is harness. Nothing below reads anything but contract tokens.
+   ===================================================================== */
+
+
+.mega { width: 100%; max-width: 620px; position: relative; }
+.mega__bar {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 10px;
+}
+.mega__trig {
+  background: none;
+  border: none;
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 14.5px;
+  color: var(--text-dim);
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: var(--radius);
+  transition: color var(--dur-fast) var(--ease);
+}
+.mega__trig:hover,
+.mega__trig[aria-expanded="true"] { color: var(--text); }
+
+.mega__panel {
+  position: relative;
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  border-radius: var(--radius);
+  padding: 0 20px;
+  opacity: 0;
+  transform: translateY(-6px);
+  pointer-events: none;
+  overflow: hidden;
+  width: 240px;
+  height: 0;
+  transition: opacity var(--dur) var(--ease),
+              transform var(--dur) var(--ease),
+              padding var(--dur) var(--ease),
+              width var(--dur) var(--ease),
+              height var(--dur) var(--ease);
+}
+.mega__panel[data-open="true"] {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+  padding: 18px 20px;
+}
+.mega__panel > * { opacity: 0; transition: opacity var(--dur-fast) var(--ease); }
+.mega__panel[data-open="true"] > * { opacity: 1; transition-delay: 90ms; }
+
+.mega__notch {
+  position: absolute;
+  width: 11px; height: 11px;
+  background: var(--surface-2);
+  border-left: 1px solid var(--line);
+  border-top: 1px solid var(--line);
+  transform: translateX(-50%) rotate(45deg);
+  opacity: 0;
+  z-index: 2;
+  pointer-events: none;
+  transition: left var(--dur) var(--ease), opacity var(--dur) var(--ease);
+}
+.mega[data-open="true"] .mega__notch { opacity: 1; }
+
+.mega__grid { display: grid; grid-template-columns: 108px 1fr; gap: 22px; }
+.mega__rail, .mega__links { display: flex; flex-direction: column; gap: 6px; }
+.mega__rail span, .mega__links span { font-size: 13.5px; color: var(--text-dim); }
+.mega__promo {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 15px;
+  line-height: 1.25;
+  color: var(--text);
+}
+</style>
+</head>
+<body>
+<div class="doc">
+  <h1>Mega-menu — notch + morph</h1>
+  <p class="src">observed: gsap.com nav, 22 Aug 2026</p>
+  <pre class="note">The signature behaviour: open one trigger, then hover another and the panel
+RESIZES and the notch TRAVELS. It does not close and reopen. Getting this
+right depends on measuring the panel height at the TARGET width with the
+transition suppressed — measuring mid-transition gives a wrapped, too-tall
+content box and the panel opens with dead space at the bottom.
+The notch is a sibling of the panel, not a child: the panel needs
+overflow:hidden for the height tween, which would clip a child notch.</pre>
+
+  <div class="palbar">
+    <span>Palette</span>
+    <button data-pal="ember"   aria-pressed="true">ember</button>
+    <button data-pal="venue"   aria-pressed="false">venue</button>
+    <button data-pal="gallery" aria-pressed="false">gallery</button>
+    <button data-pal="clinic"  aria-pressed="false">clinic</button>
+  </div>
+
+  <div class="studio" id="studio" data-pal="ember">
+
+    <div class="mega" id="mega" data-open="false">
+      <div class="mega__bar" id="megabar">
+        <button class="mega__trig" data-m="rooms"  aria-expanded="false">Rooms</button>
+        <button class="mega__trig" data-m="events" aria-expanded="false">Events</button>
+        <button class="mega__trig" data-m="visit"  aria-expanded="false">Visit</button>
+      </div>
+      <div class="mega__panel" id="megapanel" data-open="false">
+        <div class="mega__grid" id="megagrid"></div>
+        <div class="mega__promo" id="megapromo"></div>
+      </div>
+      <span class="mega__notch" id="meganotch"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+/* harness — palette switcher. Not part of the component.
+   Also accepts the palette from a parent frame, so /systems/studio can embed
+   this file and drive every card from one page-level control:
+     iframe.contentWindow.postMessage({ studioPalette: "venue" }, location.origin)
+   And reports its content height back so the parent can size the frame to fit. */
+(function () {
+  var host = document.getElementById("studio");
+  var btns = document.querySelectorAll(".palbar button");
+
+  function apply(pal) {
+    if (!pal) return;
+    host.setAttribute("data-pal", pal);
+    btns.forEach(function (o) {
+      o.setAttribute("aria-pressed", String(o.getAttribute("data-pal") === pal));
+    });
+  }
+
+  btns.forEach(function (b) {
+    b.addEventListener("click", function () { apply(b.getAttribute("data-pal")); });
+  });
+
+  addEventListener("message", function (e) {
+    if (e.origin !== location.origin && e.origin !== "null") return;
+    var d = e.data;
+    if (d && typeof d === "object") {
+      if (d.studioPalette) apply(d.studioPalette);
+      if (d.studioChrome === "off") document.body.classList.add("embedded");
+    }
+  });
+
+  function report() {
+    if (parent === window) return;
+    parent.postMessage({ studioHeight: document.body.scrollHeight, studioId: location.pathname }, "*");
+  }
+  addEventListener("load", report);
+  addEventListener("resize", report);
+  setTimeout(report, 300);
+})();
+</script>
+<script>
+/* ---- component behaviour ---- */
+(function () {
+"use strict";
+
+var MENUS = {
+  rooms:  { w: 360, rail: ["Indoor","Covered","Lounge","Pro shop"],
+            links: ["Court sizes","Surface & lighting","Equipment hire"],
+            promo: "Four regulation courts, floodlit until midnight" },
+  events: { w: 400, rail: ["Leagues","Clinics","Corporate","Kids"],
+            links: ["Monthly ladder","Beginner clinic","Team-building days","Holiday camps"],
+            promo: "Saturday ladder — 32 places, opens Monday" },
+  visit:  { w: 300, rail: ["Hours","Getting here"],
+            links: ["Parking","Food & drink"],
+            promo: "Open 6am – midnight, seven days" }
+};
+
+var wrap  = document.getElementById("mega");
+var bar   = document.getElementById("megabar");
+var panel = document.getElementById("megapanel");
+var notch = document.getElementById("meganotch");
+var grid  = document.getElementById("megagrid");
+var promo = document.getElementById("megapromo");
+var openKey = null;
+
+function paint(key) {
+  var d = MENUS[key];
+  grid.innerHTML =
+    '<div class="mega__rail">'  + d.rail.map(function (t) { return "<span>" + t + "</span>"; }).join("")  + "</div>" +
+    '<div class="mega__links">' + d.links.map(function (t) { return "<span>" + t + "</span>"; }).join("") + "</div>";
+  promo.textContent = d.promo;
+}
+
+/* Measure the panel's height at the TARGET width without animating there.
+   Without this, the height tween is computed from a mid-transition width and
+   the panel opens too tall. */
+function measureAt(w) {
+  var curW = panel.style.width, curH = panel.style.height;
+  var prev = panel.style.transition;
+  panel.style.transition = "none";
+  panel.style.width = w + "px";
+  panel.style.height = "auto";
+  var h = panel.scrollHeight;
+  panel.style.width = curW;
+  panel.style.height = curH;
+  void panel.offsetWidth;
+  panel.style.transition = prev;
+  return h;
+}
+
+function openMenu(btn) {
+  var key = btn.getAttribute("data-m");
+  paint(key);
+  panel.setAttribute("data-open", "true");
+  wrap.setAttribute("data-open", "true");
+  var w = MENUS[key].w;
+  var h = measureAt(w);
+  panel.style.width = w + "px";
+  panel.style.height = h + "px";
+  var br = btn.getBoundingClientRect(), wr = wrap.getBoundingClientRect();
+  notch.style.left = (br.left - wr.left + br.width / 2) + "px";
+  notch.style.top = (panel.offsetTop - 5) + "px";
+  bar.querySelectorAll(".mega__trig").forEach(function (t) {
+    t.setAttribute("aria-expanded", String(t === btn));
+  });
+  openKey = key;
+}
+
+function closeMenu() {
+  panel.setAttribute("data-open", "false");
+  wrap.setAttribute("data-open", "false");
+  panel.style.height = "0px";
+  bar.querySelectorAll(".mega__trig").forEach(function (t) {
+    t.setAttribute("aria-expanded", "false");
+  });
+  openKey = null;
+}
+
+bar.querySelectorAll(".mega__trig").forEach(function (btn) {
+  btn.addEventListener("click", function () {
+    if (openKey === btn.getAttribute("data-m")) closeMenu(); else openMenu(btn);
+  });
+  /* the morph: hovering a different trigger while open moves the panel */
+  btn.addEventListener("mouseenter", function () {
+    if (openKey && openKey !== btn.getAttribute("data-m")) openMenu(btn);
+  });
+});
+document.addEventListener("keydown", function (e) {
+  if (e.key === "Escape" && openKey) closeMenu();
+});
+})();
+</script>
+</body>
+</html>

@@ -85,7 +85,7 @@ export function ChromaFairyShowcase() {
                       loading="lazy"
                       style={{ transform: "translate(-50%, -50%) scale(0.46)" }}
                     />
-                  ) : <Image fill className="object-cover object-top" sizes="(min-width: 768px) 55vw, 92vw" src={preview.src} alt={preview.alt} />}
+                  ) : <Image fill className="bg-[#f5f2ec] object-contain object-center" sizes="(min-width: 768px) 55vw, 92vw" src={preview.src} alt={preview.alt} />}
                   <div className="pointer-events-none absolute inset-0 rounded-[1.6rem] ring-1 ring-inset ring-white/15" />
                   {preview.type === "live" ? <a href={preview.href} target="_blank" rel="noopener noreferrer" className="absolute bottom-4 right-4 inline-flex items-center gap-2 rounded-full border border-white/20 bg-black/55 px-3 py-2 text-xs font-medium text-white backdrop-blur-md transition-colors hover:bg-black/75">Open preview<ArrowUpRight className="h-3.5 w-3.5" /></a> : null}
                 </div>

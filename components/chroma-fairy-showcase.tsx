@@ -1,6 +1,7 @@
 "use client"
 
 import { ArrowUpRight } from "lucide-react"
+import Image from "next/image"
 import { useCallback, useEffect, useState } from "react"
 import {
   Carousel,
@@ -24,11 +25,15 @@ const previews = [
     type: "shop" as const,
     eyebrow: "Storefront · /shop",
     title: "The work has somewhere to go.",
+    src: "/shop.png",
+    alt: "Chroma Fairy shop screenshot",
   },
   {
     type: "studio" as const,
     eyebrow: "Operations · /studio",
     title: "A quiet studio behind the public gallery.",
+    src: "/studio.png",
+    alt: "Chroma Fairy studio screenshot with email masked",
   },
 ]
 
@@ -80,7 +85,7 @@ export function ChromaFairyShowcase() {
                       loading="lazy"
                       style={{ transform: "translate(-50%, -50%) scale(0.46)" }}
                     />
-                  ) : <StaticPreview type={preview.type} />}
+                  ) : <Image fill className="object-cover object-top" sizes="(min-width: 768px) 55vw, 92vw" src={preview.src} alt={preview.alt} />}
                   <div className="pointer-events-none absolute inset-0 rounded-[1.6rem] ring-1 ring-inset ring-white/15" />
                   {preview.type === "live" ? <a href={preview.href} target="_blank" rel="noopener noreferrer" className="absolute bottom-4 right-4 inline-flex items-center gap-2 rounded-full border border-white/20 bg-black/55 px-3 py-2 text-xs font-medium text-white backdrop-blur-md transition-colors hover:bg-black/75">Open preview<ArrowUpRight className="h-3.5 w-3.5" /></a> : null}
                 </div>
@@ -105,24 +110,6 @@ export function ChromaFairyShowcase() {
         ))}
       </div>
       <p className="mt-3 text-center text-xs text-muted-foreground">Swipe, use the arrows, or press ← →</p>
-    </div>
-  )
-}
-
-function StaticPreview({ type }: { type: "shop" | "studio" }) {
-  if (type === "shop") {
-    return (
-      <div className="absolute inset-0 bg-[#f4efe7] p-5 text-[#192c35] sm:p-8">
-        <div className="flex items-center justify-between border-b border-[#192c35]/15 pb-4 text-[9px] uppercase tracking-[0.22em]"><span className="font-semibold tracking-[0.28em]">Chroma Fairy</span><span>Shop · About · Contact</span></div>
-        <div className="mt-7 flex items-end justify-between gap-4"><div><p className="text-[9px] uppercase tracking-[0.25em] text-[#b35d55]">Original works</p><h3 className="mt-2 font-serif text-2xl sm:text-4xl">Find your flow.</h3></div><span className="rounded-full border border-[#192c35]/20 px-3 py-1 text-[9px] uppercase tracking-[0.18em]">Browse all</span></div>
-        <div className="mt-7 grid grid-cols-3 gap-3">{["linear-gradient(145deg, #143d52, #e6b16b 58%, #f2e9d6)", "linear-gradient(145deg, #b85d57, #e6c16f 55%, #173d4a)", "linear-gradient(145deg, #174f62, #8cc5bf 55%, #f4e8d2)"].map((background, index) => <div key={background} className="overflow-hidden rounded-xl border border-[#192c35]/10 bg-white/55"><div className="aspect-[4/5]" style={{ background }} /><div className="p-2"><p className="text-[8px] uppercase tracking-[0.12em]">{["Tidal Memory", "Soft Current", "After Rain"][index]}</p><p className="mt-1 text-[8px] text-[#192c35]/55">Original · PHP ———</p></div></div>)}</div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="absolute inset-0 bg-[#10252e] p-5 text-[#f4efe7] sm:p-8">
-      <div className="flex h-full gap-5"><aside className="hidden w-24 shrink-0 border-r border-white/10 pr-4 sm:block"><div className="text-[9px] font-semibold uppercase tracking-[0.22em]">Chroma<br />Fairy</div><div className="mt-12 space-y-4 text-[8px] uppercase tracking-[0.16em] text-white/45"><p className="text-[#e4b36c]">Overview</p><p>Catalogue</p><p>Inquiries</p><p>Schedule</p></div></aside><div className="min-w-0 flex-1"><div className="flex items-center justify-between border-b border-white/10 pb-4"><div><p className="text-[8px] uppercase tracking-[0.2em] text-[#e4b36c]">Studio workspace</p><h3 className="mt-1 font-serif text-2xl sm:text-3xl">Good morning, Samantha.</h3></div><span className="h-7 w-7 rounded-full bg-[#d77765]/70" /></div><div className="mt-5 grid grid-cols-3 gap-2">{[["Works", "24"], ["Inquiries", "08"], ["This month", "06"]].map(([label, value]) => <div key={label} className="rounded-lg border border-white/10 bg-white/5 p-3"><p className="text-[8px] uppercase tracking-wider text-white/45">{label}</p><p className="mt-2 text-xl">{value}</p></div>)}</div><div className="mt-5 rounded-lg border border-white/10 bg-[#193945] p-3"><p className="text-[8px] uppercase tracking-wider text-white/45">Recent catalogue</p><div className="mt-3 grid grid-cols-4 gap-2">{["linear-gradient(135deg, #d77765, #e5b465)", "linear-gradient(135deg, #246b78, #d5e6dc)", "linear-gradient(135deg, #b4605c, #1a3740)", "linear-gradient(135deg, #d7b968, #315e6a)"].map((background) => <div key={background} className="aspect-square rounded-md" style={{ background }} />)}</div></div></div></div>
     </div>
   )
 }

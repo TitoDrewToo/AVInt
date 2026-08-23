@@ -40,7 +40,8 @@ export type StatusOverview = {
   overall: SurfaceState
   overallLabel: string
   lastDeploy: string | null
-  components: StatusComponent[]
+  siteComponents: StatusComponent[]
+  upstreamComponents: StatusComponent[]
 }
 
 type GitHubCommit = {
@@ -116,7 +117,7 @@ export async function getLiveChangelog(): Promise<ChangelogResult> {
   }
 }
 
-function mapHealthState(value: string | undefined): SurfaceState {
+function mapProviderState(value: string | undefined): SurfaceState {
   if (value === "operational" || value === "none") return "operational"
   if (value === "degraded" || value === "minor" || value === "maintenance") return "degraded"
   if (value === "outage" || value === "major" || value === "critical") return "down"
@@ -130,22 +131,17 @@ function deploymentState(state: string | undefined): SurfaceState {
   return "unknown"
 }
 
-function siteOrigin() {
-  if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "")
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`
-  return systemsConfig.siteUrl
-}
-
-async function getHealthSnapshot() {
+async function fetchStatusFeed(url: string): Promise<SurfaceState> {
   try {
-    const response = await fetch(`${siteOrigin()}/api/health`, {
+    const response = await fetch(url, {
       next: { revalidate: 600 },
       signal: AbortSignal.timeout(8000),
     })
-    if (!response.ok) throw new Error(`Health endpoint returned ${response.status}`)
-    return await response.json() as { overall?: string; providers?: Record<string, string> }
+    if (!response.ok) return "unknown"
+    const payload = await response.json() as { status?: { indicator?: string } }
+    return mapProviderState(payload.status?.indicator)
   } catch {
-    return { overall: "outage", providers: {} }
+    return "unknown"
   }
 }
 
@@ -217,23 +213,36 @@ function overallState(states: SurfaceState[]): SurfaceState {
 }
 
 export async function getStatusOverview(): Promise<StatusOverview> {
-  const [health, deployment, supabase] = await Promise.all([
-    getHealthSnapshot(),
+  const [deployment, supabase, vercelPlatform, openai, anthropic] = await Promise.all([
     getDeploymentSummary(),
     getSupabaseState(),
+    fetchStatusFeed("https://www.vercel-status.com/api/v2/status.json"),
+    fetchStatusFeed("https://status.openai.com/api/v2/status.json"),
+    fetchStatusFeed("https://status.anthropic.com/api/v2/status.json"),
   ])
-  const healthState = mapHealthState(health.overall)
-  const vercelHealth = mapHealthState(health.providers?.vercel)
-  const components: StatusComponent[] = [
-    { name: "Web application", detail: "Public routes and server responses", state: healthState },
-    { name: "Production deployment", detail: deployment.stateLabel, state: deployment.state },
+  // Reaching this server-rendered page is direct evidence that the public app
+  // is serving. A known failed deployment can still override that evidence;
+  // an unavailable deployment feed stays visible as Unknown below.
+  const webApplicationState = deployment.state === "down"
+    ? "down"
+    : deployment.state === "degraded"
+      ? "degraded"
+      : "operational"
+  const siteComponents: StatusComponent[] = [
+    { name: "Web application", detail: `This status page rendered successfully · deployment: ${deployment.stateLabel}`, state: webApplicationState },
+    { name: "Production deployment", detail: deployment.error ?? "Current production deployment state", state: deployment.state },
     { name: "Supabase", detail: "Database and service reachability", state: supabase },
-    { name: "Vercel platform", detail: "Platform status feed", state: vercelHealth },
+  ]
+  const upstreamComponents: StatusComponent[] = [
+    { name: "Vercel platform", detail: "Dependency status feed", state: vercelPlatform },
+    { name: "OpenAI", detail: "Dependency status feed", state: openai },
+    { name: "Anthropic", detail: "Dependency status feed", state: anthropic },
   ]
   return {
-    overall: overallState(components.map((component) => component.state)),
-    overallLabel: overallState(components.map((component) => component.state)),
+    overall: overallState([webApplicationState, supabase]),
+    overallLabel: overallState([webApplicationState, supabase]),
     lastDeploy: deployment.lastSuccessfulBuild,
-    components,
+    siteComponents,
+    upstreamComponents,
   }
 }

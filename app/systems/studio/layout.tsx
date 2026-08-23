@@ -1,6 +1,7 @@
 import type { ReactNode } from "react"
-import { StudioWorkspaceGate } from "@/components/studio-workspace-gate"
+import { OperationsShell } from "@/components/systems/operations-shell"
+import { SystemsInternalGate } from "@/components/systems/systems-access"
 
 export default function StudioWorkspaceLayout({ children }: { children: ReactNode }) {
-  return <StudioWorkspaceGate>{children}</StudioWorkspaceGate>
+  return <SystemsInternalGate><OperationsShell active="studio">{children}</OperationsShell></SystemsInternalGate>
 }

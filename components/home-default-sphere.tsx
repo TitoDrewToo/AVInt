@@ -691,6 +691,7 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
         : 1 - Math.pow(-2 * t + 2, 3) / 2
 
     const onMouseMove = (event: MouseEvent) => {
+      if ((event.target as Element)?.closest?.("[data-sphere-ignore]")) return
       if (!isMouseDown) return
       const deltaX = event.clientX - lastMouseX
       lastMouseX = event.clientX
@@ -698,12 +699,14 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
     }
 
     const onMouseDown = (event: MouseEvent) => {
+      if ((event.target as Element)?.closest?.("[data-sphere-ignore]")) return
       if (event.button !== 0) return
       isMouseDown = true
       lastMouseX = event.clientX
     }
 
-    const onMouseUp = () => {
+    const onMouseUp = (event: MouseEvent) => {
+      if ((event.target as Element)?.closest?.("[data-sphere-ignore]")) return
       isMouseDown = false
     }
 

@@ -50,7 +50,7 @@ const capabilities = [
   {
     icon: <Workflow className="h-5 w-5" />,
     title: "AI workflow automation",
-    description: "Multi-step pipelines that validate, score, route, and act on your incoming data — then write results back and notify the right people. Like the PicklePal partner-onboarding review: Submissions checked by AI, decided, recorded, and emailed automatically.",
+    description: "Multi-step pipelines that validate, score, route, and act on your incoming data — then write results back and notify the right people. A partner application, for instance: submissions checked automatically, decided, recorded, and answered by email.",
   },
 ]
 

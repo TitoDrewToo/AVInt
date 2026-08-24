@@ -53,23 +53,6 @@ function StatusBadge({ status }: { status: StatusType }) {
   )
 }
 
-function PicklePalIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <style>{`
-        @keyframes pp-ring { 0%,100%{opacity:0.3} 50%{opacity:1} }
-        @keyframes pp-core { 0%,100%{opacity:1} 50%{opacity:0.4} }
-        .pp-r { animation: pp-ring 2s ease-in-out infinite; }
-        .pp-c { animation: pp-core 2s ease-in-out infinite; }
-      `}</style>
-      <circle cx="12" cy="12" r="9" className="fill-muted stroke-border" strokeWidth="0.5" />
-      <circle cx="12" cy="12" r="6" className="fill-card stroke-border" strokeWidth="0.5" />
-      <circle cx="12" cy="12" r="3" fill="rgba(220,38,38,0.2)" stroke="rgba(220,38,38,0.4)" strokeWidth="0.5" className="pp-r" />
-      <circle cx="12" cy="12" r="1" fill="rgb(220,38,38)" className="pp-c" />
-    </svg>
-  )
-}
-
 function HooperIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -218,15 +201,6 @@ const products: ProductCardProps[] = [
     description: "A defensive ingestion layer built into Smart Storage to screen, isolate, and safely route uploaded documents before extraction.",
     href: "/products/smart-storage#smart-security",
     icon: <ShieldCheck className="h-5 w-5 text-primary" />,
-  },
-  {
-    name: "PicklePal",
-    description: "Social and venue management platform with analytics.",
-    status: "live",
-    href: "https://picklepalph.com",
-    external: true,
-    icon: <PicklePalIcon className="h-5 w-5" />,
-    badges: ["iOS", "Android"],
   },
   {
     name: "Hooper",

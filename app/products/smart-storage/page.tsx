@@ -298,12 +298,12 @@ export default function SmartStorageProductPage() {
               <div className="text-left">
                 <FadeUp>
                   <h1 className="text-balance text-4xl font-semibold leading-[1.1] tracking-tight text-foreground md:text-5xl lg:text-6xl">
-                    Stop sorting receipts manually. Upload your documents and get a clean expense <span className="text-primary">report in minutes.</span>
+                    Stop organizing documents manually. Upload your files and get structured, usable <span className="text-primary">records in minutes.</span>
                   </h1>
                 </FadeUp>
                 <FadeUp delay={0.1}>
                   <p className="mt-6 max-w-xl text-lg text-muted-foreground">
-                    Extract vendors, dates, amounts, categories, and recurring expenses from receipts and invoices into searchable records and exportable reports.
+                    Turn the details inside your files into searchable records and repeatable outputs—ready for the workflows, reports, and tools your team already uses.
                   </p>
                 </FadeUp>
                 <FadeUp delay={0.18} className="mt-10 flex flex-col items-start gap-4 sm:flex-row">

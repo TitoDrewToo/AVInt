@@ -31,7 +31,10 @@ const nextConfig = {
 
     return [
       {
-        source: "/(.*)",
+        // Everything EXCEPT the framed component references. Both rules used to
+        // match /studio-reference/*, and this one won, so X-Frame-Options stayed
+        // DENY and every embedded reference rendered blank.
+        source: "/((?!studio-reference/).*)",
         headers: [
           // Prevent browsers rendering content as a different MIME type
           { key: "X-Content-Type-Options", value: "nosniff" },
@@ -57,6 +60,9 @@ const nextConfig = {
         headers: [
           { key: "X-Frame-Options", value: "SAMEORIGIN" },
           { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
         ],
       },
       {

@@ -92,7 +92,7 @@
   border-radius: var(--radius);
   cursor: pointer;
   will-change: transform;
-  transition: transform 520ms cubic-bezier(.16, 1, .3, 1);
+  transition: transform var(--dur-spring) var(--ease-spring);
 }
 </style>
 </head>
@@ -102,7 +102,9 @@
   <p class="src">house pattern</p>
   <pre class="note">The button leans toward the pointer while it is inside the FIELD, not while
 it is over the button — that is what makes it feel magnetic rather than
-twitchy. Pull factor 0.32; a long spring easing on release.
+twitchy. Pull factor 0.32, releasing on --dur-spring / --ease-spring.
+Those two tokens exist for this component alone: a hard-coded 520ms in a
+component would break the contract's own no-magic-numbers rule.
 Disabled entirely under prefers-reduced-motion.</pre>
 
   <div class="palbar">
@@ -149,6 +151,8 @@ Disabled entirely under prefers-reduced-motion.</pre>
     if (d && typeof d === "object") {
       if (d.studioPalette) apply(d.studioPalette);
       if (d.studioChrome === "off") document.body.classList.add("embedded");
+      /* the catalogue's motion-pause toggle */
+      if (d.studioMotion) document.documentElement.setAttribute("data-motion", d.studioMotion);
     }
   });
 

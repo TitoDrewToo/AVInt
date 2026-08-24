@@ -199,6 +199,8 @@ inside 400ms. The delays are cleared on close so it shuts as one piece.</pre>
     if (d && typeof d === "object") {
       if (d.studioPalette) apply(d.studioPalette);
       if (d.studioChrome === "off") document.body.classList.add("embedded");
+      /* the catalogue's motion-pause toggle */
+      if (d.studioMotion) document.documentElement.setAttribute("data-motion", d.studioMotion);
     }
   });
 

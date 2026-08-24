@@ -219,6 +219,8 @@ so the toggle IS the unmute — never try to start audio before a gesture.</pre>
     if (d && typeof d === "object") {
       if (d.studioPalette) apply(d.studioPalette);
       if (d.studioChrome === "off") document.body.classList.add("embedded");
+      /* the catalogue's motion-pause toggle */
+      if (d.studioMotion) document.documentElement.setAttribute("data-motion", d.studioMotion);
     }
   });
 

@@ -211,6 +211,8 @@ focus returns to whatever opened it, and a click on the scrim dismisses.</pre>
     if (d && typeof d === "object") {
       if (d.studioPalette) apply(d.studioPalette);
       if (d.studioChrome === "off") document.body.classList.add("embedded");
+      /* the catalogue's motion-pause toggle */
+      if (d.studioMotion) document.documentElement.setAttribute("data-motion", d.studioMotion);
     }
   });
 

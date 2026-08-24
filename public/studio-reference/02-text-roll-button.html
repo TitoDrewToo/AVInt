@@ -162,6 +162,8 @@ reads as a colour change as well as a movement.</pre>
     if (d && typeof d === "object") {
       if (d.studioPalette) apply(d.studioPalette);
       if (d.studioChrome === "off") document.body.classList.add("embedded");
+      /* the catalogue's motion-pause toggle */
+      if (d.studioMotion) document.documentElement.setAttribute("data-motion", d.studioMotion);
     }
   });
 

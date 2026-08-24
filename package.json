@@ -7,7 +7,8 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint .",
-    "seed:reclassify": "node --env-file=.env.local --import tsx scripts/seed-reclassify-fixture.ts"
+    "seed:reclassify": "node --env-file=.env.local --import tsx scripts/seed-reclassify-fixture.ts",
+    "prebuild": "node scripts/sync-studio-reference.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",

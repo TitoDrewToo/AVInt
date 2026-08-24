@@ -48,6 +48,18 @@ const nextConfig = {
         ],
       },
       {
+        // Static component references under public/studio-reference are framed
+        // by /systems/studio. The site-wide X-Frame-Options: DENY blocks that
+        // even same-origin, so this narrows it for these files ONLY. They are
+        // static HTML with no auth, no forms and no user data, and 'self'
+        // still refuses framing by any other origin.
+        source: "/studio-reference/:path*",
+        headers: [
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
+        ],
+      },
+      {
         // API routes — tighten further, no caching of sensitive responses
         source: "/api/(.*)",
         headers: [

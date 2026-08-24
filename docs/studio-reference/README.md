@@ -112,11 +112,16 @@ Stage (a) is already done — sections, registry, palette switcher, the old
 |---|---|
 | **1** | pill button · text-roll button · magnetic button · filter chip row · search field · dropdown · modal · block-inversion wrapper |
 | **2** | mega-menu · nav link set · full-screen menu · drawer · split-text reveal · display statement · stacked label · marquee band · draw-on SVG |
-| **3** | preload gate · page-transition shell · custom cursor · sound bus + toggle · scroll-pinned act |
+| **Ad hoc** | preload gate · page-transition shell · custom cursor · sound bus + toggle · scroll-pinned act |
 
 Stage 1 alone is a shippable client site. Stage 2 makes it feel authored.
-Stage 3 is what people mean by "experience" — and it is also where load time
-goes to die, so it ships behind a capability check, not by default.
+
+**There is no stage 3.** The experience layer is `Ad hoc`: it is not on the
+roadmap and does not get ported on a schedule. Three of the five already have
+working references (`08`, `13`) and those stay on the catalogue page as
+capability, not as a promise. When a project needs one, we capture a fresh
+reference against that project's brief and build it then — which is also when
+we will know what it actually has to do.
 
 **Stop after stage 1** and show the palette switcher working across all eight
 components before starting stage 2.

@@ -42,6 +42,12 @@
   --dur-slow:   720ms;     /* entrances, gate exits.                         */
   --ease:       cubic-bezier(.22, 1, .36, 1);    /* anything that enters.    */
   --ease-io:    cubic-bezier(.65, 0, .35, 1);    /* travel between states.   */
+  /* A spring release is a genuinely different primitive from an entrance or
+     a two-state travel, and exactly one component needs it (the magnetic
+     button). It gets tokens rather than a magic number, because a hard-coded
+     520ms in a component breaks the contract's own rule. */
+  --dur-spring: 520ms;
+  --ease-spring: cubic-bezier(.16, 1, .3, 1);
 
   background: var(--surface);
   color: var(--text);
@@ -137,4 +143,19 @@
     animation-iteration-count: 1 !important;
     transition-duration: .001ms !important;
   }
+}
+
+/* The catalogue's motion-pause toggle. Set data-motion="off" on any ancestor
+   (the page root, or the reference file's own <html> when driven from a
+   parent frame). Looping animations pause where they are rather than
+   snapping to their end frame — a marquee that jumps to its final position
+   reads as broken. */
+[data-motion="off"] .studio *,
+[data-motion="off"] .studio *::before,
+[data-motion="off"] .studio *::after,
+.studio[data-motion="off"] *,
+.studio[data-motion="off"] *::before,
+.studio[data-motion="off"] *::after {
+  animation-play-state: paused !important;
+  transition-duration: .001ms !important;
 }

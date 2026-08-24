@@ -3,6 +3,62 @@
 This supersedes the current four-section catalogue. Read `README.md` first for
 the token contract; this file is about the page itself.
 
+---
+
+## READ THIS FIRST — the live registry has to be replaced, not extended
+
+What is live on `/systems/studio` today registers sixteen components:
+
+> Primary Button · Icon Button · Segmented Control · Disclosure Rail ·
+> Range Control · Modal · Dropdown · Drawer · Toast · Line Reveal ·
+> Word Scrub · Cursor Response · Progress Scrub · Loading Splash ·
+> Start Menu · Age Gate
+
+They break down three ways:
+
+**Match the spec already (3)** — Modal, Dropdown, Drawer. Keep as-is.
+
+**Are spec components under a different name (5)** — rename to the spec name so
+the reference file, the registry entry and the import path agree:
+
+| Live name | Spec name | Note |
+|---|---|---|
+| Line Reveal | Split-text line reveal | ref `10` |
+| Loading Splash | Preload gate | ref `08`, now `Ad hoc` |
+| Cursor Response | Custom cursor | ref `13`, now `Ad hoc` |
+| Progress Scrub | Scroll-pinned act | `Ad hoc` |
+| Primary Button | Pill button | ref `01` — and it is a *variant*, not a component |
+
+**Have no provenance (8)** — Icon Button, Segmented Control, Disclosure Rail,
+Range Control, Toast, Word Scrub, Start Menu, and Age Gate. None of these
+appear on gsap.com, activetheory.net or santionispirits.com. They were
+generated to reach a slot count.
+
+One of the eight is worth arguing for rather than deleting: **Age Gate.**
+Santioni is a spirits brand and spirits sites gate by age — if that was
+inferred from the reference rather than invented, it has real provenance and a
+real client use. Say where it came from and it can stay. The other seven come
+out.
+
+None of this is a criticism of the work. The earlier brief asked for "16
+registered assets" without naming them, so a list got generated to reach
+sixteen. That was a fault in the brief, and it is corrected here: **the count
+is an output of the component list, never an input to it.**
+
+**Replace the registry with the twenty-three below. Do not merge the two
+lists** — merging produces a catalogue of thirty-nine where nobody can say
+where eight of them came from, which is the exact failure the admission rule in
+§6 exists to prevent.
+
+Three other things diverge from this spec and need correcting in the same pass:
+
+| Live now | Should be |
+|---|---|
+| Four palettes named Paper / Ink, Night / Signal, Clay / Moss, Cobalt / Sand | The four in `contract.css`: `ember`, `venue`, `gallery`, `clinic`, with those exact values. Two of them are light grounds — that is the acceptance test. |
+| A palette switcher on every card (seventeen on the page) | **One** sticky page-level control. Switching a single card proves nothing; switching all of them at once is the entire demonstration. |
+| Four sections including `Thresholds` | The six in §2. |
+| Every stage empty — "Reference implementation next" | Thirteen of them have working references that can be embedded today. See §1. |
+
 The page has one job: **prove the library is brand-agnostic to someone who
 does not trust that claim.** Everything below serves that. A list of component
 names does not do it. A grid of live instances that all change colour together
@@ -61,10 +117,24 @@ describing its library.
 | **Overlays** | Things that sit on top of the page | dropdown · modal · drawer |
 | **Type motion** | Type behaving as a moving element | split-text reveal · display statement · stacked label · draw-on SVG |
 | **Layout** | Structure that other components sit inside | block inversion · marquee band · editorial grid |
-| **Experience** | The layer that makes a site feel authored | preload gate · page-transition shell · custom cursor · sound bus · scroll-pinned act |
+| **Experience** | **Ad hoc — not on the roadmap.** Specced per project when a build actually needs it | preload gate · page-transition shell · custom cursor · sound bus · scroll-pinned act |
 
-Twenty-two. Each section carries one line explaining what it is for — not a
-description of the components, a description of the *job*.
+Each section carries one line explaining what it is for — not a description of
+the components, a description of the *job*.
+
+### Experience is a shelf, not a queue
+
+Nothing in that section gets ported to React on a schedule. Three of the five
+already have working references (`08`, `13`) and they **stay on the page** —
+they cost nothing to keep, they are the best demo material we have, and they
+show a prospective client what the experience layer can be without committing
+us to maintaining five components nobody has asked for.
+
+What was dropped is the commitment to build them. When a project needs one, we
+capture a fresh reference against that project's brief and build it then —
+which is also when we will know what it actually has to do. A preload gate
+built speculatively is a fake loading screen; a preload gate built because a
+site has 40MB of imagery to stage is a real one.
 
 ---
 
@@ -113,13 +183,16 @@ to the components on the page, and a chip competing with it muddies the demo.
 |---|---|---|
 | `Built` | native React component, importable today | the real component |
 | `Reference` | working, but running from the static reference file | the iframe |
-| `Planned` | specified, not written | a dimmed empty stage with the one-line description only |
+| `Planned` | specified and on the roadmap, not written yet | a dimmed empty stage with the one-line description only |
+| `Ad hoc` | deliberately **not** on the roadmap — built per project | its reference if one exists, otherwise the dimmed stage |
 
-Planned cards stay visible. The catalogue is the roadmap — you can see progress
-at a glance, and it stops anyone quietly inventing components to fill space.
+Planned and Ad hoc cards both stay visible, and the difference between them is
+the point: `Planned` is a promise, `Ad hoc` is a capability. Someone reading the
+page should be able to tell which components they can have next week and which
+ones are a conversation.
 
-Header readout, above the sections: `4 built · 13 reference · 5 planned`,
-computed from the registry, never hand-typed.
+Header readout, above the sections: `0 built · 13 reference · 5 planned ·
+5 ad hoc`, computed from the registry, never hand-typed.
 
 ---
 
@@ -177,16 +250,20 @@ port. The rule that makes this work is the one that produced this folder: never
 build from "inspired by". If it was not observed, it does not get specified.
 
 **3 · Gap fill — last, and resist it.**
-Components that stages 2 and 3 imply but no client has asked for. This is where
-component libraries go to die. Anything from this source ships as `Planned`
-until a client build needs it.
+Components the roadmap implies but no client has asked for. This is where
+component libraries go to die. The whole Experience section was gap fill, which
+is why it is now `Ad hoc` rather than a build stage.
 
 ### Cadence
 
-Do not build twenty-two up front. Stage 1 is eight components and is already a
-shippable client site. Ship it, use it on the venue build, and let that build
-tell us what stage 2 actually needs — the venue will want things this list has
-not thought of, and will not want some of what is on it.
+Two stages, not three. Stage 1 is eight components and is already a shippable
+client site. Ship it, use it on the venue build, and let that build tell us
+what stage 2 actually needs — the venue will want things this list has not
+thought of, and will not want some of what is on it.
+
+Nothing gets added to the roadmap because it would round the library out. It
+gets added because a build needs it, or because we saw it working somewhere and
+can say where.
 
 ### The anti-goal
 

@@ -159,3 +159,27 @@
   animation-play-state: paused !important;
   transition-duration: .001ms !important;
 }
+
+/* ============================================================================
+   KEYFRAMES USED BY THE REACT COMPONENTS
+   The standalone reference .html files declare their own copies so each stays
+   self-contained; these are the versions components/studio/ animates against.
+   Namespaced so they cannot collide with anything in the app.
+   ============================================================================ */
+
+@keyframes studio-marquee { to { transform: translateX(-50%); } }
+
+@keyframes studio-draw {
+  from { stroke-dashoffset: var(--len); }
+  to   { stroke-dashoffset: 0; }
+}
+
+@keyframes studio-rise {
+  from { transform: translateY(105%); }
+  to   { transform: translateY(0); }
+}
+
+@keyframes studio-slide-in {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}

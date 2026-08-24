@@ -1,6 +1,15 @@
 import type { ComponentType } from "react"
 import { BlockInversion } from "@/components/studio/block-inversion"
 import { Dropdown } from "@/components/studio/dropdown"
+import { DisplayStatement } from "@/components/studio/display-statement"
+import { DrawOnSvg } from "@/components/studio/draw-on-svg"
+import { Drawer } from "@/components/studio/drawer"
+import { FullScreenMenu } from "@/components/studio/full-screen-menu"
+import { MarqueeBand } from "@/components/studio/marquee-band"
+import { MegaMenu } from "@/components/studio/mega-menu"
+import { NavLinkSet } from "@/components/studio/nav-link-set"
+import { SplitText } from "@/components/studio/split-text"
+import { StackedLabel } from "@/components/studio/stacked-label"
 import { FilterChipRow } from "@/components/studio/filter-chip-row"
 import { MagneticButton } from "@/components/studio/magnetic-button"
 import { Modal } from "@/components/studio/modal"
@@ -20,6 +29,7 @@ export type StudioAsset = {
   importPath?: string
   referencePath?: string
   wide?: boolean
+  bleed?: boolean
   component?: ComponentType
 }
 
@@ -32,24 +42,24 @@ export const studioRegistry: Record<StudioSectionId, StudioAsset[]> = {
     { id: "search-field", section: "controls", title: "Search field", description: "A quiet input with a clear affordance and visible focus.", usage: "Use when filtering needs text input and a direct reset.", status: "Built", importPath: "@/components/studio/search-field", component: SearchField },
   ],
   navigation: [
-    { id: "mega-menu", section: "navigation", title: "Mega-menu", description: "A wide navigation panel with measured entry and trigger states.", usage: "Use when a navigation system needs room for grouped destinations.", status: "Reference", referencePath: "/studio-reference/04-mega-menu.html", wide: true },
-    { id: "nav-link-set", section: "navigation", title: "Nav link set", description: "A grouped set of links with a clear active and hover grammar.", usage: "Use for primary navigation where a full menu would be too heavy.", status: "Planned" },
-    { id: "full-screen-menu", section: "navigation", title: "Full-screen menu", description: "A full-viewport navigation layer for authored entrances.", usage: "Use when navigation is part of the opening experience.", status: "Planned", wide: true },
+    { id: "mega-menu", section: "navigation", title: "Mega-menu", description: "A wide navigation panel with measured entry and trigger states.", usage: "Use when a navigation system needs room for grouped destinations.", status: "Built", importPath: "@/components/studio/mega-menu", referencePath: "/studio-reference/04-mega-menu.html", wide: true, component: MegaMenu },
+    { id: "nav-link-set", section: "navigation", title: "Nav link set", description: "A grouped set of links with a clear active and hover grammar.", usage: "Use for primary navigation where a full menu would be too heavy.", status: "Built", component: NavLinkSet },
+    { id: "full-screen-menu", section: "navigation", title: "Full-screen menu", description: "A full-viewport navigation layer for authored entrances.", usage: "Use when navigation is part of the opening experience.", status: "Built", importPath: "@/components/studio/full-screen-menu", wide: true, component: FullScreenMenu },
   ],
   overlays: [
     { id: "dropdown", section: "overlays", title: "Dropdown", description: "Items arrive one after another, then close as one piece.", usage: "Use for a short menu attached to an obvious trigger.", status: "Built", importPath: "@/components/studio/dropdown", component: Dropdown },
     { id: "modal", section: "overlays", title: "Modal", description: "A focused sheet with trapped focus, scrim dismissal, and return.", usage: "Use for consequential choices that need temporary focus.", status: "Built", importPath: "@/components/studio/modal", component: Modal },
-    { id: "drawer", section: "overlays", title: "Drawer", description: "A secondary surface that enters without losing page context.", usage: "Use for detail, filters, or navigation on constrained screens.", status: "Planned" },
+    { id: "drawer", section: "overlays", title: "Drawer", description: "A secondary surface that enters without losing page context.", usage: "Use for detail, filters, or navigation on constrained screens.", status: "Built", component: Drawer },
   ],
   "text-motion": [
-    { id: "split-text", section: "text-motion", title: "Split-text line reveal", description: "Lines reveal after layout grouping, not by arbitrary word chunks.", usage: "Use for a short statement whose line structure is part of the entrance.", status: "Reference", referencePath: "/studio-reference/10-split-text.html", wide: true },
-    { id: "display-statement", section: "text-motion", title: "Display statement", description: "A typographic statement that carries the page’s main movement.", usage: "Use for one focal statement, not for every heading.", status: "Planned", wide: true },
-    { id: "stacked-label", section: "text-motion", title: "Stacked label", description: "A compact label that changes state through vertical type movement.", usage: "Use for section chrome or a small repeated state indicator.", status: "Reference", referencePath: "/studio-reference/11-stacked-label.html" },
-    { id: "draw-on-svg", section: "text-motion", title: "Draw-on SVG", description: "Paths measure themselves and draw in as one continuous mark.", usage: "Use for a client-supplied mark or line illustration during an entrance.", status: "Reference", referencePath: "/studio-reference/07-draw-on-mark.html" },
+    { id: "split-text", section: "text-motion", title: "Split-text line reveal", description: "Lines reveal after layout grouping, not by arbitrary word chunks.", usage: "Use for a short statement whose line structure is part of the entrance.", status: "Built", importPath: "@/components/studio/split-text", referencePath: "/studio-reference/10-split-text.html", wide: true, component: SplitText },
+    { id: "display-statement", section: "text-motion", title: "Display statement", description: "A typographic statement that carries the page’s main movement.", usage: "Use for one focal statement, not for every heading.", status: "Built", importPath: "@/components/studio/display-statement", wide: true, component: DisplayStatement },
+    { id: "stacked-label", section: "text-motion", title: "Stacked label", description: "A compact label that changes state through vertical type movement.", usage: "Use for section chrome or a small repeated state indicator.", status: "Built", importPath: "@/components/studio/stacked-label", referencePath: "/studio-reference/11-stacked-label.html", component: StackedLabel },
+    { id: "draw-on-svg", section: "text-motion", title: "Draw-on SVG", description: "Paths measure themselves and draw in as one continuous mark.", usage: "Use for a client-supplied mark or line illustration during an entrance.", status: "Built", importPath: "@/components/studio/draw-on-svg", referencePath: "/studio-reference/07-draw-on-mark.html", component: DrawOnSvg },
   ],
   layout: [
     { id: "block-inversion", section: "layout", title: "Block inversion", description: "One token set alternates ground and ink without becoming a second theme.", usage: "Use as a wrapper when adjacent blocks need a deliberate inversion.", status: "Built", importPath: "@/components/studio/block-inversion", component: BlockInversion, wide: true },
-    { id: "marquee-band", section: "layout", title: "Marquee band", description: "A duplicated, masked track that separates two section blocks.", usage: "Use as a divider between blocks, never as decoration alone.", status: "Reference", referencePath: "/studio-reference/09-marquee-band.html", wide: true },
+    { id: "marquee-band", section: "layout", title: "Marquee band", description: "A duplicated, masked track that separates two section blocks.", usage: "Use as a divider between blocks, never as decoration alone.", status: "Built", importPath: "@/components/studio/marquee-band", referencePath: "/studio-reference/09-marquee-band.html", wide: true, component: MarqueeBand , bleed: true },
     { id: "editorial-grid", section: "layout", title: "Editorial grid", description: "A responsive composition for content and visual evidence.", usage: "Use when the content hierarchy needs a designed grid rather than a card matrix.", status: "Planned", wide: true },
   ],
   experience: [

@@ -28,7 +28,7 @@ function ReferenceFrame({ asset }: { asset: StudioAsset }) {
 function NativeStage({ asset }: { asset: StudioAsset }) {
   if (!asset.component) return <div className="flex min-h-[320px] items-center justify-center bg-[var(--surface-2)] p-8 text-center text-sm text-[var(--text-dim)]">{asset.description}</div>
   const Component = asset.component
-  return <div className="flex min-h-[320px] items-center justify-center bg-[var(--surface)] p-8"><Component /></div>
+  return <div className={`flex min-h-[320px] items-center justify-center bg-[var(--surface)] ${asset.bleed ? "" : "p-8"}`}><Component /></div>
 }
 
 function StudioCard({ asset }: { asset: StudioAsset }) {

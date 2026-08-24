@@ -1,51 +1,80 @@
 import type { ComponentType } from "react"
-import { StudioAssetPlaceholder } from "@/components/studio/placeholder"
+import { BlockInversion } from "@/components/studio/block-inversion"
+import { Dropdown } from "@/components/studio/dropdown"
+import { FilterChipRow } from "@/components/studio/filter-chip-row"
+import { MagneticButton } from "@/components/studio/magnetic-button"
+import { Modal } from "@/components/studio/modal"
+import { PillButton } from "@/components/studio/pill-button"
+import { SearchField } from "@/components/studio/search-field"
+import { TextRollButton } from "@/components/studio/text-roll-button"
 
-export type StudioSectionId = "controls" | "overlays" | "text-motion" | "thresholds"
+export type StudioSectionId = "controls" | "navigation" | "overlays" | "text-motion" | "layout" | "experience"
+export type StudioStatus = "Built" | "Reference" | "Planned" | "Ad hoc"
 export type StudioAsset = {
   id: string
   section: StudioSectionId
   title: string
   description: string
   usage: string
-  importPath: string
-  component: ComponentType<{ asset: StudioAsset }>
+  status: StudioStatus
+  importPath?: string
+  referencePath?: string
+  wide?: boolean
+  component?: ComponentType
 }
 
 export const studioRegistry: Record<StudioSectionId, StudioAsset[]> = {
   controls: [
-    { id: "primary-button", section: "controls", title: "Primary Button", description: "A clear action with a restrained state change.", usage: "Use for the single highest-value action in a view.", importPath: "@/components/studio/primary-button", component: StudioAssetPlaceholder },
-    { id: "icon-button", section: "controls", title: "Icon Button", description: "A compact affordance with an explicit accessible label.", usage: "Use for secondary actions where the icon is already understood.", importPath: "@/components/studio/icon-button", component: StudioAssetPlaceholder },
-    { id: "segmented-control", section: "controls", title: "Segmented Control", description: "A mutually exclusive choice with a visible selected state.", usage: "Use for two to four peer views or modes.", importPath: "@/components/studio/segmented-control", component: StudioAssetPlaceholder },
-    { id: "disclosure-rail", section: "controls", title: "Disclosure Rail", description: "A compact navigation control for revealing a secondary layer.", usage: "Use when a menu needs to stay close to its trigger.", importPath: "@/components/studio/disclosure-rail", component: StudioAssetPlaceholder },
-    { id: "range-control", section: "controls", title: "Range Control", description: "A bounded continuous input with a legible value state.", usage: "Use for visual tuning where the current value must remain visible.", importPath: "@/components/studio/range-control", component: StudioAssetPlaceholder },
+    { id: "pill-button", section: "controls", title: "Pill button", description: "Inset fill and a fixed frame for the primary action.", usage: "Use for the single highest-value action in a view.", status: "Built", importPath: "@/components/studio/pill-button", component: PillButton },
+    { id: "text-roll-button", section: "controls", title: "Text-roll button", description: "Two identical labels roll upward into the accent state.", usage: "Use when the action benefits from movement without a layout shift.", status: "Built", importPath: "@/components/studio/text-roll-button", component: TextRollButton },
+    { id: "magnetic-button", section: "controls", title: "Magnetic button", description: "The button leans toward the pointer while it is inside its field.", usage: "Use inside a bounded field for a focal action; disable under reduced motion.", status: "Built", importPath: "@/components/studio/magnetic-button", component: MagneticButton },
+    { id: "filter-chip-row", section: "controls", title: "Filter chip row", description: "A compact set of peer filters with one visible selected state.", usage: "Use for short, mutually exclusive collection filters.", status: "Built", importPath: "@/components/studio/filter-chip-row", component: FilterChipRow },
+    { id: "search-field", section: "controls", title: "Search field", description: "A quiet input with a clear affordance and visible focus.", usage: "Use when filtering needs text input and a direct reset.", status: "Built", importPath: "@/components/studio/search-field", component: SearchField },
+  ],
+  navigation: [
+    { id: "mega-menu", section: "navigation", title: "Mega-menu", description: "A wide navigation panel with measured entry and trigger states.", usage: "Use when a navigation system needs room for grouped destinations.", status: "Reference", referencePath: "/studio-reference/04-mega-menu.html", wide: true },
+    { id: "nav-link-set", section: "navigation", title: "Nav link set", description: "A grouped set of links with a clear active and hover grammar.", usage: "Use for primary navigation where a full menu would be too heavy.", status: "Planned" },
+    { id: "full-screen-menu", section: "navigation", title: "Full-screen menu", description: "A full-viewport navigation layer for authored entrances.", usage: "Use when navigation is part of the opening experience.", status: "Planned", wide: true },
   ],
   overlays: [
-    { id: "modal", section: "overlays", title: "Modal", description: "A focused decision surface with a controlled return path.", usage: "Use for consequential choices that need temporary focus.", importPath: "@/components/studio/modal", component: StudioAssetPlaceholder },
-    { id: "dropdown", section: "overlays", title: "Dropdown", description: "A positioned list of actions or destinations.", usage: "Use for short menus attached to an obvious trigger.", importPath: "@/components/studio/dropdown", component: StudioAssetPlaceholder },
-    { id: "drawer", section: "overlays", title: "Drawer", description: "A larger secondary surface that enters without losing context.", usage: "Use for detail, filters, or navigation on constrained screens.", importPath: "@/components/studio/drawer", component: StudioAssetPlaceholder },
-    { id: "toast", section: "overlays", title: "Toast", description: "A transient confirmation that does not interrupt the task.", usage: "Use for low-risk feedback after an action completes.", importPath: "@/components/studio/toast", component: StudioAssetPlaceholder },
+    { id: "dropdown", section: "overlays", title: "Dropdown", description: "Items arrive one after another, then close as one piece.", usage: "Use for a short menu attached to an obvious trigger.", status: "Built", importPath: "@/components/studio/dropdown", component: Dropdown },
+    { id: "modal", section: "overlays", title: "Modal", description: "A focused sheet with trapped focus, scrim dismissal, and return.", usage: "Use for consequential choices that need temporary focus.", status: "Built", importPath: "@/components/studio/modal", component: Modal },
+    { id: "drawer", section: "overlays", title: "Drawer", description: "A secondary surface that enters without losing page context.", usage: "Use for detail, filters, or navigation on constrained screens.", status: "Planned" },
   ],
   "text-motion": [
-    { id: "line-reveal", section: "text-motion", title: "Line Reveal", description: "A progressive text entrance that remains readable without motion.", usage: "Use for short editorial or product statements.", importPath: "@/components/studio/line-reveal", component: StudioAssetPlaceholder },
-    { id: "word-scrub", section: "text-motion", title: "Word Scrub", description: "A stateful text transition tied to a controlled progress value.", usage: "Use when text changes should track an intentional sequence.", importPath: "@/components/studio/word-scrub", component: StudioAssetPlaceholder },
-    { id: "cursor-response", section: "text-motion", title: "Cursor Response", description: "A bounded pointer response that adds presence without blocking input.", usage: "Use on a single focal object, never as ambient decoration everywhere.", importPath: "@/components/studio/cursor-response", component: StudioAssetPlaceholder },
-    { id: "progress-scrub", section: "text-motion", title: "Progress Scrub", description: "A visual timeline for moving through a readable sequence.", usage: "Use for chapters, steps, or long-form narrative progress.", importPath: "@/components/studio/progress-scrub", component: StudioAssetPlaceholder },
+    { id: "split-text", section: "text-motion", title: "Split-text line reveal", description: "Lines reveal after layout grouping, not by arbitrary word chunks.", usage: "Use for a short statement whose line structure is part of the entrance.", status: "Reference", referencePath: "/studio-reference/10-split-text.html", wide: true },
+    { id: "display-statement", section: "text-motion", title: "Display statement", description: "A typographic statement that carries the page’s main movement.", usage: "Use for one focal statement, not for every heading.", status: "Planned", wide: true },
+    { id: "stacked-label", section: "text-motion", title: "Stacked label", description: "A compact label that changes state through vertical type movement.", usage: "Use for section chrome or a small repeated state indicator.", status: "Reference", referencePath: "/studio-reference/11-stacked-label.html" },
+    { id: "draw-on-svg", section: "text-motion", title: "Draw-on SVG", description: "Paths measure themselves and draw in as one continuous mark.", usage: "Use for a client-supplied mark or line illustration during an entrance.", status: "Reference", referencePath: "/studio-reference/07-draw-on-mark.html" },
   ],
-  thresholds: [
-    { id: "loading-splash", section: "thresholds", title: "Loading Splash", description: "A short preflight state that establishes readiness and agency.", usage: "Use only when the experience has a meaningful loading boundary.", importPath: "@/components/studio/loading-splash", component: StudioAssetPlaceholder },
-    { id: "start-menu", section: "thresholds", title: "Start Menu", description: "A designed entry point that orients someone before exploration.", usage: "Use when a scene or collection needs an intentional beginning.", importPath: "@/components/studio/start-menu", component: StudioAssetPlaceholder },
-    { id: "age-gate", section: "thresholds", title: "Age Gate", description: "A respectful confirmation step with a clear exit path.", usage: "Use only for regulated or audience-specific experiences.", importPath: "@/components/studio/age-gate", component: StudioAssetPlaceholder },
+  layout: [
+    { id: "block-inversion", section: "layout", title: "Block inversion", description: "One token set alternates ground and ink without becoming a second theme.", usage: "Use as a wrapper when adjacent blocks need a deliberate inversion.", status: "Built", importPath: "@/components/studio/block-inversion", component: BlockInversion, wide: true },
+    { id: "marquee-band", section: "layout", title: "Marquee band", description: "A duplicated, masked track that separates two section blocks.", usage: "Use as a divider between blocks, never as decoration alone.", status: "Reference", referencePath: "/studio-reference/09-marquee-band.html", wide: true },
+    { id: "editorial-grid", section: "layout", title: "Editorial grid", description: "A responsive composition for content and visual evidence.", usage: "Use when the content hierarchy needs a designed grid rather than a card matrix.", status: "Planned", wide: true },
+  ],
+  experience: [
+    { id: "preload-gate", section: "experience", title: "Preload gate", description: "An authored loading surface that resolves around a real preload.", usage: "Ad hoc: use only when there is something meaningful to preload.", status: "Ad hoc", referencePath: "/studio-reference/08-preload-gate.html", wide: true },
+    { id: "page-transition-shell", section: "experience", title: "Page-transition shell", description: "A project-specific handoff between authored scenes.", usage: "Ad hoc: specify against the project’s actual route and scene model.", status: "Ad hoc", wide: true },
+    { id: "custom-cursor", section: "experience", title: "Custom cursor", description: "A restrained pointer layer for an experience that has earned it.", usage: "Ad hoc: use only when pointer presence is part of the interaction grammar.", status: "Ad hoc", referencePath: "/studio-reference/13-cursor-and-sound.html" },
+    { id: "sound-bus", section: "experience", title: "Sound bus + toggle", description: "A project-specific audio layer with explicit user control.", usage: "Ad hoc: never autoplay sound without an informed action.", status: "Ad hoc", referencePath: "/studio-reference/13-cursor-and-sound.html" },
+    { id: "scroll-pinned-act", section: "experience", title: "Scroll-pinned act", description: "A long-form scene that pins one idea while progress changes around it.", usage: "Ad hoc: capture it against the project brief when the narrative needs it.", status: "Ad hoc", wide: true },
   ],
 }
 
 export const studioSections = [
-  { id: "controls" as const, label: "Controls", description: "Buttons, choices, navigation, and bounded inputs." },
-  { id: "overlays" as const, label: "Overlays", description: "Focused layers that open, close, and return context." },
-  { id: "text-motion" as const, label: "Text motion", description: "Readable motion for statements, sequences, and progress." },
-  { id: "thresholds" as const, label: "Thresholds", description: "Opening states and intentional entry boundaries." },
+  { id: "controls" as const, label: "Controls", description: "Things a person presses." },
+  { id: "navigation" as const, label: "Navigation", description: "Getting from one place to another." },
+  { id: "overlays" as const, label: "Overlays", description: "Things that sit on top of the page." },
+  { id: "text-motion" as const, label: "Type motion", description: "Type behaving as a moving element." },
+  { id: "layout" as const, label: "Layout", description: "Structure that other components sit inside." },
+  { id: "experience" as const, label: "Experience", description: "Ad hoc project capability, not a roadmap promise." },
 ]
 
 export function getStudioAssets(section: string) {
   return studioRegistry[section as StudioSectionId] ?? []
+}
+
+export function studioReadout() {
+  const assets = Object.values(studioRegistry).flat()
+  return assets.reduce<Record<StudioStatus, number>>((counts, asset) => { counts[asset.status] += 1; return counts }, { Built: 0, Reference: 0, Planned: 0, "Ad hoc": 0 })
 }

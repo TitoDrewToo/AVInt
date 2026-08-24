@@ -25,7 +25,9 @@ export function SplitText({ text = "Four courts, floodlit until midnight, and no
     const grouped: string[] = []
     let top: number | null = null
     words.forEach((word) => {
-      const content = word.textContent ?? ""
+      // the measure span carries a trailing space so words separate while
+      // measuring; trim it or every join doubles up
+      const content = (word.textContent ?? "").trim()
       if (top === null || word.offsetTop !== top) { top = word.offsetTop; grouped.push(content) }
       else grouped[grouped.length - 1] = `${grouped[grouped.length - 1]} ${content}`
     })

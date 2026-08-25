@@ -34,7 +34,7 @@ export function StudioInquiryForm() {
   }
 
   if (status === "success") {
-    return <div className="glass-surface rounded-3xl p-8 text-center md:p-12" role="status"><p className="text-sm font-medium uppercase tracking-wider text-primary">Received</p><h3 className="mt-5 text-2xl font-semibold text-foreground md:text-3xl">Let’s talk about what you want to build.</h3><p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-muted-foreground">Thanks for reaching out. We’ll review the details and follow up at the email you provided.</p><p className="mt-6 select-text text-sm text-muted-foreground">Or email support@avintph.com</p></div>
+    return <div className="glass-surface rounded-3xl p-8 text-center md:p-12" role="status"><p className="text-sm font-medium uppercase tracking-wider text-primary">Received</p><h3 className="mt-5 text-2xl font-semibold text-foreground md:text-3xl">Let’s talk about what you want to build.</h3><p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-muted-foreground">Thanks for reaching out. We’ll review the details and follow up at the email you provided.</p><p className="mt-6 select-text text-sm text-muted-foreground">Or email developer@avintph.com</p></div>
   }
 
   return <form className="glass-surface rounded-3xl p-6 text-left md:p-10" onSubmit={submit} noValidate>
@@ -46,6 +46,6 @@ export function StudioInquiryForm() {
     </div>
     <label className="mt-5 grid gap-2 text-sm text-foreground">What would you like to build?<textarea required name="message" value={values.message} onChange={(event) => update("message", event.target.value)} className="min-h-36 resize-y rounded-xl border border-border/70 bg-background/60 px-4 py-3 text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary" /></label>
     {error ? <p className="mt-4 text-sm text-destructive" role="alert">{error}</p> : null}
-    <div className="mt-6 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between"><p className="max-w-md text-xs leading-relaxed text-muted-foreground">We’ll use these details only to understand the project and follow up.</p><div className="flex flex-col items-start gap-2 sm:items-end"><Button type="submit" size="lg" disabled={status === "sending"} className="cw-button-flow rounded-xl bg-primary text-primary-foreground hover:bg-primary/90">{status === "sending" ? "Sending…" : "Send us a message"}<ArrowUpRight className="h-4 w-4" /></Button><span className="select-text text-xs text-muted-foreground">Or email support@avintph.com</span></div></div>
+    <div className="mt-6 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between"><p className="max-w-md text-xs leading-relaxed text-muted-foreground">We’ll use these details only to understand the project and follow up.</p><div className="flex flex-col items-start gap-2 sm:items-end"><Button type="submit" size="lg" disabled={status === "sending"} className="cw-button-flow rounded-xl bg-primary text-primary-foreground hover:bg-primary/90">{status === "sending" ? "Sending…" : "Send us a message"}<ArrowUpRight className="h-4 w-4" /></Button><span className="select-text text-xs text-muted-foreground">Or email developer@avintph.com</span></div></div>
   </form>
 }

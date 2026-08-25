@@ -79,7 +79,7 @@ export default function StudioPage() {
                 "@type": "Organization",
                 name: "AVIntelligence",
                 url: "https://www.avintph.com",
-                email: "support@avintph.com",
+                email: "developer@avintph.com",
               },
               {
                 "@type": "Service",
@@ -107,7 +107,7 @@ export default function StudioPage() {
               <div className="mt-10 flex flex-col items-start gap-4 sm:flex-row">
                 <div className="flex flex-col items-start gap-1">
                   <a href="#studio-inquiry"><Button size="lg" className="cw-button-flow rounded-xl bg-primary text-primary-foreground hover:bg-primary/90">Start a project<ArrowUpRight className="h-4 w-4" /></Button></a>
-                  <span className="select-text text-xs text-muted-foreground">or email support@avintph.com</span>
+                  <span className="select-text text-xs text-muted-foreground">or email developer@avintph.com</span>
                 </div>
                 <InternalButton href="/products/chroma-fairy">See a live build</InternalButton>
               </div>

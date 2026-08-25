@@ -3,7 +3,7 @@
 import Link from "next/link"
 import Image from "next/image"
 import type { MouseEvent, ReactNode } from "react"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { usePathname } from "next/navigation"
 import { useTheme } from "next-themes"
 import { ChevronDown, Menu, Moon, Sun, User, X } from "lucide-react"
@@ -61,6 +61,8 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
   const [accountPanelOpen, setAccountPanelOpen] = useState(false)
   const [toolsOpen, setToolsOpen] = useState(false)
   const [mobileToolsOpen, setMobileToolsOpen] = useState(false)
+  const toolsOpenTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const toolsCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const entitlement = useEntitlement(session)
   const showTools = Boolean(session && !entitlement.loading && entitlement.isActive)
@@ -71,6 +73,28 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
   //    `session && hasActiveSubscription` to enable it only for active subscribers.
   const assistantRolloutEnabled = false
   const showAssistantPreview = assistantRolloutEnabled && Boolean(session && entitlement.isActive)
+
+  function clearToolsTimers() {
+    if (toolsOpenTimer.current) clearTimeout(toolsOpenTimer.current)
+    if (toolsCloseTimer.current) clearTimeout(toolsCloseTimer.current)
+    toolsOpenTimer.current = null
+    toolsCloseTimer.current = null
+  }
+
+  function scheduleToolsOpen() {
+    clearToolsTimers()
+    if (toolsOpen) return
+    toolsOpenTimer.current = setTimeout(() => setToolsOpen(true), 140)
+  }
+
+  function scheduleToolsClose() {
+    if (toolsOpenTimer.current) clearTimeout(toolsOpenTimer.current)
+    toolsOpenTimer.current = null
+    if (toolsCloseTimer.current) clearTimeout(toolsCloseTimer.current)
+    toolsCloseTimer.current = setTimeout(() => setToolsOpen(false), 220)
+  }
+
+  useEffect(() => () => clearToolsTimers(), [])
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data, error }) => {
@@ -142,12 +166,12 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
             ) : null}
             <div className="ml-auto flex shrink-0 items-center gap-6">
             {showTools && (
-              <div className="relative">
+              <div className="relative" onMouseEnter={scheduleToolsOpen} onMouseLeave={scheduleToolsClose} onFocus={scheduleToolsOpen} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) scheduleToolsClose() }}>
                 <button
                   type="button"
                   aria-expanded={toolsOpen}
                   aria-haspopup="menu"
-                  onClick={() => setToolsOpen((open) => !open)}
+                  onClick={() => { clearToolsTimers(); setToolsOpen((open) => !open) }}
                   className="flex items-center gap-1 text-sm font-medium text-foreground/75 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
                   style={{ fontFamily: 'var(--font-aldrich), "Aldrich", var(--font-geist), "Geist", "Geist Fallback", sans-serif' }}
                 >

@@ -76,6 +76,7 @@ async function notifyStudioInquiry(details: { inquiryId: string; name: string; e
       return
     }
     const from = process.env.INQUIRY_NOTIFY_FROM || "AVIntelligence <support@avintph.com>"
+    const recipient = process.env.INQUIRY_NOTIFY_TO || "developer@avintph.com"
     const body = [
       "New studio inquiry",
       "",
@@ -88,7 +89,7 @@ async function notifyStudioInquiry(details: { inquiryId: string; name: string; e
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from, to: "support@avintph.com", reply_to: details.email, subject: `New studio inquiry from ${details.name}`, text: body }),
+      body: JSON.stringify({ from, to: recipient, reply_to: details.email, subject: `New studio inquiry from ${details.name}`, text: body }),
     })
     if (!response.ok) console.error("[studio-inquiry] Resend send failed:", response.status, await response.text().catch(() => ""))
   } catch (error) {

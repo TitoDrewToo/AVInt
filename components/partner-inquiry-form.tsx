@@ -65,7 +65,7 @@ export function PartnerInquiryForm() {
           <input className="rounded-xl border border-border/70 bg-background/60 px-4 py-3 text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary" name="firm" autoComplete="organization" required value={values.firm} onChange={(event) => update("firm", event.target.value)} />
         </label>
         <label className="grid gap-2 text-sm text-foreground">
-          Work email
+          Email
           <input className="rounded-xl border border-border/70 bg-background/60 px-4 py-3 text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary" name="email" autoComplete="email" type="email" required value={values.email} onChange={(event) => update("email", event.target.value)} />
         </label>
         <label className="grid gap-2 text-sm text-foreground">
@@ -74,8 +74,8 @@ export function PartnerInquiryForm() {
         </label>
       </div>
       <label className="mt-5 grid gap-2 text-sm text-foreground">
-        Message
-        <textarea className="min-h-36 resize-y rounded-xl border border-border/70 bg-background/60 px-4 py-3 text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary" name="message" required value={values.message} onChange={(event) => update("message", event.target.value)} />
+        Message <span className="text-xs text-muted-foreground">required</span>
+        <textarea className="min-h-36 resize-y rounded-xl border border-border/70 bg-background/60 px-4 py-3 text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary" name="message" required aria-required="true" value={values.message} onChange={(event) => update("message", event.target.value)} />
       </label>
       {error ? <p className="mt-4 text-sm text-destructive" role="alert">{error}</p> : null}
       <div className="mt-6 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">

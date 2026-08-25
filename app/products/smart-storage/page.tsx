@@ -327,6 +327,42 @@ export default function SmartStorageProductPage() {
           </div>
         </section>
 
+        {/* Claude connector */}
+        <section className="marketing-scroll-section relative px-6">
+          <div className="relative mx-auto max-w-5xl">
+            <FadeUp className="text-center">
+              <h2 className="text-sm font-medium uppercase tracking-wider text-primary">Now works inside Claude</h2>
+              <h3 className="mt-4 text-balance text-3xl font-semibold tracking-tight text-foreground md:text-4xl">Your Smart Storage, now operable from Claude.</h3>
+              <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
+                Your documents already live in Smart Storage. Connect it to Claude and run the whole workflow in plain language — summarize records, request a report, or get back an import-ready QuickBooks or Xero file without opening the dashboard. It works securely on your own account and it&apos;s included with Pro.
+              </p>
+            </FadeUp>
+
+            <StaggerContainer className="mt-10 grid gap-4 md:grid-cols-3">
+              {[
+                { icon: <IconFileText />, title: "Report", body: "Ask for a supported report and get the results back in chat — straight from the documents already in Smart Storage." },
+                { icon: <IconFileOutput />, title: "Export", body: "Generate an import-ready QuickBooks or Xero file — same workflow, either platform — without leaving the conversation." },
+                { icon: <IconUpload />, title: "File (bonus)", body: "Have a new receipt? Drop it into the chat and Claude files it into Smart Storage, classified and extracted." },
+              ].map((item) => (
+                <StaggerItem key={item.title} className="h-full">
+                  <div className="glass-surface hover-bloom h-full rounded-2xl p-5">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">{item.icon}</div>
+                    <h4 className="mt-5 text-base font-semibold text-foreground">{item.title}</h4>
+                    <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{item.body}</p>
+                  </div>
+                </StaggerItem>
+              ))}
+            </StaggerContainer>
+
+            <FadeUp className="mt-10 text-center">
+              <Link href="/tools/smart-storage/connect" target="_blank" rel="noopener noreferrer">
+                <Button size="lg" className="cw-button-flow rounded-xl bg-primary text-primary-foreground hover:bg-primary/90">Connect to Claude</Button>
+              </Link>
+              <p className="mt-3 text-xs text-muted-foreground">Pro plan. Secure OAuth sign-in — AVIntelligence never sees your password.</p>
+            </FadeUp>
+          </div>
+        </section>
+
         {/* What Smart Storage does */}
         <section className="marketing-scroll-section marketing-scroll-section-centered relative px-6">
           <div aria-hidden className="pointer-events-none absolute inset-0 retro-grid-bg opacity-30" />
@@ -428,42 +464,6 @@ export default function SmartStorageProductPage() {
               <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
                 Export your organized expenses as import-ready files for QuickBooks and Xero, or hand your team a clean CSV and report set.
               </p>
-            </FadeUp>
-          </div>
-        </section>
-
-        {/* Claude connector */}
-        <section className="marketing-scroll-section relative px-6">
-          <div className="relative mx-auto max-w-5xl">
-            <FadeUp className="text-center">
-              <h2 className="text-sm font-medium uppercase tracking-wider text-primary">Now works inside Claude</h2>
-              <h3 className="mt-4 text-balance text-3xl font-semibold tracking-tight text-foreground md:text-4xl">Your Smart Storage, now operable from Claude.</h3>
-              <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
-                Your documents already live in Smart Storage. Connect it to Claude and run the whole workflow in plain language — summarize records, request a report, or get back an import-ready QuickBooks or Xero file without opening the dashboard. It works securely on your own account and it&apos;s included with Pro.
-              </p>
-            </FadeUp>
-
-            <StaggerContainer className="mt-10 grid gap-4 md:grid-cols-3">
-              {[
-                { icon: <IconFileText />, title: "Report", body: "Ask for a supported report and get the results back in chat — straight from the documents already in Smart Storage." },
-                { icon: <IconFileOutput />, title: "Export", body: "Generate an import-ready QuickBooks or Xero file — same workflow, either platform — without leaving the conversation." },
-                { icon: <IconUpload />, title: "File (bonus)", body: "Have a new receipt? Drop it into the chat and Claude files it into Smart Storage, classified and extracted." },
-              ].map((item) => (
-                <StaggerItem key={item.title} className="h-full">
-                  <div className="glass-surface hover-bloom h-full rounded-2xl p-5">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">{item.icon}</div>
-                    <h4 className="mt-5 text-base font-semibold text-foreground">{item.title}</h4>
-                    <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{item.body}</p>
-                  </div>
-                </StaggerItem>
-              ))}
-            </StaggerContainer>
-
-            <FadeUp className="mt-10 text-center">
-              <Link href="/tools/smart-storage/connect" target="_blank" rel="noopener noreferrer">
-                <Button size="lg" className="cw-button-flow rounded-xl bg-primary text-primary-foreground hover:bg-primary/90">Connect to Claude</Button>
-              </Link>
-              <p className="mt-3 text-xs text-muted-foreground">Pro plan. Secure OAuth sign-in — AVIntelligence never sees your password.</p>
             </FadeUp>
           </div>
         </section>

@@ -302,7 +302,10 @@ export default function SmartStorageProductPage() {
                   </h1>
                 </FadeUp>
                 <FadeUp delay={0.1}>
-                  <p className="mt-6 max-w-xl text-lg text-muted-foreground">
+                  <p className="mt-6 max-w-xl text-lg font-medium leading-relaxed text-foreground/90">
+                    A user-controlled data workspace for turning mixed documents into reusable, inspectable intelligence.
+                  </p>
+                  <p className="mt-3 max-w-xl text-base text-muted-foreground">
                     Turn the details inside your files into searchable records and repeatable outputs—ready for the workflows, reports, and tools your team already uses.
                   </p>
                 </FadeUp>

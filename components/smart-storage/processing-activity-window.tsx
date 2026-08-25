@@ -1,15 +1,14 @@
 "use client"
 
-import { Activity, CheckCircle2, CircleAlert, Loader2 } from "lucide-react"
+import { useEffect, useState } from "react"
+import { Loader2 } from "lucide-react"
 
 import type { SmartStorageProcessingState } from "@/lib/smart-storage-cache"
 
 type ProcessingActivityWindowProps = {
   isProcessing: boolean
   activeJobs: SmartStorageProcessingState["activeJobs"]
-  attentionCount?: number
   receivedCount?: number
-  completedCount?: number
 }
 
 function stageForStatus(status: string | null) {
@@ -18,20 +17,25 @@ function stageForStatus(status: string | null) {
       return "Queued"
     case "pending_scan":
     case "scanning":
-      return "Scanning..."
+      return "Scanning"
     case "processing":
-      return "Processing..."
+      return "Processing"
     default:
-      return "Working..."
+      return "Working"
   }
 }
 
-const pipelineStages = ["Prescan", "Extract", "Ready"]
+function AnimatedStatus({ label }: { label: string }) {
+  const [dots, setDots] = useState(3)
 
-function activeStage(status: string | null) {
-  if (status === "uploaded" || status === "pending_scan" || status === "scanning") return 0
-  if (status === "processing") return 1
-  return 0
+  useEffect(() => {
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    if (reduceMotion) return
+    const timer = window.setInterval(() => setDots((current) => current === 3 ? 1 : current + 1), 420)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  return <span aria-label={`${label} in progress`}>{label}{".".repeat(dots)}</span>
 }
 
 function formatAge(createdAt: string | null) {
@@ -42,78 +46,54 @@ function formatAge(createdAt: string | null) {
   return `${Math.floor(ageSeconds / 60)}m`
 }
 
-export function ProcessingActivityWindow({ isProcessing, activeJobs, attentionCount = 0, receivedCount = 0, completedCount = 0 }: ProcessingActivityWindowProps) {
-  if (!isProcessing && attentionCount === 0 && completedCount === 0) return null
+export function ProcessingActivityWindow({ isProcessing, activeJobs, receivedCount = 0 }: ProcessingActivityWindowProps) {
+  if (!isProcessing && activeJobs.length === 0) return null
 
-  const visibleJobs = activeJobs.slice(0, 3)
+  const statsLabel = activeJobs.length > 0
+    ? activeJobs.length === 1 && receivedCount === 1
+      ? "1/1 in progress"
+      : `${activeJobs.length} active`
+    : receivedCount > 0
+      ? `${receivedCount}/${receivedCount} in progress`
+      : "Processing..."
 
   return (
     <section
       aria-label="Smart Storage processing activity"
-      className="glass-surface-sm mx-3 mb-3 overflow-hidden rounded-xl border border-border/70"
+      className="glass-surface-sm mx-3 mb-3 overflow-hidden rounded-xl border border-border/70 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-top-1 motion-safe:duration-300"
     >
       <div className="flex items-center justify-between gap-3 border-b border-border/60 px-3 py-2">
         <div className="flex min-w-0 items-center gap-2">
-          {isProcessing ? (
-            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" aria-hidden="true" />
-          ) : (
-            <Activity className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
-          )}
+          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" aria-hidden="true" />
           <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-foreground">
-            {isProcessing ? "Pipeline activity" : attentionCount > 0 ? "Attention required" : "Activity complete"}
+            Pipeline activity
           </span>
         </div>
-        <span className="font-mono text-[10px] text-muted-foreground">
-          {isProcessing ? `${activeJobs.length} active` : attentionCount > 0 ? `${attentionCount} item${attentionCount === 1 ? "" : "s"}` : `${completedCount}/${receivedCount} ready`}
-        </span>
+        {statsLabel ? <span className="font-mono text-[10px] text-muted-foreground">{statsLabel}</span> : null}
       </div>
 
       <div className="space-y-1 px-3 py-2 font-mono text-[10px] leading-relaxed">
-        {isProcessing && (
-          <div className="mb-2 grid grid-cols-4 gap-1 border-b border-border/50 pb-2" aria-label="Pipeline stages">
-            {pipelineStages.map((stage, index) => {
-              const currentStage = activeJobs.length > 0 ? Math.max(...activeJobs.map((job) => activeStage(job.status))) : 0
-              const complete = index < currentStage
-              const current = index === currentStage
-              return <div key={stage} className={`flex flex-col gap-1 ${complete || current ? "text-primary" : "text-muted-foreground/50"}`}><span className={`h-1 rounded-full ${complete ? "bg-primary" : current ? "bg-primary/60" : "bg-border"} ${current ? "animate-pulse" : ""}`} /><span>{stage}</span></div>
-            })}
-          </div>
-        )}
-
         {isProcessing && activeJobs.length === 0 && (
-          <div className="flex items-center gap-2 pb-1 text-muted-foreground" aria-live="polite">
+          <div className="flex items-center gap-2 text-muted-foreground" aria-live="polite">
             <span className="text-primary" aria-hidden="true">›</span>
             <span>Starting secure prescan…</span>
           </div>
         )}
 
-        {visibleJobs.map((job) => (
-          <div key={`${job.fileId}-${job.created_at}`} className="flex min-w-0 items-center gap-2 text-muted-foreground">
-            <span className="text-primary" aria-hidden="true">›</span>
-            <span className="min-w-0 flex-1 truncate text-foreground/85">{job.filename}</span>
-            <span className="shrink-0 text-primary/80">{stageForStatus(job.status)}</span>
-            <span className="shrink-0 text-muted-foreground/70">{formatAge(job.created_at)}</span>
-          </div>
-        ))}
-
-        {attentionCount > 0 && (
-          <div className="flex items-center gap-2 pt-1 text-amber-700 dark:text-amber-300">
-            <CircleAlert className="h-3 w-3 shrink-0" aria-hidden="true" />
-            <span>{attentionCount} file{attentionCount === 1 ? "" : "s"} need review before dashboard use</span>
-          </div>
-        )}
-
-        {!isProcessing && attentionCount > 0 && (
-          <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300" aria-live="polite">
-            <Activity className="h-3 w-3 shrink-0" aria-hidden="true" />
-            <span>Pipeline paused until review is complete</span>
-          </div>
-        )}
-
-        {!isProcessing && attentionCount === 0 && completedCount > 0 && (
-          <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300" aria-live="polite">
-            <CheckCircle2 className="h-3 w-3 shrink-0" aria-hidden="true" />
-            <span>{completedCount} file{completedCount === 1 ? "" : "s"} ready to use</span>
+        {activeJobs.length > 0 && (
+          <div className="max-h-[3.75rem] space-y-1 overflow-y-auto overscroll-contain pr-1 [scrollbar-width:thin]" aria-live="polite">
+            {activeJobs.map((job) => (
+              <div key={`${job.fileId}-${job.created_at}`} className="flex min-w-0 items-center gap-2 text-muted-foreground motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-300">
+                <span className="text-primary motion-safe:animate-pulse" aria-hidden="true">›</span>
+                <span className="min-w-0 flex-1 truncate text-foreground/85">{job.filename}</span>
+                <span className="shrink-0 text-primary/80">
+                  {job.status !== "uploaded"
+                    ? <AnimatedStatus label={stageForStatus(job.status)} />
+                    : stageForStatus(job.status)}
+                </span>
+                <span className="shrink-0 text-muted-foreground/70">{formatAge(job.created_at)}</span>
+              </div>
+            ))}
           </div>
         )}
 

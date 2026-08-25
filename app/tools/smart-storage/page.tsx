@@ -1818,7 +1818,7 @@ export default function SmartStoragePage() {
       <ProcessingActivityWindow
         isProcessing={isProcessing}
         activeJobs={processingJobs}
-        attentionCount={files.filter((file) => Boolean(file.attention_state)).length}
+        receivedCount={processingJobs.length}
       />
 
       <main className="flex min-h-0 flex-1 overflow-hidden">

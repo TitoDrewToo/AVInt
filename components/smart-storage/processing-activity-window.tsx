@@ -83,15 +83,15 @@ export function ProcessingActivityWindow({ isProcessing, activeJobs, receivedCou
         {activeJobs.length > 0 && (
           <div className="max-h-[3.75rem] space-y-1 overflow-y-auto overscroll-contain pr-1 [scrollbar-width:thin]" aria-live="polite">
             {activeJobs.map((job) => (
-              <div key={`${job.fileId}-${job.created_at}`} className="flex min-w-0 items-center gap-2 text-muted-foreground motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-300">
+              <div key={`${job.fileId}-${job.created_at}`} className="flex min-w-0 items-center gap-3 text-muted-foreground motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-300">
                 <span className="text-primary motion-safe:animate-pulse" aria-hidden="true">›</span>
                 <span className="min-w-0 flex-1 truncate text-foreground/85">{job.filename}</span>
-                <span className="shrink-0 text-primary/80">
+                <span className="w-[5.75rem] shrink-0 text-left text-primary/80">
                   {job.status !== "uploaded"
                     ? <AnimatedStatus label={stageForStatus(job.status)} />
                     : stageForStatus(job.status)}
                 </span>
-                <span className="shrink-0 text-muted-foreground/70">{formatAge(job.created_at)}</span>
+                <span className="w-8 shrink-0 text-right text-muted-foreground/70">{formatAge(job.created_at)}</span>
               </div>
             ))}
           </div>

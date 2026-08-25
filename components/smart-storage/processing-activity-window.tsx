@@ -8,19 +8,21 @@ type ProcessingActivityWindowProps = {
   isProcessing: boolean
   activeJobs: SmartStorageProcessingState["activeJobs"]
   attentionCount?: number
+  receivedCount?: number
+  completedCount?: number
 }
 
 function stageForStatus(status: string | null) {
   switch (status) {
     case "uploaded":
-      return "queued"
+      return "Queued"
     case "pending_scan":
     case "scanning":
-      return "scanning"
+      return "Scanning..."
     case "processing":
-      return "processing"
+      return "Processing..."
     default:
-      return "working"
+      return "Working..."
   }
 }
 
@@ -40,8 +42,8 @@ function formatAge(createdAt: string | null) {
   return `${Math.floor(ageSeconds / 60)}m`
 }
 
-export function ProcessingActivityWindow({ isProcessing, activeJobs, attentionCount = 0 }: ProcessingActivityWindowProps) {
-  if (!isProcessing && attentionCount === 0) return null
+export function ProcessingActivityWindow({ isProcessing, activeJobs, attentionCount = 0, receivedCount = 0, completedCount = 0 }: ProcessingActivityWindowProps) {
+  if (!isProcessing && attentionCount === 0 && completedCount === 0) return null
 
   const visibleJobs = activeJobs.slice(0, 3)
 
@@ -58,11 +60,11 @@ export function ProcessingActivityWindow({ isProcessing, activeJobs, attentionCo
             <Activity className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
           )}
           <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-foreground">
-            {isProcessing ? "Pipeline activity" : "Attention required"}
+            {isProcessing ? "Pipeline activity" : attentionCount > 0 ? "Attention required" : "Activity complete"}
           </span>
         </div>
         <span className="font-mono text-[10px] text-muted-foreground">
-          {isProcessing ? `${activeJobs.length} active` : `${attentionCount} item${attentionCount === 1 ? "" : "s"}`}
+          {isProcessing ? `${activeJobs.length} active` : attentionCount > 0 ? `${attentionCount} item${attentionCount === 1 ? "" : "s"}` : `${completedCount}/${receivedCount} ready`}
         </span>
       </div>
 
@@ -108,12 +110,13 @@ export function ProcessingActivityWindow({ isProcessing, activeJobs, attentionCo
           </div>
         )}
 
-        {!isProcessing && attentionCount === 0 && (
-          <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
+        {!isProcessing && attentionCount === 0 && completedCount > 0 && (
+          <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300" aria-live="polite">
             <CheckCircle2 className="h-3 w-3 shrink-0" aria-hidden="true" />
-            <span>All current files are ready</span>
+            <span>{completedCount} file{completedCount === 1 ? "" : "s"} ready to use</span>
           </div>
         )}
+
       </div>
     </section>
   )

@@ -1,7 +1,8 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { AlertTriangle, Bot, CircleAlert, LockKeyhole, Play, RefreshCw, RotateCcw, Search } from "lucide-react"
+import Link from "next/link"
+import { AlertTriangle, ArrowUpRight, Bot, CircleAlert, LockKeyhole, Play, RefreshCw, RotateCcw, Search } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
@@ -123,7 +124,7 @@ function ObservationActionButton({
   )
 }
 
-export default function ErrorTriageConsole() {
+export default function ErrorTriageConsole({ archive = false }: { archive?: boolean }) {
   const [groups, setGroups] = useState<GroupView[]>([])
   const [selectedFingerprint, setSelectedFingerprint] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<"all" | ErrorGroupStatus>("all")
@@ -140,8 +141,10 @@ export default function ErrorTriageConsole() {
   const loadGroups = useCallback(async () => {
     setLoading(true)
     setError(null)
+    let groupQuery = supabase.from("error_groups").select("fingerprint, title, first_seen, last_seen, count, status, ai_analysis, proposed_fix, action_taken, action_taken_at, action_taken_by, risk_level, confidence, severity, diagnosed_at, ai_model, review_verdict, reviewed_at, reviewed_by").order("last_seen", { ascending: false })
+    if (!archive) groupQuery = groupQuery.in("status", ["new", "triaged"])
     const [{ data: groupRows, error: groupError }, { data: eventRows, error: eventError }] = await Promise.all([
-      supabase.from("error_groups").select("fingerprint, title, first_seen, last_seen, count, status, ai_analysis, proposed_fix, action_taken, action_taken_at, action_taken_by, risk_level, confidence, severity, diagnosed_at, ai_model, review_verdict, reviewed_at, reviewed_by").order("last_seen", { ascending: false }),
+      groupQuery,
       supabase.from("error_events").select("id, occurred_at, occurred_at_manila, user_id, tool, fn, action, route, level, message, stack, fingerprint, context").order("occurred_at", { ascending: false }).limit(2_000),
     ])
     if (groupError || eventError) {
@@ -172,7 +175,7 @@ export default function ErrorTriageConsole() {
     })
     setGroups(views)
     setLoading(false)
-  }, [])
+  }, [archive])
 
   useEffect(() => {
     void loadGroups()
@@ -252,8 +255,8 @@ export default function ErrorTriageConsole() {
 
   return (
       <main className="text-foreground">
-      <div className="mx-auto max-w-[1500px]">
-        <div className="mb-5 flex justify-end"><Button variant="outline" onClick={() => void loadGroups()} disabled={loading} className="gap-2" title="Reload the latest error groups and counts.">{loading ? <><DiagnosisSpinner /><span>Refreshing…</span></> : <><RefreshCw className="h-4 w-4" /><span>Refresh</span></>}</Button></div>
+      <div className="mx-auto max-w-[1600px]">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-medium uppercase tracking-[0.18em] text-primary">{archive ? "Error archive" : "Active error queue"}</p><p className="mt-1 text-sm text-muted-foreground">{archive ? "Resolved and ignored groups remain available for review." : "New and triaged groups needing attention."}</p></div><div className="flex flex-wrap gap-2"><Link href={archive ? "/systems/errors" : "/systems/errors/archive"} className="cw-button-flow inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary">{archive ? "Active queue" : "Browse archive"}<ArrowUpRight className="h-3.5 w-3.5" /></Link><Button variant="outline" onClick={() => void loadGroups()} disabled={loading} className="gap-2" title="Reload the latest error groups and counts.">{loading ? <><DiagnosisSpinner /><span>Refreshing…</span></> : <><RefreshCw className="h-4 w-4" /><span>Refresh</span></>}</Button></div></div>
         <div className="mb-5 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-muted-foreground">
           Alerting is deferred to Phase 2.5 until Resend email delivery is configured.
         </div>
@@ -280,13 +283,13 @@ export default function ErrorTriageConsole() {
         {error && <div className="mb-5 flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"><AlertTriangle className="h-4 w-4" />{error}</div>}
 
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(420px,0.75fr)]">
-          <section className="overflow-hidden rounded-2xl border border-border bg-card/60">
+          <section className="min-w-0 overflow-hidden rounded-2xl border border-border bg-card/60">
             <div className="border-b border-border px-5 py-4"><h2 className="font-medium">Error groups <span className="ml-2 text-sm text-muted-foreground">{filteredGroups.length}</span></h2></div>
-            <div className="hidden grid-cols-[minmax(170px,1.4fr)_minmax(160px,1fr)_70px_180px_100px] gap-3 border-b border-border px-5 py-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground lg:grid">
+            <div className="hidden grid-cols-[minmax(220px,1.4fr)_minmax(220px,1fr)_80px_minmax(220px,1fr)_140px] gap-3 border-b border-border px-5 py-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground lg:grid">
               <span>Issue</span><span>Where</span><span>Count</span><span>First / last seen</span><span>Status</span>
             </div>
             {loading ? <div className="px-5 py-12 text-center text-sm text-muted-foreground">Loading error groups…</div> : filteredGroups.length === 0 ? <div className="px-5 py-12 text-center text-sm text-muted-foreground">No matching error groups.</div> : filteredGroups.map((group) => (
-              <button key={group.fingerprint} onClick={() => setSelectedFingerprint(group.fingerprint)} className={`grid w-full gap-3 border-b border-border px-5 py-4 text-left transition-colors hover:bg-muted/40 lg:grid-cols-[minmax(170px,1.4fr)_minmax(160px,1fr)_70px_180px_100px] ${selectedFingerprint === group.fingerprint ? "bg-primary/5" : ""}`}>
+              <button key={group.fingerprint} onClick={() => setSelectedFingerprint(group.fingerprint)} className={`grid w-full gap-3 border-b border-border px-5 py-4 text-left transition-colors hover:bg-muted/40 lg:grid-cols-[minmax(220px,1.4fr)_minmax(220px,1fr)_80px_minmax(220px,1fr)_140px] ${selectedFingerprint === group.fingerprint ? "bg-primary/5" : ""}`}>
                 <span className="min-w-0"><span className="flex items-start gap-2 font-medium"><CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><span className="truncate">{group.title}</span></span><span className="mt-1 block truncate pl-6 font-mono text-[11px] text-muted-foreground">{group.fingerprint}</span></span>
                 <span className="truncate text-sm text-muted-foreground">{group.where}</span>
                 <span className="text-sm font-medium">{group.count}</span>

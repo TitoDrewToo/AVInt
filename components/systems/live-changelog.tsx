@@ -1,3 +1,4 @@
+import Link from "next/link"
 import { ArrowUpRight, GitCommitHorizontal } from "lucide-react"
 import type { ChangelogDay, ChangelogEntry } from "@/components/systems/operations-data"
 
@@ -8,6 +9,8 @@ function typeLabel(type: ChangelogEntry["type"]) {
 }
 
 export function LiveChangelog({ days, error }: { days: ChangelogDay[]; error: string | null }) {
+  const entries = days.flatMap((day) => day.entries).slice(0, 5)
+  const visibleDays = days.map((day) => ({ ...day, entries: day.entries.filter((entry) => entries.some((item) => item.sha === entry.sha)) })).filter((day) => day.entries.length > 0)
   return (
     <section aria-labelledby="changelog-heading" className="space-y-5">
       <div className="glass-surface rounded-3xl p-6 md:p-8">
@@ -16,14 +19,15 @@ export function LiveChangelog({ days, error }: { days: ChangelogDay[]; error: st
           <div>
             <p className="text-xs font-medium uppercase tracking-[0.2em] text-primary">Live changelog</p>
             <h2 id="changelog-heading" className="mt-2 text-2xl font-semibold tracking-tight md:text-3xl">What changed in production.</h2>
-            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">A filtered view of meaningful product, reliability, and performance work on main.</p>
+            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">The five newest meaningful product, reliability, and performance changes on main.</p>
           </div>
         </div>
       </div>
 
       {error ? <div className="glass-surface rounded-2xl border-primary/25 p-6 text-sm text-muted-foreground"><p className="font-medium text-foreground">The changelog is taking a pause.</p><p className="mt-2">GitHub could not be reached right now. Check back shortly.</p></div> : null}
       {!error && !days.length ? <div className="glass-surface rounded-2xl p-10 text-center"><p className="text-sm font-medium text-foreground">No release notes yet.</p><p className="mt-2 text-sm text-muted-foreground">Meaningful changes will appear here when they land on main.</p></div> : null}
-      {days.map((day) => <div key={day.date} className="grid gap-4 md:grid-cols-[150px_1fr] md:gap-8"><div className="pt-2 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">{day.label}</div><div className="space-y-3">{day.entries.map((entry) => <ChangelogItem key={entry.sha} entry={entry} />)}</div></div>)}
+      {visibleDays.map((day) => <div key={day.date} className="grid gap-4 md:grid-cols-[150px_1fr] md:gap-8"><div className="pt-2 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">{day.label}</div><div className="space-y-3">{day.entries.map((entry) => <ChangelogItem key={entry.sha} entry={entry} />)}</div></div>)}
+      {!error && days.flatMap((day) => day.entries).length > 5 ? <div className="flex justify-end"><Link href="/systems/changelog/archive" className="cw-button-flow inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary">Browse the archive <ArrowUpRight className="h-3.5 w-3.5" /></Link></div> : null}
     </section>
   )
 }

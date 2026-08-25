@@ -10,7 +10,7 @@ export function OperationsShell({ children, active }: { children: React.ReactNod
       <Navbar />
       <main className="relative z-[1] flex-1 overflow-hidden px-4 py-10 md:px-8 md:py-14">
         <div aria-hidden className="pointer-events-none absolute inset-0 retro-grid-bg opacity-25" />
-        <div className="relative mx-auto max-w-6xl">
+        <div className={`relative mx-auto ${active === "errors" ? "max-w-[1600px]" : "max-w-6xl"}`}>
           <header className="mb-10 flex flex-col justify-between gap-8 md:flex-row md:items-end">
             <div>
               <p className="text-xs font-medium uppercase tracking-[0.22em] text-primary">AVIntelligence systems</p>

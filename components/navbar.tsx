@@ -24,20 +24,9 @@ const studioTools = [
   { name: "Smart Dashboard", href: "/tools/smart-dashboard" },
 ]
 
-const storageReports = [
-  { name: "Expense Summary", href: "/tools/smart-storage/reports/expense-summary" },
-  { name: "Income Summary", href: "/tools/smart-storage/reports/income-summary" },
-  { name: "Tax Bundle", href: "/tools/smart-storage/reports/tax-bundle" },
-  { name: "Profit & Loss", href: "/tools/smart-storage/reports/profit-loss" },
-  { name: "Contract Summary", href: "/tools/smart-storage/reports/contract-summary" },
-  { name: "Key Terms", href: "/tools/smart-storage/reports/key-terms" },
-  { name: "Business Expense", href: "/tools/smart-storage/reports/business-expense" },
-]
-
 const toolLinks = [
   ...studioTools,
   ...(MCP_CONNECTOR_CLIENT_ENABLED ? [{ name: "Connect to Claude", href: "/tools/smart-storage/connect" }] : []),
-  ...storageReports,
 ]
 
 function ThemeToggle() {
@@ -178,13 +167,6 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
                         Connect to Claude
                       </Link>
                     )}
-                    <div className="my-1 h-px bg-border/60" />
-                    <p className="px-3 pb-1 pt-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Smart Storage reports</p>
-                    {storageReports.map((report) => (
-                      <Link key={report.href} href={report.href} role="menuitem" onClick={() => setToolsOpen(false)} className="block rounded-lg px-3 py-2 text-sm text-foreground/80 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]">
-                        {report.name}
-                      </Link>
-                    ))}
                   </div>
                 )}
               </div>

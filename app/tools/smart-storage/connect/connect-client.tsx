@@ -40,11 +40,8 @@ export default function ConnectClient({ oauthEnabled }: { oauthEnabled: boolean 
           </div>
           <div className="mt-6 border-t border-primary/15 pt-5">
             <p className="text-sm font-medium text-foreground">What you can do from Claude</p>
-            <ul className="mt-3 grid gap-2 text-sm text-muted-foreground sm:grid-cols-2">
-              <li>• Ingest documents into Smart Storage</li>
-              <li>• Run your Tax Bundle or Business Expense report</li>
-              <li>• Export to QuickBooks or Xero</li>
-              <li>• Every call acts on your own account</li>
+            <ul className="mt-3 grid gap-2 text-sm text-muted-foreground">
+              <li>• Allow Claude access to your custom data intelligence</li>
             </ul>
             <p className="mt-4 text-xs text-muted-foreground">Available on Pro and Business plans. If the email does not match an AVIntelligence account, you’ll see: <span className="font-medium text-foreground">“Connect requires a Smart Storage account with this email”</span>.</p>
           </div>

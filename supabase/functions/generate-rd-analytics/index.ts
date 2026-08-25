@@ -327,6 +327,8 @@ serve(async (req) => {
       .eq("user_id", user_id)
 
     if (!userFiles?.length) {
+      await supabase.from("advanced_widgets").delete().eq("user_id", user_id)
+      await supabase.from("user_analytics_profile").delete().eq("user_id", user_id)
       return new Response(JSON.stringify({ skipped: true, reason: "no_documents", widgets: [] }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       })

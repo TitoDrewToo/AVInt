@@ -85,6 +85,18 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    const { error: analyticsProfileError } = await supabaseAdmin
+      .from("user_analytics_profile")
+      .delete()
+      .eq("user_id", user.id)
+    if (analyticsProfileError) {
+      console.error("delete-file derived cleanup failed:", {
+        stage: "delete_user_analytics_profile",
+        user_id: user.id,
+        message: analyticsProfileError.message,
+      })
+    }
+
     const { error: advancedWidgetsError } = await supabaseAdmin
       .from("advanced_widgets")
       .delete()

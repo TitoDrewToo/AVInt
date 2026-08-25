@@ -27,7 +27,7 @@ import {
 import {
   TrendingUp, Receipt, Wallet,
   Save, Calendar, ChevronDown, ChevronRight, Lock, Sparkles,
-  LayoutGrid, X, Check, Plus, Zap, PanelRight, Star
+  LayoutGrid, RefreshCw, X, Check, Plus, Zap, PanelRight, Star
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tip, TooltipProvider } from "@/components/ui/tip"
@@ -1431,6 +1431,7 @@ export default function SmartDashboardPage() {
   const [session, setSession] = useState<Session | null>(null)
   const [sessionLoaded, setSessionLoaded] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const [dataError, setDataError] = useState<string | null>(null)
   const [kpi, setKpi] = useState<KPIData>({ totalIncome: 0, totalExpenses: 0, netPosition: 0, savingsRate: 0, taxExposure: 0, taxRatio: 0, currency: "USD" })
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([])
@@ -1799,14 +1800,30 @@ export default function SmartDashboardPage() {
 
   useEffect(() => { loadAdvancedWidgets() }, [loadAdvancedWidgets])
 
+  // Manual refresh only re-reads the current database state. It deliberately
+  // does not invoke either analytics edge function; Advanced Analytics remains
+  // an explicit, separate generation flow.
+  const refreshDashboard = useCallback(async () => {
+    if (!session?.user?.id || isRefreshing) return
+    setIsRefreshing(true)
+    try {
+      await Promise.all([
+        loadData(),
+        loadLayout(),
+        loadAdvancedWidgets(),
+        loadContextSummary(),
+        loadReadinessState(),
+      ])
+    } finally {
+      setIsRefreshing(false)
+    }
+  }, [isRefreshing, loadAdvancedWidgets, loadContextSummary, loadData, loadLayout, loadReadinessState, session])
+
   useEffect(() => {
     if (!session?.user?.id) return
     const refresh = () => {
       if (document.visibilityState === "visible") {
-        void loadData()
-        void loadLayout()
-        void loadAdvancedWidgets()
-        void loadContextSummary()
+        void refreshDashboard()
       }
     }
     window.addEventListener("focus", refresh)
@@ -1815,7 +1832,7 @@ export default function SmartDashboardPage() {
       window.removeEventListener("focus", refresh)
       document.removeEventListener("visibilitychange", refresh)
     }
-  }, [loadAdvancedWidgets, loadContextSummary, loadData, loadLayout, session])
+  }, [refreshDashboard, session])
 
   const toggleStarAdvancedWidget = async (aw: AdvancedWidget) => {
     const newStarred = !aw.is_starred
@@ -2303,6 +2320,17 @@ export default function SmartDashboardPage() {
   const dashboardToolbar = (
     <div className="flex min-w-0 items-center justify-between gap-2">
       <div className="flex min-w-0 flex-1 items-center gap-2 overflow-visible">
+        <button
+          type="button"
+          onClick={() => void refreshDashboard()}
+          disabled={isRefreshing || loading}
+          className="flex h-7 items-center gap-1.5 rounded-lg border border-border px-3 text-xs text-muted-foreground transition-all duration-200 hover:-translate-y-0.5 hover:bg-muted hover:text-foreground disabled:cursor-wait disabled:opacity-60"
+          aria-label="Refresh dashboard data"
+          title="Refresh dashboard data"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
+          {isRefreshing ? "Refreshing…" : "Refresh"}
+        </button>
         <div
           className="relative"
           onMouseEnter={!isMobile ? cancelDateFilterClose : undefined}

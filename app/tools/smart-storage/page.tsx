@@ -37,6 +37,7 @@ import {
   Loader2,
   HardDrive,
   Database,
+  PanelRight,
 } from "lucide-react"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { DateRangeSelector } from "@/components/smart-storage/date-range-selector"
@@ -339,6 +340,7 @@ export default function SmartStoragePage() {
   const [reclassifySheetTarget, setReclassifySheetTarget] = useState<{ fileId: string; filename: string } | null>(null)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [dataModelOpen, setDataModelOpen] = useState(false)
+  const [reportsOpen, setReportsOpen] = useState(false)
   const [renamingFileId, setRenamingFileId] = useState<string | null>(null)
   const [renameFileValue, setRenameFileValue] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -1663,11 +1665,19 @@ export default function SmartStoragePage() {
 
       <div className="flex shrink-0 items-center gap-1">
         <Tip text="Inspect the virtual data model formed from your normalized files."><button
-          onClick={() => setDataModelOpen(true)}
+          onClick={() => { setReportsOpen(false); setDataModelOpen(true) }}
           className="flex h-7 items-center gap-1.5 rounded px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           <Database className="h-3.5 w-3.5" />
           Data Model
+        </button></Tip>
+        <Tip text="Open reports in a separate drawer."><button
+          onClick={() => setReportsOpen(true)}
+          aria-expanded={reportsOpen}
+          className={`flex h-7 items-center gap-1.5 rounded px-2 text-xs transition-colors hover:bg-muted hover:text-foreground ${reportsOpen ? "text-primary" : "text-muted-foreground"}`}
+        >
+          <PanelRight className="h-3.5 w-3.5" />
+          Reports
         </button></Tip>
         {breadcrumb.length > 1 && (
           <Tip text="Go up to the parent folder."><button
@@ -2587,8 +2597,9 @@ export default function SmartStoragePage() {
             </div>
           </div>
 
-          {/* RIGHT PANE ─────────────────────────────────────────────────────── */}
-          <aside className="hidden min-h-0 md:flex w-[20%] min-w-[180px] flex-col border-l border-border bg-card overflow-hidden">
+          {/* Reports drawer is opened from the toolbar. The main workspace keeps its navigation pane. */}
+          <Sheet open={reportsOpen} onOpenChange={setReportsOpen}>
+            <SheetContent side="right" className="w-full max-w-sm gap-0 border-l border-border bg-card p-0">
             <div className="border-b border-border px-4 py-3">
               <h2 className="text-sm font-semibold text-foreground">Reports</h2>
             </div>
@@ -2691,7 +2702,8 @@ export default function SmartStoragePage() {
                 })}
               </div>
             </div>
-          </aside>
+            </SheetContent>
+          </Sheet>
 
         </div>
       </main>
@@ -2789,7 +2801,7 @@ export default function SmartStoragePage() {
       </Sheet>
 
       <Sheet open={dataModelOpen} onOpenChange={setDataModelOpen}>
-        <SheetContent side="right" className="w-full max-w-2xl p-0">
+        <SheetContent side="right" className="w-full max-w-none p-0 md:left-[15%] md:w-[85%]">
           <DataModelView files={files} />
         </SheetContent>
       </Sheet>

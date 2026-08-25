@@ -60,6 +60,12 @@ export function getSmartStorageCacheAgeMs(userId: string): number | null {
   return Date.now() - cached.fetchedAt
 }
 
+export function invalidateSmartStorageCache(userId: string) {
+  const key = cacheKey(userId)
+  cache.delete(key)
+  launchCache.delete(key)
+}
+
 export function setCachedSmartStorageLaunchData(
   userId: string,
   data: SmartStorageLaunchData,

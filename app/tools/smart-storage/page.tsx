@@ -81,6 +81,7 @@ import {
   getCachedSmartStorageLaunchData,
   getCachedSmartStorageData,
   getSmartStorageCacheAgeMs,
+  invalidateSmartStorageCache,
   prefetchSmartStorageLaunchData,
   refreshSmartStorageData,
   setCachedSmartStorageData,
@@ -1271,7 +1272,8 @@ export default function SmartStoragePage() {
 
   const handleDeleteFile = async (fileId: string) => {
     const file = files.find(f => f.id === fileId)
-    if (!file) return
+    const userId = session?.user?.id
+    if (!file || !userId) return
     const userToken = (await supabase.auth.getSession()).data.session?.access_token
     recentlyDeletedFileIdsRef.current.add(fileId)
     const clearRecentlyDeleted = window.setTimeout(() => {
@@ -1300,6 +1302,7 @@ export default function SmartStoragePage() {
       setDetectedTypes(types)
       return nextFiles
     })
+    invalidateSmartStorageCache(userId)
     setSelectedFiles(prev => {
       const next = new Set(prev)
       next.delete(fileId)

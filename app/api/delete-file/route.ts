@@ -97,6 +97,35 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    // Advanced widgets contain generated values from the document corpus. Their
+    // saved dashboard slots must not survive after the source files are gone.
+    const { data: savedDashboard, error: savedDashboardError } = await supabaseAdmin
+      .from("dashboard_layouts")
+      .select("layout")
+      .eq("user_id", user.id)
+      .maybeSingle()
+    throwIfDeleteFailed("read_dashboard_layout", savedDashboardError)
+
+    const savedLayout = savedDashboard?.layout
+    if (savedLayout && typeof savedLayout === "object" && Array.isArray((savedLayout as any).widgets)) {
+      const widgets = (savedLayout as any).widgets.filter((widget: any) => !widget?.advancedId)
+      const removedWidgetIds = new Set(
+        (savedLayout as any).widgets
+          .filter((widget: any) => widget?.advancedId)
+          .map((widget: any) => widget.id)
+      )
+      const gridLayout = Array.isArray((savedLayout as any).gridLayout)
+        ? (savedLayout as any).gridLayout.filter((item: any) => !removedWidgetIds.has(item?.i))
+        : (savedLayout as any).gridLayout
+      if (widgets.length !== (savedLayout as any).widgets.length) {
+        const { error: dashboardLayoutError } = await supabaseAdmin
+          .from("dashboard_layouts")
+          .update({ layout: { ...(savedLayout as any), widgets, gridLayout }, updated_at: new Date().toISOString() })
+          .eq("user_id", user.id)
+        throwIfDeleteFailed("clear_dashboard_advanced_widgets", dashboardLayoutError)
+      }
+    }
+
     return NextResponse.json({ success: true })
   } catch (err) {
     return serverError(err, { route: "delete-file", stage: "unhandled" })

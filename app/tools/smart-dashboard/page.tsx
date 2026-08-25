@@ -1431,6 +1431,7 @@ export default function SmartDashboardPage() {
   const [session, setSession] = useState<Session | null>(null)
   const [sessionLoaded, setSessionLoaded] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [dataError, setDataError] = useState<string | null>(null)
   const [kpi, setKpi] = useState<KPIData>({ totalIncome: 0, totalExpenses: 0, netPosition: 0, savingsRate: 0, taxExposure: 0, taxRatio: 0, currency: "USD" })
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([])
   const [categoryData, setCategoryData] = useState<CategoryData[]>([])
@@ -1576,16 +1577,29 @@ export default function SmartDashboardPage() {
       setLayout([])
       return
     }
-    const { data } = await supabase
-      .from("dashboard_layouts")
-      .select("layout")
-      .eq("user_id", session.user.id)
-      .maybeSingle()
+    const [{ data, error: layoutError }, { data: activeAdvancedWidgets, error: advancedError }] = await Promise.all([
+      supabase
+        .from("dashboard_layouts")
+        .select("layout")
+        .eq("user_id", session.user.id)
+        .maybeSingle(),
+      supabase
+        .from("advanced_widgets")
+        .select("id")
+        .eq("user_id", session.user.id)
+        .or("expires_at.is.null,expires_at.gt." + new Date().toISOString()),
+    ])
+    if (layoutError || advancedError) {
+      setDataError("We could not refresh your dashboard layout. Please try again.")
+      return
+    }
     if (data?.layout) {
       const saved = data.layout
       const preferences = normalizeDashboardPreferences(saved.preferences)
+      const activeAdvancedIds = new Set((activeAdvancedWidgets ?? []).map((widget) => widget.id))
       const savedWidgets: Widget[] = saved.widgets?.length
         ? applyWidgetCurrencyModes(saved.widgets, preferences.widgetCurrencyModes)
+          .filter((widget) => !widget.advancedId || activeAdvancedIds.has(widget.advancedId))
         : []
       const widgetById = new Map<string, Widget>(savedWidgets.map((widget) => [widget.id, widget]))
       setWidgets(savedWidgets)
@@ -1593,7 +1607,7 @@ export default function SmartDashboardPage() {
       setPreferredPrimaryCurrency(preferences.primaryCurrency)
       if (saved.gridLayout?.length) {
         // Always apply current minH/minW — never restore stale saved constraints
-        setLayout(saved.gridLayout.map((l: any) => ({
+        setLayout(saved.gridLayout.filter((l: any) => savedWidgets.some((widget) => widget.id === l.i)).map((l: any) => ({
           i: l.i,
           x: l.x,
           y: l.y,
@@ -1613,6 +1627,7 @@ export default function SmartDashboardPage() {
   const loadData = useCallback(async () => {
     if (!session?.user?.id) return
     setLoading(true)
+    setDataError(null)
     const clearFinancialData = () => {
       setCurrencyModel(EMPTY_CURRENCY_MODEL)
       setDashboardRows([])
@@ -1628,10 +1643,17 @@ export default function SmartDashboardPage() {
       setBandedSpendDataByGrain(emptyBandedSeries())
     }
 
-    const { data: userFiles } = await supabase
+    const { data: userFiles, error: filesError } = await supabase
       .from("files")
       .select("id, document_type, upload_status")
       .eq("user_id", session.user.id)
+
+    if (filesError) {
+      clearFinancialData()
+      setDataError("We could not refresh your stored files. Please try again.")
+      setLoading(false)
+      return
+    }
 
     if (!userFiles?.length) { clearFinancialData(); setDocTypeData([]); setStillProcessingCount(0); setLoading(false); return }
 
@@ -1647,7 +1669,14 @@ export default function SmartDashboardPage() {
     if (dateFrom) query = query.gte("document_date", dateFrom)
     if (dateTo) query = query.lte("document_date", dateTo)
 
-    const { data: fields } = await query
+    const { data: fields, error: fieldsError } = await query
+    if (fieldsError) {
+      clearFinancialData()
+      setDataError("We could not refresh your extracted data. Please try again.")
+      setLoading(false)
+      return
+    }
+    setDataError(null)
     setStillProcessingCount(countStillProcessingDocuments(userFiles, fields ?? []))
     if (!fields?.length) {
       clearFinancialData()
@@ -1769,6 +1798,24 @@ export default function SmartDashboardPage() {
   }, [session])
 
   useEffect(() => { loadAdvancedWidgets() }, [loadAdvancedWidgets])
+
+  useEffect(() => {
+    if (!session?.user?.id) return
+    const refresh = () => {
+      if (document.visibilityState === "visible") {
+        void loadData()
+        void loadLayout()
+        void loadAdvancedWidgets()
+        void loadContextSummary()
+      }
+    }
+    window.addEventListener("focus", refresh)
+    document.addEventListener("visibilitychange", refresh)
+    return () => {
+      window.removeEventListener("focus", refresh)
+      document.removeEventListener("visibilitychange", refresh)
+    }
+  }, [loadAdvancedWidgets, loadContextSummary, loadData, loadLayout, session])
 
   const toggleStarAdvancedWidget = async (aw: AdvancedWidget) => {
     const newStarred = !aw.is_starred
@@ -2686,6 +2733,18 @@ export default function SmartDashboardPage() {
               </div>
             ) : (
               <>
+              {dataError && (
+                <div className="mb-3 flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-[11px] leading-relaxed text-destructive">
+                  <p className="min-w-0 flex-1">{dataError}</p>
+                  <button
+                    type="button"
+                    onClick={() => { setDataError(null); void loadData(); void loadLayout(); void loadAdvancedWidgets() }}
+                    className="shrink-0 rounded px-2 py-1 font-medium transition-colors hover:bg-destructive/10"
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
               {stillProcessingCount > 0 && (
                 <div className="mb-3 flex items-start gap-3 rounded-lg border border-amber-300/60 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
                   <p className="min-w-0 flex-1">

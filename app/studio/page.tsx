@@ -154,7 +154,7 @@ export default function StudioPage() {
           <div aria-hidden className="pointer-events-none absolute inset-0 retro-grid-bg opacity-20" />
           <div className="relative mx-auto max-w-5xl">
             <div className="text-center">
-              <p className="text-sm font-medium uppercase tracking-wider text-primary">Proof</p>
+              <p className="text-sm font-medium uppercase tracking-wider text-primary">Products</p>
               <h2 className="mt-6 text-balance text-3xl font-semibold tracking-tight text-foreground md:text-5xl">Built in the open, shaped by real work.</h2>
             </div>
             <div className="mt-12 grid gap-4 md:grid-cols-2">

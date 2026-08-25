@@ -25,7 +25,7 @@ export function AudienceLandingPage({ data }: { data: AudienceLandingData }) {
               <h1 className="mt-6 text-balance text-5xl font-semibold leading-[0.98] tracking-[-0.04em] text-foreground md:text-7xl">{data.title}</h1>
               <p className="mt-7 max-w-2xl text-pretty text-lg leading-relaxed text-muted-foreground md:text-xl">{data.description}</p>
               <div className="mt-9 flex flex-wrap items-center gap-3">
-                <Link href="/tools/smart-storage" className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90">Start free <ArrowRight className="h-4 w-4" /></Link>
+                <Link href="/tools/smart-storage" target="_blank" rel="noopener noreferrer" className="cw-button-flow inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90">Start free <ArrowRight className="h-4 w-4" /></Link>
                 <Link href="/studio#studio-inquiry" className="inline-flex min-h-11 items-center rounded-xl border border-border/70 px-5 py-3 text-sm font-medium text-muted-foreground hover:border-primary/40 hover:text-foreground">Discuss a project</Link>
               </div>
             </div>

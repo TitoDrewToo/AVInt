@@ -31,6 +31,7 @@ export const MCP_RATE_LIMITS = {
   ingest: { windowSeconds: positiveInteger("MCP_INGEST_BURST_WINDOW_SECONDS", 600), maxCalls: positiveInteger("MCP_INGEST_BURST_MAX", 30) },
   report: { windowSeconds: positiveInteger("MCP_REPORT_BURST_WINDOW_SECONDS", 60), maxCalls: positiveInteger("MCP_REPORT_BURST_MAX", 120) },
   export: { windowSeconds: positiveInteger("MCP_EXPORT_BURST_WINDOW_SECONDS", 60), maxCalls: positiveInteger("MCP_EXPORT_BURST_MAX", 30) },
+  profile: { windowSeconds: positiveInteger("MCP_PROFILE_BURST_WINDOW_SECONDS", 60), maxCalls: positiveInteger("MCP_PROFILE_BURST_MAX", 60) },
   globalIngest: { windowSeconds: positiveInteger("INGEST_GLOBAL_WINDOW_SECONDS", 60), maxCalls: positiveInteger("INGEST_GLOBAL_RPM", 60) },
 } as const
 export const MCP_CONNECTOR_URL = "/tools/smart-storage/connect"

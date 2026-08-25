@@ -639,7 +639,7 @@ export function AccountPanel({ isOpen, onClose, focusGiftCode }: AccountPanelPro
                       <>
                         <div className="retro-divider h-px" />
                         <div className="space-y-1">
-                          <Link href="/tools/smart-storage/connect" onClick={onClose} className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground/85 transition-all hover:text-primary" style={chromeFontStyle}>
+                          <Link href="/tools/smart-storage/connect" target="_blank" rel="noopener noreferrer" onClick={onClose} className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm text-foreground/85 transition-all hover:text-primary" style={chromeFontStyle}>
                             Connect to Claude
                             <ExternalLink className="h-4 w-4 text-muted-foreground" />
                           </Link>

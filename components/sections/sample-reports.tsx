@@ -24,7 +24,7 @@ export function SampleReportsSection() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><Icon className="h-5 w-5" /></div>
                 <h3 className="mt-6 text-lg font-semibold text-foreground">{title}</h3>
                 <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{description}</p>
-                <Link href="/tools/smart-storage" className="mt-6 inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">Explore Smart Storage <ArrowUpRight className="h-4 w-4" /></Link>
+                <Link href="/tools/smart-storage" target="_blank" rel="noopener noreferrer" className="mt-6 inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">Explore Smart Storage <ArrowUpRight className="h-4 w-4" /></Link>
               </div>
             </StaggerItem>
           ))}

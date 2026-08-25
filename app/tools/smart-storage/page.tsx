@@ -36,12 +36,15 @@ import {
   Menu,
   Loader2,
   HardDrive,
+  Database,
 } from "lucide-react"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { DateRangeSelector } from "@/components/smart-storage/date-range-selector"
 import { LeftFolderItem } from "@/components/smart-storage/left-folder-item"
 import { StorageItemMenu } from "@/components/smart-storage/storage-item-menu"
 import { GoogleDriveImportModal } from "@/components/smart-storage/google-drive-import-modal"
+import { ProcessingActivityWindow } from "@/components/smart-storage/processing-activity-window"
+import { DataModelView } from "@/components/smart-storage/data-model-view"
 import { useRouter } from "next/navigation"
 import {
   formatStorageAllowance,
@@ -133,7 +136,7 @@ type HoverPreviewState = {
   y: number
 }
 
-type ProcessingBadgeState = "working_slow" | "failed"
+type ProcessingBadgeState = "working_slow" | "failed" | "normalization_failed" | "classification_required"
 
 const formatBytes = formatStorageBytes
 
@@ -227,6 +230,8 @@ function isSpreadsheetFile(file: { file_type?: string | null; filename?: string 
 }
 
 function processingBadgeState(file: UploadedFile): ProcessingBadgeState | null {
+  if (file.attention_state === "normalization_failed") return "normalization_failed"
+  if (file.attention_state === "classification_required") return "classification_required"
   const job = file.processing_job
   if (!job?.status || !job.created_at) return null
   const createdAt = Date.parse(job.created_at)
@@ -241,6 +246,10 @@ function processingBadgeState(file: UploadedFile): ProcessingBadgeState | null {
 }
 
 function fileDocumentTypeLabel(file: UploadedFile): { label: string; isFailed: boolean } {
+  if (file.attention_state === "normalization_failed") return { label: "Needs normalization", isFailed: true }
+  if (file.attention_state === "extraction_failed") return { label: "Needs extraction retry", isFailed: true }
+  if (file.attention_state === "processing_slow") return { label: "Still processing", isFailed: false }
+  if (file.attention_state === "classification_required") return { label: "Needs classification", isFailed: false }
   const documentFieldsCount = file.document_fields_count ?? file.field_count ?? 0
   if (documentFieldsCount > 0) {
     const documentType = file.document_type === "unknown"
@@ -261,6 +270,7 @@ export default function SmartStoragePage() {
   const entitlement = useEntitlement(session)
   const isPro = entitlement.isActive
   const [isProcessing, setIsProcessing] = useState(false)
+  const [processingJobs, setProcessingJobs] = useState<SmartStorageProcessingState["activeJobs"]>([])
 
   // Folder/navigation state
   const [currentFolderId, setCurrentFolderId] = useState<string>("root")
@@ -328,6 +338,7 @@ export default function SmartStoragePage() {
   const [reclassifyTarget, setReclassifyTarget] = useState<{ fileId: string; filename: string } | null>(null)
   const [reclassifySheetTarget, setReclassifySheetTarget] = useState<{ fileId: string; filename: string } | null>(null)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [dataModelOpen, setDataModelOpen] = useState(false)
   const [renamingFileId, setRenamingFileId] = useState<string | null>(null)
   const [renameFileValue, setRenameFileValue] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -433,6 +444,7 @@ export default function SmartStoragePage() {
       processingExpiryTimeoutRef.current = null
     }
     setIsProcessing(processing.isProcessing)
+    setProcessingJobs(processing.activeJobs)
     if (processing.isProcessing) {
       const now = Date.now()
       const delays = processing.activeJobs
@@ -1084,6 +1096,25 @@ export default function SmartStoragePage() {
 
   const handleRetryProcessing = useCallback(async (file: UploadedFile) => {
     if (!session?.user?.id) return
+    if (file.attention_state === "normalization_failed") {
+      const userToken = (await supabase.auth.getSession()).data.session?.access_token
+      if (!userToken) return
+      setIsProcessing(true)
+      const retryResponse = await fetch("/api/retry-normalization", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${userToken}`,
+        },
+        body: JSON.stringify({ file_id: file.id }),
+      })
+      if (!retryResponse.ok) {
+        console.error("normalization retry failed:", await retryResponse.text().catch(() => ""))
+      }
+      await loadFiles()
+      await checkProcessingState()
+      return
+    }
     const functionName =
       file.upload_status === "pending_scan"
         ? "prescan-document"
@@ -1631,6 +1662,13 @@ export default function SmartStoragePage() {
       )}
 
       <div className="flex shrink-0 items-center gap-1">
+        <Tip text="Inspect the virtual data model formed from your normalized files."><button
+          onClick={() => setDataModelOpen(true)}
+          className="flex h-7 items-center gap-1.5 rounded px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <Database className="h-3.5 w-3.5" />
+          Data Model
+        </button></Tip>
         {breadcrumb.length > 1 && (
           <Tip text="Go up to the parent folder."><button
             onClick={() => { const prev = breadcrumb[breadcrumb.length - 2]; navigateBreadcrumb(prev.id, prev.name, breadcrumb.length - 2) }}
@@ -1717,16 +1755,33 @@ export default function SmartStoragePage() {
   const renderProcessingJobBadge = (file: UploadedFile) => {
     const badge = processingBadgeState(file)
     if (!badge) return null
-    const title = badge === "failed"
+    const title = badge === "normalization_failed"
+      ? file.normalization_error ?? "Normalization needs attention"
+      : badge === "classification_required"
+      ? "Choose the document type to continue processing"
+      : badge === "failed"
       ? file.processing_job?.error_message ?? "Processing failed"
       : "Processing is taking longer than expected"
-    const label = badge === "failed" ? "Failed - retry" : "Still working..."
+    const label = badge === "normalization_failed"
+      ? "Normalization failed - retry"
+      : badge === "classification_required"
+      ? "Needs classification"
+      : badge === "failed" ? "Failed - retry" : "Still working..."
+
+    const handleBadgeAction = () => {
+      if (badge === "classification_required") {
+        if (isSpreadsheetFile(file)) setReclassifySheetTarget({ fileId: file.id, filename: file.filename })
+        else setReclassifyTarget({ fileId: file.id, filename: file.filename })
+        return
+      }
+      void handleRetryProcessing(file)
+    }
 
     return (
       <Tip text="Click to retry processing">
         <span
           className={`inline-flex max-w-full items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] leading-none ${
-            badge === "failed"
+            badge === "failed" || badge === "normalization_failed"
               ? "border-red-200 bg-red-50 text-red-700"
               : "border-amber-200 bg-amber-50 text-amber-700"
           }`}
@@ -1737,7 +1792,7 @@ export default function SmartStoragePage() {
           <button
             type="button"
             className="truncate text-left underline-offset-2 hover:underline"
-            onClick={() => { void handleRetryProcessing(file) }}
+            onClick={handleBadgeAction}
           >
             {label}
           </button>
@@ -1745,7 +1800,7 @@ export default function SmartStoragePage() {
             <button
               type="button"
               className="shrink-0 underline-offset-2 hover:underline"
-              onClick={() => { void handleRetryProcessing(file) }}
+              onClick={handleBadgeAction}
             >
               Retry
             </button>
@@ -1759,6 +1814,12 @@ export default function SmartStoragePage() {
     <TooltipProvider>
     <div className="flex min-h-screen flex-col">
       <Navbar wide toolSlot={storageToolbar} />
+
+      <ProcessingActivityWindow
+        isProcessing={isProcessing}
+        activeJobs={processingJobs}
+        attentionCount={files.filter((file) => Boolean(file.attention_state)).length}
+      />
 
       <main className="flex min-h-0 flex-1 overflow-hidden">
         <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -2724,6 +2785,12 @@ export default function SmartStoragePage() {
               })}
             </div>
           </div>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={dataModelOpen} onOpenChange={setDataModelOpen}>
+        <SheetContent side="right" className="w-full max-w-2xl p-0">
+          <DataModelView files={files} />
         </SheetContent>
       </Sheet>
 

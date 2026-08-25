@@ -1,5 +1,11 @@
 import { supabase } from "@/lib/supabase"
-import { PROCESSING_ACTIVITY_WINDOW_MS, REPORTS, type UploadedFile, type VirtualFolder } from "@/lib/smart-storage"
+import {
+  PROCESSING_ACTIVITY_WINDOW_MS,
+  REPORTS,
+  type SmartStorageAttentionState,
+  type UploadedFile,
+  type VirtualFolder,
+} from "@/lib/smart-storage"
 
 export const SMART_STORAGE_PAGE_SIZE = 100
 const SMART_STORAGE_CACHE_TTL_MS = 5 * 60 * 1000
@@ -13,7 +19,7 @@ export type SmartStorageFilesPage = {
 
 export type SmartStorageProcessingState = {
   isProcessing: boolean
-  activeJobs: Array<{ status: string | null; created_at: string | null }>
+  activeJobs: Array<{ fileId: string; filename: string; status: string | null; created_at: string | null }>
 }
 
 export type SmartStorageWarmData = SmartStorageFilesPage & {
@@ -99,6 +105,12 @@ async function enrichFiles(files: any[]): Promise<UploadedFile[]> {
   const fileIds = files.map((file) => file.id)
   const latestJobByFileId = new Map<string, ProcessingJobSummary>()
   const documentFieldCountByFileId = new Map<string, number>()
+  const normalizationByFileId = new Map<string, {
+    hasRaw: boolean
+    hasFailed: boolean
+    hasNormalized: boolean
+    error: string | null
+  }>()
 
   if (fileIds.length > 0) {
     const [{ data: jobs }, { data: documentFields }] = await Promise.all([
@@ -109,7 +121,7 @@ async function enrichFiles(files: any[]): Promise<UploadedFile[]> {
         .order("created_at", { ascending: false }),
       supabase
         .from("document_fields")
-        .select("file_id")
+        .select("file_id, normalization_status, normalization_error")
         .in("file_id", fileIds),
     ])
 
@@ -124,14 +136,51 @@ async function enrichFiles(files: any[]): Promise<UploadedFile[]> {
     }
     for (const field of documentFields ?? []) {
       documentFieldCountByFileId.set(field.file_id, (documentFieldCountByFileId.get(field.file_id) ?? 0) + 1)
+      const current = normalizationByFileId.get(field.file_id) ?? { hasRaw: false, hasFailed: false, hasNormalized: false, error: null }
+      current.hasRaw ||= field.normalization_status === "raw"
+      current.hasFailed ||= field.normalization_status === "failed"
+      current.hasNormalized ||= field.normalization_status === "normalized" || field.normalization_status === "manual"
+      if (field.normalization_status === "failed" && !current.error) current.error = field.normalization_error
+      normalizationByFileId.set(field.file_id, current)
     }
   }
 
-  return files.map((file) => ({
-    ...file,
-    document_fields_count: documentFieldCountByFileId.get(file.id) ?? 0,
-    processing_job: latestJobByFileId.get(file.id) ?? null,
-  }))
+  return files.map((file) => {
+    const job = latestJobByFileId.get(file.id) ?? null
+    const normalization = normalizationByFileId.get(file.id)
+    const fieldsCount = documentFieldCountByFileId.get(file.id) ?? 0
+    const isQuarantined = file.upload_status === "quarantined"
+    const ageMs = job?.created_at ? Date.now() - Date.parse(job.created_at) : 0
+    const isActive = ["uploaded", "pending_scan", "scanning", "processing"].includes(job?.status ?? "")
+      || ["uploaded", "pending_scan", "scanning", "approved", "processing"].includes(file.upload_status ?? "")
+    const isSlow = ageMs > PROCESSING_ACTIVITY_WINDOW_MS && isActive
+    let attentionState: SmartStorageAttentionState = null
+    if (!isQuarantined) {
+      if (normalization?.hasFailed) attentionState = "normalization_failed"
+      else if (job?.status === "failed" && fieldsCount === 0) attentionState = "extraction_failed"
+      else if (isSlow) attentionState = "processing_slow"
+      else if (!isActive && (!file.document_type || file.document_type === "unknown")) attentionState = "classification_required"
+    }
+
+    let pipelineStage: UploadedFile["pipeline_stage"] = "unknown"
+    if (isQuarantined) pipelineStage = "quarantined"
+    else if (attentionState) pipelineStage = "attention"
+    else if (normalization?.hasRaw) pipelineStage = "normalizing"
+    else if (normalization?.hasNormalized) pipelineStage = "ready"
+    else if (["pending_scan", "scanning"].includes(file.upload_status ?? "") || job?.status === "scanning") pipelineStage = "scanning"
+    else if (["uploaded", "processing"].includes(file.upload_status ?? "") || job?.status === "processing") pipelineStage = "extracting"
+    else if (file.upload_status === "normalized") pipelineStage = "ready"
+
+    return {
+      ...file,
+      document_fields_count: fieldsCount,
+      processing_job: job,
+      attention_state: attentionState,
+      normalization_status: normalization?.hasFailed ? "failed" : normalization?.hasRaw ? "raw" : normalization?.hasNormalized ? "normalized" : null,
+      normalization_error: normalization?.error ?? null,
+      pipeline_stage: pipelineStage,
+    }
+  })
 }
 
 export async function fetchSmartStorageFilesPage(userId: string, offset = 0, limit = SMART_STORAGE_PAGE_SIZE): Promise<SmartStorageFilesPage> {
@@ -179,7 +228,7 @@ export async function fetchSmartStorageProcessingState(userId: string): Promise<
   const activeCutoff = new Date(Date.now() - PROCESSING_ACTIVITY_WINDOW_MS).toISOString()
   const { data, error } = await supabase
     .from("processing_jobs")
-    .select("status, created_at, files!inner(user_id)")
+    .select("file_id, status, created_at, files!inner(user_id, filename)")
     .eq("files.user_id", userId)
     .in("status", ["uploaded", "pending_scan", "scanning", "processing"])
     .gte("created_at", activeCutoff)
@@ -187,7 +236,12 @@ export async function fetchSmartStorageProcessingState(userId: string): Promise<
   if (error) throw new Error(error.message)
   return {
     isProcessing: (data?.length ?? 0) > 0,
-    activeJobs: (data ?? []).map((job) => ({ status: job.status, created_at: job.created_at })),
+    activeJobs: (data ?? []).map((job: any) => ({
+      fileId: job.file_id,
+      filename: Array.isArray(job.files) ? job.files[0]?.filename ?? "Unnamed file" : job.files?.filename ?? "Unnamed file",
+      status: job.status,
+      created_at: job.created_at,
+    })),
   }
 }
 
@@ -208,7 +262,7 @@ export async function fetchSmartStorageReportAvailability(userId: string): Promi
     .from("document_fields")
     .select("file_id, total_amount, gross_income, net_income, vendor_name, employer_name, counterparty_name, files!inner(document_type, user_id)")
     .eq("files.user_id", userId)
-    .neq("normalization_status", "excluded")
+    .in("normalization_status", ["normalized", "manual"])
   if (fieldsError) throw new Error(fieldsError.message)
 
   const rows = fields ?? []

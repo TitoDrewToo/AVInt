@@ -5,6 +5,7 @@ import { useTheme } from "next-themes"
 import { Navbar } from "@/components/navbar"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 import { supabase } from "@/lib/supabase"
+import { fetchDashboardReadyFields } from "@/lib/normalized-data-context"
 import { useEntitlement } from "@/hooks/use-entitlement"
 import {
   computeCorpusSignature,
@@ -34,6 +35,8 @@ import { Tip, TooltipProvider } from "@/components/ui/tip"
 import Link from "next/link"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { DashboardAssistant } from "@/components/smart-dashboard/dashboard-assistant"
+import { isRenderableDashboardWidget } from "@/lib/dashboard-widget-spec"
 
 import {
   CURATED_ACCENTS,
@@ -1586,7 +1589,7 @@ export default function SmartDashboardPage() {
         .maybeSingle(),
       supabase
         .from("advanced_widgets")
-        .select("id")
+        .select("id, widget_type, title, description, insight")
         .eq("user_id", session.user.id)
         .or("expires_at.is.null,expires_at.gt." + new Date().toISOString()),
     ])
@@ -1597,7 +1600,7 @@ export default function SmartDashboardPage() {
     if (data?.layout) {
       const saved = data.layout
       const preferences = normalizeDashboardPreferences(saved.preferences)
-      const activeAdvancedIds = new Set((activeAdvancedWidgets ?? []).map((widget) => widget.id))
+      const activeAdvancedIds = new Set((activeAdvancedWidgets ?? []).filter(isRenderableDashboardWidget).map((widget) => widget.id))
       const savedWidgets: Widget[] = saved.widgets?.length
         ? applyWidgetCurrencyModes(saved.widgets, preferences.widgetCurrencyModes)
           .filter((widget) => !widget.advancedId || activeAdvancedIds.has(widget.advancedId))
@@ -1660,17 +1663,7 @@ export default function SmartDashboardPage() {
 
     const fileIds = userFiles.map((f) => f.id)
 
-    let query = supabase
-      .from("document_fields")
-      .select("file_id, document_date, total_amount, gross_income, net_income, expense_category, merchant_domain, currency, normalization_status, raw_json, files!inner(document_type, filename)")
-      .in("file_id", fileIds)
-      .neq("normalization_status", "excluded")
-      .order("document_date", { ascending: true })
-
-    if (dateFrom) query = query.gte("document_date", dateFrom)
-    if (dateTo) query = query.lte("document_date", dateTo)
-
-    const { data: fields, error: fieldsError } = await query
+    const { data: fields, error: fieldsError } = await fetchDashboardReadyFields(session.user.id, { fileIds, dateFrom, dateTo })
     if (fieldsError) {
       clearFinancialData()
       setDataError("We could not refresh your extracted data. Please try again.")
@@ -1744,12 +1737,7 @@ export default function SmartDashboardPage() {
       return
     }
 
-    const fileIds = userFiles.map((f) => f.id)
-    const { data: fieldRows } = await supabase
-      .from("document_fields")
-      .select("document_date, vendor_normalized, expense_category, merchant_domain, merchant_address_region, is_recurring, line_items")
-      .in("file_id", fileIds)
-      .neq("normalization_status", "excluded")
+    const { data: fieldRows } = await fetchDashboardReadyFields(session.user.id)
 
     const signature = computeCorpusSignature(fieldRows ?? [])
     setCurrentSignature(signature)
@@ -1795,7 +1783,7 @@ export default function SmartDashboardPage() {
       .or("expires_at.is.null,expires_at.gt." + new Date().toISOString())
       .order("is_starred", { ascending: false })
       .order("created_at", { ascending: false })
-    if (data) setAdvancedWidgetsList(data)
+    if (data) setAdvancedWidgetsList(data.filter(isRenderableDashboardWidget))
   }, [session])
 
   useEffect(() => { loadAdvancedWidgets() }, [loadAdvancedWidgets])
@@ -1847,6 +1835,7 @@ export default function SmartDashboardPage() {
   }
 
   const plotAdvancedWidget = async (aw: AdvancedWidget) => {
+    if (!isRenderableDashboardWidget(aw)) return
     if (widgets.some(w => w.advancedId === aw.id)) return
     await supabase.from("advanced_widgets").update({ is_plotted: true, expires_at: null }).eq("id", aw.id)
     setAdvancedWidgetsList(prev => prev.map(w => w.id === aw.id ? { ...w, is_plotted: true, expires_at: null } : w))
@@ -2331,6 +2320,7 @@ export default function SmartDashboardPage() {
           <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
           {isRefreshing ? "Refreshing…" : "Refresh"}
         </button>
+        <DashboardAssistant />
         <div
           className="relative"
           onMouseEnter={!isMobile ? cancelDateFilterClose : undefined}

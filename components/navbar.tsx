@@ -158,12 +158,12 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
                   <div role="menu" className="glass-surface absolute right-0 top-full mt-3 w-60 rounded-xl p-2" style={{ fontFamily: 'var(--font-aldrich), "Aldrich", var(--font-geist), "Geist", "Geist Fallback", sans-serif' }}>
                     <p className="px-3 pb-1 pt-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Tools</p>
                     {studioTools.map((tool) => (
-                      <Link key={tool.href} href={tool.href} role="menuitem" onClick={() => setToolsOpen(false)} className="block rounded-lg px-3 py-2 text-sm text-foreground/80 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]">
+                      <Link key={tool.href} href={tool.href} target="_blank" rel="noopener noreferrer" role="menuitem" onClick={() => setToolsOpen(false)} className="block rounded-lg px-3 py-2 text-sm text-foreground/80 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]">
                         {tool.name}
                       </Link>
                     ))}
                     {MCP_CONNECTOR_CLIENT_ENABLED && (
-                      <Link href="/tools/smart-storage/connect" role="menuitem" onClick={() => setToolsOpen(false)} className="block rounded-lg px-3 py-2 text-sm text-foreground/80 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]">
+                      <Link href="/tools/smart-storage/connect" target="_blank" rel="noopener noreferrer" role="menuitem" onClick={() => setToolsOpen(false)} className="block rounded-lg px-3 py-2 text-sm text-foreground/80 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]">
                         Connect to Claude
                       </Link>
                     )}
@@ -200,7 +200,7 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
         {showTools && mobileToolsOpen && (
           <div className="glass-surface mx-4 mt-2 rounded-2xl p-3 md:hidden" style={{ fontFamily: 'var(--font-aldrich), "Aldrich", var(--font-geist), "Geist", "Geist Fallback", sans-serif' }}>
             {toolLinks.map((tool, index) => (
-              <Link key={tool.href} href={tool.href} onClick={() => setMobileToolsOpen(false)} className={`block rounded-lg px-3 py-2.5 text-sm text-foreground/80 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)] ${index === studioTools.length ? "mt-1 border-t border-border/60 pt-3" : ""}`}>
+              <Link key={tool.href} href={tool.href} target="_blank" rel="noopener noreferrer" onClick={() => setMobileToolsOpen(false)} className={`block rounded-lg px-3 py-2.5 text-sm text-foreground/80 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)] ${index === studioTools.length ? "mt-1 border-t border-border/60 pt-3" : ""}`}>
                 {tool.name}
               </Link>
             ))}

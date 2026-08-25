@@ -13,6 +13,12 @@ export const SUPPORTED_DOCUMENT_TYPES = [
 
 export type DocumentType = typeof SUPPORTED_DOCUMENT_TYPES[number]
 export type DocumentVirtualView = "unclassified"
+export type SmartStorageAttentionState =
+  | "classification_required"
+  | "extraction_failed"
+  | "normalization_failed"
+  | "processing_slow"
+  | null
 export type DateRangePreset = "this_month" | "last_month" | "this_year" | "prev_year" | "custom"
 export type ClassificationSort = "date-desc" | "date-asc" | "name"
 export type ViewMode = "list" | "grid"
@@ -54,6 +60,10 @@ export interface UploadedFile {
   source_rows_json?: unknown
   field_count?: number
   document_fields_count?: number
+  attention_state?: SmartStorageAttentionState
+  normalization_error?: string | null
+  normalization_status?: "raw" | "normalized" | "failed" | "excluded" | "manual" | null
+  pipeline_stage?: "uploading" | "scanning" | "extracting" | "normalizing" | "ready" | "attention" | "quarantined" | "unknown"
   processing_job?: {
     status: string | null
     created_at: string | null
@@ -149,8 +159,9 @@ export function normalizeDocumentType(raw: string, confidence: number): Document
   return "general_document"
 }
 
-export function isUnclassifiedDocument(file: Pick<UploadedFile, "document_type">): boolean {
-  return !file.document_type || file.document_type === "unknown"
+export function isUnclassifiedDocument(file: Pick<UploadedFile, "document_type" | "attention_state" | "upload_status">): boolean {
+  if (file.upload_status === "quarantined") return false
+  return !file.document_type || file.document_type === "unknown" || Boolean(file.attention_state)
 }
 
 export function getPresetRange(preset: DateRangePreset): { from: string; to: string } {

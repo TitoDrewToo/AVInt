@@ -15,7 +15,7 @@ export function PrivacySecuritySection() {
                 <p className="mt-4 max-w-xl text-sm leading-relaxed text-muted-foreground">AVIntelligence is built for documents you would not leave in a public folder. We keep access controlled, make processing visible, and give you a direct path to delete your data.</p>
                 <div className="mt-6 flex flex-wrap gap-3">
                   <Link href="/privacy" className="text-sm font-medium text-primary hover:underline">Read the privacy policy</Link>
-                  <Link href="/tools/smart-storage" className="text-sm font-medium text-primary hover:underline">Start free</Link>
+                  <Link href="/tools/smart-storage" target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-primary hover:underline">Start free</Link>
                 </div>
               </div>
               <div className="grid gap-4 sm:grid-cols-3 md:grid-cols-1">

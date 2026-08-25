@@ -186,30 +186,6 @@ function filterAnalysisAppliedFindingIds(analysis: SheetAnalysis): SheetAnalysis
   }
 }
 
-function applyPendingChangesToRows(rows: DocumentFieldRow[], changes: PendingChange[]) {
-  const rowById = new Map(rows.map((row) => [row.id, { ...row }]))
-  for (const change of changes) {
-    if (change.action.kind === "exclude") {
-      for (const rowId of change.affected_row_ids) {
-        const row = rowById.get(rowId)
-        if (row) row.normalization_status = "excluded"
-      }
-      continue
-    }
-
-    const field = change.action.field
-    if (!field) continue
-    const normalizedField = normalizeFieldName(field)
-    for (const rowId of change.affected_row_ids) {
-      const row = rowById.get(rowId)
-      if (row && normalizedField in row) {
-        (row as any)[normalizedField] = change.action.value ?? null
-      }
-    }
-  }
-  return rowById
-}
-
 function groupedDocumentFieldUpdates(changes: PendingChange[]) {
   const excludeIds = new Set<string>()
   const setFieldGroups = new Map<string, { field: string; value: string | null; rowIds: Set<string> }>()
@@ -752,21 +728,17 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
       if (shouldRenormalize && affectedByRenormalize > 0) {
         const userToken = (await supabase.auth.getSession()).data.session?.access_token
         const rowIdsToRenormalize = [...new Set(renormalizableChanges.flatMap((change) => change.affected_row_ids))]
-        const updatedRowById = applyPendingChangesToRows(rows, changesToSave)
-        await Promise.allSettled(
-          rowIdsToRenormalize.map((rowId) => {
-              const row = updatedRowById.get(rowId)
-              return fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/normalize-document`, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "Authorization": `Bearer ${userToken ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
-                  "apikey": process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
-                },
-                body: JSON.stringify({ file_id: fileId, fields: row }),
-              })
-            }),
-        )
+        if (userToken && rowIdsToRenormalize.length > 0) {
+          const retryResponse = await fetch("/api/retry-normalization", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${userToken}`,
+            },
+            body: JSON.stringify({ file_id: fileId, row_ids: rowIdsToRenormalize }),
+          })
+          if (!retryResponse.ok) throw new Error("Changes saved, but normalization retry could not start.")
+        }
       }
 
       const [{ data: fileData, error: fileError }, { data: fieldRows, error: rowsError }] = await Promise.all([

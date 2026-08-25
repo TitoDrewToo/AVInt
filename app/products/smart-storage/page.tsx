@@ -11,18 +11,18 @@ import { PrivacySecuritySection } from "@/components/sections/privacy-security"
 import { ChevronDown } from "lucide-react"
 
 export const metadata = {
-  title: "Smart Storage — Clean Expense Reports from Your Documents | AVIntelligence",
-  description: "Extract vendors, dates, amounts, categories, and recurring expenses from receipts and invoices into searchable records and exportable reports. Now available as a Claude connector.",
+  title: "Smart Storage — Structured Records from Your Documents | AVIntelligence",
+  description: "Extract vendors, dates, amounts, categories, and recurring expenses from receipts and invoices into searchable records and repeatable outputs. Now available as a Claude connector.",
   openGraph: {
-    title: "Smart Storage — Clean Expense Reports from Your Documents | AVIntelligence",
-    description: "Extract vendors, dates, amounts, categories, and recurring expenses from receipts and invoices into searchable records and exportable reports. Now available as a Claude connector.",
+    title: "Smart Storage — Structured Records from Your Documents | AVIntelligence",
+    description: "Extract vendors, dates, amounts, categories, and recurring expenses from receipts and invoices into searchable records and repeatable outputs. Now available as a Claude connector.",
     url: "https://www.avintph.com/products/smart-storage",
     siteName: "AVIntelligence",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Smart Storage — Clean Expense Reports from Your Documents | AVIntelligence",
+    title: "Smart Storage — Structured Records from Your Documents | AVIntelligence",
     description: "Extract vendors, dates, amounts, categories, and recurring expenses from receipts and invoices. Now available as a Claude connector.",
   },
 }
@@ -202,7 +202,7 @@ const capabilities = [
 const workflowSteps = [
   { icon: <IconUpload />,     title: "Upload",                            step: "01" },
   { icon: <IconLayers />,     title: "AI extracts & categorizes",         step: "02" },
-  { icon: <IconFileOutput />, title: "Export an accountant-ready report", step: "03" },
+  { icon: <IconFileOutput />, title: "Export a structured report", step: "03" },
 ]
 
 const smartStorageFaq = [
@@ -278,7 +278,7 @@ export default function SmartStorageProductPage() {
           "name": "AVIntelligence Smart Storage",
           "applicationCategory": "FinanceApplication",
           "operatingSystem": "Web",
-          "description": "AI-powered financial document storage and analysis. Automatically extracts data from receipts, invoices, payslips, and contracts.",
+          "description": "AI-powered document storage and analysis. Automatically extracts data from receipts, invoices, payslips, and contracts.",
           "url": "https://www.avintph.com/products/smart-storage",
           "offers": {
             "@type": "Offer",
@@ -307,13 +307,9 @@ export default function SmartStorageProductPage() {
                   </p>
                 </FadeUp>
                 <FadeUp delay={0.18} className="mt-10 flex flex-col items-start gap-4 sm:flex-row">
-                  <Link href="/tools/smart-storage">
-                    <Button size="lg" className="rounded-xl bg-primary text-primary-foreground hover:bg-primary/90">
-                      Start free
-                    </Button>
-                  </Link>
+                  <StartFreeButton tool="smart-storage" />
                   <Link href="/products/smart-dashboard">
-                    <Button variant="outline" size="lg" className="rounded-xl glass-surface-sm hover:text-primary">
+                    <Button variant="outline" size="lg" className="cw-button-flow rounded-xl glass-surface-sm hover:text-primary">
                       Explore Dashboard
                     </Button>
                   </Link>
@@ -461,8 +457,8 @@ export default function SmartStorageProductPage() {
             </StaggerContainer>
 
             <FadeUp className="mt-10 text-center">
-              <Link href="/tools/smart-storage/connect">
-                <Button size="lg" className="rounded-xl bg-primary text-primary-foreground hover:bg-primary/90">Connect to Claude</Button>
+              <Link href="/tools/smart-storage/connect" target="_blank" rel="noopener noreferrer">
+                <Button size="lg" className="cw-button-flow rounded-xl bg-primary text-primary-foreground hover:bg-primary/90">Connect to Claude</Button>
               </Link>
               <p className="mt-3 text-xs text-muted-foreground">Pro &amp; Business plans. Secure OAuth sign-in — AVIntelligence never sees your password.</p>
             </FadeUp>
@@ -596,7 +592,7 @@ export default function SmartStorageProductPage() {
                 <div className="mt-10 flex flex-col items-start gap-4 sm:flex-row">
                   <StartFreeButton tool="smart-storage" />
                   <Link href="/studio#studio-inquiry">
-                    <Button variant="outline" size="lg" className="rounded-xl glass-surface-sm">
+                    <Button variant="outline" size="lg" className="cw-button-flow rounded-xl glass-surface-sm">
                       View Pricing
                     </Button>
                   </Link>

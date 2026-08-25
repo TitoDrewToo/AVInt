@@ -160,13 +160,9 @@ export default function SmartDashboardProductPage() {
                 </FadeUp>
                 <FadeUp delay={0.2}>
                   <div className="mt-10 flex flex-col items-start gap-4 sm:flex-row">
-                    <Link href="/studio#studio-inquiry">
-                      <Button size="lg" className="rounded-xl bg-primary text-primary-foreground hover:bg-primary/90">
-                        View Pricing
-                      </Button>
-                    </Link>
+                    <StartFreeButton tool="smart-dashboard" />
                     <Link href="/products/smart-storage">
-                      <Button variant="outline" size="lg" className="rounded-xl glass-surface-sm hover:text-primary">
+                      <Button variant="outline" size="lg" className="cw-button-flow rounded-xl glass-surface-sm hover:text-primary">
                         See Smart Storage
                       </Button>
                     </Link>
@@ -255,7 +251,7 @@ export default function SmartDashboardProductPage() {
                 <div className="mt-10 flex flex-col items-start gap-4 sm:flex-row">
                   <StartFreeButton tool="smart-dashboard" />
                   <Link href="/studio#studio-inquiry">
-                    <Button variant="outline" size="lg" className="rounded-xl glass-surface-sm">
+                    <Button variant="outline" size="lg" className="cw-button-flow rounded-xl glass-surface-sm">
                       View Pricing
                     </Button>
                   </Link>

@@ -828,6 +828,24 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
         throw new Error(fileErr.message ?? "Failed to update document type.")
       }
 
+      // A classification correction is also a recovery opportunity. The
+      // server route owns the service-role call to normalize-document after
+      // checking the file belongs to the signed-in user.
+      const session = (await supabase.auth.getSession()).data.session
+      if (session?.access_token) {
+        const retryResponse = await fetch("/api/retry-normalization", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ file_id: fileId }),
+        })
+        if (!retryResponse.ok) {
+          throw new Error("Classification saved, but normalization retry could not start.")
+        }
+      }
+
       onSaved(fileId, form.document_type)
       onClose()
     } catch (err: unknown) {

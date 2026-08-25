@@ -9,6 +9,7 @@ import { checkRateLimit, type RateLimitBucket } from "@/lib/rate-limit"
 import { ingestFiles } from "@/lib/smart-storage-ingest"
 import { getExport, getReport } from "@/lib/report-engine"
 import { shapeMcpReportResult } from "@/lib/mcp-report-shaping"
+import { buildDashboardAIContext } from "@/lib/dashboard-ai-context"
 import { PLAN_LIMITS, usageWindowForTier } from "@/supabase/functions/_shared/plan-limits"
 
 export const runtime = "nodejs"
@@ -30,7 +31,7 @@ function limitedResult(message: string) {
   return { content: [{ type: "text" as const, text: `${message} Retry after a short pause.` }], isError: true }
 }
 
-async function toolGuard(userId: string, entitlement: ReturnType<typeof computeEntitlement>, tool: "ingest" | "report" | "export") {
+async function toolGuard(userId: string, entitlement: ReturnType<typeof computeEntitlement>, tool: "ingest" | "report" | "export" | "profile") {
   if (entitlement.tier !== "pro" && entitlement.tier !== "business") {
     return featureResult(`The Claude connector is a Pro feature — contact AVIntelligence at ${process.env.NEXT_PUBLIC_APP_URL ?? "https://www.avintph.com"}/studio#studio-inquiry.`)
   }
@@ -56,6 +57,17 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
       if (blocked) return blocked
       const result = await ingestFiles(userId, entitlement, files)
       return { content: [{ type: "text", text: JSON.stringify({ records: result }, null, 2) }] }
+    })
+
+    server.registerTool("smart_storage.profile", {
+      title: "Smart Storage data profile",
+      description: "Read-only. Describe the signed-in user's current normalized data model, available document types, currencies, readiness, and recent records. Use this before suggesting a dashboard visual or other custom output.",
+      inputSchema: z.object({}),
+    }, async () => {
+      const blocked = await toolGuard(userId, entitlement, "profile")
+      if (blocked) return blocked
+      const profile = await buildDashboardAIContext(userId)
+      return { content: [{ type: "text", text: JSON.stringify(profile, null, 2) }] }
     })
 
     server.registerTool("smart_storage.report", {
@@ -94,10 +106,10 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
     serverInfo: { name: "avintelligence-smart-storage", version: "1.0.0" },
     instructions: [
       "AVIntelligence Smart Storage, operated by AVIntelligence (https://www.avintph.com).",
-      "A document-intelligence service that turns a user's financial documents (receipts, invoices, payslips, statements) into structured reports and accounting exports.",
+      "A document-intelligence service that turns a user's files into a permissioned normalized data model, dashboards, structured outputs, and selected accounting exports.",
       "Every tool acts ONLY on the documents belonging to the signed-in AVIntelligence account, matched by the authenticated email. No data is shared across accounts.",
       "Access requires an active Pro or Business plan. Authentication is handled via AVIntelligence's OAuth (WorkOS); this server never receives passwords.",
-      "Tools: smart_storage.ingest (add documents), smart_storage.report (tax bundle / business-expense report), smart_storage.export (QuickBooks / Xero file). Report and export are read-only.",
+      "Tools: smart_storage.ingest (add documents), smart_storage.profile (inspect the normalized data model), smart_storage.report (selected report examples), smart_storage.export (QuickBooks / Xero file). Report, profile, and export are read-only.",
     ].join(" "),
   })
 }

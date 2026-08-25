@@ -2801,7 +2801,7 @@ export default function SmartStoragePage() {
       </Sheet>
 
       <Sheet open={dataModelOpen} onOpenChange={setDataModelOpen}>
-        <SheetContent side="right" className="w-full max-w-none p-0 md:left-[15%] md:w-[85%]">
+        <SheetContent side="top" className="inset-x-0 top-0 h-full w-full max-w-none border-b-0 p-0">
           <DataModelView files={files} />
         </SheetContent>
       </Sheet>

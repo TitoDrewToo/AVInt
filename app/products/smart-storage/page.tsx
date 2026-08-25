@@ -12,10 +12,10 @@ import { ChevronDown } from "lucide-react"
 
 export const metadata = {
   title: "Smart Storage — Structured Records from Your Documents | AVIntelligence",
-  description: "Extract vendors, dates, amounts, categories, and recurring expenses from receipts and invoices into searchable records and repeatable outputs. Now available as a Claude connector.",
+  description: "Turn receipts, invoices, statements, and other documents into searchable records, dashboards, and repeatable outputs. Now available as a Claude connector.",
   openGraph: {
     title: "Smart Storage — Structured Records from Your Documents | AVIntelligence",
-    description: "Extract vendors, dates, amounts, categories, and recurring expenses from receipts and invoices into searchable records and repeatable outputs. Now available as a Claude connector.",
+    description: "Turn receipts, invoices, statements, and other documents into searchable records, dashboards, and repeatable outputs. Now available as a Claude connector.",
     url: "https://www.avintph.com/products/smart-storage",
     siteName: "AVIntelligence",
     type: "website",
@@ -23,7 +23,7 @@ export const metadata = {
   twitter: {
     card: "summary_large_image",
     title: "Smart Storage — Structured Records from Your Documents | AVIntelligence",
-    description: "Extract vendors, dates, amounts, categories, and recurring expenses from receipts and invoices. Now available as a Claude connector.",
+    description: "Turn documents into structured records and useful outputs. Now available as a Claude connector.",
   },
 }
 
@@ -228,11 +228,11 @@ const smartStorageFaq = [
   },
   {
     question: "What is the Claude connector — and why is it a big deal?",
-    answer: `It connects Smart Storage directly to Claude, so your books become something you can just talk to. Instead of opening dashboards and clicking through exports, you ask — "run my tax bundle for 2025" or "give me a QuickBooks export for this quarter" — and Claude does it against your own account, right in the chat. It turns a multi-step workflow into a single sentence.`,
+    answer: `It connects Smart Storage directly to Claude, so your structured records become something you can just talk to. Instead of opening dashboards and clicking through exports, you ask — "summarize my 2025 expenses" or "give me a QuickBooks export for this quarter" — and Claude does it against your own account, right in the chat. It turns a multi-step workflow into a single sentence.`,
   },
   {
     question: "What can I actually do from inside Claude?",
-    answer: `Three things, all on your own documents: add new documents to Smart Storage, run your Tax Bundle and Business Expense reports, and generate an import-ready QuickBooks or Xero file — without leaving the conversation. Your other reports and full dashboards live in the web app.`,
+    answer: `Three things, all on your own documents: add new documents to Smart Storage, run supported reports, and generate an import-ready QuickBooks or Xero file — without leaving the conversation. Your other reports and full dashboards live in the web app.`,
   },
   {
     question: "Why use Smart Storage if I can just upload files to Claude directly?",
@@ -244,7 +244,7 @@ const smartStorageFaq = [
   },
   {
     question: "Which plan do I need for the Claude connector?",
-    answer: `Pro or Business. It's included with both.`,
+    answer: `Pro. It's included with the Pro plan.`,
   },
   {
     question: "Is my data private and secure?",
@@ -259,8 +259,8 @@ const smartStorageFaq = [
     answer: `High-confidence items flow straight through; anything uncertain is flagged for you to review and reclassify, so a questionable line never quietly lands in a report. You always keep control of the final numbers.`,
   },
   {
-    question: "Is this tax advice or a replacement for my accountant?",
-    answer: `No — and we're deliberate about that. Smart Storage organizes your records and hands your accountant a clean, Schedule C–style starting point. It's built to save you both hours, not to replace a licensed preparer. Always confirm filings with a professional.`,
+    question: "Does Smart Storage replace a financial professional?",
+    answer: `No. Smart Storage organizes your source documents and structured records so you can review, export, or share them with the people and systems you already use. It is a data and workflow tool, not professional financial advice.`,
   },
 ]
 
@@ -423,7 +423,7 @@ export default function SmartStorageProductPage() {
             <FadeUp className="text-center">
               <h2 className="text-sm font-medium uppercase tracking-wider text-primary">Works with QuickBooks &amp; Xero</h2>
               <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
-                Export your organized expenses as import-ready files for QuickBooks and Xero, or hand your accountant a clean Schedule C bundle.
+                Export your organized expenses as import-ready files for QuickBooks and Xero, or hand your team a clean CSV and report set.
               </p>
             </FadeUp>
           </div>
@@ -436,13 +436,13 @@ export default function SmartStorageProductPage() {
               <h2 className="text-sm font-medium uppercase tracking-wider text-primary">Now works inside Claude</h2>
               <h3 className="mt-4 text-balance text-3xl font-semibold tracking-tight text-foreground md:text-4xl">Your Smart Storage, now operable from Claude.</h3>
               <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
-                Your documents already live in Smart Storage. Connect it to Claude and run the whole workflow in plain language — pull your Schedule C tax bundle and get back an import-ready QuickBooks or Xero file, without opening the dashboard. It works securely on your own account and it&apos;s included with Pro.
+                Your documents already live in Smart Storage. Connect it to Claude and run the whole workflow in plain language — summarize records, request a report, or get back an import-ready QuickBooks or Xero file without opening the dashboard. It works securely on your own account and it&apos;s included with Pro.
               </p>
             </FadeUp>
 
             <StaggerContainer className="mt-10 grid gap-4 md:grid-cols-3">
               {[
-                { icon: <IconFileText />, title: "Report", body: "Ask for your Tax Bundle or Business Expense report and get the numbers back in chat — straight from the documents already in Smart Storage." },
+                { icon: <IconFileText />, title: "Report", body: "Ask for a supported report and get the results back in chat — straight from the documents already in Smart Storage." },
                 { icon: <IconFileOutput />, title: "Export", body: "Generate an import-ready QuickBooks or Xero file — same workflow, either platform — without leaving the conversation." },
                 { icon: <IconUpload />, title: "File (bonus)", body: "Have a new receipt? Drop it into the chat and Claude files it into Smart Storage, classified and extracted." },
               ].map((item) => (
@@ -460,7 +460,7 @@ export default function SmartStorageProductPage() {
               <Link href="/tools/smart-storage/connect" target="_blank" rel="noopener noreferrer">
                 <Button size="lg" className="cw-button-flow rounded-xl bg-primary text-primary-foreground hover:bg-primary/90">Connect to Claude</Button>
               </Link>
-              <p className="mt-3 text-xs text-muted-foreground">Pro &amp; Business plans. Secure OAuth sign-in — AVIntelligence never sees your password.</p>
+              <p className="mt-3 text-xs text-muted-foreground">Pro plan. Secure OAuth sign-in — AVIntelligence never sees your password.</p>
             </FadeUp>
           </div>
         </section>

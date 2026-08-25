@@ -246,7 +246,7 @@ function processingBadgeState(file: UploadedFile): ProcessingBadgeState | null {
 }
 
 function fileDocumentTypeLabel(file: UploadedFile): { label: string; isFailed: boolean } {
-  if (file.attention_state === "normalization_failed") return { label: "Needs normalization", isFailed: true }
+  if (file.attention_state === "normalization_failed") return { label: "Needs review", isFailed: true }
   if (file.attention_state === "extraction_failed") return { label: "Needs extraction retry", isFailed: true }
   if (file.attention_state === "processing_slow") return { label: "Still processing", isFailed: false }
   if (file.attention_state === "classification_required") return { label: "Needs classification", isFailed: false }
@@ -1756,14 +1756,14 @@ export default function SmartStoragePage() {
     const badge = processingBadgeState(file)
     if (!badge) return null
     const title = badge === "normalization_failed"
-      ? file.normalization_error ?? "Normalization needs attention"
+      ? file.normalization_error ?? "Processing needs attention"
       : badge === "classification_required"
       ? "Choose the document type to continue processing"
       : badge === "failed"
       ? file.processing_job?.error_message ?? "Processing failed"
       : "Processing is taking longer than expected"
     const label = badge === "normalization_failed"
-      ? "Normalization failed - retry"
+      ? "Processing failed - retry"
       : badge === "classification_required"
       ? "Needs classification"
       : badge === "failed" ? "Failed - retry" : "Still working..."

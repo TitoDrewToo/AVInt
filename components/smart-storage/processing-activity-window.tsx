@@ -18,10 +18,18 @@ function stageForStatus(status: string | null) {
     case "scanning":
       return "scanning"
     case "processing":
-      return "extracting + normalizing"
+      return "processing"
     default:
       return "working"
   }
+}
+
+const pipelineStages = ["Prescan", "Extract", "Ready"]
+
+function activeStage(status: string | null) {
+  if (status === "uploaded" || status === "pending_scan" || status === "scanning") return 0
+  if (status === "processing") return 1
+  return 0
 }
 
 function formatAge(createdAt: string | null) {
@@ -59,6 +67,24 @@ export function ProcessingActivityWindow({ isProcessing, activeJobs, attentionCo
       </div>
 
       <div className="space-y-1 px-3 py-2 font-mono text-[10px] leading-relaxed">
+        {isProcessing && (
+          <div className="mb-2 grid grid-cols-4 gap-1 border-b border-border/50 pb-2" aria-label="Pipeline stages">
+            {pipelineStages.map((stage, index) => {
+              const currentStage = activeJobs.length > 0 ? Math.max(...activeJobs.map((job) => activeStage(job.status))) : 0
+              const complete = index < currentStage
+              const current = index === currentStage
+              return <div key={stage} className={`flex flex-col gap-1 ${complete || current ? "text-primary" : "text-muted-foreground/50"}`}><span className={`h-1 rounded-full ${complete ? "bg-primary" : current ? "bg-primary/60" : "bg-border"} ${current ? "animate-pulse" : ""}`} /><span>{stage}</span></div>
+            })}
+          </div>
+        )}
+
+        {isProcessing && activeJobs.length === 0 && (
+          <div className="flex items-center gap-2 pb-1 text-muted-foreground" aria-live="polite">
+            <span className="text-primary" aria-hidden="true">›</span>
+            <span>Starting secure prescan…</span>
+          </div>
+        )}
+
         {visibleJobs.map((job) => (
           <div key={`${job.fileId}-${job.created_at}`} className="flex min-w-0 items-center gap-2 text-muted-foreground">
             <span className="text-primary" aria-hidden="true">›</span>
@@ -72,6 +98,13 @@ export function ProcessingActivityWindow({ isProcessing, activeJobs, attentionCo
           <div className="flex items-center gap-2 pt-1 text-amber-700 dark:text-amber-300">
             <CircleAlert className="h-3 w-3 shrink-0" aria-hidden="true" />
             <span>{attentionCount} file{attentionCount === 1 ? "" : "s"} need review before dashboard use</span>
+          </div>
+        )}
+
+        {!isProcessing && attentionCount > 0 && (
+          <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300" aria-live="polite">
+            <Activity className="h-3 w-3 shrink-0" aria-hidden="true" />
+            <span>Pipeline paused until review is complete</span>
           </div>
         )}
 

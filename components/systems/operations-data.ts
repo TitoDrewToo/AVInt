@@ -145,6 +145,24 @@ async function fetchStatusFeed(url: string): Promise<SurfaceState> {
   }
 }
 
+async function fetchGeminiStatus(): Promise<SurfaceState> {
+  const products = ["generative", "vertex", "ai platform", "gemini"]
+  try {
+    const response = await fetch("https://status.cloud.google.com/incidents.json", {
+      next: { revalidate: 600 },
+      signal: AbortSignal.timeout(8000),
+    })
+    if (!response.ok) return "unknown"
+    const incidents = await response.json() as Array<{ end?: string | null; severity?: string; affected_products?: Array<{ title?: string }> }>
+    const active = incidents.filter((incident) => incident.end === null)
+    const relevant = active.filter((incident) => (incident.affected_products ?? []).some((product) => products.some((keyword) => product.title?.toLowerCase().includes(keyword))))
+    if (!relevant.length) return "operational"
+    return relevant.some((incident) => incident.severity === "high") ? "down" : "degraded"
+  } catch {
+    return "unknown"
+  }
+}
+
 async function getDeploymentSummary(): Promise<DeploymentSummary> {
   const token = process.env.VERCEL_TOKEN
   if (!token) {
@@ -213,12 +231,13 @@ function overallState(states: SurfaceState[]): SurfaceState {
 }
 
 export async function getStatusOverview(): Promise<StatusOverview> {
-  const [deployment, supabase, vercelPlatform, openai, anthropic] = await Promise.all([
+  const [deployment, supabase, vercelPlatform, openai, anthropic, gemini] = await Promise.all([
     getDeploymentSummary(),
     getSupabaseState(),
     fetchStatusFeed("https://www.vercel-status.com/api/v2/status.json"),
     fetchStatusFeed("https://status.openai.com/api/v2/status.json"),
     fetchStatusFeed("https://status.anthropic.com/api/v2/status.json"),
+    fetchGeminiStatus(),
   ])
   // If this code is executing, the server rendered this page.
   const webApplicationState: SurfaceState = "operational"
@@ -231,6 +250,7 @@ export async function getStatusOverview(): Promise<StatusOverview> {
     { name: "Vercel platform", detail: "Dependency status feed", state: vercelPlatform },
     { name: "OpenAI", detail: "Dependency status feed", state: openai },
     { name: "Anthropic", detail: "Dependency status feed", state: anthropic },
+    { name: "Gemini API", detail: "Google Cloud Generative AI / Vertex AI incidents feed", state: gemini },
   ]
   return {
     overall: overallState([webApplicationState, supabase]),

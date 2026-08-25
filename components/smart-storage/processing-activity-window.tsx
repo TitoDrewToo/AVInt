@@ -47,9 +47,37 @@ function formatAge(createdAt: string | null) {
 }
 
 export function ProcessingActivityWindow({ isProcessing, activeJobs, receivedCount = 0 }: ProcessingActivityWindowProps) {
-  if (!isProcessing && activeJobs.length === 0) return null
+  const hasActivity = isProcessing || activeJobs.length > 0
+  const [isVisible, setIsVisible] = useState(hasActivity)
+  const [renderJobs, setRenderJobs] = useState(activeJobs)
 
-  const statsLabel = activeJobs.length > 0
+  useEffect(() => {
+    if (hasActivity) {
+      setIsVisible(true)
+      return
+    }
+
+    const timer = window.setTimeout(() => setIsVisible(false), 360)
+    return () => window.clearTimeout(timer)
+  }, [hasActivity])
+
+  useEffect(() => {
+    if (activeJobs.length > 0) {
+      setRenderJobs(activeJobs)
+      return
+    }
+    if (isProcessing) {
+      setRenderJobs([])
+      return
+    }
+
+    const timer = window.setTimeout(() => setRenderJobs([]), 360)
+    return () => window.clearTimeout(timer)
+  }, [activeJobs, isProcessing])
+
+  if (!isVisible && !hasActivity) return null
+
+  const statsLabel = !hasActivity ? "" : activeJobs.length > 0
     ? activeJobs.length === 1 && receivedCount === 1
       ? "1/1 in progress"
       : `${activeJobs.length} active`
@@ -60,7 +88,7 @@ export function ProcessingActivityWindow({ isProcessing, activeJobs, receivedCou
   return (
     <section
       aria-label="Smart Storage processing activity"
-      className="glass-surface-sm mx-3 mb-3 overflow-hidden rounded-xl border border-border/70 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-top-1 motion-safe:duration-300"
+      className={`glass-surface-sm mx-3 mb-3 overflow-hidden rounded-xl border border-border/70 transition-opacity duration-300 ease-out motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-top-1 motion-safe:duration-300 ${hasActivity ? "opacity-100" : "pointer-events-none opacity-0"}`}
     >
       <div className="flex items-center justify-between gap-3 border-b border-border/60 px-3 py-2">
         <div className="flex min-w-0 items-center gap-2">
@@ -80,9 +108,9 @@ export function ProcessingActivityWindow({ isProcessing, activeJobs, receivedCou
           </div>
         )}
 
-        {activeJobs.length > 0 && (
+        {renderJobs.length > 0 && (
           <div className="max-h-[3.75rem] space-y-1 overflow-y-auto overscroll-contain pr-1 [scrollbar-width:thin]" aria-live="polite">
-            {activeJobs.map((job) => (
+            {renderJobs.map((job) => (
               <div key={`${job.fileId}-${job.created_at}`} className="flex min-w-0 items-center gap-3 text-muted-foreground motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-300">
                 <span className="text-primary motion-safe:animate-pulse" aria-hidden="true">›</span>
                 <span className="min-w-0 flex-1 truncate text-foreground/85">{job.filename}</span>

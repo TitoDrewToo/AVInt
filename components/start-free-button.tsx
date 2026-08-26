@@ -18,7 +18,11 @@ export function StartFreeButton({ tool }: { tool: "smart-storage" | "smart-dashb
     return () => { active = false; subscription.unsubscribe() }
   }, [])
 
-  const label = entitlement.loading ? "Checking…" : entitlement.isActive ? "Launch" : "Start free"
+  const label = entitlement.loading
+    ? "Checking…"
+    : entitlement.isActive
+      ? tool === "smart-storage" ? "Launch Smart Storage" : "Launch Smart Dashboard"
+      : "Start free"
 
   return (
     <Link href={`/tools/${tool}`} target="_blank" rel="noopener noreferrer">

@@ -1,9 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
+import type { Session } from "@supabase/supabase-js"
 import { ArrowUpRight, Check } from "lucide-react"
 import { FadeUp, StaggerContainer, StaggerItem } from "@/components/fade-up"
+import { supabase } from "@/lib/supabase"
+import { useEntitlement } from "@/hooks/use-entitlement"
 
 interface PricingCardProps {
   name: string
@@ -11,16 +14,19 @@ interface PricingCardProps {
   annualPrice?: string
   features: string[]
   isAnnual?: boolean
+  hasActiveAccess?: boolean
+  entitlementLoading?: boolean
 }
 
-function PricingCard({ name, price, annualPrice, features, isAnnual }: PricingCardProps) {
+function PricingCard({ name, price, annualPrice, features, isAnnual, hasActiveAccess, entitlementLoading }: PricingCardProps) {
   const displayPrice = isAnnual && annualPrice ? annualPrice : price
-  const href = name === "Free"
+  const launchInstead = Boolean(hasActiveAccess)
+  const href = launchInstead || name === "Free"
     ? "/tools/smart-storage"
     : `/purchase/checkout?plan=${name === "Pro" ? (isAnnual ? "pro-annual" : "pro-monthly") : name === "Day Pass" ? "day-pass" : "gift-codes"}`
 
   return (
-    <Link href={href} target={name === "Free" ? "_blank" : undefined} rel={name === "Free" ? "noopener noreferrer" : undefined} className="group block h-full">
+    <Link href={href} target={launchInstead || name === "Free" ? "_blank" : undefined} rel={launchInstead || name === "Free" ? "noopener noreferrer" : undefined} className="group block h-full">
       <div className="glass-surface hover-bloom flex h-full flex-col rounded-2xl p-6 transition-all group-hover:border-primary/20 group-hover:[box-shadow:0_0_30px_-14px_var(--retro-glow-red)]">
         <h3 className={name === "Free" ? "text-2xl font-semibold uppercase tracking-[0.18em] text-foreground" : "text-lg font-semibold text-foreground"}>{name}</h3>
         {displayPrice && (
@@ -41,7 +47,7 @@ function PricingCard({ name, price, annualPrice, features, isAnnual }: PricingCa
           ))}
         </ul>
         <span className="cw-button-flow mt-7 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-medium text-primary-foreground transition-all group-hover:bg-primary/90">
-          {name === "Free" ? "Start free" : name === "Gift Codes" ? "Generate codes" : "Purchase"}
+          {entitlementLoading ? "Checking access…" : launchInstead ? "Launch Smart Storage" : name === "Free" ? "Start free" : name === "Gift Codes" ? "Generate codes" : "Purchase"}
           <ArrowUpRight className="h-4 w-4" />
         </span>
       </div>
@@ -75,6 +81,24 @@ const plans: PricingCardProps[] = [
 
 export function PricingPreviewSection() {
   const [isAnnual, setIsAnnual] = useState(false)
+  const [session, setSession] = useState<Session | null>(null)
+  const entitlement = useEntitlement(session)
+
+  useEffect(() => {
+    let active = true
+    supabase.auth.getSession().then(({ data }) => {
+      if (active) setSession(data.session)
+    }).catch(() => {
+      if (active) setSession(null)
+    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (active) setSession(nextSession)
+    })
+    return () => {
+      active = false
+      subscription.unsubscribe()
+    }
+  }, [])
 
   return (
     <section className="marketing-scroll-section marketing-scroll-section-final relative px-6">
@@ -120,7 +144,7 @@ export function PricingPreviewSection() {
         <StaggerContainer className="mt-12 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {plans.map((plan) => (
             <StaggerItem key={plan.name}>
-              <PricingCard {...plan} isAnnual={isAnnual} />
+              <PricingCard {...plan} isAnnual={isAnnual} hasActiveAccess={entitlement.isActive} entitlementLoading={entitlement.loading} />
             </StaggerItem>
           ))}
         </StaggerContainer>

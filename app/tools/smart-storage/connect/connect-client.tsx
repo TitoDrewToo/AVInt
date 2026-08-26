@@ -40,10 +40,14 @@ export default function ConnectClient({ oauthEnabled }: { oauthEnabled: boolean 
           </div>
           <div className="mt-6 border-t border-primary/15 pt-5">
             <p className="text-sm font-medium text-foreground">What you can do from Claude</p>
-            <ul className="mt-3 grid gap-2 text-sm text-muted-foreground">
-              <li>• Allow Claude access to your custom data intelligence</li>
+            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">Your files are stored once. Claude works from the current records in your Smart Storage account, so you can ask for a fresh result without re-uploading the same files or rebuilding your context.</p>
+            <ul className="mt-3 grid gap-3 text-sm text-muted-foreground">
+              <li>• Ask Claude to summarize the current records in your account and help you understand what your files contain.</li>
+              <li>• Request a Tax Bundle or Business Expense report using the documents already stored in your account, with optional date and folder scope.</li>
+              <li>• Generate a fresh import-ready QuickBooks or Xero CSV from your current records.</li>
+              <li>• Add new receipts, invoices, payslips, or statements from chat and have them filed into Smart Storage for future use.</li>
             </ul>
-            <p className="mt-4 text-xs text-muted-foreground">Available on Pro and Business plans. If the email does not match an AVIntelligence account, you’ll see: <span className="font-medium text-foreground">“Connect requires a Smart Storage account with this email”</span>.</p>
+            <p className="mt-4 text-xs text-muted-foreground">Each request works from your latest stored data. Custom comparisons, reports, and visual-ready outputs shaped by the information in your files are part of the direction we&apos;re building toward. Available on Pro and Business plans. If the email does not match an AVIntelligence account, you’ll see: <span className="font-medium text-foreground">“Connect requires a Smart Storage account with this email”</span>.</p>
           </div>
         </section>}
 

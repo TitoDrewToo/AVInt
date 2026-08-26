@@ -1,15 +1,22 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { GitBranch, Network, Table2 } from "lucide-react"
 
 import type { UploadedFile } from "@/lib/smart-storage"
+import { supabase } from "@/lib/supabase"
 
 type DataModelViewProps = {
   files: UploadedFile[]
 }
 
 type ModelView = "lineage" | "schema"
+
+type VirtualModel = {
+  records: Array<{ id: string; document_type: string | null; status: string }>
+  fields: Array<{ virtual_record_id: string; field_key: string; is_custom: boolean }>
+  catalog: Array<{ field_key: string; label: string; value_types: string[]; occurrence_count: number; is_custom: boolean }>
+}
 
 function countReadyRecords(files: UploadedFile[]) {
   return files.reduce((total, file) => total + (file.normalization_status === "normalized" || file.normalization_status === "manual" ? file.document_fields_count ?? file.field_count ?? 0 : 0), 0)
@@ -21,6 +28,7 @@ function countAttention(files: UploadedFile[]) {
 
 export function DataModelView({ files }: DataModelViewProps) {
   const [view, setView] = useState<ModelView>("lineage")
+  const [virtualModel, setVirtualModel] = useState<VirtualModel | null>(null)
   const readyRecords = countReadyRecords(files)
   const attentionCount = countAttention(files)
   const typeCounts = useMemo(() => {
@@ -32,6 +40,35 @@ export function DataModelView({ files }: DataModelViewProps) {
     })
     return [...counts.entries()].sort((a, b) => b[1] - a[1])
   }, [files])
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadVirtualModel() {
+      const [{ data: records }, { data: fields }, { data: catalog }] = await Promise.all([
+        supabase.from("virtual_records").select("id, document_type, status"),
+        supabase.from("virtual_record_fields").select("virtual_record_id, field_key, is_custom"),
+        supabase.from("virtual_field_catalog").select("field_key, label, value_types, occurrence_count, is_custom").order("occurrence_count", { ascending: false }),
+      ])
+      if (!cancelled) setVirtualModel({ records: records ?? [], fields: fields ?? [], catalog: catalog ?? [] })
+    }
+    void loadVirtualModel()
+    return () => { cancelled = true }
+  }, [files])
+
+  const modelRecords = useMemo(() => virtualModel?.records ?? [], [virtualModel])
+  const modelFields = virtualModel?.fields ?? []
+  const modelCatalog = virtualModel?.catalog ?? []
+  const virtualReadyRecords = modelRecords.filter((record) => record.status === "normalized" || record.status === "manual").length
+  const virtualAttentionRecords = modelRecords.filter((record) => record.status === "failed").length
+  const modelTypeCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const record of modelRecords) {
+      if (record.status !== "normalized" && record.status !== "manual") continue
+      const type = record.document_type || "general_document"
+      counts.set(type, (counts.get(type) ?? 0) + 1)
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1])
+  }, [modelRecords])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
@@ -66,15 +103,15 @@ export function DataModelView({ files }: DataModelViewProps) {
         <div className="mb-4 grid grid-cols-3 gap-2">
           <div className="glass-surface-sm rounded-lg p-3">
             <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Sources</p>
-            <p className="mt-1 text-lg font-semibold text-foreground">{files.length}</p>
+            <p className="mt-1 text-lg font-semibold text-foreground">{modelRecords.length || files.length}</p>
           </div>
           <div className="glass-surface-sm rounded-lg p-3">
             <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Records</p>
-            <p className="mt-1 text-lg font-semibold text-foreground">{readyRecords}</p>
+            <p className="mt-1 text-lg font-semibold text-foreground">{virtualReadyRecords || readyRecords}</p>
           </div>
-          <div className={["glass-surface-sm rounded-lg p-3", attentionCount > 0 ? "border-primary/35" : ""].join(" ")}>
+          <div className={["glass-surface-sm rounded-lg p-3", virtualAttentionRecords > 0 || attentionCount > 0 ? "border-primary/35" : ""].join(" ")}>
             <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Attention</p>
-            <p className="mt-1 text-lg font-semibold text-foreground">{attentionCount}</p>
+            <p className="mt-1 text-lg font-semibold text-foreground">{virtualAttentionRecords || attentionCount}</p>
           </div>
         </div>
 
@@ -91,8 +128,8 @@ export function DataModelView({ files }: DataModelViewProps) {
               <div className="grid gap-2 md:grid-cols-4">
                 {[
                   ["Files", String(files.length) + " sources", "border-primary/30 bg-primary/5"],
-                  ["Extracted", String(files.reduce((n, file) => n + (file.document_fields_count ?? file.field_count ?? 0), 0)) + " rows", "border-border bg-card"],
-                  ["Normalized", String(readyRecords) + " records", "border-emerald-500/30 bg-emerald-500/5"],
+                  ["Records", String(modelRecords.length || files.reduce((n, file) => n + (file.document_fields_count ?? file.field_count ?? 0), 0)) + " rows", "border-border bg-card"],
+                  ["Ready", String(virtualReadyRecords || readyRecords) + " records", "border-emerald-500/30 bg-emerald-500/5"],
                   ["Outputs", "dashboards + AI", "border-border bg-card"],
                 ].map(([label, value, tone], index) => (
                   <div key={label} className="relative">
@@ -107,10 +144,10 @@ export function DataModelView({ files }: DataModelViewProps) {
             </div>
 
             <div className="rounded-xl border border-border bg-card/40 p-4">
-              <p className="mb-3 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Normalized entities</p>
-              {typeCounts.length > 0 ? (
+              <p className="mb-3 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Record types</p>
+              {(modelTypeCounts.length > 0 ? modelTypeCounts : typeCounts).length > 0 ? (
                 <div className="space-y-2">
-                  {typeCounts.map(([type, count]) => (
+                  {(modelTypeCounts.length > 0 ? modelTypeCounts : typeCounts).map(([type, count]) => (
                     <div key={type} className="flex items-center justify-between rounded-lg border border-border/70 px-3 py-2">
                       <span className="text-xs text-foreground">{type.replace(/_/g, " ")}</span>
                       <span className="font-mono text-[11px] text-muted-foreground">{count} record{count === 1 ? "" : "s"}</span>
@@ -118,7 +155,7 @@ export function DataModelView({ files }: DataModelViewProps) {
                   ))}
                 </div>
               ) : (
-                <p className="text-xs leading-relaxed text-muted-foreground">Normalized entities will appear here after safe files finish processing.</p>
+                <p className="text-xs leading-relaxed text-muted-foreground">Record types will appear here as source files finish processing.</p>
               )}
             </div>
           </div>
@@ -131,8 +168,10 @@ export function DataModelView({ files }: DataModelViewProps) {
             </div>
             {[
               ["source_files", files.length, "source"],
-              ["document_fields", readyRecords, readyRecords > 0 ? "ready" : "empty"],
-              ["dashboard_outputs", readyRecords > 0 ? "derived" : 0, readyRecords > 0 ? "derived" : "waiting"],
+              ["virtual_records", modelRecords.length, modelRecords.length > 0 ? "active" : "empty"],
+              ["virtual_record_fields", modelFields.length, modelFields.length > 0 ? "typed" : "waiting"],
+              ["field_catalog", modelCatalog.length, modelCatalog.length > 0 ? "discoverable" : "waiting"],
+              ["dashboard_outputs", virtualReadyRecords > 0 ? "derived" : 0, virtualReadyRecords > 0 ? "derived" : "waiting"],
             ].map(([name, count, state]) => (
               <div key={String(name)} className="grid grid-cols-[1fr_100px_100px] gap-3 border-b border-border/60 px-3 py-3 last:border-0">
                 <span className="font-mono text-[11px] text-foreground">{name}</span>
@@ -140,7 +179,7 @@ export function DataModelView({ files }: DataModelViewProps) {
                 <span className="font-mono text-[11px] capitalize text-muted-foreground">{state}</span>
               </div>
             ))}
-            <p className="border-t border-border/60 px-3 py-3 text-[11px] leading-relaxed text-muted-foreground">This schema view is an account-scoped projection, not a raw database browser. Fields become available as source documents normalize.</p>
+            <p className="border-t border-border/60 px-3 py-3 text-[11px] leading-relaxed text-muted-foreground">This schema view is an account-scoped virtual projection. It discovers typed fields and custom values without exposing raw document content.</p>
           </div>
         )}
       </div>

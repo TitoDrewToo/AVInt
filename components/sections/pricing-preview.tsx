@@ -7,28 +7,28 @@ import { FadeUp, StaggerContainer, StaggerItem } from "@/components/fade-up"
 
 interface PricingCardProps {
   name: string
-  price: string
+  price: string | null
   annualPrice?: string
-  cadence: string
-  description: string
   features: string[]
   isAnnual?: boolean
 }
 
-function PricingCard({ name, price, annualPrice, cadence, description, features, isAnnual }: PricingCardProps) {
+function PricingCard({ name, price, annualPrice, features, isAnnual }: PricingCardProps) {
   const displayPrice = isAnnual && annualPrice ? annualPrice : price
-  const displayCadence = isAnnual && annualPrice ? "year" : cadence
 
   return (
-    <Link href="/studio#studio-inquiry" className="group block h-full">
+    <Link href="/pricing" className="group block h-full">
       <div className="glass-surface hover-bloom flex h-full flex-col rounded-2xl p-6 transition-all group-hover:border-primary/20 group-hover:[box-shadow:0_0_30px_-14px_var(--retro-glow-red)]">
-        <h3 className={name === "FREE" ? "text-2xl font-semibold uppercase tracking-[0.14em] text-foreground" : "text-lg font-semibold text-foreground"}>{name}</h3>
-        <div className="mt-4 flex items-baseline">
-          <span className="text-3xl font-semibold text-foreground">{displayPrice}</span>
-          <span className="ml-1 text-muted-foreground">/ {displayCadence}</span>
-          {isAnnual && annualPrice && <span className="ml-2 text-sm font-medium text-primary">30% off</span>}
-        </div>
-        <p className="mt-4 min-h-14 text-sm leading-relaxed text-muted-foreground">{description}</p>
+        <h3 className={name === "Free" ? "text-2xl font-semibold uppercase tracking-[0.18em] text-foreground" : "text-lg font-semibold text-foreground"}>{name}</h3>
+        {displayPrice && (
+          <div className="mt-4 flex items-center">
+            <span className="text-3xl font-semibold text-foreground">{displayPrice}</span>
+            {name === "Gift Codes" && <span className="ml-1 text-muted-foreground">/ code</span>}
+            {name === "Day Pass" && <span className="ml-1 text-muted-foreground">/ day</span>}
+            {name === "Pro" && <span className="ml-1 text-muted-foreground">/{isAnnual ? "year" : "month"}</span>}
+            {isAnnual && annualPrice && <span className="ml-2 text-sm font-medium text-primary">30% off</span>}
+          </div>
+        )}
         <ul className="mt-6 flex-1 space-y-3">
           {features.map((feature) => (
             <li key={feature} className="flex items-start gap-2">
@@ -44,26 +44,25 @@ function PricingCard({ name, price, annualPrice, cadence, description, features,
 
 const plans: PricingCardProps[] = [
   {
-    name: "FREE",
-    price: "$0",
-    cadence: "to explore",
-    description: "A focused starting point for turning a small set of documents into usable records.",
+    name: "Free",
+    price: null,
     features: ["10 documents / month", "Smart Storage and classification", "Basic dashboard", "1 report export / month"],
   },
   {
     name: "Day Pass",
     price: "$6",
-    cadence: "24 hours",
-    description: "A short, concentrated window when you need more room to process a set of files.",
     features: ["50 documents", "All report and structured outputs", "Advanced Analytics", "QuickBooks and Xero exports"],
   },
   {
     name: "Pro",
     price: "$12",
     annualPrice: "$100",
-    cadence: "month",
-    description: "The full workspace for recurring ingestion, dashboards, and connected intelligence.",
     features: ["500 documents / month", "Advanced Analytics and custom dashboards", "Recurring-expense detection", "QuickBooks and Xero exports", "Claude connector and priority processing"],
+  },
+  {
+    name: "Gift Codes",
+    price: "$6",
+    features: ["Share a focused reporting session", "Smart Storage and dashboards", "A simple way to give someone a starting point"],
   },
 ]
 
@@ -111,7 +110,7 @@ export function PricingPreviewSection() {
           </div>
         </FadeUp>
 
-        <StaggerContainer className="mt-12 grid gap-4 md:grid-cols-3">
+        <StaggerContainer className="mt-12 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {plans.map((plan) => (
             <StaggerItem key={plan.name}>
               <PricingCard {...plan} isAnnual={isAnnual} />

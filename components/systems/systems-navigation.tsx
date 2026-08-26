@@ -1,10 +1,10 @@
 "use client"
 
 import Link from "next/link"
-import { Activity, FileWarning, GitCommitHorizontal, LayoutDashboard, Mail, Sparkles, type LucideIcon } from "lucide-react"
+import { Activity, Coins, FileWarning, GitCommitHorizontal, LayoutDashboard, Mail, Sparkles, type LucideIcon } from "lucide-react"
 import { useSystemsAdminAccess } from "@/components/systems/systems-access"
 
-export type SystemsSection = "overview" | "errors" | "inquiries" | "studio" | "status" | "changelog"
+export type SystemsSection = "overview" | "errors" | "inquiries" | "studio" | "economics" | "status" | "changelog"
 
 const publicDestinations = [
   { href: "/systems/status", label: "Status", Icon: Activity, active: "status" as const },
@@ -16,6 +16,7 @@ const internalDestinations = [
   { href: "/systems/errors", label: "Errors", Icon: FileWarning, active: "errors" as const },
   { href: "/systems/inquiries", label: "Inquiries", Icon: Mail, active: "inquiries" as const },
   { href: "/systems/studio", label: "Studio", Icon: Sparkles, active: "studio" as const },
+  { href: "/systems/economics", label: "Economics", Icon: Coins, active: "economics" as const },
 ]
 
 function Destination({ href, label, Icon, active, current }: { href: string; label: string; Icon: LucideIcon; active: SystemsSection; current: SystemsSection }) {

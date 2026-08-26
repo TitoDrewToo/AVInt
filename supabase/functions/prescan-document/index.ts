@@ -1,6 +1,7 @@
 import { createClient, serve } from "../_shared/deps.ts"
 import { type AiProvider, isProviderFailure, providerChain } from "../_shared/ai-providers.ts"
 import { fetchWithTimeout } from "../_shared/fetch.ts"
+import { recordAiUsage } from "../_shared/ai-usage.ts"
 import { analyzePdf } from "../_shared/pdf-prescan.ts"
 
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY")!
@@ -236,7 +237,7 @@ type SmartSecurityResult = {
   }
 }
 
-async function runGeminiSafety(mimeType: string, base64: string): Promise<SafetyResult> {
+async function runGeminiSafety(mimeType: string, base64: string): Promise<{ safety: SafetyResult; response: any }> {
   const res = await fetchWithTimeout(
     `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
     {
@@ -270,13 +271,13 @@ async function runGeminiSafety(mimeType: string, base64: string): Promise<Safety
   const objectMatch = stripped.match(/\{[\s\S]*\}/)
   if (!objectMatch) throw new Error(`Gemini safety no JSON object in: ${stripped.slice(0, 300)}`)
   const parsed = JSON.parse(objectMatch[0])
-  return {
+  return { safety: {
     is_processable: Boolean(parsed.is_processable),
     doc_category: String(parsed.doc_category ?? "unrelated"),
     confidence: Number(parsed.confidence ?? 0),
     abuse_flag: Boolean(parsed.abuse_flag),
     reason: String(parsed.reason ?? ""),
-  }
+  }, response: data }
 }
 
 function parseSafetyJson(provider: string, rawText: string): SafetyResult {
@@ -310,7 +311,7 @@ function openAiFilePart(mimeType: string, base64: string) {
   return null
 }
 
-async function runOpenAISafety(mimeType: string, base64: string): Promise<SafetyResult> {
+async function runOpenAISafety(mimeType: string, base64: string): Promise<{ safety: SafetyResult; response: any }> {
   const filePart = openAiFilePart(mimeType, base64)
   if (!filePart) throw new Error(`OpenAI prescan does not support MIME type ${mimeType}`)
   const res = await fetchWithTimeout("https://api.openai.com/v1/responses", {
@@ -342,10 +343,10 @@ async function runOpenAISafety(mimeType: string, base64: string): Promise<Safety
     data.output?.flatMap((item: any) => item.content ?? []).find((part: any) => part.type === "output_text")?.text ??
     ""
   if (!rawText) throw new Error(`OpenAI safety empty response: ${JSON.stringify(data).slice(0, 500)}`)
-  return parseSafetyJson("OpenAI", rawText)
+  return { safety: parseSafetyJson("OpenAI", rawText), response: data }
 }
 
-async function runSafety(provider: AiProvider, mimeType: string, base64: string): Promise<SafetyResult> {
+async function runSafety(provider: AiProvider, mimeType: string, base64: string): Promise<{ safety: SafetyResult; response: any }> {
   if (provider === "gemini") return await runGeminiSafety(mimeType, base64)
   if (provider === "openai") return await runOpenAISafety(mimeType, base64)
   throw new Error(`Unsupported prescan provider: ${provider}`)
@@ -584,12 +585,44 @@ serve(async (req) => {
     if (!isSpreadsheet) {
       const base64 = toBase64(bytes)
       let lastSafetyError: unknown = null
-      for (const provider of PRESCAN_PROVIDERS) {
+      for (const [providerIndex, provider] of PRESCAN_PROVIDERS.entries()) {
+        const startedAt = Date.now()
         try {
-          safety = await runSafety(provider, detected, base64)
+          const result = await runSafety(provider, detected, base64)
+          safety = result.safety
+          await recordAiUsage(supabase, {
+            userId: file.user_id,
+            fileId: file.id,
+            fileType: file.file_type,
+            fileSizeBytes: file.file_size,
+            documentType: file.document_type,
+            workloadClass: "document",
+            operation: "prescan_safety",
+            provider,
+            model: provider === "gemini" ? "gemini-2.5-flash" : "gpt-4o-mini",
+            status: "succeeded",
+            response: result.response,
+            isFallback: providerIndex > 0,
+            durationMs: Date.now() - startedAt,
+          })
           break
         } catch (e) {
           lastSafetyError = e
+          await recordAiUsage(supabase, {
+            userId: file.user_id,
+            fileId: file.id,
+            fileType: file.file_type,
+            fileSizeBytes: file.file_size,
+            documentType: file.document_type,
+            workloadClass: "document",
+            operation: "prescan_safety",
+            provider,
+            model: provider === "gemini" ? "gemini-2.5-flash" : "gpt-4o-mini",
+            status: "failed",
+            error: e,
+            isFallback: providerIndex > 0,
+            durationMs: Date.now() - startedAt,
+          })
           console.error(`${provider} safety failed:`, e instanceof Error ? e.message : String(e))
           if (!isProviderFailure(e)) break
         }

@@ -165,6 +165,14 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
               <div className="min-w-0 flex-1">{toolSlot}</div>
             ) : null}
             <div className="ml-auto flex shrink-0 items-center gap-6">
+            <Link
+              href="/pricing"
+              onClickCapture={(event) => handleMarketingLinkClick("/pricing", event)}
+              className="text-sm font-medium text-foreground/75 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+              style={{ fontFamily: 'var(--font-aldrich), "Aldrich", var(--font-geist), "Geist", "Geist Fallback", sans-serif' }}
+            >
+              Pricing
+            </Link>
             {showTools && (
               <div className="relative" onMouseEnter={scheduleToolsOpen} onMouseLeave={scheduleToolsClose} onFocus={scheduleToolsOpen} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) scheduleToolsClose() }}>
                 <button
@@ -205,6 +213,13 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
 
           {/* Mobile Right Side */}
           <div className="flex items-center gap-3 md:hidden">
+            <Link
+              href="/pricing"
+              onClickCapture={(event) => handleMarketingLinkClick("/pricing", event)}
+              className="text-sm font-medium text-foreground/75 transition-all hover:text-primary"
+            >
+              Pricing
+            </Link>
             {showTools && (
               <button
                 type="button"

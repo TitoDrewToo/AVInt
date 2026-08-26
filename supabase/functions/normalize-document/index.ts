@@ -2,6 +2,8 @@ import { createClient, serve } from "../_shared/deps.ts"
 import { type AiProvider, isProviderFailure, providerChain } from "../_shared/ai-providers.ts"
 import { logError, logEvent } from "../_shared/log.ts"
 import { fetchWithTimeout } from "../_shared/fetch.ts"
+import { recordAiUsage } from "../_shared/ai-usage.ts"
+import { syncVirtualRecord } from "../_shared/virtual-records.ts"
 
 const FN = "normalize-document"
 
@@ -198,6 +200,13 @@ serve(async (req) => {
       fields = fieldsArr[0]
     }
 
+    const { data: ownerFile } = await supabase
+      .from("files")
+      .select("user_id, file_type, file_size, document_type")
+      .eq("id", file_id)
+      .maybeSingle()
+    const userId = ownerFile?.user_id ?? null
+
     // Retry ceiling. Skip rows that have repeatedly failed normalization to
     // avoid burning provider tokens on unreparable inputs. Success resets the
     // counter, so legitimate version-upgrade re-runs aren't blocked.
@@ -241,7 +250,7 @@ serve(async (req) => {
     }
 
     // 3. Call AI provider
-    const callProvider = async (provider: AiProvider): Promise<string> => {
+    const callProvider = async (provider: AiProvider): Promise<{ rawText: string; response: any; model: string }> => {
       if (provider === "anthropic") {
         const res = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
           method: "POST",
@@ -259,7 +268,7 @@ serve(async (req) => {
         })
         if (!res.ok) throw new Error(`Anthropic API error: ${await res.text()}`)
         const data = await res.json()
-        return data.content?.[0]?.text ?? ""
+        return { rawText: data.content?.[0]?.text ?? "", response: data, model: "claude-haiku-4-5-20251001" }
       }
       if (provider === "openai") {
         const res = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
@@ -278,7 +287,7 @@ serve(async (req) => {
         })
         if (!res.ok) throw new Error(`OpenAI API error: ${await res.text()}`)
         const data = await res.json()
-        return data.choices?.[0]?.message?.content ?? ""
+        return { rawText: data.choices?.[0]?.message?.content ?? "", response: data, model: "gpt-4o-mini" }
       }
       throw new Error(`Unsupported normalization provider: ${provider}`)
     }
@@ -286,14 +295,53 @@ serve(async (req) => {
     let rawText = ""
     let normalizationProvider: AiProvider | null = null
     let lastProviderError: unknown = null
-    for (const provider of NORMALIZATION_PROVIDERS) {
+    const attemptNumber = (fields.normalization_attempts ?? 0) + 1
+    for (const [providerIndex, provider] of NORMALIZATION_PROVIDERS.entries()) {
+      const startedAt = Date.now()
       try {
-        rawText = await callProvider(provider)
+        const result = await callProvider(provider)
+        rawText = result.rawText
         if (!rawText) throw new Error(`Empty response from ${provider}`)
         normalizationProvider = provider
+        await recordAiUsage(supabase, {
+          userId,
+          fileId: file_id,
+          documentFieldId: fields.id,
+          fileType: ownerFile?.file_type,
+          fileSizeBytes: ownerFile?.file_size,
+          documentType: ownerFile?.document_type,
+          workloadClass: ownerFile?.file_type === "text/csv" || ownerFile?.file_type?.includes("spreadsheet") ? "spreadsheet" : "document",
+          operation: "normalization",
+          provider,
+          model: result.model,
+          attemptNumber,
+          status: "succeeded",
+          response: result.response,
+          isRetry: attemptNumber > 1,
+          isFallback: providerIndex > 0,
+          durationMs: Date.now() - startedAt,
+        })
         break
       } catch (error) {
         lastProviderError = error
+        await recordAiUsage(supabase, {
+          userId,
+          fileId: file_id,
+          documentFieldId: fields.id,
+          fileType: ownerFile?.file_type,
+          fileSizeBytes: ownerFile?.file_size,
+          documentType: ownerFile?.document_type,
+          workloadClass: ownerFile?.file_type === "text/csv" || ownerFile?.file_type?.includes("spreadsheet") ? "spreadsheet" : "document",
+          operation: "normalization",
+          provider,
+          model: provider === "anthropic" ? "claude-haiku-4-5-20251001" : "gpt-4o-mini",
+          attemptNumber,
+          status: "failed",
+          error,
+          isRetry: attemptNumber > 1,
+          isFallback: providerIndex > 0,
+          durationMs: Date.now() - startedAt,
+        })
         logError(FN, "provider_failed", error, { provider, file_id })
         if (!isProviderFailure(error)) break
       }
@@ -320,6 +368,48 @@ serve(async (req) => {
     const effectiveDocDate = normalized.document_date ?? fields.document_date ?? null
     const effectivePeriodStart = normalized.period_start ?? effectiveDocDate
     const effectivePeriodEnd   = normalized.period_end   ?? effectiveDocDate
+
+    const normalizedRow = {
+      ...fields,
+      vendor_name: normalized.vendor_name              ?? fields.vendor_name,
+      vendor_normalized: normalized.vendor_normalized  ?? null,
+      employer_name: normalized.employer_name          ?? fields.employer_name,
+      document_date: normalized.document_date          ?? fields.document_date,
+      currency: normalized.currency                    ?? fields.currency,
+      jurisdiction: normalized.jurisdiction            ?? null,
+      total_amount: normalized.total_amount            ?? fields.total_amount,
+      gross_income: normalized.gross_income            ?? fields.gross_income,
+      net_income: normalized.net_income                ?? fields.net_income,
+      expense_category: normalized.expense_category    ?? fields.expense_category,
+      income_source: normalized.income_source          ?? null,
+      classification_rationale: normalized.classification_rationale ?? null,
+      confidence_score: normalized.confidence_score    ?? fields.confidence_score,
+      tax_amount: normalized.tax_amount                 ?? null,
+      discount_amount: normalized.discount_amount       ?? null,
+      invoice_number: normalized.invoice_number         ?? null,
+      payment_method: normalized.payment_method         ?? null,
+      period_start: effectivePeriodStart,
+      period_end: effectivePeriodEnd,
+      counterparty_name: normalized.counterparty_name   ?? null,
+      merchant_domain: normalized.merchant_domain       ?? null,
+      merchant_address_city: normalized.merchant_address_city ?? null,
+      merchant_address_region: normalized.merchant_address_region ?? null,
+      merchant_address_country: normalized.merchant_address_country ?? null,
+      is_recurring: normalized.is_recurring === true,
+      recurrence_cadence: normalized.is_recurring === true ? (normalized.recurrence_cadence ?? null) : null,
+      line_items: normalized.line_items ?? fields.raw_json?.line_items ?? null,
+      raw_json: {
+        ...(fields.raw_json ?? {}),
+        normalization_enriched: normalized,
+        normalization_provider: normalizationProvider,
+        ...(normalizationProvider === "openai" ? { openai_enriched: normalized } : {}),
+      },
+      normalization_status: "normalized",
+      normalization_version: NORMALIZATION_VERSION,
+      normalized_at: now,
+      normalization_error: null,
+      normalization_attempts: 0,
+    }
 
     await supabase
       .from("document_fields")
@@ -369,6 +459,12 @@ serve(async (req) => {
         normalization_attempts: 0,
       })
       .eq("id", fields.id)
+
+    try {
+      await syncVirtualRecord(supabase, normalizedRow, ownerFile)
+    } catch (virtualError) {
+      logError(FN, "virtual_record_sync", virtualError, { file_id, document_field_id: fields.id })
+    }
 
     // 5. Auto-create payment_obligations for contract/agreement docs with PDC/payment schedules
     try {
@@ -458,6 +554,15 @@ serve(async (req) => {
             normalization_attempts: (fields.normalization_attempts ?? 0) + 1,
           })
           .eq("id", fields.id)
+        const { data: failedRow } = await supabase.from("document_fields").select("*").eq("id", fields.id).maybeSingle()
+        if (failedRow) {
+          const { data: failedFile } = await supabase.from("files").select("user_id, document_type").eq("id", file_id).maybeSingle()
+          try {
+            await syncVirtualRecord(supabase, failedRow, failedFile)
+          } catch (virtualError) {
+            logError(FN, "virtual_record_failure_sync", virtualError, { file_id, document_field_id: fields.id })
+          }
+        }
       } else {
         await supabase
           .from("document_fields")

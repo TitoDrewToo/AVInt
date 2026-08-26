@@ -594,7 +594,7 @@ export default function SmartStorageProductPage() {
                 </h2>
                 <div className="mt-10 flex flex-col items-start gap-4 sm:flex-row">
                   <StartFreeButton tool="smart-storage" />
-                  <Link href="/studio#studio-inquiry">
+              <Link href="/pricing">
                     <Button variant="outline" size="lg" className="cw-button-flow rounded-xl glass-surface-sm">
                       View Pricing
                     </Button>

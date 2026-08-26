@@ -1,6 +1,8 @@
 import { createClient, serve } from "../_shared/deps.ts"
 import { type AiProvider, isProviderFailure, providerChain } from "../_shared/ai-providers.ts"
 import { fetchWithTimeout } from "../_shared/fetch.ts"
+import { recordAiUsage } from "../_shared/ai-usage.ts"
+import { syncVirtualRecord } from "../_shared/virtual-records.ts"
 
 const OPENAI_API_KEY            = Deno.env.get("OPENAI_API_KEY")!
 const ANTHROPIC_API_KEY         = Deno.env.get("ANTHROPIC_API_KEY")!
@@ -92,7 +94,7 @@ Rules:
 - merchant_domain vs expense_category are orthogonal (merchant identity vs Schedule C line).
 - is_recurring: be conservative — require explicit recurrence evidence.`
 
-async function callAIProvider(provider: AiProvider, systemPrompt: string, userInput: any): Promise<string> {
+async function callAIProvider(provider: AiProvider, systemPrompt: string, userInput: any): Promise<{ rawText: string; response: any; model: string }> {
   if (provider === "anthropic") {
     const res = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -110,7 +112,7 @@ async function callAIProvider(provider: AiProvider, systemPrompt: string, userIn
     })
     if (!res.ok) throw new Error(`Anthropic API error: ${await res.text()}`)
     const data = await res.json()
-    return data.content?.[0]?.text ?? ""
+    return { rawText: data.content?.[0]?.text ?? "", response: data, model: "claude-haiku-4-5-20251001" }
   }
   if (provider === "openai") {
     const res = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
@@ -129,20 +131,60 @@ async function callAIProvider(provider: AiProvider, systemPrompt: string, userIn
     })
     if (!res.ok) throw new Error(`OpenAI API error: ${await res.text()}`)
     const data = await res.json()
-    return data.choices?.[0]?.message?.content ?? ""
+    return { rawText: data.choices?.[0]?.message?.content ?? "", response: data, model: "gpt-4o-mini" }
   }
   throw new Error(`Unsupported normalization provider: ${provider}`)
 }
 
-async function callAI(systemPrompt: string, userInput: any): Promise<{ rawText: string; provider: AiProvider }> {
+async function callAI(supabase: any, row: any, systemPrompt: string, userInput: any): Promise<{ rawText: string; provider: AiProvider }> {
   let lastError: unknown = null
-  for (const provider of NORMALIZATION_PROVIDERS) {
+  const attemptNumber = (row.normalization_attempts ?? 0)
+  const { data: ownerFile } = await supabase.from("files").select("user_id, file_type, file_size, document_type").eq("id", row.file_id).maybeSingle()
+  for (const [providerIndex, provider] of NORMALIZATION_PROVIDERS.entries()) {
+    const startedAt = Date.now()
     try {
-      const rawText = await callAIProvider(provider, systemPrompt, userInput)
+      const result = await callAIProvider(provider, systemPrompt, userInput)
+      const rawText = result.rawText
       if (!rawText) throw new Error(`Empty response from ${provider}`)
+      await recordAiUsage(supabase, {
+        userId: ownerFile?.user_id ?? null,
+        fileId: row.file_id,
+        documentFieldId: row.id,
+        fileType: ownerFile?.file_type,
+        fileSizeBytes: ownerFile?.file_size,
+        documentType: ownerFile?.document_type,
+        workloadClass: ownerFile?.file_type === "text/csv" || ownerFile?.file_type?.includes("spreadsheet") ? "spreadsheet" : "document",
+        operation: "normalization",
+        provider,
+        model: result.model,
+        attemptNumber: Math.max(1, attemptNumber),
+        status: "succeeded",
+        response: result.response,
+        isRetry: attemptNumber > 1,
+        isFallback: providerIndex > 0,
+        durationMs: Date.now() - startedAt,
+      })
       return { rawText, provider }
     } catch (error) {
       lastError = error
+      await recordAiUsage(supabase, {
+        userId: ownerFile?.user_id ?? null,
+        fileId: row.file_id,
+        documentFieldId: row.id,
+        fileType: ownerFile?.file_type,
+        fileSizeBytes: ownerFile?.file_size,
+        documentType: ownerFile?.document_type,
+        workloadClass: ownerFile?.file_type === "text/csv" || ownerFile?.file_type?.includes("spreadsheet") ? "spreadsheet" : "document",
+        operation: "normalization",
+        provider,
+        model: provider === "anthropic" ? "claude-haiku-4-5-20251001" : "gpt-4o-mini",
+        attemptNumber: Math.max(1, attemptNumber),
+        status: "failed",
+        error,
+        isRetry: attemptNumber > 1,
+        isFallback: providerIndex > 0,
+        durationMs: Date.now() - startedAt,
+      })
       console.error(`reprocess normalization provider ${provider} failed:`, error instanceof Error ? error.message : String(error))
       if (!isProviderFailure(error)) break
     }
@@ -166,7 +208,7 @@ async function normalizeRow(supabase: any, row: any): Promise<void> {
     raw_json: row.raw_json,
   }
 
-  const { rawText, provider: normalizationProvider } = await callAI(SYSTEM_PROMPT, userInput)
+  const { rawText, provider: normalizationProvider } = await callAI(supabase, row, SYSTEM_PROMPT, userInput)
   if (!rawText) throw new Error("Empty response from AI")
 
   let normalized: any
@@ -229,6 +271,16 @@ async function normalizeRow(supabase: any, row: any): Promise<void> {
       normalization_attempts: 0,
     })
     .eq("id", row.id)
+
+  const { data: updatedRow } = await supabase.from("document_fields").select("*").eq("id", row.id).maybeSingle()
+  const { data: ownerFile } = await supabase.from("files").select("user_id, document_type").eq("id", row.file_id).maybeSingle()
+  if (updatedRow && ownerFile) {
+    try {
+      await syncVirtualRecord(supabase, updatedRow, ownerFile)
+    } catch (virtualError) {
+      console.error(`Failed to sync virtual record ${row.id}:`, virtualError instanceof Error ? virtualError.message : String(virtualError))
+    }
+  }
 }
 
 serve(async (req) => {
@@ -283,6 +335,15 @@ serve(async (req) => {
             normalization_error: "Retry ceiling reached",
           })
           .eq("id", row.id)
+        const { data: failedRow } = await supabase.from("document_fields").select("*").eq("id", row.id).maybeSingle()
+        const { data: failedFile } = await supabase.from("files").select("user_id, document_type").eq("id", row.file_id).maybeSingle()
+        if (failedRow && failedFile) {
+          try {
+            await syncVirtualRecord(supabase, failedRow, failedFile)
+          } catch (virtualError) {
+            console.error(`Failed to sync failed virtual record ${row.id}:`, virtualError instanceof Error ? virtualError.message : String(virtualError))
+          }
+        }
         return { file_id: row.file_id, status: "failed", error: "Retry ceiling reached" }
       }
 

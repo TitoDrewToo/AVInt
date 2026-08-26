@@ -4,6 +4,8 @@ import { logError, logEvent } from "../_shared/log.ts"
 import { fetchWithTimeout } from "../_shared/fetch.ts"
 import { PLAN_LIMITS, planTierForSubscription, usageWindowForTier } from "../_shared/plan-limits.ts"
 import { asExtractedDocumentRows, type ExtractedDocumentRow } from "../_shared/extraction-boundary.ts"
+import { recordAiUsage } from "../_shared/ai-usage.ts"
+import { syncVirtualRecord } from "../_shared/virtual-records.ts"
 
 const FN = "process-document"
 
@@ -420,9 +422,15 @@ function applyMapping(
 }
 
 async function mapHeadersForSheet(
+  supabase: any,
   sheetName: string,
   headers: string[],
   sampleRows: any[][],
+  fileId: string,
+  userId: string | null,
+  fileType: string | null,
+  fileSizeBytes: number | null,
+  documentType: string | null,
 ): Promise<{ mapping: Record<string, string>; document_type: string }> {
   const userInput = JSON.stringify({
     sheet_name: sheetName,
@@ -458,18 +466,36 @@ async function mapHeadersForSheet(
   if (!rawText) throw new Error("No response from Gemini header mapping")
 
   const parsed = parseHeaderMappingResponse(rawText)
-  const documentType = DOCUMENT_TYPES.has(parsed.document_type) ? parsed.document_type : "general_document"
+  await recordAiUsage(supabase, {
+    userId,
+    fileId,
+    fileType,
+    fileSizeBytes,
+    documentType,
+    workloadClass: "spreadsheet",
+    operation: "spreadsheet_header_mapping",
+    provider: "gemini",
+    model: "gemini-2.5-flash",
+    status: "succeeded",
+    response: data,
+  })
+  const mappedDocumentType = DOCUMENT_TYPES.has(parsed.document_type) ? parsed.document_type : "general_document"
   return {
     mapping: parsed.mapping ?? {},
-    document_type: documentType,
+    document_type: mappedDocumentType,
   }
 }
 
 async function extractSpreadsheetRows(
+  supabase: any,
   bytes: Uint8Array,
   mimeType: string,
   filename: string,
   fileId: string,
+  userId: string | null,
+  fileType: string | null,
+  fileSizeBytes: number | null,
+  documentType: string | null,
 ): Promise<{ extractedRows: ExtractedDocumentRow[]; sourceRows: any[] }> {
   const XLSX = await import("https://esm.sh/xlsx@0.18.5")
   const isCsv = mimeType === "text/csv" || /\.csv$/i.test(filename ?? "")
@@ -512,10 +538,23 @@ async function extractSpreadsheetRows(
     let documentType = "general_document"
     let mappingMethod = "ai"
     try {
-      const result = await mapHeadersForSheet(sheetName, headers, sampleForMapping)
+      const result = await mapHeadersForSheet(supabase, sheetName, headers, sampleForMapping, fileId, userId, fileType, fileSizeBytes, documentType)
       mapping = result.mapping
       documentType = result.document_type
     } catch (err: any) {
+      await recordAiUsage(supabase, {
+        userId,
+        fileId,
+        fileType,
+        fileSizeBytes,
+        documentType,
+        workloadClass: "spreadsheet",
+        operation: "spreadsheet_header_mapping",
+        provider: "gemini",
+        model: "gemini-2.5-flash",
+        status: "failed",
+        error: err,
+      })
       logError(FN, "header_mapping_failed", err, { file_id: fileId, sheet: sheetName })
       mapping = fallbackKeywordMapping(headers)
       mappingMethod = "fallback"
@@ -672,7 +711,7 @@ async function extractSpreadsheetRows(
   return { extractedRows, sourceRows }
 }
 
-async function callGeminiExtraction(mimeType: string, base64: string): Promise<string> {
+async function callGeminiExtraction(mimeType: string, base64: string): Promise<{ rawText: string; response: any }> {
   const res = await fetchWithTimeout(
     `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
     {
@@ -701,10 +740,10 @@ async function callGeminiExtraction(mimeType: string, base64: string): Promise<s
   const data = await res.json()
   const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text
   if (!rawText) throw new Error("No response from Gemini")
-  return rawText
+  return { rawText, response: data }
 }
 
-async function callOpenAIExtraction(mimeType: string, base64: string, bytes: Uint8Array): Promise<string> {
+async function callOpenAIExtraction(mimeType: string, base64: string, bytes: Uint8Array): Promise<{ rawText: string; response: any }> {
   const filePart = openAiInputPart(mimeType, base64, bytes)
   if (!filePart) throw new Error(`OpenAI process does not support MIME type ${mimeType}`)
 
@@ -742,24 +781,62 @@ async function callOpenAIExtraction(mimeType: string, base64: string, bytes: Uin
     data.output?.flatMap((item: any) => item.content ?? []).find((part: any) => part.type === "output_text")?.text ??
     ""
   if (!rawText) throw new Error("No response from OpenAI")
-  return rawText
+  return { rawText, response: data }
 }
 
 async function callExtractionWithFallback(
+  supabase: any,
   mimeType: string,
   base64: string,
   bytes: Uint8Array,
+  fileId: string,
+  userId: string | null,
+  fileType: string | null,
+  fileSizeBytes: number | null,
+  documentType: string | null,
 ): Promise<{ rawText: string; provider: AiProvider }> {
   let lastError: unknown = null
-  for (const provider of PROCESS_PROVIDERS) {
+  for (const [providerIndex, provider] of PROCESS_PROVIDERS.entries()) {
+    const startedAt = Date.now()
     try {
-      let rawText = ""
-      if (provider === "gemini") rawText = await callGeminiExtraction(mimeType, base64)
-      else if (provider === "openai") rawText = await callOpenAIExtraction(mimeType, base64, bytes)
+      let result: { rawText: string; response: any }
+      if (provider === "gemini") result = await callGeminiExtraction(mimeType, base64)
+      else if (provider === "openai") result = await callOpenAIExtraction(mimeType, base64, bytes)
       else throw new Error(`Unsupported process provider: ${provider}`)
+      const rawText = result.rawText
+      await recordAiUsage(supabase, {
+        userId,
+        fileId,
+        fileType,
+        fileSizeBytes,
+        documentType,
+        workloadClass: "document",
+        operation: "extraction",
+        provider,
+        model: provider === "gemini" ? "gemini-2.5-flash" : "gpt-4o-mini",
+        status: "succeeded",
+        response: result.response,
+        isFallback: providerIndex > 0,
+        durationMs: Date.now() - startedAt,
+      })
       return { rawText, provider }
     } catch (error) {
       lastError = error
+      await recordAiUsage(supabase, {
+        userId,
+        fileId,
+        fileType,
+        fileSizeBytes,
+        documentType,
+        workloadClass: "document",
+        operation: "extraction",
+        provider,
+        model: provider === "gemini" ? "gemini-2.5-flash" : "gpt-4o-mini",
+        status: "failed",
+        error,
+        isFallback: providerIndex > 0,
+        durationMs: Date.now() - startedAt,
+      })
       logError(FN, "provider_failed", error, { provider })
       if (!isProviderFailure(error)) break
     }
@@ -949,7 +1026,7 @@ serve(async (req) => {
     // SheetJS deterministically splits spreadsheet rows; AI only maps headers.
     if (isSpreadsheetInput(mimeType, file.filename ?? "")) {
       try {
-        const spreadsheetResult = await extractSpreadsheetRows(uint8Array, mimeType, file.filename ?? "", file_id)
+        const spreadsheetResult = await extractSpreadsheetRows(supabase, uint8Array, mimeType, file.filename ?? "", file_id, file.user_id, file.file_type, file.file_size, file.document_type)
         extractedRows = asExtractedDocumentRows(spreadsheetResult.extractedRows)
         sourceRows = spreadsheetResult.sourceRows
         extractionProvider = "deterministic"
@@ -974,7 +1051,7 @@ serve(async (req) => {
       }
     } else {
       const base64 = toBase64(uint8Array)
-      const { rawText, provider } = await callExtractionWithFallback(mimeType, base64, uint8Array)
+      const { rawText, provider } = await callExtractionWithFallback(supabase, mimeType, base64, uint8Array, file_id, file.user_id, file.file_type, file.file_size, file.document_type)
       extractionProvider = provider
 
       try {
@@ -1064,6 +1141,18 @@ serve(async (req) => {
       })
       .eq("id", file_id)
     if (fileStateError) throw new Error(`File normalization state update failed: ${fileStateError.message}`)
+
+    // Materialize the generalized record contract before normalization. This
+    // makes extracted-but-not-yet-normalized rows visible to the model layer,
+    // with the document type already resolved from extraction.
+    const virtualFile = { ...file, document_type: isCsv ? "csv_export" : normalizeExtractedDocumentType(extracted, mimeType) }
+    await Promise.all(insertedRows.map(async (row: any) => {
+      try {
+        await syncVirtualRecord(supabase, row, virtualFile)
+      } catch (error) {
+        logError(FN, "virtual_record_sync", error, { file_id, document_field_id: row.id })
+      }
+    }))
 
     // 10. Call normalize-document for each row
     // CSVs have multiple rows — normalize each individually using inline fields

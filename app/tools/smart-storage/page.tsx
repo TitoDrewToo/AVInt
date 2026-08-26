@@ -2802,7 +2802,19 @@ export default function SmartStoragePage() {
 
       <Sheet open={dataModelOpen} onOpenChange={setDataModelOpen}>
         <SheetContent side="top" className="inset-x-0 top-0 h-full w-full max-w-none border-b-0 p-0">
-          <DataModelView files={files} />
+          <DataModelView
+            files={files}
+            onManualEntry={() => setManualEntryOpen(true)}
+            onReclassify={(file) => {
+              if (isSpreadsheetFile(file)) setReclassifySheetTarget({ fileId: file.id, filename: file.filename })
+              else setReclassifyTarget({ fileId: file.id, filename: file.filename })
+            }}
+            onRetry={(file) => { void handleRetryProcessing(file) }}
+            onOpenSource={(file) => {
+              setDataModelOpen(false)
+              void handleOpenFile(file.id)
+            }}
+          />
         </SheetContent>
       </Sheet>
 

@@ -38,12 +38,22 @@ function sourceEvidence(row: any): Record<string, unknown> {
   const raw = row.raw_json ?? {}
   const sourceRow = raw.source_row
   const evidence: Record<string, unknown> = { source_kind: "document" }
+  const providedEvidence = raw.source_evidence
+  if (providedEvidence && typeof providedEvidence === "object" && !Array.isArray(providedEvidence)) {
+    for (const key of ["page", "page_number", "text_span", "bbox", "cell_range", "column", "sheet_name", "row_index"]) {
+      const value = providedEvidence[key]
+      if (value !== null && value !== undefined) evidence[key] = value
+    }
+  }
   if (raw.source_sheet || sourceRow?.sheet_name) {
     evidence.source_kind = "spreadsheet"
     evidence.sheet_name = raw.source_sheet ?? sourceRow.sheet_name
   }
   if (raw.source_index !== undefined) evidence.source_index = raw.source_index
   if (sourceRow?.row_index !== undefined) evidence.row_index = sourceRow.row_index
+  if (sourceRow?.cells && typeof sourceRow.cells === "object" && !Array.isArray(sourceRow.cells)) {
+    evidence.columns = Object.keys(sourceRow.cells)
+  }
   if (raw.page !== undefined) {
     evidence.source_kind = "page"
     evidence.page = raw.page
@@ -114,6 +124,51 @@ export async function syncVirtualRecord(supabase: SupabaseLike, row: any, file: 
       virtual_record_id: record.id,
     })))
     if (fieldsError) throw new Error(`virtual record fields insert failed: ${fieldsError.message}`)
+  }
+
+  // Keep an append-only projection history alongside the current record. The
+  // history migration is additive, so older deployments can continue serving
+  // the current projection while the new tables are being rolled out.
+  try {
+    const { data: latestVersion } = await supabase
+      .from("virtual_record_versions")
+      .select("version_number")
+      .eq("virtual_record_id", record.id)
+      .order("version_number", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    const versionNumber = (latestVersion?.version_number ?? 0) + 1
+    const { data: version, error: versionError } = await supabase
+      .from("virtual_record_versions")
+      .insert({
+        user_id: file.user_id,
+        virtual_record_id: record.id,
+        source_record_id: row.id,
+        version_number: versionNumber,
+        document_type: recordPayload.document_type,
+        record_type: recordPayload.record_type,
+        status: recordPayload.status,
+        normalization_version: recordPayload.normalization_version,
+        change_reason: row.normalization_status === "manual" ? "manual_correction" : "projection_sync",
+      })
+      .select("id")
+      .single()
+    if (versionError || !version) throw new Error(versionError?.message ?? "version row not returned")
+    if (fields.length) {
+      const { error: versionFieldsError } = await supabase.from("virtual_record_version_fields").insert(fields.map((field) => ({
+        ...field,
+        user_id: file.user_id,
+        version_id: version.id,
+      })))
+      if (versionFieldsError) throw new Error(versionFieldsError.message)
+    }
+  } catch (historyError) {
+    // History must not turn a successful current projection into a failed
+    // ingestion request during staged rollout. The error remains observable.
+    console.error("virtual record history sync failed", {
+      source_record_id: row.id,
+      error: historyError instanceof Error ? historyError.message : String(historyError),
+    })
   }
 
   const now = new Date().toISOString()

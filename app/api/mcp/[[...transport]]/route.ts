@@ -10,6 +10,7 @@ import { ingestFiles } from "@/lib/smart-storage-ingest"
 import { getExport, getReport } from "@/lib/report-engine"
 import { shapeMcpReportResult } from "@/lib/mcp-report-shaping"
 import { buildDashboardAIContext } from "@/lib/dashboard-ai-context"
+import { readVirtualModel } from "@/lib/virtual-model"
 import { PLAN_LIMITS, usageWindowForTier } from "@/supabase/functions/_shared/plan-limits"
 
 export const runtime = "nodejs"
@@ -70,6 +71,23 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
       return { content: [{ type: "text", text: JSON.stringify(profile, null, 2) }] }
     })
 
+    server.registerTool("smart_storage.virtual_model", {
+      title: "Smart Storage virtual data model",
+      description: "Read-only. Inspect the signed-in user's bounded virtual records, typed fields, custom-field catalog, source files, statuses, confidence, and source evidence. Use this for questions that do not fit the fixed report templates. The response reports when the 40-record bound truncated results; narrow the request before drawing conclusions. Never invent fields or values not returned here.",
+      inputSchema: z.object({
+        search: z.string().max(120).optional(),
+        status: z.enum(["raw", "normalized", "manual", "failed"]).optional(),
+        documentType: z.string().max(80).optional(),
+        fieldKey: z.string().max(120).optional(),
+        customOnly: z.boolean().optional().default(false),
+      }),
+    }, async ({ search, status, documentType, fieldKey, customOnly }) => {
+      const blocked = await toolGuard(userId, entitlement, "profile")
+      if (blocked) return blocked
+      const model = await readVirtualModel(userId, { search, status, documentType, fieldKey, customOnly })
+      return { content: [{ type: "text", text: JSON.stringify({ ...model, bounded: true, maxRecords: 40, truncationGuidance: model.truncated ? "Results are partial. Narrow by status, documentType, fieldKey, or search before drawing conclusions." : null }, null, 2) }] }
+    })
+
     server.registerTool("smart_storage.report", {
       title: "Smart Storage report",
       description: "Read-only. Compute a tax bundle (Schedule C-style) or business-expense report over the signed-in AVIntelligence user's own stored documents, optionally scoped to a date period and folder (including descendants). Returns JSON; does not modify any data.",
@@ -109,7 +127,7 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
       "A document-intelligence service that turns a user's files into a permissioned normalized data model, dashboards, structured outputs, and selected accounting exports.",
       "Every tool acts ONLY on the documents belonging to the signed-in AVIntelligence account, matched by the authenticated email. No data is shared across accounts.",
       "Access requires an active Pro or Business plan. Authentication is handled via AVIntelligence's OAuth (WorkOS); this server never receives passwords.",
-      "Tools: smart_storage.ingest (add documents), smart_storage.profile (inspect the normalized data model), smart_storage.report (selected report examples), smart_storage.export (QuickBooks / Xero file). Report, profile, and export are read-only.",
+      "Tools: smart_storage.ingest (add documents), smart_storage.profile (inspect the fixed data profile), smart_storage.virtual_model (inspect bounded typed virtual records and fields), smart_storage.report (selected report examples), smart_storage.export (QuickBooks / Xero file). Report, profile, virtual_model, and export are read-only.",
     ].join(" "),
   })
 }

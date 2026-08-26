@@ -644,6 +644,19 @@ export function ManualEntryModal({ isOpen, userId, onClose, onCreated }: ManualE
         throw new Error(fieldsErr.message ?? "Failed to save document fields.")
       }
 
+      // Manual records bypass the Edge Function ingestion chain, so project
+      // the saved row into the same virtual data layer before refreshing the
+      // workspace. The endpoint re-checks ownership server-side.
+      const accessToken = (await supabase.auth.getSession()).data.session?.access_token
+      if (accessToken) {
+        const syncResponse = await fetch("/api/virtual-records/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+          body: JSON.stringify({ file_id: fileRow.id }),
+        })
+        if (!syncResponse.ok) throw new Error("Manual entry saved, but the data model could not be refreshed.")
+      }
+
       onCreated(fileRow as InsertedFile)
       setForm({ ...EMPTY_FORM })
       onClose()

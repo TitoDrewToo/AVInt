@@ -168,8 +168,7 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
             <Link
               href="/pricing"
               onClickCapture={(event) => handleMarketingLinkClick("/pricing", event)}
-              className="text-sm font-medium text-foreground/75 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
-              style={{ fontFamily: 'var(--font-aldrich), "Aldrich", var(--font-geist), "Geist", "Geist Fallback", sans-serif' }}
+              className="font-sans text-sm font-medium text-foreground/75 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
             >
               Pricing
             </Link>
@@ -180,8 +179,7 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
                   aria-expanded={toolsOpen}
                   aria-haspopup="menu"
                   onClick={() => { clearToolsTimers(); setToolsOpen((open) => !open) }}
-                  className="flex items-center gap-1 text-sm font-medium text-foreground/75 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
-                  style={{ fontFamily: 'var(--font-aldrich), "Aldrich", var(--font-geist), "Geist", "Geist Fallback", sans-serif' }}
+                  className="font-sans flex items-center gap-1 text-sm font-medium text-foreground/75 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
                 >
                   Tools
                   <ChevronDown className={`h-4 w-4 transition-transform ${toolsOpen ? "rotate-180" : ""}`} />

@@ -29,6 +29,10 @@ const toolLinks = [
   ...(MCP_CONNECTOR_CLIENT_ENABLED ? [{ name: "Connect to Claude", href: "/tools/smart-storage/connect" }] : []),
 ]
 
+const navFontStyle = {
+  fontFamily: 'var(--font-aldrich), "Aldrich", var(--font-geist), "Geist", "Geist Fallback", sans-serif',
+} as const
+
 function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme()
 
@@ -168,24 +172,27 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
             <Link
               href="/pricing"
               onClickCapture={(event) => handleMarketingLinkClick("/pricing", event)}
-              className="font-sans text-sm font-medium text-foreground/75 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+              className="text-sm font-medium text-foreground/75 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+              style={navFontStyle}
             >
               Pricing
             </Link>
-            {showTools && (
-              <div className="relative" onMouseEnter={scheduleToolsOpen} onMouseLeave={scheduleToolsClose} onFocus={scheduleToolsOpen} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) scheduleToolsClose() }}>
+            <div className="relative min-w-[4.75rem]" aria-hidden={!showTools}>
+            {showTools ? (
+              <div onMouseEnter={scheduleToolsOpen} onMouseLeave={scheduleToolsClose} onFocus={scheduleToolsOpen} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) scheduleToolsClose() }}>
                 <button
                   type="button"
                   aria-expanded={toolsOpen}
                   aria-haspopup="menu"
                   onClick={() => { clearToolsTimers(); setToolsOpen((open) => !open) }}
-                  className="font-sans flex items-center gap-1 text-sm font-medium text-foreground/75 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+                  className="flex items-center gap-1 text-sm font-medium text-foreground/75 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
+                  style={navFontStyle}
                 >
                   Tools
                   <ChevronDown className={`h-4 w-4 transition-transform ${toolsOpen ? "rotate-180" : ""}`} />
                 </button>
                 {toolsOpen && (
-                  <div role="menu" className="glass-surface absolute right-0 top-full mt-3 w-60 rounded-xl p-2" style={{ fontFamily: 'var(--font-aldrich), "Aldrich", var(--font-geist), "Geist", "Geist Fallback", sans-serif' }}>
+                  <div role="menu" className="glass-surface absolute right-0 top-full mt-3 w-60 rounded-xl p-2" style={navFontStyle}>
                     <p className="px-3 pb-1 pt-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Tools</p>
                     {studioTools.map((tool) => (
                       <Link key={tool.href} href={tool.href} target="_blank" rel="noopener noreferrer" role="menuitem" onClick={() => setToolsOpen(false)} className="block rounded-lg px-3 py-2 text-sm text-foreground/80 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]">
@@ -200,7 +207,8 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
                   </div>
                 )}
               </div>
-            )}
+            ) : <span className="invisible block text-sm font-medium" style={navFontStyle}>Tools</span>}
+            </div>
             <ThemeToggle />
 
             <SystemStatusIndicator />
@@ -215,10 +223,12 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
               href="/pricing"
               onClickCapture={(event) => handleMarketingLinkClick("/pricing", event)}
               className="text-sm font-medium text-foreground/75 transition-all hover:text-primary"
+              style={navFontStyle}
             >
               Pricing
             </Link>
-            {showTools && (
+            <div className="min-h-9 min-w-9" aria-hidden={!showTools}>
+            {showTools ? (
               <button
                 type="button"
                 onClick={() => setMobileToolsOpen((open) => !open)}
@@ -228,14 +238,15 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
               >
                 {mobileToolsOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
               </button>
-            )}
+            ) : <span className="invisible block h-9 w-9" aria-hidden="true" />}
+            </div>
             <ThemeToggle />
             <SystemStatusIndicator />
             <AccountMenuButton onClick={() => setAccountPanelOpen(true)} />
           </div>
         </nav>
         {showTools && mobileToolsOpen && (
-          <div className="glass-surface mx-4 mt-2 rounded-2xl p-3 md:hidden" style={{ fontFamily: 'var(--font-aldrich), "Aldrich", var(--font-geist), "Geist", "Geist Fallback", sans-serif' }}>
+          <div className="glass-surface mx-4 mt-2 rounded-2xl p-3 md:hidden" style={navFontStyle}>
             {toolLinks.map((tool, index) => (
               <Link key={tool.href} href={tool.href} target="_blank" rel="noopener noreferrer" onClick={() => setMobileToolsOpen(false)} className={`block rounded-lg px-3 py-2.5 text-sm text-foreground/80 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)] ${index === studioTools.length ? "mt-1 border-t border-border/60 pt-3" : ""}`}>
                 {tool.name}

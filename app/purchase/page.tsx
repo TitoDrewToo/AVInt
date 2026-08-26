@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation"
 
 export default function PurchasePage() {
-  redirect("/studio#studio-inquiry")
+  redirect("/pricing")
 }

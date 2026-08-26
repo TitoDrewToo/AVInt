@@ -1,5 +1,6 @@
-import { redirect } from "next/navigation"
+import { Suspense } from "react"
+import { PurchaseHandoff } from "@/components/purchase-handoff"
 
 export default function CheckoutPage() {
-  redirect("/studio#studio-inquiry")
+  return <Suspense fallback={null}><PurchaseHandoff /></Suspense>
 }

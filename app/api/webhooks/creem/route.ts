@@ -3,6 +3,7 @@ import crypto from "crypto"
 import { createClient } from "@supabase/supabase-js"
 
 import { logApiError, serverError } from "@/lib/api-error"
+import { CREEM_PRODUCTS } from "@/lib/creem-products"
 
 // Creem is the active payment provider. Some subscription/gift_codes columns
 // retain legacy lemonsqueezy_* names for schema compatibility only.
@@ -16,10 +17,10 @@ function redactEmail(email: string) {
 // Product IDs come from env vars so test→prod is a config change, not a deploy
 function getProductMap(): Record<string, { status: string; plan: string; isGiftCode?: boolean }> {
   const map: Record<string, { status: string; plan: string; isGiftCode?: boolean }> = {}
-  const dayPassId    = process.env.CREEM_PRODUCT_DAY_PASS_ID
-  const proMonthlyId = process.env.CREEM_PRODUCT_PRO_MONTHLY_ID
-  const proAnnualId  = process.env.CREEM_PRODUCT_PRO_ANNUAL_ID
-  const giftCodeId   = process.env.CREEM_PRODUCT_GIFT_CODE_ID
+  const dayPassId    = process.env.CREEM_PRODUCT_DAY_PASS_ID ?? CREEM_PRODUCTS["day-pass"].productId
+  const proMonthlyId = process.env.CREEM_PRODUCT_PRO_MONTHLY_ID ?? CREEM_PRODUCTS["pro-monthly"].productId
+  const proAnnualId  = process.env.CREEM_PRODUCT_PRO_ANNUAL_ID ?? CREEM_PRODUCTS["pro-annual"].productId
+  const giftCodeId   = process.env.CREEM_PRODUCT_GIFT_CODE_ID ?? CREEM_PRODUCTS["gift-codes"].productId
   if (dayPassId)    map[dayPassId]    = { status: "day_pass",  plan: "day_pass" }
   if (proMonthlyId) map[proMonthlyId] = { status: "pro",       plan: "monthly"  }
   if (proAnnualId)  map[proAnnualId]  = { status: "pro",       plan: "annual"   }

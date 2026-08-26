@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { Check } from "lucide-react"
+import { ArrowUpRight, Check } from "lucide-react"
 import { FadeUp, StaggerContainer, StaggerItem } from "@/components/fade-up"
 
 interface PricingCardProps {
@@ -15,9 +15,12 @@ interface PricingCardProps {
 
 function PricingCard({ name, price, annualPrice, features, isAnnual }: PricingCardProps) {
   const displayPrice = isAnnual && annualPrice ? annualPrice : price
+  const href = name === "Free"
+    ? "/tools/smart-storage"
+    : `/purchase/checkout?plan=${name === "Pro" ? (isAnnual ? "pro-annual" : "pro-monthly") : name === "Day Pass" ? "day-pass" : "gift-codes"}`
 
   return (
-    <Link href="/pricing" className="group block h-full">
+    <Link href={href} target={name === "Free" ? "_blank" : undefined} rel={name === "Free" ? "noopener noreferrer" : undefined} className="group block h-full">
       <div className="glass-surface hover-bloom flex h-full flex-col rounded-2xl p-6 transition-all group-hover:border-primary/20 group-hover:[box-shadow:0_0_30px_-14px_var(--retro-glow-red)]">
         <h3 className={name === "Free" ? "text-2xl font-semibold uppercase tracking-[0.18em] text-foreground" : "text-lg font-semibold text-foreground"}>{name}</h3>
         {displayPrice && (
@@ -37,6 +40,10 @@ function PricingCard({ name, price, annualPrice, features, isAnnual }: PricingCa
             </li>
           ))}
         </ul>
+        <span className="cw-button-flow mt-7 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-medium text-primary-foreground transition-all group-hover:bg-primary/90">
+          {name === "Free" ? "Start free" : name === "Gift Codes" ? "Generate codes" : "Purchase"}
+          <ArrowUpRight className="h-4 w-4" />
+        </span>
       </div>
     </Link>
   )

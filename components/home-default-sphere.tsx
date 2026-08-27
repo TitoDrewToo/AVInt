@@ -9,6 +9,7 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
   const geometryRef = useRef<THREE.BufferGeometry | null>(null)
   const colorBufferRef = useRef<Float32Array | null>(null)
   const particleCountRef = useRef(0)
+  const materialRef = useRef<THREE.ShaderMaterial | null>(null)
   const { resolvedTheme } = useTheme()
 
   useEffect(() => {
@@ -438,6 +439,78 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
       return positions
     }
 
+    function sampleCliWindow(count: number) {
+      const positions = new Float32Array(count * 3)
+      const roles = new Float32Array(count)
+      const slots = new Float32Array(count)
+      const seeds = new Float32Array(count)
+      const typedSlots = 22
+      const glyphs = [
+        [[0, 0, 1, 0], [0, 0, 0, 1], [1, 0, 1, 1], [0, 0.5, 1, 0.5]],
+        [[0, 0, 1, 0], [1, 0, 0, 1], [0, 1, 1, 1], [0, 0.5, 1, 0.5]],
+        [[0, 0, 1, 0], [0, 0, 0, 1], [0, 1, 1, 1]],
+        [[0, 0, 1, 0], [1, 0, 1, 1], [0, 1, 1, 1], [0, 0.5, 1, 0.5]],
+        [[0, 0, 0, 1], [0, 0, 1, 0], [0, 0.5, 1, 0.5], [1, 0, 1, 1]],
+        [[0, 0, 1, 0], [0, 0, 0, 0.5], [0, 0.5, 1, 0.5], [1, 0.5, 1, 1]],
+      ]
+
+      const place = (index: number, x: number, y: number, z: number, role: number, slot = -1) => {
+        positions[index * 3] = x
+        positions[index * 3 + 1] = y
+        positions[index * 3 + 2] = z
+        roles[index] = role
+        slots[index] = slot
+        seeds[index] = Math.random()
+      }
+
+      const sampleSegment = (index: number, x1: number, y1: number, x2: number, y2: number, role: number, slot = -1) => {
+        const t = Math.random()
+        place(index, x1 + (x2 - x1) * t + (Math.random() - 0.5) * 0.035, y1 + (y2 - y1) * t + (Math.random() - 0.5) * 0.035, (Math.random() - 0.5) * 0.12, role, slot)
+      }
+
+      const sampleStar = (index: number, centerX: number, centerY: number) => {
+        const segments = [
+          [-0.07, -0.1, 0.07, 0.1],
+          [-0.07, 0.1, 0.07, -0.1],
+          [-0.1, 0, 0.1, 0],
+          [0, -0.12, 0, 0.12],
+        ]
+        const [x1, y1, x2, y2] = segments[Math.floor(Math.random() * segments.length)]
+        sampleSegment(index, centerX + x1, centerY + y1, centerX + x2, centerY + y2, 1, 0)
+      }
+
+      for (let i = 0; i < count; i += 1) {
+        const mode = Math.random()
+        if (mode < 0.3) {
+          const edge = Math.floor(Math.random() * 4)
+          if (edge === 0) sampleSegment(i, -1.82, 1.2, 1.82, 1.2, 0)
+          else if (edge === 1) sampleSegment(i, -1.82, -1.2, 1.82, -1.2, 0)
+          else if (edge === 2) sampleSegment(i, -1.82, -1.2, -1.82, 1.2, 0)
+          else sampleSegment(i, 1.82, -1.2, 1.82, 1.2, 0)
+        } else if (mode < 0.36) {
+          const control = Math.floor(Math.random() * 3)
+          place(i, -1.58 + control * 0.16 + (Math.random() - 0.5) * 0.045, 0.92 + (Math.random() - 0.5) * 0.045, 0.08 + (Math.random() - 0.5) * 0.04, 0)
+        } else if (mode < 0.84) {
+          const slot = Math.floor(Math.random() * typedSlots)
+          const centerX = -1.42 + slot * 0.13
+          const centerY = 0.48
+          if (slot === 0) sampleStar(i, centerX, centerY)
+          else {
+            const glyph = glyphs[slot % glyphs.length]
+            const [x1, y1, x2, y2] = glyph[Math.floor(Math.random() * glyph.length)]
+            const t = Math.random()
+            place(i, centerX - 0.05 + (x1 + (x2 - x1) * t) * 0.1 + (Math.random() - 0.5) * 0.018, centerY - 0.09 + (y1 + (y2 - y1) * t) * 0.18 + (Math.random() - 0.5) * 0.018, 0.08 + (Math.random() - 0.5) * 0.04, 2, slot)
+          }
+        } else {
+          const row = Math.floor(Math.random() * 3)
+          const column = Math.floor(Math.random() * 26)
+          place(i, -1.42 + column * 0.13 + (Math.random() - 0.5) * 0.08, 0.1 - row * 0.28 + (Math.random() - 0.5) * 0.1, (Math.random() - 0.5) * 0.1, 3, column + row * 26)
+        }
+      }
+
+      return { positions, roles, slots, seeds }
+    }
+
     const geometry = new THREE.BufferGeometry()
     const spherePositions = sampleSphere(particleCount)
     const documentPositions = sampleDocument(particleCount)
@@ -445,6 +518,7 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
     const visualizationPositions = sampleVisualization(particleCount)
     const signalDiamondPositions = sampleSignalDiamond(particleCount)
     const terminalCloudPositions = sampleTerminalCloud(particleCount)
+    const cliWindow = sampleCliWindow(particleCount)
     const positions = new Float32Array(spherePositions)
     const colors = new Float32Array(particleCount * 3)
     const sizes = new Float32Array(particleCount)
@@ -458,6 +532,9 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
     geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3))
     geometry.setAttribute("aSize", new THREE.BufferAttribute(sizes, 1))
     geometry.setAttribute("aRandom", new THREE.BufferAttribute(randoms, 1))
+    geometry.setAttribute("aCliRole", new THREE.BufferAttribute(cliWindow.roles, 1))
+    geometry.setAttribute("aCliSlot", new THREE.BufferAttribute(cliWindow.slots, 1))
+    geometry.setAttribute("aCliSeed", new THREE.BufferAttribute(cliWindow.seeds, 1))
     geometryRef.current = geometry
     colorBufferRef.current = colors
 
@@ -469,12 +546,21 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
         uLocationSignal: { value: 0 },
         uVisualizationSignal: { value: 0 },
         uVisualizationStage: { value: 0 },
+        uCliTypingActive: { value: 0 },
+        uCliTime: { value: 0 },
+        uCliFormSignal: { value: 0 },
+        uIsDark: { value: 0 },
       },
       vertexShader: `
         attribute float aSize;
         attribute float aRandom;
+        attribute float aCliRole;
+        attribute float aCliSlot;
+        attribute float aCliSeed;
         varying vec3 vColor;
         varying float vAlpha;
+        varying float vCliAlpha;
+        varying float vCliAccent;
         varying float vDocInk;
         varying float vDocAccent;
         varying float vLocationPulse;
@@ -487,6 +573,10 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
         uniform float uLocationSignal;
         uniform float uVisualizationSignal;
         uniform float uVisualizationStage;
+        uniform float uCliTypingActive;
+        uniform float uCliTime;
+        uniform float uCliFormSignal;
+        uniform float uIsDark;
 
         void main() {
           vColor = color;
@@ -620,6 +710,26 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
           float vizAccentSource = max(lineMaskViz * lineReveal, max(cardDetail, max(max(pieDetail, pieSliceAccent * pieReveal * pieMask * uVisualizationSignal), areaDetail)));
           vVizAccent = min(vizAccentSource * vizAccentPattern * uVisualizationSignal, 1.0);
 
+          vCliAlpha = 1.0;
+          if (uCliTypingActive > 0.001) {
+            float blink = 0.32 + 0.68 * (0.5 + 0.5 * sin(uCliTime * 7.2));
+            if (aCliRole == 1.0) {
+              vCliAlpha = blink;
+            } else if (aCliRole == 2.0) {
+              float lockTime = 0.3 + max(aCliSlot - 1.0, 0.0) * 0.18;
+              float locked = step(lockTime, uCliTime);
+              float scramble = 1.0 - locked;
+              float jitter = sin(uCliTime * 34.0 + aCliSeed * 41.0 + aCliSlot * 3.7);
+              pos.x += jitter * 0.035 * scramble;
+              pos.y += cos(uCliTime * 28.0 + aCliSeed * 29.0) * 0.045 * scramble;
+              vCliAlpha = mix(0.16 + 0.2 * (0.5 + 0.5 * sin(uCliTime * 31.0 + aCliSeed * 17.0)), 1.0, locked);
+            } else if (aCliRole == 3.0) {
+              vCliAlpha = 0.34 + 0.18 * (0.5 + 0.5 * sin(uCliTime * 4.0 + aCliSeed * 12.0));
+            }
+          }
+
+          vCliAccent = uCliFormSignal * (aCliRole == 1.0 ? 1.0 : aCliRole == 2.0 ? 0.78 : aCliRole == 3.0 ? 0.2 : 0.04);
+
           vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
           gl_PointSize = aSize * uPixelRatio * 460.0 / -mvPos.z;
           gl_PointSize += vDocInk * 2.1;
@@ -632,17 +742,21 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
           gl_Position = projectionMatrix * mvPos;
 
           vAlpha = 0.9 + vDocInk * 0.16 + vDocAccent * 0.08 + vLocationPulse * 0.18 + vVizGlow * 0.14 + vVizDetail * 0.18 + vVizAccent * 0.08;
+          vAlpha *= vCliAlpha;
         }
       `,
       fragmentShader: `
         varying vec3 vColor;
         varying float vAlpha;
+        varying float vCliAlpha;
+        varying float vCliAccent;
         varying float vDocInk;
         varying float vDocAccent;
         varying float vLocationPulse;
         varying float vVizGlow;
         varying float vVizDetail;
         varying float vVizAccent;
+        uniform float uIsDark;
 
         void main() {
           float d = length(gl_PointCoord - vec2(0.5));
@@ -653,8 +767,11 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
           vec3 docAccentColor = mix(inkColor, vec3(0.95, 0.12, 0.12), vDocAccent * 0.94);
           vec3 pulseAccent = mix(docAccentColor, vec3(0.95, 0.12, 0.12), vLocationPulse * 0.92);
           vec3 vizBase = mix(pulseAccent, vec3(1.0), vVizGlow * 0.36 + vVizDetail * 0.42);
-          vec3 vizColor = mix(vizBase, vec3(0.95, 0.12, 0.12), vVizAccent * 0.9);
-          gl_FragColor = vec4(vizColor, alpha);
+          vec3 vizColor = mix(vizBase, vec3(0.95, 0.12, 0.12), min(vVizAccent * 1.15 + vVizDetail * 0.04, 1.0));
+          float formAccent = clamp(vCliAccent, 0.0, 1.0);
+          vec3 formAccentColor = mix(vec3(0.95, 0.12, 0.12), vec3(0.08, 0.08, 0.08), (1.0 - uIsDark) * 0.42);
+          vec3 finalColor = mix(vizColor, formAccentColor, formAccent);
+          gl_FragColor = vec4(finalColor, alpha);
         }
       `,
       transparent: true,
@@ -662,6 +779,7 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
       blending: THREE.AdditiveBlending,
       vertexColors: true,
     })
+    materialRef.current = material
 
     const particles = new THREE.Points(geometry, material)
     particles.rotation.x = -0.18
@@ -732,11 +850,14 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
         abstractHoldDuration +
         morphDuration +
         abstractHoldDuration +
+        morphDuration +
+        abstractHoldDuration +
         morphDuration
       const cycleTime = elapsed % cycleDuration
       let source: Float32Array
       let target: Float32Array
       let progress = 0
+      material.uniforms.uCliFormSignal.value = 0
       const documentStart = holdDuration
       const documentHoldStart = documentStart + morphDuration
       const locationStart = documentHoldStart + holdDuration
@@ -747,7 +868,9 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
       const signalDiamondHoldStart = signalDiamondStart + morphDuration
       const terminalCloudStart = signalDiamondHoldStart + abstractHoldDuration
       const terminalCloudHoldStart = terminalCloudStart + morphDuration
-      const sphereReturnStart = terminalCloudHoldStart + abstractHoldDuration
+      const cliStart = terminalCloudHoldStart + abstractHoldDuration
+      const cliHoldStart = cliStart + morphDuration
+      const sphereReturnStart = cliHoldStart + abstractHoldDuration
 
       if (cycleTime < documentStart) {
         source = spherePositions
@@ -825,21 +948,47 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
         material.uniforms.uLocationSignal.value = 0
         material.uniforms.uVisualizationSignal.value = 0
         material.uniforms.uVisualizationStage.value = 0
-      } else if (cycleTime < sphereReturnStart) {
+      } else if (cycleTime < cliStart) {
         source = terminalCloudPositions
         target = terminalCloudPositions
         material.uniforms.uDocumentSignal.value = 0
         material.uniforms.uLocationSignal.value = 0
         material.uniforms.uVisualizationSignal.value = 0
         material.uniforms.uVisualizationStage.value = 0
-      } else {
+        material.uniforms.uCliTypingActive.value = 0
+        material.uniforms.uCliTime.value = 0
+      } else if (cycleTime < cliHoldStart) {
         source = terminalCloudPositions
-        target = spherePositions
-        progress = easeInOutCubic((cycleTime - sphereReturnStart) / morphDuration)
+        target = cliWindow.positions
+        progress = easeInOutCubic((cycleTime - cliStart) / morphDuration)
+        material.uniforms.uCliFormSignal.value = progress
         material.uniforms.uDocumentSignal.value = 0
         material.uniforms.uLocationSignal.value = 0
         material.uniforms.uVisualizationSignal.value = 0
         material.uniforms.uVisualizationStage.value = 0
+        material.uniforms.uCliTypingActive.value = 0
+        material.uniforms.uCliTime.value = 0
+      } else if (cycleTime < sphereReturnStart) {
+        source = cliWindow.positions
+        target = cliWindow.positions
+        material.uniforms.uCliFormSignal.value = 1
+        material.uniforms.uDocumentSignal.value = 0
+        material.uniforms.uLocationSignal.value = 0
+        material.uniforms.uVisualizationSignal.value = 0
+        material.uniforms.uVisualizationStage.value = 0
+        material.uniforms.uCliTypingActive.value = 1
+        material.uniforms.uCliTime.value = cycleTime - cliHoldStart
+      } else {
+        source = cliWindow.positions
+        target = spherePositions
+        progress = easeInOutCubic((cycleTime - sphereReturnStart) / morphDuration)
+        material.uniforms.uCliFormSignal.value = 1 - progress
+        material.uniforms.uDocumentSignal.value = 0
+        material.uniforms.uLocationSignal.value = 0
+        material.uniforms.uVisualizationSignal.value = 0
+        material.uniforms.uVisualizationStage.value = 0
+        material.uniforms.uCliTypingActive.value = 0
+        material.uniforms.uCliTime.value = abstractHoldDuration
       }
 
       const positionAttr = geometry.attributes.position.array as Float32Array
@@ -867,6 +1016,7 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
       window.removeEventListener("blur", onWindowBlur)
       geometryRef.current = null
       colorBufferRef.current = null
+      materialRef.current = null
       particleCountRef.current = 0
       geometry.dispose()
       material.dispose()
@@ -882,6 +1032,7 @@ export function HomeDefaultSphere({ className = "" }: { className?: string }) {
     if (!geometry || !colors || particleCount === 0) return
 
     const isDark = resolvedTheme === "dark"
+    if (materialRef.current) materialRef.current.uniforms.uIsDark.value = isDark ? 1 : 0
     const dominantColor = new THREE.Color(isDark ? 0xffffff : 0xd11f1f)
     const supportColor = new THREE.Color(isDark ? 0xd11f1f : 0x111111)
     const mixedColor = new THREE.Color()

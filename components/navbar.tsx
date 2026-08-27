@@ -7,7 +7,6 @@ import { useEffect, useRef, useState } from "react"
 import { usePathname } from "next/navigation"
 import { useTheme } from "next-themes"
 import { ChevronDown, Menu, Moon, Sun, User, X } from "lucide-react"
-import type { Session } from "@supabase/supabase-js"
 import { AccountPanel } from "@/components/account-panel"
 import {
   MARKETING_SCROLL_RESET_PATHS,
@@ -15,19 +14,13 @@ import {
 } from "@/components/marketing-scroll-reset"
 import { SystemStatusIndicator } from "@/components/ui/system-status-indicator"
 import { ProductAssistantPreview } from "@/components/product-assistant-preview"
-import { supabase } from "@/lib/supabase"
-import { useEntitlement } from "@/hooks/use-entitlement"
-import { MCP_CONNECTOR_CLIENT_ENABLED } from "@/lib/mcp-config"
 
 const studioTools = [
   { name: "Smart Storage", href: "/tools/smart-storage" },
   { name: "Smart Dashboard", href: "/tools/smart-dashboard" },
 ]
 
-const toolLinks = [
-  ...studioTools,
-  ...(MCP_CONNECTOR_CLIENT_ENABLED ? [{ name: "Connect to Claude", href: "/tools/smart-storage/connect" }] : []),
-]
+const toolLinks = studioTools
 
 const navFontStyle = {
   fontFamily: 'var(--font-aldrich), "Aldrich", var(--font-geist), "Geist", "Geist Fallback", sans-serif',
@@ -67,16 +60,13 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
   const [mobileToolsOpen, setMobileToolsOpen] = useState(false)
   const toolsOpenTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const toolsCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [session, setSession] = useState<Session | null>(null)
-  const entitlement = useEntitlement(session)
-  const showTools = Boolean(session && !entitlement.loading && entitlement.isActive)
   // Product assistant rollout plan:
   // 1. Keep the navbar assistant implementation in the codebase.
   // 2. Keep it hidden for all users until the wiki-backed knowledge source is ready.
   // 3. When the real wiki mapping is ready, replace the hard `false` below with
   //    `session && hasActiveSubscription` to enable it only for active subscribers.
   const assistantRolloutEnabled = false
-  const showAssistantPreview = assistantRolloutEnabled && Boolean(session && entitlement.isActive)
+  const showAssistantPreview = assistantRolloutEnabled
 
   function clearToolsTimers() {
     if (toolsOpenTimer.current) clearTimeout(toolsOpenTimer.current)
@@ -99,21 +89,6 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
   }
 
   useEffect(() => () => clearToolsTimers(), [])
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data, error }) => {
-      if (error) return
-      setSession(data.session)
-    }).catch(() => {
-      setSession(null)
-    })
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession)
-    })
-
-    return () => subscription.unsubscribe()
-  }, [])
 
   function handleMarketingLinkClick(
     href: string,
@@ -177,8 +152,7 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
             >
               Pricing
             </Link>
-            <div className="relative min-w-[4.75rem]" aria-hidden={!showTools}>
-            {showTools ? (
+            <div className="relative">
               <div onMouseEnter={scheduleToolsOpen} onMouseLeave={scheduleToolsClose} onFocus={scheduleToolsOpen} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) scheduleToolsClose() }}>
                 <button
                   type="button"
@@ -199,15 +173,9 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
                         {tool.name}
                       </Link>
                     ))}
-                    {MCP_CONNECTOR_CLIENT_ENABLED && (
-                      <Link href="/tools/smart-storage/connect" target="_blank" rel="noopener noreferrer" role="menuitem" onClick={() => setToolsOpen(false)} className="block rounded-lg px-3 py-2 text-sm text-foreground/80 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]">
-                        Connect to Claude
-                      </Link>
-                    )}
                   </div>
                 )}
               </div>
-            ) : <span className="invisible block text-sm font-medium" style={navFontStyle}>Tools</span>}
             </div>
             <ThemeToggle />
 
@@ -227,9 +195,7 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
             >
               Pricing
             </Link>
-            <div className="min-h-9 min-w-9" aria-hidden={!showTools}>
-            {showTools ? (
-              <button
+            <button
                 type="button"
                 onClick={() => setMobileToolsOpen((open) => !open)}
                 aria-label={mobileToolsOpen ? "Close tools menu" : "Open tools menu"}
@@ -237,18 +203,16 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
                 className="cw-button-flow glass-surface-sm flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-all hover:text-foreground hover:[box-shadow:0_0_20px_-4px_var(--retro-glow-red)]"
               >
                 {mobileToolsOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
-              </button>
-            ) : <span className="invisible block h-9 w-9" aria-hidden="true" />}
-            </div>
+            </button>
             <ThemeToggle />
             <SystemStatusIndicator />
             <AccountMenuButton onClick={() => setAccountPanelOpen(true)} />
           </div>
         </nav>
-        {showTools && mobileToolsOpen && (
+        {mobileToolsOpen && (
           <div className="glass-surface mx-4 mt-2 rounded-2xl p-3 md:hidden" style={navFontStyle}>
-            {toolLinks.map((tool, index) => (
-              <Link key={tool.href} href={tool.href} target="_blank" rel="noopener noreferrer" onClick={() => setMobileToolsOpen(false)} className={`block rounded-lg px-3 py-2.5 text-sm text-foreground/80 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)] ${index === studioTools.length ? "mt-1 border-t border-border/60 pt-3" : ""}`}>
+            {toolLinks.map((tool) => (
+              <Link key={tool.href} href={tool.href} target="_blank" rel="noopener noreferrer" onClick={() => setMobileToolsOpen(false)} className="block rounded-lg px-3 py-2.5 text-sm text-foreground/80 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]">
                 {tool.name}
               </Link>
             ))}

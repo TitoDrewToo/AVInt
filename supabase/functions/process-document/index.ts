@@ -9,6 +9,7 @@ import { syncVirtualRecord } from "../_shared/virtual-records.ts"
 import { deriveRecords } from "../_shared/derive-records.ts"
 import { persistDerived } from "../_shared/persist-derived.ts"
 import { writeExtraction } from "../_shared/write-extraction.ts"
+import { buildExtractionPayload } from "../_shared/extraction-payload.ts"
 
 const FN = "process-document"
 
@@ -949,55 +950,6 @@ serve(async (req) => {
         }
       }
     }
-    const usageWindow = usageWindowForTier(tier, new Date(), entitlementEnd)
-    const { data: usageRows, error: usageError } = await supabase.rpc("avint_claim_document_processing", {
-      p_user_id: file.user_id,
-      p_file_id: file_id,
-      p_period_start: usageWindow.start,
-      p_period_end: usageWindow.end,
-      p_limit: PLAN_LIMITS[tier].documents,
-      p_soft_cap: PLAN_LIMITS[tier].softCap,
-    })
-
-    if (usageError) throw new Error(`Document usage claim failed: ${usageError.message}`)
-
-    const usage = usageRows?.[0]
-    if (usage?.fair_use_warning) {
-      logEvent(FN, "document_fair_use_warning", {
-        file_id,
-        user_id: file.user_id,
-        tier,
-        used_count: usage.used_count,
-        limit_count: PLAN_LIMITS[tier].documents,
-      })
-    }
-
-    if (!usage?.allowed) {
-      const limitMessage = `You've reached the ${PLAN_LIMITS[tier].documents}-document limit for your current plan. Upgrade to continue processing documents.`
-      await supabase
-        .from("processing_jobs")
-        .update({ status: "failed", error_message: limitMessage })
-        .eq("file_id", file_id)
-        .in("status", ["uploaded", "processing"])
-      logEvent(FN, "document_limit_reached", {
-        file_id,
-        user_id: file.user_id,
-        tier,
-        used_count: usage?.used_count ?? PLAN_LIMITS[tier].documents,
-        limit_count: PLAN_LIMITS[tier].documents,
-      })
-      return new Response(JSON.stringify({
-        error: limitMessage,
-        code: "DOCUMENT_LIMIT_REACHED",
-        tier,
-        used_count: usage?.used_count ?? PLAN_LIMITS[tier].documents,
-        limit_count: PLAN_LIMITS[tier].documents,
-      }), {
-        status: 429,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      })
-    }
-
     // 1. Mark active job for this file as processing.
     // Prescan does not pass job_id through the chain, so we look up the latest
     // job for the file by file_id. One active job per file in practice.
@@ -1078,9 +1030,11 @@ serve(async (req) => {
     const rowsToInsert = extractedRows.map((row: any, index: number) => {
       const sourceIndex = row._source_index ?? index
       const sourceRow = sourceRows?.[sourceIndex] ?? null
+      const sourceKey = extractedRows.length === 1 ? "root" : String(index)
 
       return {
         file_id,
+        source_key: sourceKey,
         vendor_name:          row.vendor_name      ?? null,
         employer_name:        row.employer_name    ?? null,
         document_date:        row.document_date    ?? null,
@@ -1113,7 +1067,7 @@ serve(async (req) => {
 
     const { data: insertedRows, error: insertError } = await supabase
       .from("document_fields")
-      .insert(rowsToInsert)
+      .upsert(rowsToInsert, { onConflict: "file_id,source_key" })
       .select("*")
 
     logEvent(FN, "insert_result", {
@@ -1130,6 +1084,55 @@ serve(async (req) => {
       throw new Error("document_fields insert returned no rows")
     }
 
+    const usageWindow = usageWindowForTier(tier, new Date(), entitlementEnd)
+    const { data: usageRows, error: usageError } = await supabase.rpc("avint_claim_document_processing", {
+      p_user_id: file.user_id,
+      p_file_id: file_id,
+      p_period_start: usageWindow.start,
+      p_period_end: usageWindow.end,
+      p_limit: PLAN_LIMITS[tier].documents,
+      p_soft_cap: PLAN_LIMITS[tier].softCap,
+    })
+
+    if (usageError) throw new Error(`Document usage claim failed: ${usageError.message}`)
+
+    const usage = usageRows?.[0]
+    if (usage?.fair_use_warning) {
+      logEvent(FN, "document_fair_use_warning", {
+        file_id,
+        user_id: file.user_id,
+        tier,
+        used_count: usage.used_count,
+        limit_count: PLAN_LIMITS[tier].documents,
+      })
+    }
+
+    if (!usage?.allowed) {
+      const limitMessage = `You've reached the ${PLAN_LIMITS[tier].documents}-document limit for your current plan. Upgrade to continue processing documents.`
+      await supabase
+        .from("processing_jobs")
+        .update({ status: "failed", error_message: limitMessage })
+        .eq("file_id", file_id)
+        .in("status", ["uploaded", "processing"])
+      logEvent(FN, "document_limit_reached", {
+        file_id,
+        user_id: file.user_id,
+        tier,
+        used_count: usage?.used_count ?? PLAN_LIMITS[tier].documents,
+        limit_count: PLAN_LIMITS[tier].documents,
+      })
+      return new Response(JSON.stringify({
+        error: limitMessage,
+        code: "DOCUMENT_LIMIT_REACHED",
+        tier,
+        used_count: usage?.used_count ?? PLAN_LIMITS[tier].documents,
+        limit_count: PLAN_LIMITS[tier].documents,
+      }), {
+        status: 429,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      })
+    }
+
     const extractionPayload = extractedRows.length === 1 ? extractedRows[0] : extractedRows
     const extractionId = await writeExtraction(supabase, {
       userId: file.user_id,
@@ -1139,8 +1142,12 @@ serve(async (req) => {
       model: extractionProvider === "deterministic" ? "sheetjs-header-mapping" : "document-extraction",
       payload: extractionPayload,
       sourceRowCount: extractedRows.length,
+      attemptNumber: 1,
     })
-    const derived = deriveRecords(extractionPayload, { id: file_id, user_id: file.user_id })
+    const derivationPayload = extractedRows.length === 1
+      ? buildExtractionPayload(extractedRows[0], isCsv ? "csv_export" : normalizeExtractedDocumentType(extracted, mimeType))
+      : extractedRows.map((row) => buildExtractionPayload(row, isCsv ? "csv_export" : normalizeExtractedDocumentType(row, mimeType)))
+    const derived = deriveRecords(derivationPayload, { id: file_id, user_id: file.user_id })
     if (derived.reason) throw new Error(`record derivation failed: ${derived.reason}`)
     await persistDerived(supabase, extractionId, derived)
 
@@ -1182,7 +1189,7 @@ serve(async (req) => {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
         },
-        body: JSON.stringify({ file_id, job_id: currentJobId, fields: row }),
+        body: JSON.stringify({ file_id, job_id: currentJobId, source_key: row.source_key, fields: row }),
       },
     )
 

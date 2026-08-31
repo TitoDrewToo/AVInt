@@ -7,6 +7,8 @@ import { syncVirtualRecord } from "../_shared/virtual-records.ts"
 import { deriveRecords } from "../_shared/derive-records.ts"
 import { persistDerived } from "../_shared/persist-derived.ts"
 import { writeExtraction } from "../_shared/write-extraction.ts"
+import { attemptNumberForSourceKey } from "../_shared/write-extraction.ts"
+import { buildExtractionPayload } from "../_shared/extraction-payload.ts"
 
 const FN = "normalize-document"
 
@@ -180,7 +182,7 @@ serve(async (req) => {
   }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-  const { file_id, job_id, fields: inlineFields } = body
+  const { file_id, job_id, source_key: requestedSourceKey, fields: inlineFields } = body
 
   // Hoisted so the catch block can target the specific row (by id) when it's
   // known, and increment normalization_attempts against that row.
@@ -464,7 +466,9 @@ serve(async (req) => {
       .eq("id", fields.id)
 
     if (ownerFile?.user_id) {
-      const extractionPayload = { ...normalizedRow, document_type: ownerFile.document_type ?? "general_document" }
+      const sourceKey = requestedSourceKey ?? fields.source_key
+      if (!sourceKey) throw new Error("source_key is required for normalization")
+      const extractionPayload = buildExtractionPayload(normalizedRow, ownerFile.document_type ?? "general_document")
       const extractionId = await writeExtraction(supabase, {
         userId: ownerFile.user_id,
         fileId: file_id,
@@ -473,8 +477,9 @@ serve(async (req) => {
         model: "document-normalization",
         payload: extractionPayload,
         sourceRowCount: 1,
+        attemptNumber: attemptNumberForSourceKey(sourceKey),
       })
-      const derived = deriveRecords(extractionPayload, { id: file_id, user_id: ownerFile.user_id })
+      const derived = deriveRecords(extractionPayload, { id: file_id, user_id: ownerFile.user_id }, { sourceKey })
       if (derived.reason) throw new Error(`record derivation failed: ${derived.reason}`)
       await persistDerived(supabase, extractionId, derived)
     }

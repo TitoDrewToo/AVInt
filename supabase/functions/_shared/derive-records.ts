@@ -52,6 +52,10 @@ const FINANCIAL_TYPES = new Set([
   "receipt", "invoice", "payslip", "income_statement", "bank_statement", "transaction_record", "tax_document",
 ])
 
+export type DeriveOptions = {
+  sourceKey?: string
+}
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
 }
@@ -75,6 +79,19 @@ function confidenceMap(row: Record<string, unknown>): Record<string, number> {
 function rowConfidence(row: Record<string, unknown>, field: string, map: Record<string, number>): number | null {
   const value = map[field] ?? row.confidence ?? row.confidence_score
   return typeof value === "number" ? value : null
+}
+
+function containsNumericValue(value: unknown): boolean {
+  if (typeof value === "number") return Number.isFinite(value)
+  if (Array.isArray(value)) return value.some(containsNumericValue)
+  if (isObject(value)) return Object.values(value).some(containsNumericValue)
+  return false
+}
+
+function hasNumericExtractionValue(row: Record<string, unknown>): boolean {
+  return Object.entries(row)
+    .filter(([key]) => !META_FIELDS.has(key))
+    .some(([, value]) => containsNumericValue(value))
 }
 
 function normaliseRows(extraction: unknown): { rows: Record<string, unknown>[]; reason?: string } {
@@ -123,6 +140,7 @@ function makeRecord(
     : row.document_date ?? null
   const currency = row.currency ?? inherited?.currency ?? null
   const needsReview = confidenceValues.some((value) => value < 0.8)
+    || (occurredOn === null && !hasNumericExtractionValue(row))
     || (FINANCIAL_TYPES.has(type) && (amount === null || occurredOn === null))
     || (amount !== null && currency == null)
 
@@ -173,7 +191,7 @@ function attributesFor(row: Record<string, unknown>, file: FileInput, sourceKey:
     }))
 }
 
-export function deriveRecords(extraction: unknown, file: FileInput): DeriveResult {
+export function deriveRecords(extraction: unknown, file: FileInput, options: DeriveOptions = {}): DeriveResult {
   if (!file?.id || !file?.user_id) return { records: [], attributes: [], reason: "File id and user id are required" }
   const normalised = normaliseRows(extraction)
   if (normalised.reason) return { records: [], attributes: [], reason: normalised.reason }
@@ -183,7 +201,7 @@ export function deriveRecords(extraction: unknown, file: FileInput): DeriveResul
   const fallbackType = isObject(extraction) && typeof extraction.document_type === "string" ? extraction.document_type : undefined
   const rows = normalised.rows
   rows.forEach((row, rowIndex) => {
-    const sourceKey = rows.length === 1 && !Array.isArray(extraction) && !("rows" in (extraction as object)) && !("records" in (extraction as object)) ? "root" : String(rowIndex)
+    const sourceKey = options.sourceKey ?? (rows.length === 1 && !Array.isArray(extraction) && !("rows" in (extraction as object)) && !("records" in (extraction as object)) ? "root" : String(rowIndex))
     const type = recordType(row, fallbackType)
     records.push(makeRecord(row, file, sourceKey, undefined, undefined, fallbackType))
     attributes.push(...attributesFor(row, file, sourceKey, type))

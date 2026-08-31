@@ -51,6 +51,23 @@ async function upsertRecords(client: QueryClient, payloads: Record<string, unkno
   return data as Array<{ id: string; source_key: string; parent_record_id: string | null }>
 }
 
+async function pruneStaleChildren(client: QueryClient, fileId: string, currentSourceKeys: Set<string>) {
+  const { data, error } = await client
+    .from("records")
+    .select("id, source_key")
+    .eq("file_id", fileId)
+    .not("parent_record_id", "is", null)
+  assertNoError(error, "stale child records query")
+
+  const staleIds = (data ?? [])
+    .filter((row: { source_key: string }) => !currentSourceKeys.has(row.source_key))
+    .map((row: { id: string }) => row.id)
+  if (staleIds.length === 0) return
+
+  const { error: deleteError } = await client.from("records").delete().in("id", staleIds)
+  assertNoError(deleteError, "stale child records delete")
+}
+
 function attributePayload(attribute: DerivedAttribute, recordId: string) {
   return {
     user_id: attribute.user_id,
@@ -72,6 +89,10 @@ export async function persistDerived(
   const children = derived.records.filter((record) => Boolean(record.parent_source_key))
   const fileId = derived.records[0]?.file_id
   if (!fileId && derived.records.length > 0) throw new Error("derived records must include file_id")
+  if (!fileId) {
+    console.log("Skipping stale child pruning because derivation produced no records")
+    return { inserted: 0, updated: 0 }
+  }
 
   const existing = fileId ? await existingKeys(client, fileId, derived.records.map((record) => record.source_key)) : new Set<string>()
   const parentRows = await upsertRecords(client, parents.map((record) => recordPayload(record, extractionId, null)))
@@ -108,6 +129,8 @@ export async function persistDerived(
     assertNoError(error, "child record count assertion")
     if ((count ?? 0) < children.length) throw new Error(`child record count assertion failed: expected at least ${children.length}, got ${count ?? 0}`)
   }
+
+  await pruneStaleChildren(client, fileId, new Set(derived.records.map((record) => record.source_key)))
 
   await applyOverrides(client, [...recordIds.values()])
   const inserted = derived.records.filter((record) => !existing.has(record.source_key)).length

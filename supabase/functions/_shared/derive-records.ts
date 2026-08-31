@@ -94,6 +94,19 @@ function hasNumericExtractionValue(row: Record<string, unknown>): boolean {
     .some(([, value]) => containsNumericValue(value))
 }
 
+function numericAmount(value: unknown): number | null {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null
+  if (typeof value !== "string" || value.trim() === "") return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function isParentRestatement(item: Record<string, unknown>, parentAmount: unknown): boolean {
+  const parentValue = numericAmount(parentAmount)
+  const itemValue = numericAmount(item.amount)
+  return parentValue !== null && itemValue !== null && Math.abs(parentValue - itemValue) <= 0.005
+}
+
 function normaliseRows(extraction: unknown): { rows: Record<string, unknown>[]; reason?: string } {
   if (Array.isArray(extraction)) {
     if (!extraction.every(isObject)) return { rows: [], reason: "Extraction rows must all be objects" }
@@ -203,11 +216,16 @@ export function deriveRecords(extraction: unknown, file: FileInput, options: Der
   rows.forEach((row, rowIndex) => {
     const sourceKey = options.sourceKey ?? (rows.length === 1 && !Array.isArray(extraction) && !("rows" in (extraction as object)) && !("records" in (extraction as object)) ? "root" : String(rowIndex))
     const type = recordType(row, fallbackType)
-    records.push(makeRecord(row, file, sourceKey, undefined, undefined, fallbackType))
+    const parentRecord = makeRecord(row, file, sourceKey, undefined, undefined, fallbackType)
+    records.push(parentRecord)
     attributes.push(...attributesFor(row, file, sourceKey, type))
     const items = row[CHILD_FIELD]
     if (items === undefined || items === null) return
     if (!Array.isArray(items)) return
+    if (items.length === 1 && isObject(items[0]) && isParentRestatement(items[0], parentRecord.amount)) {
+      attributes.push(...attributesFor(items[0], file, sourceKey, type))
+      return
+    }
     items.forEach((item, itemIndex) => {
       if (!isObject(item)) return
       const childKey = `${sourceKey}.${itemIndex + 1}`

@@ -83,10 +83,35 @@ const contract = deriveRecords({
 check("contract preserves line-item attributes", contract.attributes.some((attribute) => attribute.field_key === "description" && attribute.source_key === "root.1"))
 check("contract child uses its own amount and date", contract.records[1].amount === 20000 && contract.records[1].occurred_on === "2026-09-01")
 
+const matchingSingleItem = deriveRecords({
+  document_type: "receipt", document_date: "2026-08-27", currency: "PHP", total_amount: 49,
+  line_items: [{ description: "Design subscription", amount: 49 }],
+}, file)
+check("matching single line item collapses to the parent", matchingSingleItem.records.length === 1)
+check("collapsed line item description is a parent attribute", matchingSingleItem.attributes.some((attribute) => attribute.source_key === "root" && attribute.field_key === "description" && attribute.value === "Design subscription"))
+
+const partialSingleItem = deriveRecords({
+  document_type: "receipt", document_date: "2026-08-27", currency: "PHP", total_amount: 49,
+  line_items: [{ description: "Partial charge", amount: 48.99 }],
+}, file)
+check("different single line item remains a child", partialSingleItem.records.length === 2 && partialSingleItem.records[1].source_key === "root.1")
+
+const twoItems = deriveRecords({
+  document_type: "receipt", document_date: "2026-08-27", currency: "PHP", total_amount: 49,
+  line_items: [{ description: "Part A", amount: 24.5 }, { description: "Part B", amount: 24.5 }],
+}, file)
+check("two line items remain two children", twoItems.records.length === 3 && twoItems.records.slice(1).every((record) => record.parent_source_key === "root"))
+
+const unknownParentAmount = deriveRecords({
+  document_type: "receipt", document_date: "2026-08-27", currency: "PHP", total_amount: null,
+  line_items: [{ description: "Unknown total item", amount: 49 }],
+}, file)
+check("null parent amount does not collapse a line item", unknownParentAmount.records.length === 2 && unknownParentAmount.records[1].source_key === "root.1")
+
 const empty = deriveRecords({}, file)
 check("empty payload returns no records", empty.records.length === 0 && empty.attributes.length === 0)
 const malformed = deriveRecords({ rows: [{ document_type: "receipt" }, null] }, file)
 check("malformed payload returns empty result", malformed.records.length === 0 && malformed.attributes.length === 0)
 check("malformed payload returns a reason", typeof malformed.reason === "string" && malformed.reason.length > 0)
 
-console.log("derive-records fixtures: 20 passed")
+console.log("derive-records fixtures: 24 passed")

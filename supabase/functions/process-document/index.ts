@@ -10,6 +10,7 @@ import { deriveRecords } from "../_shared/derive-records.ts"
 import { persistDerived } from "../_shared/persist-derived.ts"
 import { writeExtraction } from "../_shared/write-extraction.ts"
 import { buildExtractionPayload } from "../_shared/extraction-payload.ts"
+import { buildDatasetSheet, replaceSpreadsheetDatasets, type DatasetSheet } from "../_shared/dataset-layer.ts"
 
 const FN = "process-document"
 
@@ -509,12 +510,16 @@ async function extractSpreadsheetRows(
 
   const extractedRows: ExtractedDocumentRow[] = []
   const sourceRows: any[] = []
+  const datasetSheets: DatasetSheet[] = []
   const explicitCurrencyCounts: Record<string, number> = {}
   let sourceIndex = 0
 
   for (const sheetName of workbook.SheetNames) {
     const sheet = workbook.Sheets[sheetName]
     const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null }) as any[][]
+    const rawHeaders = Array.isArray(rawRows[0]) ? rawRows[0] : []
+    const dataRows = rawRows.slice(1)
+    datasetSheets.push(buildDatasetSheet(sheetName, rawHeaders, dataRows))
 
     const headerEntries = (rawRows[0] ?? [])
       .map((header: any, index: number) => ({ header: String(header ?? "").trim(), index }))
@@ -532,7 +537,6 @@ async function extractSpreadsheetRows(
     if (rawRows.length < 2) continue
     if (headers.length === 0) continue
 
-    const dataRows = rawRows.slice(1)
     const sampleForMapping = dataRows
       .filter((row) => row.some((cell) => !isBlankCell(cell)))
       .slice(0, 3)
@@ -708,9 +712,8 @@ async function extractSpreadsheetRows(
     total_source_rows: sourceRows.length,
   })
 
-  if (extractedRows.length === 0) {
-    throw new Error("No data rows extracted from any sheet. Header mapping or row detection failed across all sheets.")
-  }
+  if (!userId) throw new Error("Spreadsheet dataset owner is required")
+  await replaceSpreadsheetDatasets(supabase, fileId, userId, datasetSheets)
 
   return { extractedRows, sourceRows }
 }
@@ -1019,7 +1022,7 @@ serve(async (req) => {
       }
     }
 
-    if (extractedRows.length === 0) {
+    if (extractedRows.length === 0 && !isSpreadsheetInput(mimeType, file.filename ?? "")) {
       throw new Error("No rows extracted from document")
     }
 
@@ -1080,7 +1083,7 @@ serve(async (req) => {
       throw new Error(`document_fields insert failed: ${insertError.message}`)
     }
 
-    if (!insertedRows || insertedRows.length === 0) {
+    if ((!insertedRows || insertedRows.length === 0) && !isSpreadsheetInput(mimeType, file.filename ?? "")) {
       throw new Error("document_fields insert returned no rows")
     }
 

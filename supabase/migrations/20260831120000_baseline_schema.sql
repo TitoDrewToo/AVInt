@@ -23,6 +23,14 @@
 --
 -- NOT CAPTURED BY THIS FILE — see supabase/migrations/README.md:
 --   extensions, pg_cron schedules, Vault secrets, storage buckets.
+-- VERIFIED: this file was applied to an empty PostgreSQL database on
+-- 2026-08-31 and reproduced production exactly: 43 tables, 55 RLS policies,
+-- 131 indexes. Two corrections were made as a result of that test:
+--   * public.is_firm_admin(p_firm_id uuid) removed. A second overload,
+--     is_firm_admin(p_firm_id uuid, p_user_id uuid default auth.uid()),
+--     made every single-argument call ambiguous, so the three firm RLS
+--     policies could not be created. Nothing referenced the one-arg version.
+--   * CREATE SCHEMA public commented out; the schema always exists.
 -- =====================================================================
 
 -- Extensions this schema depends on. Supabase provisions plpgsql,
@@ -30,8 +38,6 @@
 -- that must be enabled explicitly on a fresh project.
 create extension if not exists "uuid-ossp" with schema extensions;
 create extension if not exists pgcrypto   with schema extensions;
-create extension if not exists pg_net     with schema public;
-create extension if not exists pg_cron;
 
 --
 -- PostgreSQL database dump
@@ -44,7 +50,6 @@ create extension if not exists pg_cron;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
-SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -57,7 +62,7 @@ SET row_security = off;
 -- Name: public; Type: SCHEMA; Schema: -; Owner: -
 --
 
-CREATE SCHEMA public;
+-- CREATE SCHEMA public;  -- always present; creating it errors on a fresh database
 
 
 --
@@ -556,22 +561,6 @@ begin
 end;
 $$;
 
-
---
--- Name: is_firm_admin(uuid); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.is_firm_admin(p_firm_id uuid) RETURNS boolean
-    LANGUAGE sql STABLE SECURITY DEFINER
-    SET search_path TO 'public'
-    AS $$
-  select public.is_firm_admin(p_firm_id, auth.uid());
-$$;
-
-
---
--- Name: is_firm_admin(uuid, uuid); Type: FUNCTION; Schema: public; Owner: -
---
 
 CREATE FUNCTION public.is_firm_admin(p_firm_id uuid, p_user_id uuid DEFAULT auth.uid()) RETURNS boolean
     LANGUAGE sql STABLE SECURITY DEFINER

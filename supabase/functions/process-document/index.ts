@@ -6,6 +6,9 @@ import { PLAN_LIMITS, planTierForSubscription, usageWindowForTier } from "../_sh
 import { asExtractedDocumentRows, type ExtractedDocumentRow } from "../_shared/extraction-boundary.ts"
 import { recordAiUsage } from "../_shared/ai-usage.ts"
 import { syncVirtualRecord } from "../_shared/virtual-records.ts"
+import { deriveRecords } from "../_shared/derive-records.ts"
+import { persistDerived } from "../_shared/persist-derived.ts"
+import { writeExtraction } from "../_shared/write-extraction.ts"
 
 const FN = "process-document"
 
@@ -680,7 +683,7 @@ async function extractSpreadsheetRows(
         inferred_currency_method: "file_majority",
         inferred_currency: fileMajorityCurrency,
       }
-      const sheetName = row._source_sheet ?? "unknown"
+      const sheetName = String(row._source_sheet ?? "unknown")
       fileMajorityBySheet[sheetName] = (fileMajorityBySheet[sheetName] ?? 0) + 1
     }
     for (const [sheetName, affectedCount] of Object.entries(fileMajorityBySheet)) {
@@ -1126,6 +1129,20 @@ serve(async (req) => {
     if (!insertedRows || insertedRows.length === 0) {
       throw new Error("document_fields insert returned no rows")
     }
+
+    const extractionPayload = extractedRows.length === 1 ? extractedRows[0] : extractedRows
+    const extractionId = await writeExtraction(supabase, {
+      userId: file.user_id,
+      fileId: file_id,
+      documentType: isCsv ? "csv_export" : normalizeExtractedDocumentType(extracted, mimeType),
+      provider: extractionProvider,
+      model: extractionProvider === "deterministic" ? "sheetjs-header-mapping" : "document-extraction",
+      payload: extractionPayload,
+      sourceRowCount: extractedRows.length,
+    })
+    const derived = deriveRecords(extractionPayload, { id: file_id, user_id: file.user_id })
+    if (derived.reason) throw new Error(`record derivation failed: ${derived.reason}`)
+    await persistDerived(supabase, extractionId, derived)
 
     // 8. Update files.document_type after rows are safely persisted.
     // For CSVs use the first row's type; mark as csv_export for clarity.

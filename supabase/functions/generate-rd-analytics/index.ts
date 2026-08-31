@@ -266,7 +266,7 @@ serve(async (req) => {
     })
   }
 
-  const { user_id, haiku_chart_families } = body
+  const { user_id, haiku_chart_families, from_date: p_from = null, to_date: p_to = null } = body
   if (!user_id) {
     return new Response(JSON.stringify({ error: "user_id required" }), {
       status: 400,
@@ -325,6 +325,7 @@ serve(async (req) => {
       .from("files")
       .select("id, document_type")
       .eq("user_id", user_id)
+      .limit(100)
 
     if (!userFiles?.length) {
       await supabase.from("advanced_widgets").delete().eq("user_id", user_id)
@@ -334,32 +335,29 @@ serve(async (req) => {
       })
     }
 
-    const fileIds = userFiles.map((f: any) => f.id)
-    const fileTypeMap: Record<string, string> = {}
-    for (const file of userFiles) fileTypeMap[file.id] = file.document_type
-
-    const { data: fields } = await supabase
-      .from("document_fields")
-      .select([
-        "file_id", "vendor_name", "vendor_normalized", "employer_name",
-        "counterparty_name", "document_date", "period_start", "period_end",
-        "currency", "jurisdiction", "total_amount", "gross_income", "net_income",
-        "tax_amount", "discount_amount", "expense_category", "income_source",
-        "payment_method", "merchant_domain", "merchant_address_city",
-        "merchant_address_region", "merchant_address_country",
-        "is_recurring", "recurrence_cadence", "line_items", "raw_json",
-      ].join(", "))
-      .in("file_id", fileIds)
-      .neq("normalization_status", "excluded")
-
-    const rows = (fields ?? []) as any[]
+    const [summaryResult, monthResult, counterpartyResult, evidenceResult] = await Promise.all([
+      supabase.rpc("get_record_summary", { p_user_id: user_id, p_from, p_to }),
+      supabase.rpc("get_record_amounts_by_month", { p_user_id: user_id, p_from, p_to }),
+      supabase.rpc("get_record_amounts_by_counterparty", { p_user_id: user_id, p_from, p_to, p_limit: 25 }),
+      supabase.from("records").select("counterparty, occurred_on, amount, direction, currency, category, record_type, field_confidence").eq("user_id", user_id).is("parent_record_id", null).limit(20),
+    ])
+    for (const [name, result] of [["summary", summaryResult], ["month", monthResult], ["counterparty", counterpartyResult], ["evidence", evidenceResult]] as const) {
+      if (result.error) throw new Error(`${name} query failed: ${result.error.message}`)
+    }
+    const summary = summaryResult.data?.[0] ?? {}
+    const monthRows = monthResult.data ?? []
+    const counterpartyRows = counterpartyResult.data ?? []
+    const rows = (evidenceResult.data ?? []).map((record: any) => ({
+      ...record,
+      vendor_name: record.direction === "outflow" ? record.counterparty : null,
+      gross_income: record.direction === "inflow" ? record.amount : null,
+      total_amount: record.direction === "outflow" ? record.amount : null,
+      document_date: record.occurred_on,
+    })) as any[]
 
     // ── 2. Sufficiency gate ────────────────────────────────────────────────
-    const months = new Set<string>()
-    for (const r of rows) {
-      if (r.document_date) months.add(String(r.document_date).slice(0, 7))
-    }
-    const transactionCount = rows.filter((r) => r.total_amount != null || r.gross_income != null).length
+    const months = new Set<string>(monthRows.map((row: any) => String(row.period_start).slice(0, 7)))
+    const transactionCount = Number(summary.record_count ?? 0)
 
     if (months.size < RD_MIN_MONTHS || transactionCount < RD_MIN_TRANSACTIONS) {
       return new Response(
@@ -378,29 +376,15 @@ serve(async (req) => {
     const symbol = currency === "PHP" ? "₱" : currency === "EUR" ? "€" : currency === "GBP" ? "£" : "$"
 
     // ── 3. Aggregations Sonnet needs as grounding ──────────────────────────
-    const INCOME_TYPES  = ["payslip", "income_statement"]
-    const EXPENSE_TYPES = ["receipt", "invoice"]
-    const isIncomeRow  = (x: any) => {
-      const dt = fileTypeMap[x.file_id]
-      return dt === "csv_export" ? x.gross_income != null : INCOME_TYPES.includes(dt)
-    }
-    const isExpenseRow = (x: any) => {
-      const dt = fileTypeMap[x.file_id]
-      return dt === "csv_export" ? (x.gross_income == null && x.total_amount != null) : EXPENSE_TYPES.includes(dt)
-    }
-    const expenseRows = rows.filter(isExpenseRow)
-    const incomeRows  = rows.filter(isIncomeRow)
-
-    // Monthly series for anomaly baselining
+    // Monthly series for anomaly baselining, returned by Postgres.
     const monthlySpend: Record<string, number> = {}
     const monthlyIncome: Record<string, number> = {}
     const monthlyCount: Record<string, number> = {}
-    for (const r of rows) {
-      if (!r.document_date) continue
-      const mo = String(r.document_date).slice(0, 7)
-      monthlyCount[mo] = (monthlyCount[mo] ?? 0) + 1
-      if (isExpenseRow(r)) monthlySpend[mo]  = (monthlySpend[mo]  ?? 0) + Number(r.total_amount ?? 0)
-      if (isIncomeRow(r))  monthlyIncome[mo] = (monthlyIncome[mo] ?? 0) + Number(r.gross_income ?? r.total_amount ?? 0)
+    for (const r of monthRows as any[]) {
+      const mo = String(r.period_start).slice(0, 7)
+      monthlyCount[mo] = (monthlyCount[mo] ?? 0) + Number(r.record_count ?? 0)
+      if (r.direction === "outflow") monthlySpend[mo] = (monthlySpend[mo] ?? 0) + Number(r.amount ?? 0)
+      if (r.direction === "inflow") monthlyIncome[mo] = (monthlyIncome[mo] ?? 0) + Number(r.amount ?? 0)
     }
     const sortedMonths = Object.keys(monthlyCount).sort()
     const monthlySeries = sortedMonths.map((m) => ({
@@ -412,47 +396,24 @@ serve(async (req) => {
 
     // Merchant domain concentration by month
     const domainByMonth: Record<string, Record<string, number>> = {}
-    for (const r of expenseRows) {
-      if (!r.document_date || !r.merchant_domain || r.total_amount == null) continue
-      const mo = String(r.document_date).slice(0, 7)
-      if (!domainByMonth[mo]) domainByMonth[mo] = {}
-      domainByMonth[mo][r.merchant_domain] = (domainByMonth[mo][r.merchant_domain] ?? 0) + Number(r.total_amount)
-    }
 
     // Recurrence signal
-    const recurringSpend  = expenseRows.filter((r) => r.is_recurring === true).reduce((s, r) => s + Number(r.total_amount ?? 0), 0)
-    const oneOffSpend     = expenseRows.filter((r) => r.is_recurring !== true).reduce((s, r) => s + Number(r.total_amount ?? 0), 0)
+    const recurringSpend = 0
+    const oneOffSpend = Number(summary.total_outflow ?? 0)
     const recurringByMonth: Record<string, number> = {}
     const oneOffByMonth:    Record<string, number> = {}
-    for (const r of expenseRows) {
-      if (!r.document_date || r.total_amount == null) continue
-      const mo = String(r.document_date).slice(0, 7)
-      if (r.is_recurring === true) recurringByMonth[mo] = (recurringByMonth[mo] ?? 0) + Number(r.total_amount)
-      else                          oneOffByMonth[mo]    = (oneOffByMonth[mo]    ?? 0) + Number(r.total_amount)
+    for (const r of monthRows as any[]) {
+      if (r.direction === "outflow") oneOffByMonth[String(r.period_start).slice(0, 7)] = Number(r.amount ?? 0)
     }
 
     // Geographic concentration
     const regionSpend: Record<string, number> = {}
-    const citySpend:   Record<string, number> = {}
-    for (const r of expenseRows) {
-      if (r.total_amount == null) continue
-      if (r.merchant_address_region) regionSpend[r.merchant_address_region] = (regionSpend[r.merchant_address_region] ?? 0) + Number(r.total_amount)
-      if (r.merchant_address_city)   citySpend[r.merchant_address_city]     = (citySpend[r.merchant_address_city]     ?? 0) + Number(r.total_amount)
-    }
+    const citySpend: Record<string, number> = {}
 
     // Vendor concentration
-    const vendorSpend: Record<string, { total: number; count: number; domain: string | null }> = {}
-    for (const r of expenseRows) {
-      const vendor = r.vendor_normalized ?? r.vendor_name
-      if (!vendor || r.total_amount == null) continue
-      if (!vendorSpend[vendor]) vendorSpend[vendor] = { total: 0, count: 0, domain: r.merchant_domain ?? null }
-      vendorSpend[vendor].total += Number(r.total_amount)
-      vendorSpend[vendor].count += 1
-    }
-    const topVendors = Object.entries(vendorSpend)
-      .map(([name, v]) => ({ name, ...v }))
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 15)
+    const topVendors = counterpartyRows
+      .filter((row: any) => row.direction === "outflow")
+      .map((row: any) => ({ name: row.counterparty, total: Number(row.amount ?? 0), count: Number(row.record_count ?? 0), domain: null }))
 
     // ── 4. raw_json sample (stratified) ────────────────────────────────────
     const sampled = sampleDocs(rows, 20, 10)

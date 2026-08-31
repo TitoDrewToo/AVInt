@@ -142,7 +142,7 @@ serve(async (req) => {
     })
   }
 
-  const { user_id } = body
+  const { user_id, from_date: p_from = null, to_date: p_to = null } = body
   if (!user_id) {
     return new Response(JSON.stringify({ error: "user_id required" }), {
       status: 400,
@@ -195,11 +195,12 @@ serve(async (req) => {
   }
 
   try {
-    // 1. Fetch user's files + document_fields
+    // 1. Fetch user's files and database-side record aggregates
     const { data: userFiles } = await supabase
       .from("files")
       .select("id, filename, document_type")
       .eq("user_id", user_id)
+      .limit(100)
 
     if (!userFiles?.length) {
       return new Response(JSON.stringify({ error: "No documents found" }), {
@@ -208,41 +209,32 @@ serve(async (req) => {
       })
     }
 
-    const fileIds = userFiles.map((f) => f.id)
+    const [summaryResult, categoryResult, counterpartyResult, currencyResult] = await Promise.all([
+      supabase.rpc("get_record_summary", { p_user_id: user_id, p_from, p_to }),
+      supabase.rpc("get_record_amounts_by_category", { p_user_id: user_id, p_from, p_to, p_limit: 5 }),
+      supabase.rpc("get_record_amounts_by_counterparty", { p_user_id: user_id, p_from, p_to, p_limit: 5 }),
+      supabase.from("records").select("currency").eq("user_id", user_id).is("parent_record_id", null).not("currency", "is", null).limit(100),
+    ])
+    if (summaryResult.error) throw new Error(`record summary failed: ${summaryResult.error.message}`)
+    if (categoryResult.error) throw new Error(`category aggregate failed: ${categoryResult.error.message}`)
+    if (counterpartyResult.error) throw new Error(`counterparty aggregate failed: ${counterpartyResult.error.message}`)
+    if (currencyResult.error) throw new Error(`currency sample failed: ${currencyResult.error.message}`)
 
-    const { data: fields } = await supabase
-      .from("document_fields")
-      .select("file_id, vendor_name, employer_name, document_date, currency, total_amount, gross_income, net_income, expense_category, tax_amount, discount_amount, line_items")
-      .in("file_id", fileIds)
-      .neq("normalization_status", "excluded")
+    const aggregateSummary = summaryResult.data?.[0] ?? {}
+    const categories = categoryResult.data ?? []
+    const counterparties = counterpartyResult.data ?? []
+    const currencies = [...new Set((currencyResult.data ?? []).map((row: any) => row.currency).filter(Boolean))]
 
     // 2. Build a concise data summary for the AI prompt
-    const totalIncome = (fields ?? [])
-      .filter((f) => f.gross_income != null)
-      .reduce((sum, f) => sum + Number(f.gross_income), 0)
-
-    const totalExpenses = (fields ?? [])
-      .filter((f) => f.total_amount != null && f.gross_income == null)
-      .reduce((sum, f) => sum + Number(f.total_amount), 0)
-
-    const categories: Record<string, number> = {}
-    for (const f of fields ?? []) {
-      if (f.expense_category && f.total_amount != null && f.gross_income == null) {
-        categories[f.expense_category] = (categories[f.expense_category] ?? 0) + Number(f.total_amount)
-      }
-    }
-
-    const topCategories = Object.entries(categories)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([cat, amt]) => `${cat}: ${amt.toLocaleString()}`)
-
-    const employers = [...new Set((fields ?? []).filter((f) => f.employer_name).map((f) => f.employer_name))]
-    const vendors   = [...new Set((fields ?? []).filter((f) => f.vendor_name).map((f) => f.vendor_name))].slice(0, 5)
-    const currency  = (fields ?? []).find((f) => f.currency)?.currency ?? "PHP"
-    const currencies = [...new Set((fields ?? []).map((f) => f.currency).filter(Boolean))]
-    const datedRows = (fields ?? []).filter((f) => f.document_date)
-    const monthsTracked = [...new Set(datedRows.map((f) => String(f.document_date).slice(0, 7)))].length
+    const totalIncome = Number(aggregateSummary.total_inflow ?? 0)
+    const totalExpenses = Number(aggregateSummary.total_outflow ?? 0)
+    const topCategories = categories
+      .filter((row: any) => row.direction === "outflow" || row.category === "Other")
+      .map((row: any) => `${row.category}: ${Number(row.amount ?? 0).toLocaleString()}`)
+    const employers = counterparties.filter((row: any) => row.direction === "inflow").map((row: any) => row.counterparty)
+    const vendors = counterparties.filter((row: any) => row.direction === "outflow").map((row: any) => row.counterparty)
+    const currency = currencies[0] ?? "PHP"
+    const monthsTracked = Number(aggregateSummary.months_tracked ?? 0)
     const documentTypes = [...new Set(userFiles.map((f) => f.document_type))]
     const dataQualityNotes = [
       monthsTracked > 0 ? `${monthsTracked} month${monthsTracked === 1 ? "" : "s"} with dated records` : "no dated records detected",
@@ -272,7 +264,7 @@ Net position: ${(totalIncome - totalExpenses).toLocaleString()} ${currency}
 Please write the Smart Dashboard context summary now using What / So What / Now What in natural prose.`
 
     // 3. Call AI
-    const { summary, provider } = await callWithFallback(prompt)
+    const { summary: generatedSummary, provider } = await callWithFallback(prompt)
 
     // 4. Upsert into context_summaries
     const now = new Date().toISOString()
@@ -280,13 +272,13 @@ Please write the Smart Dashboard context summary now using What / So What / Now 
       .from("context_summaries")
       .upsert({
         user_id,
-        summary,
+        summary: generatedSummary,
         generated_at:   now,
         document_count: userFiles.length,
         ai_provider:    provider,
       }, { onConflict: "user_id" })
 
-    return new Response(JSON.stringify({ success: true, summary }), {
+    return new Response(JSON.stringify({ success: true, summary: generatedSummary }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     })
 

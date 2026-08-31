@@ -143,7 +143,7 @@ serve(async (req) => {
     })
   }
 
-  const { user_id, existing_widget_types, plotted_advanced_types } = body
+  const { user_id, existing_widget_types, plotted_advanced_types, from_date: p_from = null, to_date: p_to = null } = body
   if (!user_id) {
     return new Response(JSON.stringify({ error: "user_id required" }), {
       status: 400,
@@ -209,6 +209,7 @@ serve(async (req) => {
       .from("files")
       .select("id, document_type")
       .eq("user_id", user_id)
+      .limit(100)
 
     if (!userFiles?.length) {
       await supabase.from("advanced_widgets").delete().eq("user_id", user_id)
@@ -219,123 +220,49 @@ serve(async (req) => {
       })
     }
 
-    const fileIds = userFiles.map((f: any) => f.id)
-
-    // Build a map of fileId → document_type for consistent income/expense classification.
-    // This matches the dashboard's approach (document_type-based, not field-presence-based).
-    const INCOME_TYPES = ["payslip", "income_statement"]
-    const EXPENSE_TYPES = ["receipt", "invoice"]
-    const fileTypeMap: Record<string, string> = {}
-    for (const file of userFiles) fileTypeMap[file.id] = file.document_type
-
-    // ── 2. Fetch document fields ────────────────────────────────────────────
-    const selectFields = [
-      "file_id",
-      "vendor_name",
-      "vendor_normalized",
-      "employer_name",
-      "counterparty_name",
-      "document_date",
-      "period_start",
-      "period_end",
-      "currency",
-      "jurisdiction",
-      "total_amount",
-      "gross_income",
-      "net_income",
-      "tax_amount",
-      "discount_amount",
-      "expense_category",
-      "income_source",
-      "payment_method",
-    ].join(", ")
-
-    const { data: fields } = await supabase
-      .from("document_fields")
-      .select(selectFields)
-      .in("file_id", fileIds)
-      .neq("normalization_status", "excluded")
-
-    const f = fields ?? []
-    const currency = f.find((x: any) => x.currency)?.currency ?? "PHP"
+    const [summaryResult, directionResult, categoryResult, monthResult, counterpartyResult, currencyResult] = await Promise.all([
+      supabase.rpc("get_record_summary", { p_user_id: user_id, p_from, p_to }),
+      supabase.rpc("get_record_amounts_by_direction", { p_user_id: user_id, p_from, p_to }),
+      supabase.rpc("get_record_amounts_by_category", { p_user_id: user_id, p_from, p_to, p_limit: 25 }),
+      supabase.rpc("get_record_amounts_by_month", { p_user_id: user_id, p_from, p_to }),
+      supabase.rpc("get_record_amounts_by_counterparty", { p_user_id: user_id, p_from, p_to, p_limit: 25 }),
+      supabase.from("records").select("currency").eq("user_id", user_id).is("parent_record_id", null).not("currency", "is", null).limit(100),
+    ])
+    for (const [name, result] of [["summary", summaryResult], ["direction", directionResult], ["category", categoryResult], ["month", monthResult], ["counterparty", counterpartyResult], ["currency", currencyResult]] as const) {
+      if (result.error) throw new Error(`${name} aggregate failed: ${result.error.message}`)
+    }
+    const summary = summaryResult.data?.[0] ?? {}
+    const categoryRows = categoryResult.data ?? []
+    const monthRows = monthResult.data ?? []
+    const counterpartyRows = counterpartyResult.data ?? []
+    const currency = currencyResult.data?.[0]?.currency ?? "PHP"
     const symbol   = currency === "PHP" ? "₱" : currency === "EUR" ? "€" : currency === "GBP" ? "£" : "$"
-    const currencies = [...new Set(f.map((x: any) => x.currency).filter(Boolean))]
+    const currencies = [...new Set((currencyResult.data ?? []).map((x: any) => x.currency).filter(Boolean))]
     const currencyNote = currencies.length > 1
       ? `mixed currencies detected (${currencies.join(", ")}); only generate combined money insights when the provided aggregate is explicitly meaningful, and mention currency uncertainty in insight text`
       : `single primary currency detected (${currency})`
 
-    // ── 3. Core aggregations — csv_export rows classified by gross_income presence ─
-    const isIncomeRow  = (x: any) => {
-      const dt = fileTypeMap[x.file_id]
-      return dt === "csv_export" ? x.gross_income != null : INCOME_TYPES.includes(dt)
-    }
-    const isExpenseRow = (x: any) => {
-      const dt = fileTypeMap[x.file_id]
-      return dt === "csv_export" ? (x.gross_income == null && x.total_amount != null) : EXPENSE_TYPES.includes(dt)
-    }
-    const incomeRows  = f.filter(isIncomeRow)
-    const expenseRows = f.filter(isExpenseRow)
-
-    const totalIncome   = incomeRows.reduce((s: number, x: any) => s + Number(x.gross_income ?? x.total_amount ?? 0), 0)
-    const totalExpenses = expenseRows.reduce((s: number, x: any) => s + Number(x.total_amount ?? 0), 0)
+    // ── 3. Core aggregations are returned by Postgres, never truncated in JS ─
+    const totalIncome   = Number(summary.total_inflow ?? 0)
+    const totalExpenses = Number(summary.total_outflow ?? 0)
     const netPosition   = totalIncome - totalExpenses
     const savingsRate   = totalIncome > 0 ? ((netPosition / totalIncome) * 100).toFixed(1) : "0"
-    const totalTax      = f.filter((x: any) => x.tax_amount != null).reduce((s: number, x: any) => s + Number(x.tax_amount), 0)
-
-    const categories: Record<string, number> = {}
-    for (const x of expenseRows) {
-      if (x.expense_category && x.total_amount != null) {
-        categories[x.expense_category] = (categories[x.expense_category] ?? 0) + Number(x.total_amount)
-      }
-    }
+    const totalTax = 0
+    const categories: Record<string, number> = Object.fromEntries(categoryRows.filter((x: any) => x.direction === "outflow" || x.category === "Other").map((x: any) => [x.category, Number(x.amount ?? 0)]))
     const topCategory = Object.entries(categories).sort((a, b) => b[1] - a[1])[0]
-    const employers   = [...new Set(incomeRows.filter((x: any) => x.employer_name).map((x: any) => x.employer_name))]
-    const dateRange   = f.filter((x: any) => x.document_date).map((x: any) => x.document_date).sort()
-    const months      = [...new Set(dateRange.map((d: string) => d.slice(0, 7)))].length
-    const transactionCount = f.filter((x: any) => x.total_amount != null || x.gross_income != null).length
-
-    const vendorSpend: Record<string, { total: number; count: number }> = {}
-    for (const x of expenseRows) {
-      const vendorKey = x.vendor_normalized ?? x.vendor_name
-      if (vendorKey && x.total_amount != null) {
-        if (!vendorSpend[vendorKey]) vendorSpend[vendorKey] = { total: 0, count: 0 }
-        vendorSpend[vendorKey].total += Number(x.total_amount)
-        vendorSpend[vendorKey].count += 1
-      }
-    }
-    const topVendors = Object.entries(vendorSpend)
-      .map(([name, v]) => ({ name, total: v.total, count: v.count }))
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 8)
-
+    const months = Number(summary.months_tracked ?? 0)
+    const transactionCount = Number(summary.record_count ?? 0)
+    const topVendors = counterpartyRows.filter((x: any) => x.direction === "outflow").map((x: any) => ({ name: x.counterparty, total: Number(x.amount ?? 0), count: Number(x.record_count ?? 0) }))
+    const employers = counterpartyRows.filter((x: any) => x.direction === "inflow").map((x: any) => x.counterparty).filter(Boolean)
     const paymentMethods: Record<string, number> = {}
-    for (const x of f) {
-      if (x.payment_method) {
-        paymentMethods[x.payment_method] = (paymentMethods[x.payment_method] ?? 0) + 1
-      }
-    }
-
-    const incomeSourceTotals: Record<string, number> = {}
-    for (const x of incomeRows) {
-      const key = x.income_source ?? "unknown"
-      incomeSourceTotals[key] = (incomeSourceTotals[key] ?? 0) + Number(x.gross_income ?? x.total_amount ?? 0)
-    }
-
+    const incomeSourceTotals: Record<string, number> = { inflow: totalIncome }
     const jurisdictionTotals: Record<string, number> = {}
-    for (const x of f) {
-      if (!x.jurisdiction) continue
-      jurisdictionTotals[x.jurisdiction] = (jurisdictionTotals[x.jurisdiction] ?? 0) + Number(x.total_amount ?? x.gross_income ?? 0)
-    }
-
     const monthlyExpenses: Record<string, number> = {}
     const monthlyIncomeMap: Record<string, number> = {}
-    for (const x of f) {
-      if (!x.document_date) continue
-      const mo = x.document_date.slice(0, 7)
-      if (isIncomeRow(x))
-        monthlyIncomeMap[mo] = (monthlyIncomeMap[mo] ?? 0) + Number(x.gross_income ?? x.total_amount ?? 0)
-      else if (isExpenseRow(x))
-        monthlyExpenses[mo] = (monthlyExpenses[mo] ?? 0) + Number(x.total_amount ?? 0)
+    for (const x of monthRows as any[]) {
+      const mo = String(x.period_start).slice(0, 7)
+      if (x.direction === "inflow") monthlyIncomeMap[mo] = (monthlyIncomeMap[mo] ?? 0) + Number(x.amount ?? 0)
+      if (x.direction === "outflow") monthlyExpenses[mo] = (monthlyExpenses[mo] ?? 0) + Number(x.amount ?? 0)
     }
     const sortedMonths = Object.keys({ ...monthlyExpenses, ...monthlyIncomeMap }).sort()
     const monthlyNet = sortedMonths.map((mo: string) => ({
@@ -354,16 +281,7 @@ serve(async (req) => {
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
 
-    const taxByPeriod: Record<string, number> = {}
-    for (const x of f) {
-      if (x.tax_amount != null && Number(x.tax_amount) > 0) {
-        const period = x.period_start?.slice(0, 7) ?? x.document_date?.slice(0, 7) ?? "unknown"
-        taxByPeriod[period] = (taxByPeriod[period] ?? 0) + Number(x.tax_amount)
-      }
-    }
-    const taxTimeline = Object.entries(taxByPeriod)
-      .map(([period, tax_amount]) => ({ period, tax_amount }))
-      .sort((a, b) => a.period.localeCompare(b.period))
+    const taxTimeline: Array<{ period: string; tax_amount: number }> = []
 
     // ── 4. R&D enrichment aggregations (admin only) ─────────────────────────
     // Computed here as the data foundation for future Sonnet R&D visuals.
@@ -380,20 +298,9 @@ serve(async (req) => {
         }
       })
 
-      const discountTotal = f.filter((x: any) => x.discount_amount != null).reduce((s: number, x: any) => s + Number(x.discount_amount), 0)
-      const discountEvents = f
-        .filter((x: any) => x.discount_amount != null && Number(x.discount_amount) > 0)
-        .map((x: any) => ({ vendor: x.vendor_name ?? x.counterparty_name, amount: Number(x.discount_amount), date: x.document_date }))
-        .sort((a: any, b: any) => b.amount - a.amount)
-        .slice(0, 10)
-
-      const incomeSources = Object.entries(
-        f.filter((x: any) => x.employer_name && x.gross_income != null)
-          .reduce((acc: Record<string, number>, x: any) => {
-            acc[x.employer_name] = (acc[x.employer_name] ?? 0) + Number(x.gross_income)
-            return acc
-          }, {})
-      ).map(([employer, total]) => ({ employer, total })).sort((a: any, b: any) => b.total - a.total)
+      const discountTotal = 0
+      const discountEvents: Array<{ vendor: string | null; amount: number; date: string | null }> = []
+      const incomeSources = counterpartyRows.filter((x: any) => x.direction === "inflow").map((x: any) => ({ employer: x.counterparty, total: Number(x.amount ?? 0) }))
 
       const avgMonthlyIncome   = months > 0 ? totalIncome / months   : 0
       const avgMonthlyExpenses = months > 0 ? totalExpenses / months : 0
@@ -442,7 +349,7 @@ serve(async (req) => {
       .join(" | ")
 
     const vendorBreakdown = topVendors
-      .map((vendor) => `${vendor.name}: ${symbol}${vendor.total.toLocaleString()} across ${vendor.count} docs`)
+      .map((vendor: any) => `${vendor.name}: ${symbol}${vendor.total.toLocaleString()} across ${vendor.count} docs`)
       .join(", ")
 
     const incomeSourceBreakdown = Object.entries(incomeSourceTotals)

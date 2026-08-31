@@ -3,6 +3,9 @@ import { type AiProvider, isProviderFailure, providerChain } from "../_shared/ai
 import { fetchWithTimeout } from "../_shared/fetch.ts"
 import { recordAiUsage } from "../_shared/ai-usage.ts"
 import { syncVirtualRecord } from "../_shared/virtual-records.ts"
+import { deriveRecords } from "../_shared/derive-records.ts"
+import { persistDerived } from "../_shared/persist-derived.ts"
+import { writeExtraction } from "../_shared/write-extraction.ts"
 
 const OPENAI_API_KEY            = Deno.env.get("OPENAI_API_KEY")!
 const ANTHROPIC_API_KEY         = Deno.env.get("ANTHROPIC_API_KEY")!
@@ -275,6 +278,19 @@ async function normalizeRow(supabase: any, row: any): Promise<void> {
   const { data: updatedRow } = await supabase.from("document_fields").select("*").eq("id", row.id).maybeSingle()
   const { data: ownerFile } = await supabase.from("files").select("user_id, document_type").eq("id", row.file_id).maybeSingle()
   if (updatedRow && ownerFile) {
+    const extractionPayload = { ...updatedRow, document_type: ownerFile.document_type ?? "general_document" }
+    const extractionId = await writeExtraction(supabase, {
+      userId: ownerFile.user_id,
+      fileId: row.file_id,
+      documentType: ownerFile.document_type ?? "general_document",
+      provider: normalizationProvider,
+      model: "document-reprocess-normalization",
+      payload: extractionPayload,
+      sourceRowCount: 1,
+    })
+    const derived = deriveRecords(extractionPayload, { id: row.file_id, user_id: ownerFile.user_id })
+    if (derived.reason) throw new Error(`record derivation failed: ${derived.reason}`)
+    await persistDerived(supabase, extractionId, derived)
     try {
       await syncVirtualRecord(supabase, updatedRow, ownerFile)
     } catch (virtualError) {

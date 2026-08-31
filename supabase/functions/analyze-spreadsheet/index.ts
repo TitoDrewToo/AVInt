@@ -336,6 +336,7 @@ serve(async (req) => {
       .select("id, file_id, vendor_name, employer_name, document_date, currency, total_amount, gross_income, net_income, expense_category, income_source, payment_method, confidence_score, normalization_status, raw_json, created_at")
       .eq("file_id", file_id)
       .order("created_at", { ascending: true })
+      .limit(1000)
     if (rowsError) throw new Error(rowsError.message)
 
     const compactRows = (rows ?? []).slice(0, 250).map((row: any, index: number) => ({
@@ -440,6 +441,8 @@ Do NOT use shorthand or alternative field names. Do NOT invent new fields. Use e
     analysis.findings = [...currencyMissingFindings, ...analysis.findings].slice(0, 12)
     const payload = {
       ...analysis,
+      extraction_payload: (rows ?? []).slice(0, 1000),
+      source_row_count: rows?.length ?? 0,
       provider,
       analyzed_at: new Date().toISOString(),
     }

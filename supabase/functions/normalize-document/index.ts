@@ -4,6 +4,9 @@ import { logError, logEvent } from "../_shared/log.ts"
 import { fetchWithTimeout } from "../_shared/fetch.ts"
 import { recordAiUsage } from "../_shared/ai-usage.ts"
 import { syncVirtualRecord } from "../_shared/virtual-records.ts"
+import { deriveRecords } from "../_shared/derive-records.ts"
+import { persistDerived } from "../_shared/persist-derived.ts"
+import { writeExtraction } from "../_shared/write-extraction.ts"
 
 const FN = "normalize-document"
 
@@ -459,6 +462,22 @@ serve(async (req) => {
         normalization_attempts: 0,
       })
       .eq("id", fields.id)
+
+    if (ownerFile?.user_id) {
+      const extractionPayload = { ...normalizedRow, document_type: ownerFile.document_type ?? "general_document" }
+      const extractionId = await writeExtraction(supabase, {
+        userId: ownerFile.user_id,
+        fileId: file_id,
+        documentType: ownerFile.document_type ?? "general_document",
+        provider: normalizationProvider,
+        model: "document-normalization",
+        payload: extractionPayload,
+        sourceRowCount: 1,
+      })
+      const derived = deriveRecords(extractionPayload, { id: file_id, user_id: ownerFile.user_id })
+      if (derived.reason) throw new Error(`record derivation failed: ${derived.reason}`)
+      await persistDerived(supabase, extractionId, derived)
+    }
 
     try {
       await syncVirtualRecord(supabase, normalizedRow, ownerFile)

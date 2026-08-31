@@ -504,9 +504,13 @@ async function extractSpreadsheetRows(
 ): Promise<{ extractedRows: ExtractedDocumentRow[]; sourceRows: any[] }> {
   const XLSX = await import("https://esm.sh/xlsx@0.18.5")
   const isCsv = mimeType === "text/csv" || /\.csv$/i.test(filename ?? "")
+  // CSV has no cell types, so keep every value as literal text and let the
+  // deterministic dataset inference decide its type. XLSX date cells carry
+  // real workbook type information, so preserve them as Date objects; the
+  // ambiguity rule applies to text dates only.
   const workbook = isCsv
-    ? XLSX.read(new TextDecoder().decode(bytes), { type: "string" })
-    : XLSX.read(bytes, { type: "array" })
+    ? XLSX.read(new TextDecoder().decode(bytes), { type: "string", raw: true })
+    : XLSX.read(bytes, { type: "array", cellDates: true })
 
   const extractedRows: ExtractedDocumentRow[] = []
   const sourceRows: any[] = []
@@ -516,7 +520,7 @@ async function extractSpreadsheetRows(
 
   for (const sheetName of workbook.SheetNames) {
     const sheet = workbook.Sheets[sheetName]
-    const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null }) as any[][]
+    const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null, raw: true }) as any[][]
     const rawHeaders = Array.isArray(rawRows[0]) ? rawRows[0] : []
     const dataRows = rawRows.slice(1)
     datasetSheets.push(buildDatasetSheet(sheetName, rawHeaders, dataRows))

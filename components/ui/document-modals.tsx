@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { X, PenLine, Tag } from "lucide-react"
+import { Check, X, PenLine, Tag } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { ALL_SC_CATEGORIES } from "@/lib/tax-bundle"
 import { DOCUMENT_TYPE_OPTIONS, fieldsForDocumentType, humanizeCustomFieldKey, isCustomFieldKey, normalizeCustomFieldKey, parseManualNumber, customFieldsPayload, validateCustomFields, validateManualEntry, type CustomFieldInput, type ManualFieldDefinition, type ManualValidationInput } from "@/lib/document-type-fields"
@@ -516,8 +516,11 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
   const [fileType, setFileType] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [recordLoading, setRecordLoading] = useState(false)
+  const [saveState, setSaveState] = useState<"idle" | "success" | "error">("idle")
   const [error, setError] = useState<string | null>(null)
   const [recordSnapshot, setRecordSnapshot] = useState<Record<string, unknown> | null>(null)
+  const [recordSnapshotFileId, setRecordSnapshotFileId] = useState<string | null>(null)
   const [attributeSnapshot, setAttributeSnapshot] = useState<Record<string, unknown>>({})
   const [correctedFields, setCorrectedFields] = useState<Record<string, unknown>>({})
 
@@ -527,7 +530,12 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
 
     async function fetchFields() {
       setLoading(true)
+      setRecordLoading(true)
       setError(null)
+      setSaveState("idle")
+      setRecordSnapshot(null)
+      setRecordSnapshotFileId(null)
+      setAttributeSnapshot({})
       try {
         const { data, error: fetchErr } = await supabase
           .from("document_fields")
@@ -545,15 +553,19 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
         } else {
           setForm({ ...EMPTY_FORM })
         }
-        const { data: record } = await supabase.from("records").select("*").eq("file_id", fileId).is("parent_record_id", null).maybeSingle()
+        const { data: record, error: recordErr } = await supabase.from("records").select("*").eq("file_id", fileId).is("parent_record_id", null).maybeSingle()
+        if (recordErr) throw new Error(`Failed to load the record: ${recordErr.message}`)
         if (record?.id) {
-          const { data: attributes } = await supabase.from("record_attributes").select("field_key, value, value_type").eq("record_id", record.id)
+          const { data: attributes, error: attributesErr } = await supabase.from("record_attributes").select("field_key, value, value_type").eq("record_id", record.id)
+          if (attributesErr) throw new Error(`Failed to load the record attributes: ${attributesErr.message}`)
           setCustomFields(customFieldsFromAttributes(attributes ?? []))
           setRecordSnapshot(record)
+          setRecordSnapshotFileId(fileId)
           setAttributeSnapshot(Object.fromEntries((attributes ?? []).map((attribute) => [attribute.field_key, attribute.value])))
         } else {
           setCustomFields([])
           setRecordSnapshot(null)
+          setRecordSnapshotFileId(null)
           setAttributeSnapshot({})
         }
         setCorrectedFields({})
@@ -562,6 +574,7 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
         setError(err instanceof Error ? err.message : "Failed to load document fields.")
       } finally {
         setLoading(false)
+        setRecordLoading(false)
       }
     }
 
@@ -589,10 +602,12 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
   }, [isOpen, fileId])
 
   function handleChange(field: keyof FormState, value: string) {
+    setSaveState("idle")
     setForm((prev) => ({ ...prev, [field]: value }))
   }
 
   function handleCustomFieldChange(id: string, field: keyof Omit<CustomFieldInput, "id">, value: string) {
+    setSaveState("idle")
     setCustomFields((previous) => previous.map((item) => item.id === id ? { ...item, [field]: value } : item))
   }
 
@@ -600,10 +615,29 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
     e.preventDefault()
     if (!fileId) return
     setError(null)
+    setSaveState("idle")
+
+    if (loading || recordLoading) {
+      setSaveState("error")
+      setError("The record is still loading. Please wait a moment, then try again.")
+      return
+    }
+    if (!recordSnapshot?.id || recordSnapshotFileId !== fileId) {
+      setSaveState("error")
+      setError("This document has no record to update. Save was blocked so document fields and records cannot diverge.")
+      return
+    }
+    const session = (await supabase.auth.getSession()).data.session
+    if (!session?.access_token) {
+      setSaveState("error")
+      setError("Your session has expired. Please sign in again; no changes were saved.")
+      return
+    }
 
     const firstError = validateManualEntry(form).find((issue) => issue.severity === "error")
     const customValidationIssues = validateCustomFields(customFields, form.currency)
     if (firstError || customValidationIssues.length > 0) {
+      setSaveState("error")
       setError(firstError?.message ?? customValidationIssues[0].message)
       return
     }
@@ -622,41 +656,38 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
         { formField: "employer_name", targetKind: "attribute", target: "employer_name", value: form.employer_name || null },
         { formField: isIncomeType(form.document_type) ? "gross_income" : "total_amount", targetKind: "column", target: "amount", value: isIncomeType(form.document_type) ? numericValue("gross_income") : numericValue("total_amount") },
       ]
-      const corrections = recordSnapshot?.id ? recordTargets.filter(({ targetKind, target, value }) => {
+      const corrections = recordTargets.filter(({ targetKind, target, value }) => {
         const previous = targetKind === "column" ? recordSnapshot[target] : attributeSnapshot[target]
         return JSON.stringify(previous ?? null) !== JSON.stringify(value ?? null)
-      }) : []
-      const session = (await supabase.auth.getSession()).data.session
+      })
       const corrected: Record<string, unknown> = {}
-      if (session?.access_token && recordSnapshot?.id) {
-        for (const correction of corrections) {
-          const response = await fetch(`/api/records/${recordSnapshot.id}/correct`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-            body: JSON.stringify({ target_kind: correction.targetKind, target: correction.target, new_value: correction.value, value_type: correction.targetKind === "attribute" ? "text" : undefined, note: "Corrected in document detail" }),
-          })
-          if (!response.ok) {
-            const payload = await response.json().catch(() => ({}))
-            throw new Error(payload.error ?? "The correction could not be saved.")
-          }
-          const previous = correction.targetKind === "column" ? recordSnapshot[correction.target] : attributeSnapshot[correction.target]
-          corrected[correction.formField] = previous ?? null
+      for (const correction of corrections) {
+        const response = await fetch(`/api/records/${recordSnapshot.id}/correct`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+          body: JSON.stringify({ target_kind: correction.targetKind, target: correction.target, new_value: correction.value, value_type: correction.targetKind === "attribute" ? "text" : undefined, note: "Corrected in document detail" }),
+        })
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}))
+          throw new Error(payload.error ?? "The correction could not be saved.")
         }
-        const customPayload = customFieldsPayload(customFields, form.currency).payload
-        for (const [target, value] of Object.entries(customPayload)) {
-          const previous = attributeSnapshot[target] ?? null
-          if (JSON.stringify(previous) === JSON.stringify(value ?? null)) continue
-          const response = await fetch(`/api/records/${recordSnapshot.id}/correct`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-            body: JSON.stringify({ target_kind: "attribute", target, new_value: value, value_type: customFields.find((field) => normalizeCustomFieldKey(field.label) === target)?.type ?? "text", note: "Corrected in document detail" }),
-          })
-          if (!response.ok) {
-            const payload = await response.json().catch(() => ({}))
-            throw new Error(payload.error ?? "The custom field correction could not be saved.")
-          }
-          corrected[target] = previous
+        const previous = correction.targetKind === "column" ? recordSnapshot[correction.target] : attributeSnapshot[correction.target]
+        corrected[correction.formField] = previous ?? null
+      }
+      const customPayload = customFieldsPayload(customFields, form.currency).payload
+      for (const [target, value] of Object.entries(customPayload)) {
+        const previous = attributeSnapshot[target] ?? null
+        if (JSON.stringify(previous) === JSON.stringify(value ?? null)) continue
+        const response = await fetch(`/api/records/${recordSnapshot.id}/correct`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+          body: JSON.stringify({ target_kind: "attribute", target, new_value: value, value_type: customFields.find((field) => normalizeCustomFieldKey(field.label) === target)?.type ?? "text", note: "Corrected in document detail" }),
+        })
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}))
+          throw new Error(payload.error ?? "The custom field correction could not be saved.")
         }
+        corrected[target] = previous
       }
       if (Object.keys(corrected).length > 0) setCorrectedFields((previous) => ({ ...previous, ...corrected }))
       // Update document_fields
@@ -696,24 +727,27 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
         throw new Error(fileErr.message ?? "Failed to update document type.")
       }
 
-      if (session?.access_token) {
-        const endpoint = fileType === "manual" ? "/api/virtual-records/sync" : "/api/retry-normalization"
-        const retryResponse = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({ file_id: fileId, custom_fields: customFields, custom_payload: customFieldsPayload(customFields, form.currency).payload }),
-        })
-        if (!retryResponse.ok) throw new Error(fileType === "manual"
-          ? "Manual entry saved, but its record could not be refreshed."
-          : "Classification saved, but normalization retry could not start.")
-      }
+      // Every correction request above is awaited before retry-normalization, so
+      // applyOverrides sees the revisions when the record is re-derived.
+      const endpoint = fileType === "manual" ? "/api/virtual-records/sync" : "/api/retry-normalization"
+      const retryResponse = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ file_id: fileId, custom_fields: customFields, custom_payload: customFieldsPayload(customFields, form.currency).payload }),
+      })
+      if (!retryResponse.ok) throw new Error(fileType === "manual"
+        ? "Manual entry saved, but its record could not be refreshed."
+        : "Classification saved, but normalization retry could not start.")
 
+      setSaveState("success")
+      await new Promise((resolve) => window.setTimeout(resolve, 650))
       onSaved(fileId, form.document_type)
       onClose()
     } catch (err: unknown) {
+      setSaveState("error")
       setError(err instanceof Error ? err.message : "An unexpected error occurred.")
     } finally {
       setSaving(false)
@@ -747,7 +781,7 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
 
         {/* Form */}
         <div className="px-6 py-5">
-          {loading ? (
+          {loading || recordLoading ? (
             <div className="flex items-center justify-center py-10">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
             </div>
@@ -775,9 +809,9 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
                 <button
                   type="submit"
                   disabled={saving}
-                  className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+                  className={`rounded-xl px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${saving ? "cw-ring-accent bg-primary text-primary-foreground" : saveState === "success" ? "bg-primary text-primary-foreground" : saveState === "error" ? "border border-destructive/40 text-destructive hover:bg-destructive/10" : "bg-primary text-primary-foreground hover:bg-primary/90"}`}
                 >
-                  {saving ? "Saving…" : "Save Changes"}
+                  {saving ? <><span className="mr-2 inline-block h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />Saving…</> : saveState === "success" ? <><Check className="mr-2 inline-block h-3.5 w-3.5" />Saved</> : saveState === "error" ? "Save failed" : "Save Changes"}
                 </button>
               </div>
             </form>

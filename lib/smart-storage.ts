@@ -69,6 +69,7 @@ export interface UploadedFile {
     created_at: string | null
     error_message?: string | null
   } | null
+  stalled_from_status?: string | null
 }
 
 export interface GridPosition {
@@ -100,6 +101,23 @@ export const MAX_FILE_SIZE = 60 * 1024 * 1024 // 60 MB — matches bucket file_s
 // The database sweeper marks jobs failed after 30 minutes. Keep the UI window
 // slightly longer so a slow but still-live job never disappears first.
 export const PROCESSING_ACTIVITY_WINDOW_MS = 35 * 60 * 1000
+// Applied on read: a full day without an extraction indicates a terminal
+// stall while allowing unusually slow processing to finish without a cron.
+export const STALLED_UPLOAD_AGE_MS = 24 * 60 * 60 * 1000
+export const PROCESSING_UPLOAD_STATUSES = ["uploaded", "pending_scan", "scanning", "approved", "processing"] as const
+
+export function isStalledUpload({ uploadStatus, jobStatus, createdAt, hasExtraction, now = Date.now() }: {
+  uploadStatus?: string | null
+  jobStatus?: string | null
+  createdAt?: string | null
+  hasExtraction: boolean
+  now?: number
+}): boolean {
+  const status = uploadStatus ?? jobStatus ?? ""
+  if (hasExtraction || !PROCESSING_UPLOAD_STATUSES.includes(status as typeof PROCESSING_UPLOAD_STATUSES[number])) return false
+  const timestamp = createdAt ? Date.parse(createdAt) : NaN
+  return Number.isFinite(timestamp) && now - timestamp >= STALLED_UPLOAD_AGE_MS
+}
 export const ALLOWED_MIME_TYPES = new Set([
   "application/pdf",
   "image/jpeg",

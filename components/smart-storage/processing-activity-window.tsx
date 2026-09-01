@@ -9,6 +9,8 @@ type ProcessingActivityWindowProps = {
   isProcessing: boolean
   activeJobs: SmartStorageProcessingState["activeJobs"]
   receivedCount?: number
+  isDeleting?: boolean
+  deletingCount?: number
 }
 
 function stageForStatus(status: string | null) {
@@ -46,8 +48,8 @@ function formatAge(createdAt: string | null) {
   return `${Math.floor(ageSeconds / 60)}m`
 }
 
-export function ProcessingActivityWindow({ isProcessing, activeJobs, receivedCount = 0 }: ProcessingActivityWindowProps) {
-  const hasActivity = isProcessing || activeJobs.length > 0
+export function ProcessingActivityWindow({ isProcessing, activeJobs, receivedCount = 0, isDeleting = false, deletingCount = 0 }: ProcessingActivityWindowProps) {
+  const hasActivity = isProcessing || isDeleting || activeJobs.length > 0
   const [isVisible, setIsVisible] = useState(hasActivity)
   const [renderJobs, setRenderJobs] = useState(activeJobs)
 
@@ -66,18 +68,18 @@ export function ProcessingActivityWindow({ isProcessing, activeJobs, receivedCou
       setRenderJobs(activeJobs)
       return
     }
-    if (isProcessing) {
+    if (isProcessing || isDeleting) {
       setRenderJobs([])
       return
     }
 
     const timer = window.setTimeout(() => setRenderJobs([]), 360)
     return () => window.clearTimeout(timer)
-  }, [activeJobs, isProcessing])
+  }, [activeJobs, isProcessing, isDeleting])
 
   if (!isVisible && !hasActivity) return null
 
-  const statsLabel = !hasActivity ? "" : activeJobs.length > 0
+  const statsLabel = isDeleting ? `${deletingCount} removing` : !hasActivity ? "" : activeJobs.length > 0
     ? activeJobs.length === 1 && receivedCount === 1
       ? "1/1 in progress"
       : `${activeJobs.length} active`
@@ -94,13 +96,19 @@ export function ProcessingActivityWindow({ isProcessing, activeJobs, receivedCou
         <div className="flex min-w-0 items-center gap-2">
           <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" aria-hidden="true" />
           <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-foreground">
-            Pipeline activity
+            {isDeleting ? "File removal" : "Pipeline activity"}
           </span>
         </div>
         {statsLabel ? <span className="font-mono text-[10px] text-muted-foreground">{statsLabel}</span> : null}
       </div>
 
       <div className="space-y-1 px-3 py-2 font-mono text-[10px] leading-relaxed">
+        {isDeleting && (
+          <div className="flex items-center gap-2 text-muted-foreground" aria-live="polite">
+            <span className="text-primary motion-safe:animate-pulse" aria-hidden="true">›</span>
+            <AnimatedStatus label="Removing selected files" />
+          </div>
+        )}
         {isProcessing && activeJobs.length === 0 && (
           <div className="flex items-center gap-2 text-muted-foreground" aria-live="polite">
             <span className="text-primary" aria-hidden="true">›</span>

@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase"
 import {
   PROCESSING_ACTIVITY_WINDOW_MS,
+  isStalledUpload,
   REPORTS,
   type SmartStorageAttentionState,
   type UploadedFile,
@@ -111,9 +112,10 @@ async function enrichFiles(files: any[]): Promise<UploadedFile[]> {
     hasNormalized: boolean
     error: string | null
   }>()
+  const extractionFileIds = new Set<string>()
 
   if (fileIds.length > 0) {
-    const [{ data: jobs }, { data: documentFields }] = await Promise.all([
+    const [{ data: jobs }, { data: documentFields }, { data: extractions }] = await Promise.all([
       supabase
         .from("processing_jobs")
         .select("file_id, status, created_at, error_message")
@@ -123,7 +125,9 @@ async function enrichFiles(files: any[]): Promise<UploadedFile[]> {
         .from("document_fields")
         .select("file_id, normalization_status, normalization_error")
         .in("file_id", fileIds),
+      supabase.from("extractions").select("file_id").in("file_id", fileIds),
     ])
+    for (const extraction of extractions ?? []) extractionFileIds.add(extraction.file_id)
 
     for (const job of jobs ?? []) {
       if (!latestJobByFileId.has(job.file_id)) {
@@ -154,10 +158,16 @@ async function enrichFiles(files: any[]): Promise<UploadedFile[]> {
     const isActive = ["uploaded", "pending_scan", "scanning", "processing"].includes(job?.status ?? "")
       || ["uploaded", "pending_scan", "scanning", "approved", "processing"].includes(file.upload_status ?? "")
     const isSlow = ageMs > PROCESSING_ACTIVITY_WINDOW_MS && isActive
+    const stalled = isStalledUpload({
+      uploadStatus: file.upload_status,
+      jobStatus: job?.status,
+      createdAt: job?.created_at ?? file.created_at,
+      hasExtraction: extractionFileIds.has(file.id),
+    })
     let attentionState: SmartStorageAttentionState = null
     if (!isQuarantined) {
       if (normalization?.hasFailed) attentionState = "normalization_failed"
-      else if (job?.status === "failed" && fieldsCount === 0) attentionState = "extraction_failed"
+      else if (stalled || (job?.status === "failed" && fieldsCount === 0)) attentionState = "extraction_failed"
       else if (isSlow) attentionState = "processing_slow"
       else if (!isActive && (!file.document_type || file.document_type === "unknown")) attentionState = "classification_required"
     }
@@ -174,7 +184,9 @@ async function enrichFiles(files: any[]): Promise<UploadedFile[]> {
     return {
       ...file,
       document_fields_count: fieldsCount,
-      processing_job: job,
+      processing_job: stalled ? { ...(job ?? { created_at: file.created_at }), status: "failed" } : job,
+      upload_status: stalled ? "failed" : file.upload_status,
+      stalled_from_status: stalled ? (file.upload_status ?? job?.status ?? null) : null,
       attention_state: attentionState,
       normalization_status: normalization?.hasFailed ? "failed" : normalization?.hasRaw ? "raw" : normalization?.hasNormalized ? "normalized" : null,
       normalization_error: normalization?.error ?? null,

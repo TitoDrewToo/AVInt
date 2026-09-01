@@ -1,144 +1,36 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
-
 import { serverError } from "@/lib/api-error"
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-)
+const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
-function throwIfDeleteFailed(stage: string, error: { message: string } | null) {
-  if (error) throw new Error(`${stage}: ${error.message}`)
+async function clearDerivedViews(userId: string) {
+  for (const [table, stage] of [["context_summaries", "delete_context_summaries"], ["user_analytics_profile", "delete_user_analytics_profile"]] as const) {
+    const { error } = await admin.from(table).delete().eq("user_id", userId)
+    if (error) console.error("delete-file derived cleanup failed:", { stage, user_id: userId, message: error.message })
+  }
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const { file_id } = await req.json()
-    if (!file_id) {
-      return NextResponse.json({ error: "file_id required" }, { status: 400 })
+    const { file_id: fileId } = await req.json()
+    if (!fileId) return NextResponse.json({ error: "file_id required" }, { status: 400 })
+    const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "")
+    if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const { data: { user }, error: authError } = await admin.auth.getUser(token)
+    if (authError || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const { data: file, error: lookupError } = await admin.from("files").select("id, user_id, storage_path").eq("id", fileId).maybeSingle()
+    if (lookupError || !file || file.user_id !== user.id) return NextResponse.json({ error: "File not found" }, { status: 404 })
+    const { error: deleteError } = await admin.from("files").delete().eq("id", fileId).eq("user_id", user.id)
+    if (deleteError) throw new Error(`delete_file_row: ${deleteError.message}`)
+    let storageRemoved = true
+    if (file.storage_path) {
+      const { error } = await admin.storage.from("documents").remove([file.storage_path])
+      storageRemoved = !error
+      if (error) console.error("delete-file storage cleanup failed:", { stage: "delete_storage_object", user_id: user.id, file_id: fileId, storage_path: file.storage_path, message: error.message })
     }
-
-    const authHeader = req.headers.get("authorization")
-    if (!authHeader) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const token = authHeader.replace("Bearer ", "")
-    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token)
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const { data: fileRow, error: fileError } = await supabaseAdmin
-      .from("files")
-      .select("id, user_id, storage_path")
-      .eq("id", file_id)
-      .single()
-
-    if (fileError || !fileRow || fileRow.user_id !== user.id) {
-      return NextResponse.json({ error: "File not found" }, { status: 404 })
-    }
-
-    const { error: documentFieldsError } = await supabaseAdmin
-      .from("document_fields")
-      .delete()
-      .eq("file_id", file_id)
-    throwIfDeleteFailed("delete_document_fields", documentFieldsError)
-
-    const { error: processingJobsError } = await supabaseAdmin
-      .from("processing_jobs")
-      .delete()
-      .eq("file_id", file_id)
-    throwIfDeleteFailed("delete_processing_jobs", processingJobsError)
-
-    const { error: paymentObligationsError } = await supabaseAdmin
-      .from("payment_obligations")
-      .delete()
-      .eq("file_id", file_id)
-    throwIfDeleteFailed("delete_payment_obligations", paymentObligationsError)
-
-    if (fileRow.storage_path) {
-      const { error: storageError } = await supabaseAdmin.storage
-        .from("documents")
-        .remove([fileRow.storage_path])
-      throwIfDeleteFailed("delete_storage_object", storageError)
-    }
-
-    const { error: filesError } = await supabaseAdmin
-      .from("files")
-      .delete()
-      .eq("id", file_id)
-    throwIfDeleteFailed("delete_file_row", filesError)
-
-    // These are user-level derived views over the document set. Clearing them
-    // ensures the UI does not continue showing stale summaries after a file is removed.
-    const { error: contextSummariesError } = await supabaseAdmin
-      .from("context_summaries")
-      .delete()
-      .eq("user_id", user.id)
-    if (contextSummariesError) {
-      console.error("delete-file derived cleanup failed:", {
-        stage: "delete_context_summaries",
-        user_id: user.id,
-        message: contextSummariesError.message,
-      })
-    }
-
-    const { error: analyticsProfileError } = await supabaseAdmin
-      .from("user_analytics_profile")
-      .delete()
-      .eq("user_id", user.id)
-    if (analyticsProfileError) {
-      console.error("delete-file derived cleanup failed:", {
-        stage: "delete_user_analytics_profile",
-        user_id: user.id,
-        message: analyticsProfileError.message,
-      })
-    }
-
-    const { error: advancedWidgetsError } = await supabaseAdmin
-      .from("advanced_widgets")
-      .delete()
-      .eq("user_id", user.id)
-    if (advancedWidgetsError) {
-      console.error("delete-file derived cleanup failed:", {
-        stage: "delete_advanced_widgets",
-        user_id: user.id,
-        message: advancedWidgetsError.message,
-      })
-    }
-
-    // Advanced widgets contain generated values from the document corpus. Their
-    // saved dashboard slots must not survive after the source files are gone.
-    const { data: savedDashboard, error: savedDashboardError } = await supabaseAdmin
-      .from("dashboard_layouts")
-      .select("layout")
-      .eq("user_id", user.id)
-      .maybeSingle()
-    throwIfDeleteFailed("read_dashboard_layout", savedDashboardError)
-
-    const savedLayout = savedDashboard?.layout
-    if (savedLayout && typeof savedLayout === "object" && Array.isArray((savedLayout as any).widgets)) {
-      const widgets = (savedLayout as any).widgets.filter((widget: any) => !widget?.advancedId)
-      const removedWidgetIds = new Set(
-        (savedLayout as any).widgets
-          .filter((widget: any) => widget?.advancedId)
-          .map((widget: any) => widget.id)
-      )
-      const gridLayout = Array.isArray((savedLayout as any).gridLayout)
-        ? (savedLayout as any).gridLayout.filter((item: any) => !removedWidgetIds.has(item?.i))
-        : (savedLayout as any).gridLayout
-      if (widgets.length !== (savedLayout as any).widgets.length) {
-        const { error: dashboardLayoutError } = await supabaseAdmin
-          .from("dashboard_layouts")
-          .update({ layout: { ...(savedLayout as any), widgets, gridLayout }, updated_at: new Date().toISOString() })
-          .eq("user_id", user.id)
-        throwIfDeleteFailed("clear_dashboard_advanced_widgets", dashboardLayoutError)
-      }
-    }
-
-    return NextResponse.json({ success: true })
+    await clearDerivedViews(user.id)
+    return NextResponse.json({ success: true, summaries_stale: true, results: [{ file_id: fileId, deleted: true, storage_removed: storageRemoved }] })
   } catch (err) {
     return serverError(err, { route: "delete-file", stage: "unhandled" })
   }

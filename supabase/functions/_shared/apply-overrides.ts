@@ -1,45 +1,99 @@
+import { RECORD_FIELD_SET } from "../../../lib/correction-contract.ts"
+
 type QueryClient = { from: (table: string) => any }
 
-const RECORD_FIELDS = new Set([
-  "occurred_on", "amount", "currency", "direction", "counterparty", "counterparty_normalized",
-  "category", "period_start", "period_end", "is_recurring", "record_type", "confidence", "field_confidence", "needs_review",
-])
-
 function revisionValue(revision: Record<string, unknown>) {
-  return revision.new_value ?? revision.value ?? revision.next_value
+  if (!Object.prototype.hasOwnProperty.call(revision, "new_value")) {
+    throw new Error(`record revision ${String(revision.id ?? "unknown")} has no new_value`)
+  }
+  return revision.new_value
+}
+
+function attributeValueType(value: unknown) {
+  if (value === null) return "null"
+  if (typeof value === "number") return "number"
+  if (typeof value === "boolean") return "boolean"
+  if (Array.isArray(value)) return "array"
+  if (typeof value === "object") return "object"
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return "date"
+  return "string"
+}
+
+function attributePayload(value: unknown, userId: string, recordId: string, fieldKey: string) {
+  const valueType = attributeValueType(value)
+  return {
+    user_id: userId,
+    record_id: recordId,
+    field_key: fieldKey,
+    value,
+    value_type: valueType,
+    value_numeric: valueType === "number" && typeof value === "number" && Number.isFinite(value) ? value : null,
+    is_custom: false,
+  }
 }
 
 export async function applyOverrides(client: QueryClient, recordIds: string[]): Promise<number> {
   if (recordIds.length === 0) return 0
   const { data: revisions, error } = await client
     .from("record_revisions")
-    .select("*")
+    .select("id, record_id, revision_number, target_kind, target, new_value")
     .in("record_id", recordIds)
     .eq("change_kind", "user_edit")
-    .order("created_at", { ascending: false })
+    .order("revision_number", { ascending: false })
   if (error) throw new Error(`record revisions query failed: ${error.message}`)
 
   const latest = new Map<string, Record<string, unknown>>()
   for (const revision of (revisions ?? []) as Record<string, unknown>[]) {
-    const field = typeof revision.field_key === "string" ? revision.field_key : null
     const recordId = typeof revision.record_id === "string" ? revision.record_id : null
-    if (!field || !recordId || latest.has(`${recordId}:${field}`)) continue
-    latest.set(`${recordId}:${field}`, revision)
+    const targetKind = revision.target_kind === "column" || revision.target_kind === "attribute" ? revision.target_kind : null
+    const target = typeof revision.target === "string" && revision.target.length > 0 ? revision.target : null
+    if (!recordId || !targetKind || !target || latest.has(`${recordId}:${targetKind}:${target}`)) continue
+    latest.set(`${recordId}:${targetKind}:${target}`, revision)
   }
 
-  const byRecord = new Map<string, Record<string, unknown>>()
+  const columnValues = new Map<string, Record<string, unknown>>()
+  const attributeRevisions: Array<{ recordId: string; target: string; value: unknown }> = []
   for (const revision of latest.values()) {
-    const field = revision.field_key as string
     const recordId = revision.record_id as string
-    if (!RECORD_FIELDS.has(field)) continue
-    const values = byRecord.get(recordId) ?? {}
-    values[field] = revisionValue(revision)
-    byRecord.set(recordId, values)
+    const target = revision.target as string
+    const value = revisionValue(revision)
+    if (revision.target_kind === "column") {
+      if (!RECORD_FIELD_SET.has(target)) throw new Error(`unsupported record column revision target: ${target}`)
+      const values = columnValues.get(recordId) ?? {}
+      values[target] = value
+      columnValues.set(recordId, values)
+    } else {
+      attributeRevisions.push({ recordId, target, value })
+    }
   }
 
-  for (const [recordId, values] of byRecord) {
-    const { error: updateError } = await client.from("records").update({ ...values, has_user_edits: true }).eq("id", recordId)
+  const userIds = new Map<string, string>()
+  const existingAttributes = new Map<string, boolean>()
+  if (attributeRevisions.length > 0) {
+    const { data: records, error: recordsError } = await client.from("records").select("id, user_id").in("id", recordIds)
+    if (recordsError) throw new Error(`record owners query failed: ${recordsError.message}`)
+    for (const record of records ?? []) userIds.set(record.id, record.user_id)
+    const { data: attributes, error: attributesQueryError } = await client
+      .from("record_attributes")
+      .select("record_id, field_key, is_custom")
+      .in("record_id", recordIds)
+    if (attributesQueryError) throw new Error(`record attributes query failed: ${attributesQueryError.message}`)
+    for (const attribute of attributes ?? []) existingAttributes.set(`${attribute.record_id}:${attribute.field_key}`, attribute.is_custom === true)
+    const payload = attributeRevisions.map(({ recordId, target, value }) => {
+      const userId = userIds.get(recordId)
+      if (!userId) throw new Error(`record owner missing for attribute revision ${recordId}:${target}`)
+      const payload = attributePayload(value, userId, recordId, target)
+      payload.is_custom = existingAttributes.has(`${recordId}:${target}`) ? existingAttributes.get(`${recordId}:${target}`) === true : true
+      return payload
+    })
+    const { error: attributesError } = await client.from("record_attributes").upsert(payload, { onConflict: "record_id,field_key" })
+    if (attributesError) throw new Error(`record attribute override upsert failed: ${attributesError.message}`)
+  }
+
+  const editedRecordIds = new Set<string>([...columnValues.keys(), ...attributeRevisions.map((revision) => revision.recordId)])
+  for (const recordId of editedRecordIds) {
+    const { error: updateError } = await client.from("records").update({ ...(columnValues.get(recordId) ?? {}), has_user_edits: true }).eq("id", recordId)
     if (updateError) throw new Error(`record override update failed: ${updateError.message}`)
   }
-  return byRecord.size
+  return editedRecordIds.size
 }

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { X, PenLine, Tag } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { ALL_SC_CATEGORIES } from "@/lib/tax-bundle"
-import { DOCUMENT_TYPE_OPTIONS, fieldsForDocumentType, humanizeCustomFieldKey, isCustomFieldKey, parseManualNumber, customFieldsPayload, validateCustomFields, validateManualEntry, type CustomFieldInput, type ManualFieldDefinition, type ManualValidationInput } from "@/lib/document-type-fields"
+import { DOCUMENT_TYPE_OPTIONS, fieldsForDocumentType, humanizeCustomFieldKey, isCustomFieldKey, normalizeCustomFieldKey, parseManualNumber, customFieldsPayload, validateCustomFields, validateManualEntry, type CustomFieldInput, type ManualFieldDefinition, type ManualValidationInput } from "@/lib/document-type-fields"
 import { SUPPORTED_CURRENCIES, currencyDecimals } from "@/lib/currencies"
 
 // ---------------------------------------------------------------------------
@@ -155,21 +155,24 @@ interface DocumentFormBodyProps {
   onCustomFieldChange: (id: string, field: keyof Omit<CustomFieldInput, "id">, value: string) => void
   onAddCustomField: () => void
   onRemoveCustomField: (id: string) => void
+  correctedFields?: Record<string, unknown>
 }
 
-function DynamicDocumentFormBody({ form, onChange, isManual, customFields, customFieldSuggestions, onCustomFieldChange, onAddCustomField, onRemoveCustomField }: DocumentFormBodyProps) {
+function DynamicDocumentFormBody({ form, onChange, isManual, customFields, customFieldSuggestions, onCustomFieldChange, onAddCustomField, onRemoveCustomField, correctedFields = {} }: DocumentFormBodyProps) {
   const validationInput = form as ManualValidationInput
   const validationIssues = validateManualEntry(validationInput)
   const issuesFor = (field: string) => validationIssues.filter((issue) => issue.field === field)
   const renderField = (definition: ManualFieldDefinition) => {
     const value = form[definition.formField]
     const onFieldChange = (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => onChange(definition.formField, event.target.value)
-    if (definition.input === "currency") return <select className={inputCls} value={value} onChange={onFieldChange}>{SUPPORTED_CURRENCIES.map((item) => <option key={item.code} value={item.code}>{item.code} — {item.label}</option>)}</select>
-    if (definition.input === "category") return <select className={inputCls} value={value} onChange={onFieldChange}><option value="">Category…</option>{EXPENSE_CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}</select>
+    const corrected = Object.prototype.hasOwnProperty.call(correctedFields, definition.formField)
+    const marker = corrected ? <span title={`Previous value: ${String(correctedFields[definition.formField] ?? "blank")}`} className="ml-1 text-[10px] font-medium normal-case tracking-normal text-primary">corrected</span> : null
+    if (definition.input === "currency") return <>{marker}<select className={inputCls} value={value} onChange={onFieldChange}>{SUPPORTED_CURRENCIES.map((item) => <option key={item.code} value={item.code}>{item.code} — {item.label}</option>)}</select></>
+    if (definition.input === "category") return <>{marker}<select className={inputCls} value={value} onChange={onFieldChange}><option value="">Category…</option>{EXPENSE_CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}</select></>
     const numeric = definition.input === "number"
     const fieldIssues = issuesFor(definition.formField)
     return <>
-      <input className={inputCls} type={numeric ? "text" : definition.input} inputMode={numeric ? "decimal" : undefined} step={numeric ? 10 ** -currencyDecimals(form.currency) : undefined} placeholder={definition.label} value={value} onChange={onFieldChange} />
+      {marker}<input className={inputCls} type={numeric ? "text" : definition.input} inputMode={numeric ? "decimal" : undefined} step={numeric ? 10 ** -currencyDecimals(form.currency) : undefined} placeholder={definition.label} value={value} onChange={onFieldChange} />
       {fieldIssues.map((issue) => <p key={`${issue.severity}-${issue.message}`} className={`mt-1 text-xs ${issue.severity === "warning" ? "text-amber-600" : "text-destructive"}`}>{issue.message}</p>)}
     </>
   }
@@ -184,7 +187,7 @@ function DynamicDocumentFormBody({ form, onChange, isManual, customFields, custo
     <div className="space-y-2">
       <div className="flex items-center justify-between"><p className={sectionLabelCls}>Custom Fields</p><button type="button" className="text-xs font-medium text-primary hover:underline disabled:opacity-50" onClick={onAddCustomField} disabled={customFields.length >= 10}>+ Add field</button></div>
       {customFields.map((customField) => <div key={customField.id} className="grid grid-cols-[1fr_7rem_1fr_auto] items-start gap-2">
-        <div><input className={inputCls} type="text" list="custom-field-suggestions" placeholder="Label" value={customField.label} onChange={(event) => onCustomFieldChange(customField.id, "label", event.target.value)} />{issuesForCustom(customField.id, "label").map((issue) => <p key={issue.message} className="mt-1 text-xs text-destructive">{issue.message}</p>)}</div>
+        <div>{Object.prototype.hasOwnProperty.call(correctedFields, normalizeCustomFieldKey(customField.label)) && <span title={`Previous value: ${String(correctedFields[normalizeCustomFieldKey(customField.label)] ?? "blank")}`} className="text-[10px] text-primary">corrected</span>}<input className={inputCls} type="text" list="custom-field-suggestions" placeholder="Label" value={customField.label} onChange={(event) => onCustomFieldChange(customField.id, "label", event.target.value)} />{issuesForCustom(customField.id, "label").map((issue) => <p key={issue.message} className="mt-1 text-xs text-destructive">{issue.message}</p>)}</div>
         <select className={inputCls} value={customField.type} onChange={(event) => onCustomFieldChange(customField.id, "type", event.target.value)}><option value="text">Text</option><option value="number">Number</option><option value="date">Date</option></select>
         <div><input className={inputCls} type={customField.type === "date" ? "date" : "text"} inputMode={customField.type === "number" ? "decimal" : undefined} step={customField.type === "number" ? 10 ** -currencyDecimals(form.currency) : undefined} placeholder="Value" value={customField.value} onChange={(event) => onCustomFieldChange(customField.id, "value", event.target.value)} />{issuesForCustom(customField.id, "value").map((issue) => <p key={issue.message} className="mt-1 text-xs text-destructive">{issue.message}</p>)}</div>
         <button type="button" className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-destructive" aria-label="Remove custom field" onClick={() => onRemoveCustomField(customField.id)}>×</button>
@@ -400,6 +403,9 @@ export function ManualEntryModal({ isOpen, userId, onClose, onCreated }: ManualE
         if (!syncResponse.ok) throw new Error("Manual entry saved, but the data model could not be refreshed.")
       }
 
+      const { error: statusError } = await supabase.from("files").update({ upload_status: "done" }).eq("id", fileRow.id)
+      if (statusError) throw new Error(`Manual entry saved, but its completion status could not be updated: ${statusError.message}`)
+
       onCreated(fileRow as InsertedFile)
       setForm({ ...EMPTY_FORM })
       setCustomFields([])
@@ -511,6 +517,9 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [recordSnapshot, setRecordSnapshot] = useState<Record<string, unknown> | null>(null)
+  const [attributeSnapshot, setAttributeSnapshot] = useState<Record<string, unknown>>({})
+  const [correctedFields, setCorrectedFields] = useState<Record<string, unknown>>({})
 
   // Fetch existing document_fields when fileId changes
   useEffect(() => {
@@ -536,13 +545,18 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
         } else {
           setForm({ ...EMPTY_FORM })
         }
-        const { data: record } = await supabase.from("records").select("id").eq("file_id", fileId).is("parent_record_id", null).maybeSingle()
+        const { data: record } = await supabase.from("records").select("*").eq("file_id", fileId).is("parent_record_id", null).maybeSingle()
         if (record?.id) {
           const { data: attributes } = await supabase.from("record_attributes").select("field_key, value, value_type").eq("record_id", record.id)
           setCustomFields(customFieldsFromAttributes(attributes ?? []))
+          setRecordSnapshot(record)
+          setAttributeSnapshot(Object.fromEntries((attributes ?? []).map((attribute) => [attribute.field_key, attribute.value])))
         } else {
           setCustomFields([])
+          setRecordSnapshot(null)
+          setAttributeSnapshot({})
         }
+        setCorrectedFields({})
         setCustomFieldSuggestions([])
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : "Failed to load document fields.")
@@ -597,6 +611,54 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
     setSaving(true)
     try {
       const numericValue = (field: keyof Pick<FormState, "total_amount" | "gross_income" | "net_income" | "tax_amount" | "discount_amount">) => parseManualNumber(form[field], form.currency).value
+      const recordTargets: Array<{ formField: keyof FormState; targetKind: "column" | "attribute"; target: string; value: unknown }> = [
+        { formField: "document_date", targetKind: "column", target: "occurred_on", value: form.document_date || null },
+        { formField: "currency", targetKind: "column", target: "currency", value: form.currency || null },
+        { formField: "expense_category", targetKind: "column", target: "category", value: form.expense_category || null },
+        { formField: "period_start", targetKind: "column", target: "period_start", value: form.period_start || null },
+        { formField: "period_end", targetKind: "column", target: "period_end", value: form.period_end || null },
+        { formField: "counterparty_name", targetKind: "column", target: "counterparty", value: form.counterparty_name || null },
+        { formField: "vendor_name", targetKind: "attribute", target: "vendor_name", value: form.vendor_name || null },
+        { formField: "employer_name", targetKind: "attribute", target: "employer_name", value: form.employer_name || null },
+        { formField: isIncomeType(form.document_type) ? "gross_income" : "total_amount", targetKind: "column", target: "amount", value: isIncomeType(form.document_type) ? numericValue("gross_income") : numericValue("total_amount") },
+      ]
+      const corrections = recordSnapshot?.id ? recordTargets.filter(({ targetKind, target, value }) => {
+        const previous = targetKind === "column" ? recordSnapshot[target] : attributeSnapshot[target]
+        return JSON.stringify(previous ?? null) !== JSON.stringify(value ?? null)
+      }) : []
+      const session = (await supabase.auth.getSession()).data.session
+      const corrected: Record<string, unknown> = {}
+      if (session?.access_token && recordSnapshot?.id) {
+        for (const correction of corrections) {
+          const response = await fetch(`/api/records/${recordSnapshot.id}/correct`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+            body: JSON.stringify({ target_kind: correction.targetKind, target: correction.target, new_value: correction.value, value_type: correction.targetKind === "attribute" ? "text" : undefined, note: "Corrected in document detail" }),
+          })
+          if (!response.ok) {
+            const payload = await response.json().catch(() => ({}))
+            throw new Error(payload.error ?? "The correction could not be saved.")
+          }
+          const previous = correction.targetKind === "column" ? recordSnapshot[correction.target] : attributeSnapshot[correction.target]
+          corrected[correction.formField] = previous ?? null
+        }
+        const customPayload = customFieldsPayload(customFields, form.currency).payload
+        for (const [target, value] of Object.entries(customPayload)) {
+          const previous = attributeSnapshot[target] ?? null
+          if (JSON.stringify(previous) === JSON.stringify(value ?? null)) continue
+          const response = await fetch(`/api/records/${recordSnapshot.id}/correct`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+            body: JSON.stringify({ target_kind: "attribute", target, new_value: value, value_type: customFields.find((field) => normalizeCustomFieldKey(field.label) === target)?.type ?? "text", note: "Corrected in document detail" }),
+          })
+          if (!response.ok) {
+            const payload = await response.json().catch(() => ({}))
+            throw new Error(payload.error ?? "The custom field correction could not be saved.")
+          }
+          corrected[target] = previous
+        }
+      }
+      if (Object.keys(corrected).length > 0) setCorrectedFields((previous) => ({ ...previous, ...corrected }))
       // Update document_fields
       const { error: fieldsErr } = await supabase
         .from("document_fields")
@@ -634,7 +696,6 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
         throw new Error(fileErr.message ?? "Failed to update document type.")
       }
 
-      const session = (await supabase.auth.getSession()).data.session
       if (session?.access_token) {
         const endpoint = fileType === "manual" ? "/api/virtual-records/sync" : "/api/retry-normalization"
         const retryResponse = await fetch(endpoint, {
@@ -692,7 +753,7 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
             </div>
           ) : (
             <form onSubmit={handleSubmit}>
-              <DynamicDocumentFormBody form={form} onChange={handleChange} customFields={customFields} customFieldSuggestions={customFieldSuggestions} onCustomFieldChange={handleCustomFieldChange} onAddCustomField={() => setCustomFields((previous) => previous.length >= 10 ? previous : [...previous, { id: customFieldId(), label: "", type: "text", value: "" }])} onRemoveCustomField={(id) => setCustomFields((previous) => previous.filter((item) => item.id !== id))} isManual={false} />
+              <DynamicDocumentFormBody form={form} onChange={handleChange} customFields={customFields} customFieldSuggestions={customFieldSuggestions} correctedFields={correctedFields} onCustomFieldChange={handleCustomFieldChange} onAddCustomField={() => setCustomFields((previous) => previous.length >= 10 ? previous : [...previous, { id: customFieldId(), label: "", type: "text", value: "" }])} onRemoveCustomField={(id) => setCustomFields((previous) => previous.filter((item) => item.id !== id))} isManual={false} />
 
               {/* Error */}
               {error && (

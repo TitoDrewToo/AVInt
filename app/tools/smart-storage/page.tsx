@@ -271,6 +271,7 @@ export default function SmartStoragePage() {
   const entitlement = useEntitlement(session)
   const isPro = entitlement.isActive
   const [isProcessing, setIsProcessing] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
   const [processingJobs, setProcessingJobs] = useState<SmartStorageProcessingState["activeJobs"]>([])
 
   // Folder/navigation state
@@ -305,6 +306,7 @@ export default function SmartStoragePage() {
   const checkProcessingStateRef = useRef<(() => Promise<boolean | undefined>) | null>(null)
   const openFileHandlerRef = useRef<(fileId: string) => Promise<void>>(async () => {})
   const deleteFileHandlerRef = useRef<(fileId: string) => Promise<void>>(async () => {})
+  const deleteFilesHandlerRef = useRef<(fileIds: string[]) => Promise<void>>(async () => {})
 
   // Upload
   const [isUploading, setIsUploading] = useState(false)
@@ -839,7 +841,7 @@ export default function SmartStoragePage() {
       }
       if ((e.key === "Delete" || e.key === "Backspace") && selectedFiles.size > 0) {
         e.preventDefault()
-        void Promise.all([...selectedFiles].map((id) => deleteFileHandlerRef.current(id)))
+        void deleteFilesHandlerRef.current([...selectedFiles])
         return
       }
       if (e.key === "Enter" && selectedFiles.size === 1) {
@@ -1348,6 +1350,52 @@ export default function SmartStoragePage() {
     })
   }
 
+  // One database statement gives bulk deletion atomic ownership and deletion.
+  // The UI removes optimistically and restores its snapshot if that request fails.
+  async function handleDeleteFiles(fileIds: string[]) {
+    const ids = [...new Set(fileIds)].filter((id) => files.some((file) => file.id === id))
+    const userId = session?.user?.id
+    if (!userId || ids.length === 0) return
+    const previousFiles = files
+    const previousCount = loadedFileCount
+    const previousTypes = detectedTypes
+    ids.forEach((id) => recentlyDeletedFileIdsRef.current.add(id))
+    setIsDeleting(true)
+    try {
+      const token = (await supabase.auth.getSession()).data.session?.access_token
+      const response = await fetch("/api/files/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token ?? ""}` },
+        body: JSON.stringify({ file_ids: ids }),
+      })
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}))
+        throw new Error(payload.error ?? "Failed to delete files")
+      }
+      const payload = await response.json().catch(() => ({}))
+      const storageFailures = (payload.results ?? []).filter((result: { storage_removed?: boolean }) => result.storage_removed === false).length
+      setFiles((current) => {
+        const next = current.filter((file) => !ids.includes(file.id))
+        setLoadedFileCount(next.length)
+        setDetectedTypes([...new Set(next.map((file) => file.document_type).filter((type) => type !== "unknown"))])
+        return next
+      })
+      setSelectedFiles((current) => new Set([...current].filter((id) => !ids.includes(id))))
+      invalidateSmartStorageCache(userId)
+      setReportAvailability(() => Object.fromEntries(REPORTS.map((report) => [report.id, false])))
+      if (storageFailures) setUploadNotice(`${storageFailures} file storage object${storageFailures === 1 ? "" : "s"} could not be removed; the database records were deleted.`)
+    } catch (error) {
+      setFiles(previousFiles)
+      setLoadedFileCount(previousCount)
+      setDetectedTypes(previousTypes)
+      ids.forEach((id) => recentlyDeletedFileIdsRef.current.delete(id))
+      throw error
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  deleteFilesHandlerRef.current = handleDeleteFiles
   openFileHandlerRef.current = handleOpenFile
   deleteFileHandlerRef.current = handleDeleteFile
 
@@ -1654,7 +1702,7 @@ export default function SmartStoragePage() {
             Rename
           </button>
           <button
-            onClick={() => { void Promise.all([...selectedFiles].map(id => handleDeleteFile(id))) }}
+            onClick={() => { void handleDeleteFiles([...selectedFiles]) }}
             className="flex h-7 items-center gap-1 rounded px-2 text-xs text-destructive transition-colors hover:bg-destructive/10"
           >
             <X className="h-3 w-3" />
@@ -1712,9 +1760,17 @@ export default function SmartStoragePage() {
                 <FolderOpen className="h-3.5 w-3.5" />
                 Upload folder
               </DropdownMenuItem></Tip>
+              <GoogleDriveImportModal
+                session={session}
+                onImported={() => { void loadFiles(); void checkProcessingState() }}
+                renderTrigger={() => <DropdownMenuItem disabled className="cursor-not-allowed opacity-50" title="Google Drive import is temporarily unavailable">
+                  <HardDrive className="h-3.5 w-3.5" />
+                  Import from Drive
+                  <span className="ml-auto text-[10px]">Soon</span>
+                </DropdownMenuItem>}
+              />
               </DropdownMenuContent>
           </DropdownMenu>
-          <GoogleDriveImportModal session={session} onImported={() => { void loadFiles(); void checkProcessingState() }} />
           <Tip text="Enter a document by hand when you don't have a file to upload."><button
             onClick={() => setManualEntryOpen(true)}
             className="flex h-7 items-center gap-1.5 rounded px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -1827,6 +1883,8 @@ export default function SmartStoragePage() {
 
       <ProcessingActivityWindow
         isProcessing={isProcessing}
+        isDeleting={isDeleting}
+        deletingCount={selectedFiles.size}
         activeJobs={processingJobs}
         receivedCount={processingJobs.length}
       />
@@ -2032,7 +2090,7 @@ export default function SmartStoragePage() {
                     Rename
                   </button>
                   <button
-                    onClick={() => { void Promise.all([...selectedFiles].map(id => handleDeleteFile(id))) }}
+                    onClick={() => { void handleDeleteFiles([...selectedFiles]) }}
                     className="flex h-6 items-center gap-1 rounded px-2 text-xs text-destructive transition-colors hover:bg-destructive/10"
                   >
                     <X className="h-3 w-3" />
@@ -2352,7 +2410,7 @@ export default function SmartStoragePage() {
                         onDelete={() => handleDeleteFile(file.id)}
                         onDownload={() => handleDownloadFile(file.id)}
                         onDownloadSelection={() => Promise.all([...selectedFiles].map(fid => handleDownloadFile(fid))).then(() => undefined)}
-                        onDeleteSelection={() => Promise.all([...selectedFiles].map(fid => handleDeleteFile(fid))).then(() => undefined)}
+                        onDeleteSelection={() => handleDeleteFiles([...selectedFiles])}
                         disableTouchContextMenu
                         onMoveUp={() => {
                           const parentFolderId = folders.find(f => f.id === file.folder_id)?.parentId ?? null
@@ -2472,7 +2530,7 @@ export default function SmartStoragePage() {
                   onDelete={() => handleDeleteFile(file.id)}
                   onDownload={() => handleDownloadFile(file.id)}
                   onDownloadSelection={() => Promise.all([...selectedFiles].map(fid => handleDownloadFile(fid))).then(() => undefined)}
-                  onDeleteSelection={() => Promise.all([...selectedFiles].map(fid => handleDeleteFile(fid))).then(() => undefined)}
+                  onDeleteSelection={() => handleDeleteFiles([...selectedFiles])}
                   disableTouchContextMenu
                   onMoveUp={() => {
                     const parentFolderId = folders.find(f => f.id === file.folder_id)?.parentId ?? null

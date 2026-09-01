@@ -328,6 +328,7 @@ export function ManualEntryModal({ isOpen, userId, onClose, onCreated }: ManualE
     }
 
     setSaving(true)
+    let createdFileId: string | null = null
     try {
       const filename = generateFilename(form)
       const customPayload = customFieldsPayload(customFields, form.currency).payload
@@ -354,6 +355,7 @@ export function ManualEntryModal({ isOpen, userId, onClose, onCreated }: ManualE
       if (fileErr || !fileRow) {
         throw new Error(fileErr?.message ?? "Failed to create file record.")
       }
+      createdFileId = fileRow.id
 
       // Insert into document_fields
       const { error: fieldsErr } = await supabase
@@ -402,7 +404,32 @@ export function ManualEntryModal({ isOpen, userId, onClose, onCreated }: ManualE
       setCustomFields([])
       onClose()
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "An unexpected error occurred.")
+      const message = err instanceof Error ? err.message : "An unexpected error occurred."
+
+      // The client can create the file row, but derived rows are service-role
+      // managed. Ask the authenticated server route to remove every row this
+      // attempt created, in reverse order, before showing the original error.
+      if (createdFileId) {
+        const accessToken = (await supabase.auth.getSession()).data.session?.access_token
+        if (accessToken) {
+          try {
+            const cleanupResponse = await fetch("/api/manual-entry/cleanup", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+              body: JSON.stringify({ file_id: createdFileId }),
+            })
+            if (!cleanupResponse.ok) {
+              console.error("Manual entry cleanup failed", { fileId: createdFileId, status: cleanupResponse.status })
+            }
+          } catch (cleanupError) {
+            console.error("Manual entry cleanup failed", { fileId: createdFileId, error: cleanupError })
+          }
+        } else {
+          console.error("Manual entry cleanup skipped: no authenticated session", { fileId: createdFileId })
+        }
+      }
+
+      setError(message)
     } finally {
       setSaving(false)
     }

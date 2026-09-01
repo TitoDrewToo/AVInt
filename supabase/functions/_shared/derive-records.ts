@@ -101,6 +101,14 @@ function numericAmount(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null
 }
 
+function firstNonNull(...values: unknown[]): unknown {
+  return values.find((value) => value !== null && value !== undefined) ?? null
+}
+
+function counterpartyFor(row: Record<string, unknown>): unknown {
+  return firstNonNull(row.vendor_name, row.employer_name)
+}
+
 function isParentRestatement(item: Record<string, unknown>, parentAmount: unknown): boolean {
   const parentValue = numericAmount(parentAmount)
   const itemValue = numericAmount(item.amount)
@@ -168,7 +176,7 @@ function makeRecord(
     amount,
     currency,
     direction: deriveDirection(row, type === "line_item" ? (fallbackType ?? recordType(row)) : type),
-    counterparty: type === "payslip" ? row.employer_name ?? null : row.vendor_name ?? null,
+    counterparty: counterpartyFor(row),
     counterparty_normalized: row.vendor_normalized ?? null,
     category: row.expense_category ?? null,
     period_start: row.period_start ?? null,
@@ -187,12 +195,14 @@ function makeRecord(
 
 function attributesFor(row: Record<string, unknown>, file: FileInput, sourceKey: string, type: string): DerivedAttribute[] {
   const fieldConfidence = confidenceMap(row)
+  const counterparty = counterpartyFor(row)
   return Object.entries(row)
     .filter(([key, value]) => !META_FIELDS.has(key) && value !== null && value !== undefined)
-    .filter(([key]) => ATTRIBUTE_FIELDS.has(key)
+    .filter(([key, value]) => ATTRIBUTE_FIELDS.has(key)
       || RECORD_COLUMN_BY_EXTRACTED[key] === undefined
-      || ((key === "net_income" || key === "employer_name") && type !== "payslip"))
-    .filter(([key]) => !(key === "employer_name" && type === "payslip"))
+      || ((key === "net_income" || key === "employer_name") && type !== "payslip")
+      || ((key === "vendor_name" || key === "employer_name") && value === counterpartyFor(row) && value !== counterparty))
+    .filter(([key, value]) => !(key === "employer_name" && type === "payslip" && value === counterparty))
     .map(([key, value]) => ({
       file_id: file.id,
       user_id: file.user_id,

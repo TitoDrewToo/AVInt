@@ -34,6 +34,7 @@ export const FIELD_MAPPINGS: readonly FieldMapping[] = [
   { extracted: "gross_income", destination: "attribute" },
   { extracted: "net_income", destination: "record_column", column: "amount" },
   { extracted: "employer_name", destination: "record_column", column: "counterparty" },
+  { extracted: "income_source", destination: "attribute" },
   { extracted: "tax_amount", destination: "attribute" },
   { extracted: "discount_amount", destination: "attribute" },
   { extracted: "jurisdiction", destination: "attribute" },

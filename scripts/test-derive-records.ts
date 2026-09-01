@@ -1,11 +1,62 @@
 import assert from "node:assert/strict"
 import { deriveRecords } from "../supabase/functions/_shared/derive-records"
+import { persistDerived } from "../supabase/functions/_shared/persist-derived"
 
 const file = { id: "file-1", user_id: "user-1" }
 
 function check(name: string, condition: boolean) {
   assert.equal(condition, true, name)
 }
+
+const vendorOnly = deriveRecords({ document_type: "receipt", vendor_name: "Vendor First", employer_name: null }, file)
+check("vendor survives a null employer", vendorOnly.records[0].counterparty === "Vendor First")
+check("null employer does not become an attribute", !vendorOnly.attributes.some((attribute) => attribute.field_key === "employer_name"))
+
+const twoParties = deriveRecords({ document_type: "contract", vendor_name: "Andrew Vincent Niloban", employer_name: "Horizon Digital Inc." }, file)
+check("first non-null counterparty wins", twoParties.records[0].counterparty === "Andrew Vincent Niloban")
+check("losing employer is preserved as an attribute", twoParties.attributes.some((attribute) => attribute.field_key === "employer_name" && attribute.value === "Horizon Digital Inc."))
+
+const noParties = deriveRecords({ document_type: "receipt", vendor_name: null, employer_name: null }, file)
+check("both null parties produce a null counterparty", noParties.records[0].counterparty === null)
+check("both null parties produce no party attributes", !noParties.attributes.some((attribute) => attribute.field_key === "vendor_name" || attribute.field_key === "employer_name"))
+
+const numericAttributes = deriveRecords({ document_type: "receipt", tax_amount: 125, discount_amount: Number.NaN }, file)
+const numericWrites: Array<Record<string, unknown>> = []
+class FakeQuery {
+  private payload: unknown
+  private head = false
+  constructor(private readonly table: string) {}
+  select(_columns?: string, options?: { head?: boolean }) { this.head = options?.head === true; return this }
+  eq() { return this }
+  in() { return this }
+  not() { return this }
+  order() { return this }
+  update() { return this }
+  upsert(payload: unknown) {
+    this.payload = payload
+    if (this.table === "record_attributes") {
+      for (const row of payload as Array<Record<string, unknown>>) numericWrites.push(row)
+    }
+    return this
+  }
+  then(resolve: (value: { data: unknown[]; error: null; count?: number }) => unknown) {
+    if (this.head) return resolve({ data: [], error: null, count: 1 })
+    if (this.table === "records" && Array.isArray(this.payload)) {
+      return resolve({ data: (this.payload as Array<Record<string, unknown>>).map((row, index) => ({ id: `record-${index}`, source_key: row.source_key, parent_record_id: row.parent_record_id })), error: null })
+    }
+    if (this.table === "record_revisions") return resolve({ data: [], error: null })
+    return resolve({ data: [], error: null })
+  }
+}
+const fakeClient = { from: (table: string) => new FakeQuery(table) }
+persistDerived(fakeClient, "extraction-1", numericAttributes).then(() => {
+  check("numeric attribute writes value_numeric", numericWrites.find((row) => row.field_key === "tax_amount")?.value_numeric === 125)
+  check("unparseable numeric value writes null", numericWrites.find((row) => row.field_key === "discount_amount")?.value_numeric === null)
+  console.log("contract fixtures: vendor/null, dual parties, null parties, numeric attributes passed")
+}).catch((error: unknown) => {
+  console.error(error)
+  process.exitCode = 1
+})
 
 const receipt = deriveRecords({
   document_type: "receipt",

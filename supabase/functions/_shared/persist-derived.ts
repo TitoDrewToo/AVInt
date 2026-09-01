@@ -69,12 +69,18 @@ async function pruneStaleChildren(client: QueryClient, fileId: string, currentSo
 }
 
 function attributePayload(attribute: DerivedAttribute, recordId: string) {
+  const valueNumeric = attribute.value_type === "number"
+    ? typeof attribute.value === "number"
+      ? Number.isFinite(attribute.value) ? attribute.value : null
+      : Number.isFinite(Number(attribute.value)) ? Number(attribute.value) : null
+    : null
   return {
     user_id: attribute.user_id,
     record_id: recordId,
     field_key: attribute.field_key,
     value: attribute.value,
     value_type: attribute.value_type,
+    value_numeric: valueNumeric,
     confidence: attribute.confidence,
   }
 }

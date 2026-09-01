@@ -22,7 +22,7 @@ async function legacyTaxRows(userId: string, filters: ReportFilters): Promise<Ta
 
   let query = supabaseAdmin
     .from("document_fields")
-    .select("file_id, vendor_name, vendor_normalized, employer_name, document_date, period_start, period_end, total_amount, gross_income, net_income, expense_category, currency, income_source, classification_rationale, jurisdiction, confidence_score, raw_json, files!inner(filename, document_type, storage_path, user_id)")
+    .select("file_id, vendor_name, vendor_normalized, employer_name, document_date, period_start, period_end, total_amount, gross_income, net_income, expense_category, currency, income_source, classification_rationale, jurisdiction, confidence_score, files!inner(filename, document_type, storage_path, user_id)")
     .eq("files.user_id", userId)
     .neq("normalization_status", "excluded")
     .order("document_date", { ascending: false })
@@ -82,15 +82,6 @@ function incomeSourceValue(value: unknown): IncomeSourceClass | null {
     : null
 }
 
-function parseRawJson(value: unknown): unknown {
-  if (typeof value !== "string") return value
-  try {
-    return JSON.parse(value)
-  } catch {
-    return value
-  }
-}
-
 function recordAttributeMap(attributes: RecordAttribute[]) {
   const byRecord = new Map<string, Map<string, unknown>>()
   for (const attribute of attributes) {
@@ -139,7 +130,6 @@ async function recordsTaxRows(userId: string, filters: ReportFilters): Promise<T
       const get = (key: string) => fields.get(key)
       const files = record.files
       const documentType = record.document_type ?? stringValue(nestedFileValue(files, "document_type")) ?? "unknown"
-      const rawJson = parseRawJson(get("_raw_json"))
       return {
         file_id: record.file_id,
         filename: stringValue(nestedFileValue(files, "filename")) ?? "document",
@@ -160,7 +150,6 @@ async function recordsTaxRows(userId: string, filters: ReportFilters): Promise<T
         currency: stringValue(record.currency),
         confidence_score: numberValue(record.confidence),
         storage_path: stringValue(nestedFileValue(files, "storage_path")),
-        raw_json: rawJson ?? null,
       }
     })
 }

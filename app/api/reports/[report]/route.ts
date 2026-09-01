@@ -219,7 +219,7 @@ export async function GET(
             .from("record_attributes")
             .select("record_id, field_key, value")
             .in("record_id", records.map((row) => row.id))
-            .in("field_key", ["employer_name", "gross_income", "net_income", "income_source", "_raw_json"])
+            .in("field_key", ["employer_name", "gross_income", "net_income", "income_source"])
         if (attributesError) throw new Error(attributesError.message)
         const byRecord = new Map<string, Map<string, unknown>>()
         for (const attribute of attributes ?? []) {
@@ -229,9 +229,6 @@ export async function GET(
         }
         return NextResponse.json({ income: records.map((row) => {
           const fields = byRecord.get(row.id) ?? new Map<string, unknown>()
-          const raw = fields.get("_raw_json")
-          const parsedRaw = typeof raw === "string" ? (() => { try { return JSON.parse(raw) } catch { return raw } })() : raw
-          const rawTotal = parsedRaw && typeof parsedRaw === "object" ? parsedRaw.total_amount : null
           const documentType = row.document_type ?? row.files?.[0]?.document_type
           return {
             file_id: row.file_id,
@@ -239,7 +236,7 @@ export async function GET(
             document_date: row.occurred_on,
             gross_income: fields.get("gross_income") ?? null,
             net_income: documentType === "payslip" ? row.amount : fields.get("net_income") ?? null,
-            total_amount: documentType === "payslip" ? rawTotal : row.amount,
+            total_amount: row.amount,
             currency: row.currency,
             confidence_score: row.confidence,
             income_source: fields.get("income_source") ?? null,
@@ -274,7 +271,7 @@ export async function GET(
               .from("record_attributes")
               .select("record_id, field_key, value")
               .in("record_id", records.map((row) => row.id))
-              .in("field_key", ["employer_name", "gross_income", "net_income", "income_source", "_raw_json"])
+              .in("field_key", ["employer_name", "gross_income", "net_income", "income_source"])
           if (attributesError) throw new Error(attributesError.message)
           const byRecord = new Map<string, Map<string, unknown>>()
           for (const attribute of attributes ?? []) {
@@ -284,15 +281,12 @@ export async function GET(
           }
           incomeRows = records.map((row) => {
             const fields = byRecord.get(row.id) ?? new Map<string, unknown>()
-            const raw = fields.get("_raw_json")
-            const parsedRaw = typeof raw === "string" ? (() => { try { return JSON.parse(raw) } catch { return raw } })() : raw
-            const rawTotal = parsedRaw && typeof parsedRaw === "object" ? parsedRaw.total_amount : null
             const documentType = row.document_type ?? row.files?.[0]?.document_type
             return {
               document_date: row.occurred_on,
               gross_income: fields.get("gross_income") ?? null,
               net_income: documentType === "payslip" ? row.amount : fields.get("net_income") ?? null,
-              total_amount: documentType === "payslip" ? rawTotal : row.amount,
+              total_amount: row.amount,
               currency: row.currency,
               employer_name: fields.get("employer_name") ?? null,
               income_source: fields.get("income_source") ?? null,

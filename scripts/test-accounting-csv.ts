@@ -1,5 +1,5 @@
 import { generateQuickBooksCSV, generateXeroCSV } from "../lib/accounting-csv"
-import { isExportableExpenseRow, isExpenseRow, isUsdRow } from "../lib/document-classification"
+import { EXPENSE_DOCUMENT_TYPES, classifyRow, isExportableExpenseRow, isExpenseRow, isUsdRow } from "../lib/document-classification"
 
 let passed = 0
 
@@ -30,6 +30,21 @@ const classifiedRows = [
   { document_type: "csv_export", currency: "USD", total_amount: 450, document_date: "2025-06-15", vendor_name: "Refund", expense_category: null },
   { document_type: "csv_export", currency: "USD", total_amount: 86, document_date: "2025-03-14", vendor_name: "Unknown Vendor", expense_category: null },
 ]
+
+const conflictingTypeRow = {
+  document_type: "receipt",
+  raw_json: { gemini_raw: { document_type: "transaction_record" } },
+  currency: "USD",
+  total_amount: 25,
+}
+const legacyRawFirstType = conflictingTypeRow.raw_json.gemini_raw.document_type
+const legacyClassification = EXPENSE_DOCUMENT_TYPES.has(legacyRawFirstType) ? "expense" : null
+assert("classifier: raw transaction_record vs typed receipt remains expense", classifyRow(conflictingTypeRow) === "expense" && legacyClassification === "expense")
+assert("classifier: typed document_type works without raw_json", classifyRow({ document_type: "receipt", currency: "USD", total_amount: 25 }) === "expense")
+
+const payslipRecord = { document_type: "payslip", amount: 48500 }
+const incomeReportRow = { total_amount: payslipRecord.amount }
+assert("income report: payslip total_amount comes from records.amount", incomeReportRow.total_amount === 48500)
 
 const usdExpenses = classifiedRows.filter((row) => isExportableExpenseRow(row) && isUsdRow(row))
 assert("classifier: csv_export transaction_record USD expense retained", usdExpenses.length === 1 && usdExpenses[0].total_amount === 25)

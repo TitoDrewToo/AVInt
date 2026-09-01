@@ -28,7 +28,7 @@ export function rowDocumentType(row: ClassifiableDocumentRow): string | null {
   const contentType = rawType && typeof rawType === "object" && "document_type" in rawType
     ? (rawType as { document_type?: unknown }).document_type
     : null
-  return stringValue(rawObject?.gemini_document_type) ?? stringValue(contentType) ?? stringValue(row.document_type)
+  return stringValue(row.document_type) ?? stringValue(rawObject?.gemini_document_type) ?? stringValue(contentType)
 }
 
 function rowFileDocumentType(row: ClassifiableDocumentRow): string | null {

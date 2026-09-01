@@ -660,12 +660,13 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
         const previous = targetKind === "column" ? recordSnapshot[target] : attributeSnapshot[target]
         return JSON.stringify(previous ?? null) !== JSON.stringify(value ?? null)
       })
+      const declaredValueType = (target: string) => customFields.find((field) => normalizeCustomFieldKey(field.label) === target)?.type ?? "text"
       const corrected: Record<string, unknown> = {}
       for (const correction of corrections) {
         const response = await fetch(`/api/records/${recordSnapshot.id}/correct`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-          body: JSON.stringify({ target_kind: correction.targetKind, target: correction.target, new_value: correction.value, value_type: correction.targetKind === "attribute" ? "text" : undefined, note: "Corrected in document detail" }),
+          body: JSON.stringify({ target_kind: correction.targetKind, target: correction.target, new_value: correction.value, value_type: correction.targetKind === "attribute" ? declaredValueType(correction.target) : undefined, note: "Corrected in document detail" }),
         })
         if (!response.ok) {
           const payload = await response.json().catch(() => ({}))
@@ -681,7 +682,7 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
         const response = await fetch(`/api/records/${recordSnapshot.id}/correct`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-          body: JSON.stringify({ target_kind: "attribute", target, new_value: value, value_type: customFields.find((field) => normalizeCustomFieldKey(field.label) === target)?.type ?? "text", note: "Corrected in document detail" }),
+          body: JSON.stringify({ target_kind: "attribute", target, new_value: value, value_type: declaredValueType(target), note: "Corrected in document detail" }),
         })
         if (!response.ok) {
           const payload = await response.json().catch(() => ({}))

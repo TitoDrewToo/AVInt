@@ -13,7 +13,7 @@ import { createReportQueryContext } from "@/lib/report-query-context-server"
 import { overlapsDateRange } from "@/lib/report-utils"
 import { selectTaxBundleDefaultYear } from "@/lib/tax-bundle-default-year"
 
-type ReportKey = "tax-bundle" | "business-expense" | "expense-summary" | "income-summary" | "profit-loss"
+type ReportKey = "tax-bundle" | "business-expense" | "expense-summary" | "income-summary" | "profit-loss" | "contract-summary"
 type ReportFilters = { dateFrom?: string; dateTo?: string; targetFolder?: string }
 type JsonObject = Record<string, unknown>
 type Identity = { file_id: string; source_key: string }
@@ -33,8 +33,8 @@ const [userInput, dateFrom, dateTo] = args
 const reportKey = (args.at(-1) ?? "") as ReportKey
 const targetFolder = args.length === 5 ? args[3] : undefined
 
-if (!userInput || !dateFrom || !dateTo || !["tax-bundle", "business-expense", "expense-summary", "income-summary", "profit-loss"].includes(reportKey) || (args.length !== 4 && args.length !== 5)) {
-  console.error("Usage: report-parity <user-id-or-email> <date-from> <date-to> [folder-id] <tax-bundle|business-expense|expense-summary|income-summary|profit-loss>")
+if (!userInput || !dateFrom || !dateTo || !["tax-bundle", "business-expense", "expense-summary", "income-summary", "profit-loss", "contract-summary"].includes(reportKey) || (args.length !== 4 && args.length !== 5)) {
+  console.error("Usage: report-parity <user-id-or-email> <date-from> <date-to> [folder-id] <tax-bundle|business-expense|expense-summary|income-summary|profit-loss|contract-summary>")
   process.exit(2)
 }
 
@@ -340,6 +340,40 @@ async function profitLossRows(userId: string, filters: ReportFilters, source: "d
   return { incomeRows, expenseRows }
 }
 
+async function contractSummaryResult(userId: string, filters: ReportFilters, source: "document_fields" | "records") {
+  const context = await createReportQueryContext(userId, filters)
+  const fileIds = await context.fileIds(["contract", "agreement"])
+  if (fileIds.length === 0) return { contracts: [], obligations: {} }
+  let contractRows: any[]
+  if (source === "document_fields") {
+    const { data, error } = await supabaseAdmin.from("document_fields")
+      .select("file_id, counterparty_name, document_date, period_start, period_end, invoice_number, total_amount, currency, payment_method, confidence_score, files!inner(filename, document_type)")
+      .in("file_id", fileIds).neq("normalization_status", "excluded").order("document_date", { ascending: false })
+    if (error) throw new Error(error.message)
+    contractRows = (data ?? []).filter((row) => overlapsDateRange(row, { dateFrom: filters.dateFrom ?? "", dateTo: filters.dateTo ?? "" }))
+  } else {
+    let query = supabaseAdmin.from("records").select("id, file_id, document_type, occurred_on, period_start, period_end, amount, currency, confidence, files!inner(filename, document_type)").in("file_id", fileIds).is("parent_record_id", null).is("excluded_at", null).order("occurred_on", { ascending: false })
+    const { data, error } = await query
+    if (error) throw new Error(error.message)
+    const records = data ?? []
+    const { data: attributes, error: attributesError } = records.length === 0 ? { data: [], error: null } : await supabaseAdmin.from("record_attributes").select("record_id, field_key, value").in("record_id", records.map((row) => row.id)).in("field_key", ["counterparty_name", "invoice_number", "payment_method"])
+    if (attributesError) throw new Error(attributesError.message)
+    const byRecord = new Map<string, Map<string, unknown>>()
+    for (const attribute of attributes ?? []) byRecord.set(attribute.record_id, new Map([...(byRecord.get(attribute.record_id) ?? []), [attribute.field_key, attribute.value]]))
+    contractRows = records.filter((row) => overlapsDateRange({ document_date: row.occurred_on, period_start: row.period_start, period_end: row.period_end }, { dateFrom: filters.dateFrom ?? "", dateTo: filters.dateTo ?? "" })).map((row) => {
+      const fields = byRecord.get(row.id) ?? new Map<string, unknown>()
+      return { file_id: row.file_id, counterparty_name: fields.get("counterparty_name") ?? null, document_date: row.occurred_on, period_start: row.period_start, period_end: row.period_end, invoice_number: fields.get("invoice_number") ?? null, total_amount: row.amount, currency: row.currency, payment_method: fields.get("payment_method") ?? null, confidence_score: row.confidence, files: row.files }
+    })
+  }
+  const visibleFileIds = contractRows.map((row) => row.file_id)
+  if (visibleFileIds.length === 0) return { contracts: [], obligations: {} }
+  const { data: obligs, error: obligError } = await supabaseAdmin.from("payment_obligations").select("*").in("file_id", visibleFileIds).order("due_date", { ascending: true })
+  if (obligError) throw new Error(obligError.message)
+  const obligations: Record<string, unknown[]> = {}
+  for (const row of obligs ?? []) (obligations[row.file_id] ??= []).push(row)
+  return { contracts: contractRows, obligations }
+}
+
 async function legacyRowsWithIdentity(userId: string, filters: ReportFilters, reportRows: TaxRow[]): Promise<IdentifiedRow[]> {
   const context = await createReportQueryContext(userId, filters)
   const fileIds = await context.fileIds()
@@ -472,6 +506,14 @@ async function main() {
     const records = await profitLossRows(userId, filters, "records")
     const differences = diff(comparable(legacy), comparable(records))
     console.log(JSON.stringify({ userId, report: reportKey, filters, legacy: { incomeCount: legacy.incomeRows.length, expenseCount: legacy.expenseRows.length, result: legacy }, records: { incomeCount: records.incomeRows.length, expenseCount: records.expenseRows.length, result: records }, matchedCount: Math.min(legacy.incomeRows.length, records.incomeRows.length) + Math.min(legacy.expenseRows.length, records.expenseRows.length), unmatchedLegacy: [], unmatchedRecords: [], differences }, null, 2))
+    if (differences.length > 0) process.exitCode = 1
+    return
+  }
+  if (reportKey === "contract-summary") {
+    const legacy = await contractSummaryResult(userId, filters, "document_fields")
+    const records = await contractSummaryResult(userId, filters, "records")
+    const differences = diff(comparable(legacy), comparable(records))
+    console.log(JSON.stringify({ userId, report: reportKey, filters, legacy: { rowCount: legacy.contracts.length, result: legacy }, records: { rowCount: records.contracts.length, result: records }, matchedCount: Math.min(legacy.contracts.length, records.contracts.length), unmatchedLegacy: [], unmatchedRecords: [], differences }, null, 2))
     if (differences.length > 0) process.exitCode = 1
     return
   }

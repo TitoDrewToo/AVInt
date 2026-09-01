@@ -376,28 +376,47 @@ export async function GET(
         const fileIds = await reportContext.fileIds(["contract", "agreement"])
         if (fileIds.length === 0) return NextResponse.json({ contracts: [], obligations: {} })
 
-        const { data: contractRows, error: contractErr } = await supabaseAdmin
-          .from("document_fields")
-          .select(`
-            file_id,
-            counterparty_name,
-            document_date,
-            period_start,
-            period_end,
-            invoice_number,
-            total_amount,
-            currency,
-            payment_method,
-            confidence_score,
-            files!inner(filename, document_type)
-          `)
+        const { data: records, error: contractErr } = await supabaseAdmin
+          .from("records")
+          .select("id, file_id, occurred_on, period_start, period_end, amount, currency, confidence, files!inner(filename, document_type)")
           .in("file_id", fileIds)
-          .neq("normalization_status", "excluded")
-          .order("document_date", { ascending: false })
+          .is("parent_record_id", null)
+          .is("excluded_at", null)
+          .order("occurred_on", { ascending: false })
 
         if (contractErr) throw new Error(contractErr.message)
 
-        const filteredContracts = (contractRows ?? []).filter((row) =>
+        const { data: attributes, error: attributesError } = (records ?? []).length === 0
+          ? { data: [], error: null }
+          : await supabaseAdmin
+            .from("record_attributes")
+            .select("record_id, field_key, value")
+            .in("record_id", (records ?? []).map((row) => row.id))
+            .in("field_key", ["counterparty_name", "invoice_number", "payment_method"])
+        if (attributesError) throw new Error(attributesError.message)
+        const byRecord = new Map<string, Map<string, unknown>>()
+        for (const attribute of attributes ?? []) {
+          const fields = byRecord.get(attribute.record_id) ?? new Map<string, unknown>()
+          fields.set(attribute.field_key, attribute.value)
+          byRecord.set(attribute.record_id, fields)
+        }
+
+        const filteredContracts = (records ?? []).map((row) => {
+          const fields = byRecord.get(row.id) ?? new Map<string, unknown>()
+          return {
+            file_id: row.file_id,
+            counterparty_name: fields.get("counterparty_name") ?? null,
+            document_date: row.occurred_on,
+            period_start: row.period_start,
+            period_end: row.period_end,
+            invoice_number: fields.get("invoice_number") ?? null,
+            total_amount: row.amount,
+            currency: row.currency,
+            payment_method: fields.get("payment_method") ?? null,
+            confidence_score: row.confidence,
+            files: row.files,
+          }
+        }).filter((row) =>
           overlapsDateRange(
             {
               document_date: row.document_date,

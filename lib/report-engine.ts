@@ -139,11 +139,7 @@ async function recordsTaxRows(userId: string, filters: ReportFilters): Promise<T
       const get = (key: string) => fields.get(key)
       const files = record.files
       const documentType = record.document_type ?? stringValue(nestedFileValue(files, "document_type")) ?? "unknown"
-      const isPayslip = documentType === "payslip"
       const rawJson = parseRawJson(get("_raw_json"))
-      const rawTotalAmount = rawJson && typeof rawJson === "object"
-        ? numberValue((rawJson as Record<string, unknown>).total_amount)
-        : null
       return {
         file_id: record.file_id,
         filename: stringValue(nestedFileValue(files, "filename")) ?? "document",
@@ -154,9 +150,9 @@ async function recordsTaxRows(userId: string, filters: ReportFilters): Promise<T
         document_date: stringValue(record.occurred_on),
         period_start: stringValue(record.period_start),
         period_end: stringValue(record.period_end),
-        total_amount: isPayslip ? rawTotalAmount : numberValue(record.amount),
+        total_amount: numberValue(record.amount),
         gross_income: numberValue(get("gross_income")),
-        net_income: isPayslip ? numberValue(record.amount) : numberValue(get("net_income")),
+        net_income: numberValue(get("net_income")),
         expense_category: stringValue(record.category),
         income_source: incomeSourceValue(get("income_source")),
         classification_rationale: stringValue(get("classification_rationale")),

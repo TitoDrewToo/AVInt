@@ -121,11 +121,7 @@ async function recordsRows(userId: string, filters: ReportFilters): Promise<Iden
       const get = (key: string) => fields.get(key)
       const files = row.files
       const documentType = row.document_type ?? valueAsString(fileValue(files, "document_type")) ?? "unknown"
-      const isPayslip = documentType === "payslip"
       const rawJson = parseJsonValue(get(FIELD_MAPPINGS.raw_json))
-      const rawTotalAmount = rawJson && typeof rawJson === "object"
-        ? valueAsNumber((rawJson as JsonObject).total_amount)
-        : null
       const vendorName = valueAsString(get("vendor_name"))
       const employerName = valueAsString(get("employer_name"))
       const mapped = {
@@ -138,12 +134,9 @@ async function recordsRows(userId: string, filters: ReportFilters): Promise<Iden
         document_date: valueAsString(row.occurred_on),
         period_start: valueAsString(row.period_start),
         period_end: valueAsString(row.period_end),
-        // Known inconsistency: legacy payslips fall back to gross_income when
-        // their legacy total_amount is null. Preserve that behavior here;
-        // changing payslip contribution semantics is a separate change.
-        total_amount: isPayslip ? rawTotalAmount : valueAsNumber(row.amount),
+        total_amount: valueAsNumber(row.amount),
         gross_income: valueAsNumber(get(FIELD_MAPPINGS.gross_income)),
-        net_income: isPayslip ? valueAsNumber(row.amount) : valueAsNumber(get(FIELD_MAPPINGS.net_income)),
+        net_income: valueAsNumber(get(FIELD_MAPPINGS.net_income)),
         expense_category: valueAsString(row.category),
         income_source: valueAsString(get(FIELD_MAPPINGS.income_source)),
         classification_rationale: valueAsString(get(FIELD_MAPPINGS.classification_rationale)),
@@ -266,16 +259,13 @@ async function incomeSummaryRows(userId: string, filters: ReportFilters, source:
   for (const attribute of attributes ?? []) byRecord.set(attribute.record_id, new Map([...(byRecord.get(attribute.record_id) ?? []), [attribute.field_key, attribute.value]]))
   return records.map((row) => {
     const fields = byRecord.get(row.id) ?? new Map<string, unknown>()
-    const raw = parseJsonValue(fields.get("_raw_json"))
-    const rawTotal = raw && typeof raw === "object" ? valueAsNumber((raw as JsonObject).total_amount) : null
-    const isPayslip = (row.document_type ?? valueAsString(fileValue(row.files, "document_type"))) === "payslip"
     return {
       file_id: row.file_id,
       employer_name: valueAsString(fields.get("employer_name")),
       document_date: row.occurred_on,
       gross_income: valueAsNumber(fields.get("gross_income")),
-      net_income: isPayslip ? valueAsNumber(row.amount) : valueAsNumber(fields.get("net_income")),
-      total_amount: isPayslip ? rawTotal : valueAsNumber(row.amount),
+      net_income: valueAsNumber(fields.get("net_income")),
+      total_amount: valueAsNumber(row.amount),
       currency: row.currency,
       confidence_score: row.confidence,
       income_source: valueAsString(fields.get("income_source")),
@@ -328,10 +318,7 @@ async function profitLossRows(userId: string, filters: ReportFilters, source: "d
   for (const attribute of attributes ?? []) byRecord.set(attribute.record_id, new Map([...(byRecord.get(attribute.record_id) ?? []), [attribute.field_key, attribute.value]]))
   const incomeRows = incomeRecords.map((row) => {
     const fields = byRecord.get(row.id) ?? new Map<string, unknown>()
-    const raw = parseJsonValue(fields.get("_raw_json"))
-    const rawTotal = raw && typeof raw === "object" ? valueAsNumber((raw as JsonObject).total_amount) : null
-    const isPayslip = (row.document_type ?? valueAsString(fileValue(row.files, "document_type"))) === "payslip"
-    return { document_date: row.occurred_on, gross_income: valueAsNumber(fields.get("gross_income")), net_income: isPayslip ? valueAsNumber(row.amount) : valueAsNumber(fields.get("net_income")), total_amount: isPayslip ? rawTotal : valueAsNumber(row.amount), currency: row.currency, employer_name: fields.get("employer_name") ?? null, income_source: fields.get("income_source") ?? null, files: row.files }
+    return { document_date: row.occurred_on, gross_income: valueAsNumber(fields.get("gross_income")), net_income: valueAsNumber(fields.get("net_income")), total_amount: valueAsNumber(row.amount), currency: row.currency, employer_name: fields.get("employer_name") ?? null, income_source: fields.get("income_source") ?? null, files: row.files }
   })
   const expenseRows = expenseRecords.map((row) => {
     const fields = byRecord.get(row.id) ?? new Map<string, unknown>()
@@ -514,6 +501,19 @@ function format(value: unknown): string {
   return typeof value === "string" ? JSON.stringify(value) : JSON.stringify(value)
 }
 
+// Accepted for the payslip gross-income change: 2026-03-03 +2,800 and
+// 2026-05-05 +7,175, plus the April row's repaired blank-to-gross value.
+// Together the two net-to-gross movements increase income by PHP 9,975.
+const ACCEPTED_PAYSLIP_GROSS_DELTA = new Set([
+  "rows[0].total_amount: 46325 vs 53500",
+  "rows[3].total_amount: null vs 48500",
+  "rows[12].total_amount: 26700 vs 29500",
+  "summary.excludedNonUsdRaw: 987274 vs 997249",
+  "summary.excludedNonUsdRows[0].total_amount: 46325 vs 53500",
+  "summary.excludedNonUsdRows[3].total_amount: null vs 48500",
+  "summary.excludedNonUsdRows[10].total_amount: 26700 vs 29500",
+])
+
 async function main() {
   const userId = await resolveUserId(userInput)
   const filters = { dateFrom, dateTo, targetFolder }
@@ -575,7 +575,11 @@ async function main() {
   // app, MCP, or firm-export consumer reads it from the report response. It
   // carries raw model/provider internals and is a separate deliberate shape
   // removal; exclude it from parity while preserving computation behavior.
-  const differences = diff(comparable(withoutRawJson(legacyReport)), comparable(withoutRawJson(recordsReport)))
+  const allDifferences = diff(comparable(withoutRawJson(legacyReport)), comparable(withoutRawJson(recordsReport)))
+  const acceptedDifferences = reportKey === "tax-bundle"
+    ? allDifferences.filter((difference) => ACCEPTED_PAYSLIP_GROSS_DELTA.has(difference))
+    : []
+  const differences = allDifferences.filter((difference) => !acceptedDifferences.includes(difference))
   const recordEntriesByKey = new Map(matchedRecordEntries.map((entry) => [identityKey(entry.identity), entry]))
   const phpContributions = matchedLegacyEntries
     .map((legacyEntry) => {
@@ -596,6 +600,7 @@ async function main() {
     unmatchedLegacy,
     unmatchedRecords,
     phpContributions,
+    acceptedDifferences,
     differences,
   }, null, 2))
   if (differences.length > 0 || unmatchedLegacy.length > 0 || unmatchedRecords.length > 0) process.exitCode = 1

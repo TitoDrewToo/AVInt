@@ -126,9 +126,9 @@ const payslip = deriveRecords({
   document_type: "payslip", document_date: "2026-08-15", employer_name: "Acme Inc", currency: "PHP",
   gross_income: 50000, net_income: 42000, tax_amount: 8000,
 }, file)
-check("payslip amount comes from net income", payslip.records[0].amount === 42000)
+check("payslip amount comes from gross income", payslip.records[0].amount === 50000)
 check("payslip counterparty comes from employer", payslip.records[0].counterparty === "Acme Inc")
-check("gross income remains an attribute", payslip.attributes.some((attribute) => attribute.field_key === "gross_income" && attribute.value === 50000))
+check("net income remains an attribute", payslip.attributes.some((attribute) => attribute.field_key === "net_income" && attribute.value === 42000))
 check("payslip direction is inflow", payslip.records[0].direction === "inflow")
 
 const contract = deriveRecords({

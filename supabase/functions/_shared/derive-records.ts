@@ -137,7 +137,7 @@ function recordType(row: Record<string, unknown>, fallback?: unknown): string {
 }
 
 function amountFor(row: Record<string, unknown>, type: string): unknown {
-  if (type === "payslip" && row.net_income !== undefined) return row.net_income
+  if (type === "payslip") return row.gross_income ?? null
   return row.total_amount ?? null
 }
 

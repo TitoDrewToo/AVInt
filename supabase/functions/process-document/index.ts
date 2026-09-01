@@ -436,6 +436,7 @@ async function mapHeadersForSheet(
   fileType: string | null,
   fileSizeBytes: number | null,
   documentType: string | null,
+  isRetry = false,
 ): Promise<{ mapping: Record<string, string>; document_type: string }> {
   const userInput = JSON.stringify({
     sheet_name: sheetName,
@@ -483,6 +484,7 @@ async function mapHeadersForSheet(
     model: "gemini-2.5-flash",
     status: "succeeded",
     response: data,
+    isRetry,
   })
   const mappedDocumentType = DOCUMENT_TYPES.has(parsed.document_type) ? parsed.document_type : "general_document"
   return {
@@ -501,6 +503,7 @@ async function extractSpreadsheetRows(
   fileType: string | null,
   fileSizeBytes: number | null,
   documentType: string | null,
+  isRetry = false,
 ): Promise<{ extractedRows: ExtractedDocumentRow[]; sourceRows: any[] }> {
   const XLSX = await import("https://esm.sh/xlsx@0.18.5")
   const isCsv = mimeType === "text/csv" || /\.csv$/i.test(filename ?? "")
@@ -550,7 +553,7 @@ async function extractSpreadsheetRows(
     let documentType = "general_document"
     let mappingMethod = "ai"
     try {
-      const result = await mapHeadersForSheet(supabase, sheetName, headers, sampleForMapping, fileId, userId, fileType, fileSizeBytes, documentType)
+      const result = await mapHeadersForSheet(supabase, sheetName, headers, sampleForMapping, fileId, userId, fileType, fileSizeBytes, documentType, isRetry)
       mapping = result.mapping
       documentType = result.document_type
     } catch (err: any) {
@@ -566,6 +569,7 @@ async function extractSpreadsheetRows(
         model: "gemini-2.5-flash",
         status: "failed",
         error: err,
+        isRetry,
       })
       logError(FN, "header_mapping_failed", err, { file_id: fileId, sheet: sheetName })
       mapping = fallbackKeywordMapping(headers)
@@ -805,6 +809,7 @@ async function callExtractionWithFallback(
   fileType: string | null,
   fileSizeBytes: number | null,
   documentType: string | null,
+  isRetry = false,
 ): Promise<{ rawText: string; provider: AiProvider }> {
   let lastError: unknown = null
   for (const [providerIndex, provider] of PROCESS_PROVIDERS.entries()) {
@@ -828,6 +833,7 @@ async function callExtractionWithFallback(
         status: "succeeded",
         response: result.response,
         isFallback: providerIndex > 0,
+        isRetry,
         durationMs: Date.now() - startedAt,
       })
       return { rawText, provider }
@@ -846,6 +852,7 @@ async function callExtractionWithFallback(
         status: "failed",
         error,
         isFallback: providerIndex > 0,
+        isRetry,
         durationMs: Date.now() - startedAt,
       })
       logError(FN, "provider_failed", error, { provider })
@@ -897,7 +904,8 @@ serve(async (req) => {
 
   try {
     const { file_id, job_id } = body
-    logEvent(FN, "received", { file_id, job_id })
+    const isReprocess = body.reprocess === true
+    logEvent(FN, "received", { file_id, job_id, reprocess: isReprocess })
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
@@ -920,7 +928,7 @@ serve(async (req) => {
     // Phase B gate: only proceed on approved or legacy uploaded rows.
     // approved → passed prescan, safe to OCR.
     // uploaded → legacy pre-Phase-B rows (backward compat, retire after backfill).
-    if (!["approved", "uploaded"].includes(file.upload_status)) {
+    if (!isReprocess && !["approved", "uploaded"].includes(file.upload_status)) {
       return new Response(
         JSON.stringify({ error: "File not approved for processing", current_status: file.upload_status }),
         { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -988,7 +996,7 @@ serve(async (req) => {
     // SheetJS deterministically splits spreadsheet rows; AI only maps headers.
     if (isSpreadsheetInput(mimeType, file.filename ?? "")) {
       try {
-        const spreadsheetResult = await extractSpreadsheetRows(supabase, uint8Array, mimeType, file.filename ?? "", file_id, file.user_id, file.file_type, file.file_size, file.document_type)
+        const spreadsheetResult = await extractSpreadsheetRows(supabase, uint8Array, mimeType, file.filename ?? "", file_id, file.user_id, file.file_type, file.file_size, file.document_type, isReprocess)
         extractedRows = asExtractedDocumentRows(spreadsheetResult.extractedRows)
         sourceRows = spreadsheetResult.sourceRows
         extractionProvider = "deterministic"
@@ -1013,7 +1021,7 @@ serve(async (req) => {
       }
     } else {
       const base64 = toBase64(uint8Array)
-      const { rawText, provider } = await callExtractionWithFallback(supabase, mimeType, base64, uint8Array, file_id, file.user_id, file.file_type, file.file_size, file.document_type)
+      const { rawText, provider } = await callExtractionWithFallback(supabase, mimeType, base64, uint8Array, file_id, file.user_id, file.file_type, file.file_size, file.document_type, isReprocess)
       extractionProvider = provider
 
       try {
@@ -1091,53 +1099,57 @@ serve(async (req) => {
       throw new Error("document_fields insert returned no rows")
     }
 
-    const usageWindow = usageWindowForTier(tier, new Date(), entitlementEnd)
-    const { data: usageRows, error: usageError } = await supabase.rpc("avint_claim_document_processing", {
-      p_user_id: file.user_id,
-      p_file_id: file_id,
-      p_period_start: usageWindow.start,
-      p_period_end: usageWindow.end,
-      p_limit: PLAN_LIMITS[tier].documents,
-      p_soft_cap: PLAN_LIMITS[tier].softCap,
-    })
-
-    if (usageError) throw new Error(`Document usage claim failed: ${usageError.message}`)
-
-    const usage = usageRows?.[0]
-    if (usage?.fair_use_warning) {
-      logEvent(FN, "document_fair_use_warning", {
-        file_id,
-        user_id: file.user_id,
-        tier,
-        used_count: usage.used_count,
-        limit_count: PLAN_LIMITS[tier].documents,
+    // User-triggered reprocesses are recorded as retry usage and never claim
+    // another billable document slot.
+    if (!isReprocess) {
+      const usageWindow = usageWindowForTier(tier, new Date(), entitlementEnd)
+      const { data: usageRows, error: usageError } = await supabase.rpc("avint_claim_document_processing", {
+        p_user_id: file.user_id,
+        p_file_id: file_id,
+        p_period_start: usageWindow.start,
+        p_period_end: usageWindow.end,
+        p_limit: PLAN_LIMITS[tier].documents,
+        p_soft_cap: PLAN_LIMITS[tier].softCap,
       })
-    }
 
-    if (!usage?.allowed) {
-      const limitMessage = `You've reached the ${PLAN_LIMITS[tier].documents}-document limit for your current plan. Upgrade to continue processing documents.`
-      await supabase
-        .from("processing_jobs")
-        .update({ status: "failed", error_message: limitMessage })
-        .eq("file_id", file_id)
-        .in("status", ["uploaded", "processing"])
-      logEvent(FN, "document_limit_reached", {
-        file_id,
-        user_id: file.user_id,
-        tier,
-        used_count: usage?.used_count ?? PLAN_LIMITS[tier].documents,
-        limit_count: PLAN_LIMITS[tier].documents,
-      })
-      return new Response(JSON.stringify({
-        error: limitMessage,
-        code: "DOCUMENT_LIMIT_REACHED",
-        tier,
-        used_count: usage?.used_count ?? PLAN_LIMITS[tier].documents,
-        limit_count: PLAN_LIMITS[tier].documents,
-      }), {
-        status: 429,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      })
+      if (usageError) throw new Error(`Document usage claim failed: ${usageError.message}`)
+
+      const usage = usageRows?.[0]
+      if (usage?.fair_use_warning) {
+        logEvent(FN, "document_fair_use_warning", {
+          file_id,
+          user_id: file.user_id,
+          tier,
+          used_count: usage.used_count,
+          limit_count: PLAN_LIMITS[tier].documents,
+        })
+      }
+
+      if (!usage?.allowed) {
+        const limitMessage = `You've reached the ${PLAN_LIMITS[tier].documents}-document limit for your current plan. Upgrade to continue processing documents.`
+        await supabase
+          .from("processing_jobs")
+          .update({ status: "failed", error_message: limitMessage })
+          .eq("file_id", file_id)
+          .in("status", ["uploaded", "processing"])
+        logEvent(FN, "document_limit_reached", {
+          file_id,
+          user_id: file.user_id,
+          tier,
+          used_count: usage?.used_count ?? PLAN_LIMITS[tier].documents,
+          limit_count: PLAN_LIMITS[tier].documents,
+        })
+        return new Response(JSON.stringify({
+          error: limitMessage,
+          code: "DOCUMENT_LIMIT_REACHED",
+          tier,
+          used_count: usage?.used_count ?? PLAN_LIMITS[tier].documents,
+          limit_count: PLAN_LIMITS[tier].documents,
+        }), {
+          status: 429,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        })
+      }
     }
 
     const extractionPayload = extractedRows.length === 1 ? extractedRows[0] : extractedRows
@@ -1196,7 +1208,7 @@ serve(async (req) => {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
         },
-        body: JSON.stringify({ file_id, job_id: currentJobId, source_key: row.source_key, fields: row }),
+        body: JSON.stringify({ file_id, job_id: currentJobId, source_key: row.source_key, fields: row, reprocess: isReprocess }),
       },
     )
 

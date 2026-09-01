@@ -120,6 +120,10 @@ const GRID_PAD = 8
 const TOUCH_LONG_PRESS_MS = 420
 const TOUCH_MOVE_CANCEL_PX = 10
 
+function canReprocessFile(file: UploadedFile): boolean {
+  return file.upload_status === "done" || file.upload_status === "normalized"
+}
+
 const REPORT_HINTS: Record<string, string> = {
   tax_bundle: "For self-employed / 1099 income — maps expenses to IRS Schedule C.",
   business_expense: "Itemized, categorized expense report for review or filing.",
@@ -301,6 +305,7 @@ export default function SmartStoragePage() {
   const [isLoadingMoreFiles, setIsLoadingMoreFiles] = useState(false)
   const [detectedTypes, setDetectedTypes] = useState<string[]>([])
   const recentlyDeletedFileIdsRef = useRef<Set<string>>(new Set())
+  const reprocessingFileIdsRef = useRef<Set<string>>(new Set())
   const extractionTrackedFileIdsRef = useRef<Set<string>>(new Set())
   const processingExpiryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const checkProcessingStateRef = useRef<(() => Promise<boolean | undefined>) | null>(null)
@@ -1153,6 +1158,42 @@ export default function SmartStoragePage() {
     await loadFiles()
     await checkProcessingState()
   }, [session, loadFiles, checkProcessingState])
+
+  const handleReprocess = useCallback(async (file: UploadedFile) => {
+    if (!canReprocessFile(file)) {
+      setUploadNotice("This file is not in a terminal state and cannot be reprocessed yet.")
+      return
+    }
+    if (reprocessingFileIdsRef.current.has(file.id)) return
+    if (!window.confirm("Reprocess this document? It will be re-read and values may change. Your corrections will be preserved.")) return
+    const userToken = (await supabase.auth.getSession()).data.session?.access_token
+    if (!userToken) {
+      setUploadNotice("Your session has expired. Sign in again before reprocessing.")
+      return
+    }
+    reprocessingFileIdsRef.current.add(file.id)
+    setIsProcessing(true)
+    setUploadNotice(null)
+    try {
+      const response = await fetch("/api/reprocess-document", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${userToken}` },
+        body: JSON.stringify({ file_id: file.id }),
+      })
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}))
+        setUploadNotice(payload.error ?? "Reprocess could not start.")
+      }
+      await loadFiles()
+      await checkProcessingState()
+    } catch (error) {
+      console.error("reprocess request failed:", error)
+      setUploadNotice("Reprocess could not start. Check your connection and try again.")
+    } finally {
+      reprocessingFileIdsRef.current.delete(file.id)
+      setIsProcessing(false)
+    }
+  }, [checkProcessingState, loadFiles])
 
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragOver(true) }
   const handleDragLeave = () => setIsDragOver(false)
@@ -2423,6 +2464,7 @@ export default function SmartStoragePage() {
                             setReclassifyTarget({ fileId: file.id, filename: file.filename })
                           }
                         }}
+                        onReprocess={canReprocessFile(file) ? () => handleReprocess(file) : undefined}
                         onContextIntent={() => handleFileContextIntent(file.id)}
                       >
                         <div
@@ -2543,6 +2585,7 @@ export default function SmartStoragePage() {
                       setReclassifyTarget({ fileId: file.id, filename: file.filename })
                     }
                   }}
+                  onReprocess={canReprocessFile(file) ? () => handleReprocess(file) : undefined}
                   onContextIntent={() => handleFileContextIntent(file.id)}
                 >
                   <div

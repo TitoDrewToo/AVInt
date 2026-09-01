@@ -183,6 +183,7 @@ serve(async (req) => {
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
   const { file_id, job_id, source_key: requestedSourceKey, fields: inlineFields } = body
+  const isReprocess = body.reprocess === true
 
   // Hoisted so the catch block can target the specific row (by id) when it's
   // known, and increment normalization_attempts against that row.
@@ -322,7 +323,7 @@ serve(async (req) => {
           attemptNumber,
           status: "succeeded",
           response: result.response,
-          isRetry: attemptNumber > 1,
+          isRetry: isReprocess || attemptNumber > 1,
           isFallback: providerIndex > 0,
           durationMs: Date.now() - startedAt,
         })
@@ -343,7 +344,7 @@ serve(async (req) => {
           attemptNumber,
           status: "failed",
           error,
-          isRetry: attemptNumber > 1,
+          isRetry: isReprocess || attemptNumber > 1,
           isFallback: providerIndex > 0,
           durationMs: Date.now() - startedAt,
         })

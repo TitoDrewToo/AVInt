@@ -1,7 +1,7 @@
 "use client"
 
 import { useRef, type ReactNode } from "react"
-import { Download, FolderOutput, Pencil, Tag, X } from "lucide-react"
+import { Download, FolderOutput, Pencil, RefreshCw, Tag, X } from "lucide-react"
 import {
   ContextMenu,
   ContextMenuContent,
@@ -26,6 +26,7 @@ interface StorageItemMenuProps {
   onDeleteSelection?: () => void | Promise<void>
   onMoveUp?: () => void | Promise<void>
   onReclassify?: () => void
+  onReprocess?: () => void | Promise<void>
   onContextIntent?: () => void
   disableTouchContextMenu?: boolean
   children: ReactNode
@@ -44,6 +45,7 @@ export function StorageItemMenu({
   onDeleteSelection,
   onMoveUp,
   onReclassify,
+  onReprocess,
   onContextIntent,
   disableTouchContextMenu = false,
   children,
@@ -119,6 +121,17 @@ export function StorageItemMenu({
                   <ContextMenuItem inset onSelect={onReclassify}>
                     <Tag className="h-3.5 w-3.5" />
                     Reclassify
+                  </ContextMenuItem>
+                </Tip>
+              </>
+            )}
+            {onReprocess && (
+              <>
+                <ContextMenuSeparator />
+                <Tip text="Re-read this document while preserving your corrections.">
+                  <ContextMenuItem inset onSelect={() => void onReprocess()}>
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    Reprocess
                   </ContextMenuItem>
                 </Tip>
               </>

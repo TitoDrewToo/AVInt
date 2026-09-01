@@ -13,7 +13,7 @@ import { createReportQueryContext } from "@/lib/report-query-context-server"
 import { overlapsDateRange } from "@/lib/report-utils"
 import { selectTaxBundleDefaultYear } from "@/lib/tax-bundle-default-year"
 
-type ReportKey = "tax-bundle" | "business-expense"
+type ReportKey = "tax-bundle" | "business-expense" | "expense-summary"
 type ReportFilters = { dateFrom?: string; dateTo?: string; targetFolder?: string }
 type JsonObject = Record<string, unknown>
 type Identity = { file_id: string; source_key: string }
@@ -33,8 +33,8 @@ const [userInput, dateFrom, dateTo] = args
 const reportKey = (args.at(-1) ?? "") as ReportKey
 const targetFolder = args.length === 5 ? args[3] : undefined
 
-if (!userInput || !dateFrom || !dateTo || !["tax-bundle", "business-expense"].includes(reportKey) || (args.length !== 4 && args.length !== 5)) {
-  console.error("Usage: report-parity <user-id-or-email> <date-from> <date-to> [folder-id] <tax-bundle|business-expense>")
+if (!userInput || !dateFrom || !dateTo || !["tax-bundle", "business-expense", "expense-summary"].includes(reportKey) || (args.length !== 4 && args.length !== 5)) {
+  console.error("Usage: report-parity <user-id-or-email> <date-from> <date-to> [folder-id] <tax-bundle|business-expense|expense-summary>")
   process.exit(2)
 }
 
@@ -183,6 +183,51 @@ async function legacyReportRows(userId: string, filters: ReportFilters): Promise
     }))
 }
 
+async function expenseSummaryRows(userId: string, filters: ReportFilters, source: "document_fields" | "records") {
+  const documentTypes = ["receipt", "invoice"]
+  const context = await createReportQueryContext(userId, filters)
+  const fileIds = await context.fileIds(documentTypes)
+  if (fileIds.length === 0) return []
+
+  if (source === "document_fields") {
+    let query = supabaseAdmin.from("document_fields")
+      .select("file_id, vendor_name, document_date, total_amount, currency, expense_category, confidence_score, files!inner(filename, document_type)")
+      .neq("normalization_status", "excluded")
+      .order("document_date", { ascending: false })
+    if (fileIds.length > 0) query = query.in("file_id", fileIds)
+    if (filters.dateFrom) query = query.gte("document_date", filters.dateFrom)
+    if (filters.dateTo) query = query.lte("document_date", filters.dateTo)
+    const { data, error } = await query
+    if (error) throw new Error(error.message)
+    return data ?? []
+  }
+
+  let query = supabaseAdmin.from("records")
+    .select("id, file_id, parent_record_id, document_type, occurred_on, amount, currency, category, confidence, files!inner(filename, document_type)")
+    .in("file_id", fileIds)
+    .is("parent_record_id", null)
+    .is("excluded_at", null)
+    .order("occurred_on", { ascending: false })
+  const { data, error } = await query
+  if (error) throw new Error(error.message)
+  const records = data ?? []
+  const { data: attributes, error: attributesError } = records.length === 0
+    ? { data: [], error: null }
+    : await supabaseAdmin.from("record_attributes").select("record_id, field_key, value").in("record_id", records.map((row) => row.id)).eq("field_key", "vendor_name")
+  if (attributesError) throw new Error(attributesError.message)
+  const vendorByRecord = new Map((attributes ?? []).map((row) => [row.record_id, row.value]))
+  return records.filter((row) => (!filters.dateFrom || row.occurred_on >= filters.dateFrom) && (!filters.dateTo || row.occurred_on <= filters.dateTo)).map((row) => ({
+    file_id: row.file_id,
+    vendor_name: vendorByRecord.get(row.id) ?? null,
+    document_date: row.occurred_on,
+    total_amount: row.amount,
+    currency: row.currency,
+    expense_category: row.category,
+    confidence_score: row.confidence,
+    files: row.files,
+  }))
+}
+
 async function legacyRowsWithIdentity(userId: string, filters: ReportFilters, reportRows: TaxRow[]): Promise<IdentifiedRow[]> {
   const context = await createReportQueryContext(userId, filters)
   const fileIds = await context.fileIds()
@@ -243,6 +288,10 @@ function reportFromRows(rows: TaxRow[], report: ReportKey) {
   }
 }
 
+function reportFromExpenseRows(rows: unknown[]) {
+  return { expenses: rows }
+}
+
 function comparable(value: unknown): unknown {
   if (value instanceof Map) return Object.fromEntries(Array.from(value.entries()).map(([key, entry]) => [String(key), comparable(entry)]))
   if (Array.isArray(value)) return value.map(comparable)
@@ -290,6 +339,14 @@ function format(value: unknown): string {
 async function main() {
   const userId = await resolveUserId(userInput)
   const filters = { dateFrom, dateTo, targetFolder }
+  if (reportKey === "expense-summary") {
+    const legacy = reportFromExpenseRows(await expenseSummaryRows(userId, filters, "document_fields"))
+    const records = reportFromExpenseRows(await expenseSummaryRows(userId, filters, "records"))
+    const differences = diff(comparable(legacy), comparable(records))
+    console.log(JSON.stringify({ userId, report: reportKey, filters, legacy: summarize(legacy), records: summarize(records), matchedCount: Math.min(legacy.expenses.length, records.expenses.length), unmatchedLegacy: [], unmatchedRecords: [], differences }, null, 2))
+    if (differences.length > 0) process.exitCode = 1
+    return
+  }
   const legacyRows = await legacyReportRows(userId, filters)
   const legacy = sortIdentified(await legacyRowsWithIdentity(userId, filters, legacyRows))
   const records = sortIdentified(await recordsRows(userId, filters))

@@ -161,22 +161,38 @@ export async function GET(
         if (fileIds.length === 0) return NextResponse.json({ expenses: [] })
 
         let query = supabaseAdmin
-          .from("document_fields")
-          .select(`
-            file_id, vendor_name, document_date, total_amount,
-            currency, expense_category, confidence_score,
-            files!inner(filename, document_type)
-          `)
+          .from("records")
+          .select("id, file_id, document_type, occurred_on, amount, currency, category, confidence, files!inner(filename, document_type)")
           .in("file_id", fileIds)
-          .neq("normalization_status", "excluded")
-          .order("document_date", { ascending: false })
+          .is("parent_record_id", null)
+          .is("excluded_at", null)
+          .order("occurred_on", { ascending: false })
 
-        if (dateFrom) query = query.gte("document_date", dateFrom)
-        if (dateTo) query = query.lte("document_date", dateTo)
+        if (dateFrom) query = query.gte("occurred_on", dateFrom)
+        if (dateTo) query = query.lte("occurred_on", dateTo)
 
         const { data, error } = await query
         if (error) throw new Error(error.message)
-        return NextResponse.json({ expenses: data ?? [] })
+        const records = data ?? []
+        const { data: attributes, error: attributesError } = records.length === 0
+          ? { data: [], error: null }
+          : await supabaseAdmin
+            .from("record_attributes")
+            .select("record_id, value")
+            .in("record_id", records.map((row) => row.id))
+            .eq("field_key", "vendor_name")
+        if (attributesError) throw new Error(attributesError.message)
+        const vendors = new Map((attributes ?? []).map((row) => [row.record_id, row.value]))
+        return NextResponse.json({ expenses: records.map((row) => ({
+          file_id: row.file_id,
+          vendor_name: vendors.get(row.id) ?? null,
+          document_date: row.occurred_on,
+          total_amount: row.amount,
+          currency: row.currency,
+          expense_category: row.category,
+          confidence_score: row.confidence,
+          files: row.files,
+        })) })
       }
 
       case "income-summary": {

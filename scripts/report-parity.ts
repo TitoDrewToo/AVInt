@@ -135,7 +135,7 @@ async function recordsRows(userId: string, filters: ReportFilters): Promise<Iden
         period_start: valueAsString(row.period_start),
         period_end: valueAsString(row.period_end),
         total_amount: valueAsNumber(row.amount),
-        gross_income: valueAsNumber(get(FIELD_MAPPINGS.gross_income)),
+        gross_income: valueAsNumber(get(FIELD_MAPPINGS.gross_income) ?? (documentType === "payslip" ? row.amount : null)),
         net_income: valueAsNumber(get(FIELD_MAPPINGS.net_income)),
         expense_category: valueAsString(row.category),
         income_source: valueAsString(get(FIELD_MAPPINGS.income_source)),

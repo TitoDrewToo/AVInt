@@ -257,30 +257,80 @@ export async function GET(
 
         if (incomeFileIds.length > 0) {
           let incomeQuery = supabaseAdmin
-            .from("document_fields")
-            .select("document_date, gross_income, net_income, total_amount, currency, employer_name, income_source, files!inner(document_type)")
+            .from("records")
+            .select("id, document_type, occurred_on, amount, currency, files!inner(document_type)")
             .in("file_id", incomeFileIds)
-            .neq("normalization_status", "excluded")
-            .order("document_date", { ascending: true })
-          if (dateFrom) incomeQuery = incomeQuery.gte("document_date", dateFrom)
-          if (dateTo) incomeQuery = incomeQuery.lte("document_date", dateTo)
+            .is("parent_record_id", null)
+            .is("excluded_at", null)
+            .order("occurred_on", { ascending: true })
+          if (dateFrom) incomeQuery = incomeQuery.gte("occurred_on", dateFrom)
+          if (dateTo) incomeQuery = incomeQuery.lte("occurred_on", dateTo)
           const { data, error } = await incomeQuery
           if (error) throw new Error(error.message)
-          incomeRows = data ?? []
+          const records = data ?? []
+          const { data: attributes, error: attributesError } = records.length === 0
+            ? { data: [], error: null }
+            : await supabaseAdmin
+              .from("record_attributes")
+              .select("record_id, field_key, value")
+              .in("record_id", records.map((row) => row.id))
+              .in("field_key", ["employer_name", "gross_income", "net_income", "income_source", "_raw_json"])
+          if (attributesError) throw new Error(attributesError.message)
+          const byRecord = new Map<string, Map<string, unknown>>()
+          for (const attribute of attributes ?? []) {
+            const fields = byRecord.get(attribute.record_id) ?? new Map<string, unknown>()
+            fields.set(attribute.field_key, attribute.value)
+            byRecord.set(attribute.record_id, fields)
+          }
+          incomeRows = records.map((row) => {
+            const fields = byRecord.get(row.id) ?? new Map<string, unknown>()
+            const raw = fields.get("_raw_json")
+            const parsedRaw = typeof raw === "string" ? (() => { try { return JSON.parse(raw) } catch { return raw } })() : raw
+            const rawTotal = parsedRaw && typeof parsedRaw === "object" ? parsedRaw.total_amount : null
+            const documentType = row.document_type ?? row.files?.[0]?.document_type ?? row.files?.document_type
+            return {
+              document_date: row.occurred_on,
+              gross_income: fields.get("gross_income") ?? null,
+              net_income: documentType === "payslip" ? row.amount : fields.get("net_income") ?? null,
+              total_amount: documentType === "payslip" ? rawTotal : row.amount,
+              currency: row.currency,
+              employer_name: fields.get("employer_name") ?? null,
+              income_source: fields.get("income_source") ?? null,
+              files: row.files,
+            }
+          })
         }
 
         if (expenseFileIds.length > 0) {
           let expenseQuery = supabaseAdmin
-            .from("document_fields")
-            .select("document_date, total_amount, currency, vendor_name, expense_category, files!inner(document_type)")
+            .from("records")
+            .select("id, occurred_on, amount, currency, category, files!inner(document_type)")
             .in("file_id", expenseFileIds)
-            .neq("normalization_status", "excluded")
-            .order("document_date", { ascending: true })
-          if (dateFrom) expenseQuery = expenseQuery.gte("document_date", dateFrom)
-          if (dateTo) expenseQuery = expenseQuery.lte("document_date", dateTo)
+            .is("parent_record_id", null)
+            .is("excluded_at", null)
+            .order("occurred_on", { ascending: true })
+          if (dateFrom) expenseQuery = expenseQuery.gte("occurred_on", dateFrom)
+          if (dateTo) expenseQuery = expenseQuery.lte("occurred_on", dateTo)
           const { data, error } = await expenseQuery
           if (error) throw new Error(error.message)
-          expenseRows = data ?? []
+          const records = data ?? []
+          const { data: attributes, error: attributesError } = records.length === 0
+            ? { data: [], error: null }
+            : await supabaseAdmin
+              .from("record_attributes")
+              .select("record_id, value")
+              .in("record_id", records.map((row) => row.id))
+              .eq("field_key", "vendor_name")
+          if (attributesError) throw new Error(attributesError.message)
+          const vendors = new Map((attributes ?? []).map((row) => [row.record_id, row.value]))
+          expenseRows = records.map((row) => ({
+            document_date: row.occurred_on,
+            total_amount: row.amount,
+            currency: row.currency,
+            vendor_name: vendors.get(row.id) ?? null,
+            expense_category: row.category,
+            files: row.files,
+          }))
         }
 
         return NextResponse.json({ incomeRows, expenseRows })

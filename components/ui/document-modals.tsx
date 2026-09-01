@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { X, PenLine, Tag } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { ALL_SC_CATEGORIES } from "@/lib/tax-bundle"
-import { DOCUMENT_TYPE_OPTIONS, fieldsForDocumentType, parseManualNumber, validateManualEntry, type ManualFieldDefinition, type ManualValidationInput } from "@/lib/document-type-fields"
+import { DOCUMENT_TYPE_OPTIONS, fieldsForDocumentType, humanizeCustomFieldKey, isCustomFieldKey, parseManualNumber, customFieldsPayload, validateCustomFields, validateManualEntry, type CustomFieldInput, type ManualFieldDefinition, type ManualValidationInput } from "@/lib/document-type-fields"
 import { SUPPORTED_CURRENCIES, currencyDecimals } from "@/lib/currencies"
 
 // ---------------------------------------------------------------------------
@@ -150,9 +150,14 @@ interface DocumentFormBodyProps {
   form: FormState
   onChange: (field: keyof FormState, value: string) => void
   isManual: boolean
+  customFields: CustomFieldInput[]
+  customFieldSuggestions: string[]
+  onCustomFieldChange: (id: string, field: keyof Omit<CustomFieldInput, "id">, value: string) => void
+  onAddCustomField: () => void
+  onRemoveCustomField: (id: string) => void
 }
 
-function DynamicDocumentFormBody({ form, onChange, isManual }: DocumentFormBodyProps) {
+function DynamicDocumentFormBody({ form, onChange, isManual, customFields, customFieldSuggestions, onCustomFieldChange, onAddCustomField, onRemoveCustomField }: DocumentFormBodyProps) {
   const validationInput = form as ManualValidationInput
   const validationIssues = validateManualEntry(validationInput)
   const issuesFor = (field: string) => validationIssues.filter((issue) => issue.field === field)
@@ -168,12 +173,24 @@ function DynamicDocumentFormBody({ form, onChange, isManual }: DocumentFormBodyP
       {fieldIssues.map((issue) => <p key={`${issue.severity}-${issue.message}`} className={`mt-1 text-xs ${issue.severity === "warning" ? "text-amber-600" : "text-destructive"}`}>{issue.message}</p>)}
     </>
   }
+  const customIssues = validateCustomFields(customFields, form.currency)
+  const issuesForCustom = (id: string, field: "label" | "value") => customIssues.filter((issue) => issue.id === id && issue.field === field)
   return <div className="space-y-4">
     <div className="grid grid-cols-2 gap-3">
       <div><p className={sectionLabelCls}>Document Type</p><select className={inputCls} value={form.document_type} onChange={(event) => onChange("document_type", event.target.value)} required>{DOCUMENT_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></div>
       {isManual && <div><p className={sectionLabelCls}>Document Name</p><input className={inputCls} type="text" placeholder="e.g. Office supplies receipt" value={form.document_name} onChange={(event) => onChange("document_name", event.target.value)} /></div>}
     </div>
     <div className="grid grid-cols-2 gap-3">{fieldsFor(form).map((definition) => <div key={definition.formField}><p className={sectionLabelCls}>{definition.label}</p>{renderField(definition)}</div>)}</div>
+    <div className="space-y-2">
+      <div className="flex items-center justify-between"><p className={sectionLabelCls}>Custom Fields</p><button type="button" className="text-xs font-medium text-primary hover:underline disabled:opacity-50" onClick={onAddCustomField} disabled={customFields.length >= 10}>+ Add field</button></div>
+      {customFields.map((customField) => <div key={customField.id} className="grid grid-cols-[1fr_7rem_1fr_auto] items-start gap-2">
+        <div><input className={inputCls} type="text" list="custom-field-suggestions" placeholder="Label" value={customField.label} onChange={(event) => onCustomFieldChange(customField.id, "label", event.target.value)} />{issuesForCustom(customField.id, "label").map((issue) => <p key={issue.message} className="mt-1 text-xs text-destructive">{issue.message}</p>)}</div>
+        <select className={inputCls} value={customField.type} onChange={(event) => onCustomFieldChange(customField.id, "type", event.target.value)}><option value="text">Text</option><option value="number">Number</option><option value="date">Date</option></select>
+        <div><input className={inputCls} type={customField.type === "date" ? "date" : "text"} inputMode={customField.type === "number" ? "decimal" : undefined} step={customField.type === "number" ? 10 ** -currencyDecimals(form.currency) : undefined} placeholder="Value" value={customField.value} onChange={(event) => onCustomFieldChange(customField.id, "value", event.target.value)} />{issuesForCustom(customField.id, "value").map((issue) => <p key={issue.message} className="mt-1 text-xs text-destructive">{issue.message}</p>)}</div>
+        <button type="button" className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-destructive" aria-label="Remove custom field" onClick={() => onRemoveCustomField(customField.id)}>×</button>
+      </div>)}
+      <datalist id="custom-field-suggestions">{customFieldSuggestions.map((suggestion) => <option key={suggestion} value={suggestion} />)}</datalist>
+    </div>
     <div><p className={sectionLabelCls}>Notes</p><textarea className={`${inputCls} resize-none`} rows={2} placeholder="Optional notes…" value={form.notes} onChange={(event) => onChange("notes", event.target.value)} /></div>
   </div>
 }
@@ -210,6 +227,29 @@ function generateFilename(form: FormState): string {
   return `Manual Entry${suffix}`
 }
 
+function humanizeAttributeType(valueType: string): CustomFieldInput["type"] {
+  return valueType === "number" ? "number" : valueType === "date" ? "date" : "text"
+}
+
+function customFieldId() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+function customFieldsFromAttributes(rows: Array<{ field_key: string; value: unknown; value_type: string }>): CustomFieldInput[] {
+  return rows.filter((row) => isCustomFieldKey(row.field_key)).slice(0, 10).map((row) => ({
+    id: customFieldId(),
+    label: humanizeCustomFieldKey(row.field_key),
+    type: humanizeAttributeType(row.value_type),
+    value: row.value == null ? "" : String(row.value),
+  }))
+}
+
+async function previousCustomFieldSuggestions(userId: string): Promise<string[]> {
+  const { data } = await supabase.from("record_attributes").select("field_key").eq("user_id", userId).order("field_key", { ascending: true })
+  return Array.from(new Set((data ?? []).map((row) => row.field_key).filter((key): key is string => typeof key === "string" && isCustomFieldKey(key))))
+    .map(humanizeCustomFieldKey)
+}
+
 // ---------------------------------------------------------------------------
 // ManualEntryModal
 // ---------------------------------------------------------------------------
@@ -234,6 +274,8 @@ interface ManualEntryModalProps {
 
 export function ManualEntryModal({ isOpen, userId, onClose, onCreated }: ManualEntryModalProps) {
   const [form, setForm] = useState<FormState>({ ...EMPTY_FORM })
+  const [customFields, setCustomFields] = useState<CustomFieldInput[]>([])
+  const [customFieldSuggestions, setCustomFieldSuggestions] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -241,6 +283,7 @@ export function ManualEntryModal({ isOpen, userId, onClose, onCreated }: ManualE
   useEffect(() => {
     if (isOpen) {
       setForm({ ...EMPTY_FORM })
+      setCustomFields([])
       setError(null)
       void (async () => {
         const { data } = await supabase
@@ -256,11 +299,16 @@ export function ManualEntryModal({ isOpen, userId, onClose, onCreated }: ManualE
           : "USD"
         setForm((previous) => ({ ...previous, currency: recent }))
       })()
+      void previousCustomFieldSuggestions(userId).then(setCustomFieldSuggestions)
     }
   }, [isOpen, userId])
 
   function handleChange(field: keyof FormState, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }))
+  }
+
+  function handleCustomFieldChange(id: string, field: keyof Omit<CustomFieldInput, "id">, value: string) {
+    setCustomFields((previous) => previous.map((item) => item.id === id ? { ...item, [field]: value } : item))
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -273,10 +321,16 @@ export function ManualEntryModal({ isOpen, userId, onClose, onCreated }: ManualE
       setError(firstError.message)
       return
     }
+    const customValidationIssues = validateCustomFields(customFields, form.currency)
+    if (customValidationIssues.length > 0) {
+      setError(customValidationIssues[0].message)
+      return
+    }
 
     setSaving(true)
     try {
       const filename = generateFilename(form)
+      const customPayload = customFieldsPayload(customFields, form.currency).payload
       const numericValue = (field: keyof Pick<FormState, "total_amount" | "gross_income" | "net_income" | "tax_amount" | "discount_amount">) => {
         const parsed = parseManualNumber(form[field], form.currency)
         return parsed.value
@@ -338,13 +392,14 @@ export function ManualEntryModal({ isOpen, userId, onClose, onCreated }: ManualE
         const syncResponse = await fetch("/api/virtual-records/sync", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
-          body: JSON.stringify({ file_id: fileRow.id }),
+          body: JSON.stringify({ file_id: fileRow.id, custom_fields: customFields, custom_payload: customPayload }),
         })
         if (!syncResponse.ok) throw new Error("Manual entry saved, but the data model could not be refreshed.")
       }
 
       onCreated(fileRow as InsertedFile)
       setForm({ ...EMPTY_FORM })
+      setCustomFields([])
       onClose()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "An unexpected error occurred.")
@@ -375,7 +430,7 @@ export function ManualEntryModal({ isOpen, userId, onClose, onCreated }: ManualE
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="px-6 py-5">
-          <DynamicDocumentFormBody form={form} onChange={handleChange} isManual={true} />
+          <DynamicDocumentFormBody form={form} onChange={handleChange} customFields={customFields} customFieldSuggestions={customFieldSuggestions} onCustomFieldChange={handleCustomFieldChange} onAddCustomField={() => setCustomFields((previous) => previous.length >= 10 ? previous : [...previous, { id: customFieldId(), label: "", type: "text", value: "" }])} onRemoveCustomField={(id) => setCustomFields((previous) => previous.filter((item) => item.id !== id))} isManual={true} />
 
           {/* Error */}
           {error && (
@@ -422,6 +477,8 @@ interface ReclassifyModalProps {
 
 export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: ReclassifyModalProps) {
   const [form, setForm] = useState<FormState>({ ...EMPTY_FORM })
+  const [customFields, setCustomFields] = useState<CustomFieldInput[]>([])
+  const [customFieldSuggestions, setCustomFieldSuggestions] = useState<string[]>([])
   const [fileType, setFileType] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -451,6 +508,14 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
         } else {
           setForm({ ...EMPTY_FORM })
         }
+        const { data: record } = await supabase.from("records").select("id").eq("file_id", fileId).is("parent_record_id", null).maybeSingle()
+        if (record?.id) {
+          const { data: attributes } = await supabase.from("record_attributes").select("field_key, value, value_type").eq("record_id", record.id)
+          setCustomFields(customFieldsFromAttributes(attributes ?? []))
+        } else {
+          setCustomFields([])
+        }
+        setCustomFieldSuggestions([])
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : "Failed to load document fields.")
       } finally {
@@ -485,13 +550,25 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
     setForm((prev) => ({ ...prev, [field]: value }))
   }
 
+  function handleCustomFieldChange(id: string, field: keyof Omit<CustomFieldInput, "id">, value: string) {
+    setCustomFields((previous) => previous.map((item) => item.id === id ? { ...item, [field]: value } : item))
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!fileId) return
     setError(null)
 
+    const firstError = validateManualEntry(form).find((issue) => issue.severity === "error")
+    const customValidationIssues = validateCustomFields(customFields, form.currency)
+    if (firstError || customValidationIssues.length > 0) {
+      setError(firstError?.message ?? customValidationIssues[0].message)
+      return
+    }
+
     setSaving(true)
     try {
+      const numericValue = (field: keyof Pick<FormState, "total_amount" | "gross_income" | "net_income" | "tax_amount" | "discount_amount">) => parseManualNumber(form[field], form.currency).value
       // Update document_fields
       const { error: fieldsErr } = await supabase
         .from("document_fields")
@@ -499,12 +576,12 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
           vendor_name: form.vendor_name || null,
           employer_name: form.employer_name || null,
           document_date: form.document_date || null,
-          currency: form.currency || "PHP",
-          total_amount: parseFloat(form.total_amount) || null,
-          gross_income: parseFloat(form.gross_income) || null,
-          net_income: parseFloat(form.net_income) || null,
-          tax_amount: parseFloat(form.tax_amount) || null,
-          discount_amount: parseFloat(form.discount_amount) || null,
+          currency: form.currency || null,
+          total_amount: numericValue("total_amount"),
+          gross_income: numericValue("gross_income"),
+          net_income: numericValue("net_income"),
+          tax_amount: numericValue("tax_amount"),
+          discount_amount: numericValue("discount_amount"),
           expense_category: form.expense_category || null,
           payment_method: form.payment_method || null,
           invoice_number: form.invoice_number || null,
@@ -538,7 +615,7 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
             "Content-Type": "application/json",
             Authorization: `Bearer ${session.access_token}`,
           },
-          body: JSON.stringify({ file_id: fileId }),
+          body: JSON.stringify({ file_id: fileId, custom_fields: customFields, custom_payload: customFieldsPayload(customFields, form.currency).payload }),
         })
         if (!retryResponse.ok) throw new Error(fileType === "manual"
           ? "Manual entry saved, but its record could not be refreshed."
@@ -587,7 +664,7 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
             </div>
           ) : (
             <form onSubmit={handleSubmit}>
-              <DynamicDocumentFormBody form={form} onChange={handleChange} isManual={false} />
+              <DynamicDocumentFormBody form={form} onChange={handleChange} customFields={customFields} customFieldSuggestions={customFieldSuggestions} onCustomFieldChange={handleCustomFieldChange} onAddCustomField={() => setCustomFields((previous) => previous.length >= 10 ? previous : [...previous, { id: customFieldId(), label: "", type: "text", value: "" }])} onRemoveCustomField={(id) => setCustomFields((previous) => previous.filter((item) => item.id !== id))} isManual={false} />
 
               {/* Error */}
               {error && (

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 
 import { supabaseAdmin } from "@/lib/mcp-auth"
 import { syncVirtualRecord } from "@/lib/virtual-records"
+import { customFieldsPayload, type CustomFieldInput } from "@/lib/document-type-fields"
 import { deriveRecords } from "@/supabase/functions/_shared/derive-records"
 import { persistDerived } from "@/supabase/functions/_shared/persist-derived"
 import { writeExtraction } from "@/supabase/functions/_shared/write-extraction"
@@ -15,6 +16,11 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json().catch(() => null)
   const fileId = typeof body?.file_id === "string" ? body.file_id : ""
+  const customFields = Array.isArray(body?.custom_fields) ? body.custom_fields.filter((field: unknown): field is CustomFieldInput => {
+    if (!field || typeof field !== "object") return false
+    const candidate = field as Record<string, unknown>
+    return typeof candidate.id === "string" && typeof candidate.label === "string" && typeof candidate.type === "string" && typeof candidate.value === "string"
+  }) : []
   if (!fileId) return NextResponse.json({ error: "file_id required" }, { status: 400 })
 
   const [{ data: file, error: fileError }, { data: row, error: rowError }] = await Promise.all([
@@ -28,6 +34,8 @@ export async function POST(request: NextRequest) {
   try {
     if (file.file_type === "manual") {
       const documentType = file.document_type || "general_document"
+      const customResult = customFieldsPayload(customFields, row.currency ?? "USD")
+      if (customResult.issues.length > 0) throw new Error(customResult.issues[0].message)
       const payload = {
         document_type: documentType,
         vendor_name: row.vendor_name ?? row.counterparty_name ?? null,
@@ -45,6 +53,7 @@ export async function POST(request: NextRequest) {
         description: documentType === "general_document" ? row.notes ?? null : null,
         notes: row.notes ?? null,
         confidence: 1,
+        ...customResult.payload,
       }
       const extractionId = await writeExtraction(supabaseAdmin, {
         userId: auth.user.id,

@@ -85,6 +85,34 @@ function attributePayload(attribute: DerivedAttribute, recordId: string) {
   }
 }
 
+async function pruneStaleAttributes(client: QueryClient, recordIds: Map<string, string>, derived: DerivedAttribute[]) {
+  if (derived.length === 0) {
+    console.log("Skipping stale attribute pruning because derivation produced no attributes")
+    return
+  }
+  const currentByRecord = new Map<string, Set<string>>()
+  for (const attribute of derived) {
+    const keys = currentByRecord.get(attribute.source_key) ?? new Set<string>()
+    keys.add(attribute.field_key)
+    currentByRecord.set(attribute.source_key, keys)
+  }
+  for (const [sourceKey, recordId] of recordIds) {
+    const currentKeys = currentByRecord.get(sourceKey) ?? new Set<string>()
+    if (currentKeys.size === 0) {
+      console.log(`Skipping stale attribute pruning for ${recordId} because derivation produced no attributes for the record`)
+      continue
+    }
+    const { data, error } = await client.from("record_attributes").select("id, field_key").eq("record_id", recordId)
+    assertNoError(error, "stale attribute query")
+    const staleIds = (data ?? [])
+      .filter((row: { field_key: string }) => !currentKeys.has(row.field_key))
+      .map((row: { id: string }) => row.id)
+    if (staleIds.length === 0) continue
+    const { error: deleteError } = await client.from("record_attributes").delete().in("id", staleIds)
+    assertNoError(deleteError, "stale attribute delete")
+  }
+}
+
 export async function persistDerived(
   client: QueryClient,
   extractionId: string,
@@ -125,6 +153,7 @@ export async function persistDerived(
     const { error } = await client.from("record_attributes").upsert(attributes, { onConflict: "record_id,field_key" })
     assertNoError(error, "record attributes upsert")
   }
+  await pruneStaleAttributes(client, recordIds, derived.attributes)
 
   if (fileId) {
     const { count, error } = await client

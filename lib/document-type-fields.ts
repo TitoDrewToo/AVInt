@@ -48,6 +48,71 @@ export type ManualValidationInput = {
   notes: string
 }
 
+export type CustomFieldType = "text" | "number" | "date"
+export type CustomFieldInput = { id: string; label: string; type: CustomFieldType; value: string }
+export type CustomFieldIssue = { id: string; field: "label" | "value"; message: string }
+
+const MAPPED_EXTRACTION_FIELDS = new Set([
+  "document_date", "line_items", "is_recurring", "currency", "total_amount", "vendor_name",
+  "expense_category", "vendor_normalized", "period_start", "period_end", "gross_income", "net_income",
+  "employer_name", "income_source", "tax_amount", "discount_amount", "jurisdiction",
+  "classification_rationale", "merchant_domain", "merchant_address_country", "amount", "counterparty", "category",
+])
+
+export function normalizeCustomFieldKey(label: string): string {
+  return label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "")
+}
+
+function customFieldCollisionKeys(): Set<string> {
+  const typedKeys = Object.values(DOCUMENT_TYPE_FIELDS ?? {}).flatMap((fields) => fields.map((field) => field.extractionField))
+  return new Set([...MAPPED_EXTRACTION_FIELDS, ...typedKeys].map(normalizeCustomFieldKey))
+}
+
+export function isCustomFieldKey(key: string): boolean {
+  return !customFieldCollisionKeys().has(normalizeCustomFieldKey(key))
+}
+
+export function humanizeCustomFieldKey(key: string): string {
+  return key.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+export function validateCustomFields(fields: readonly CustomFieldInput[], currency = "USD"): CustomFieldIssue[] {
+  const issues: CustomFieldIssue[] = []
+  const collisions = customFieldCollisionKeys()
+  const seen = new Set<string>()
+  for (const field of fields) {
+    const key = normalizeCustomFieldKey(field.label)
+    if (!field.label.trim()) issues.push({ id: field.id, field: "label", message: "Enter a label or remove this field." })
+    else if (!key) issues.push({ id: field.id, field: "label", message: "Label must contain letters or numbers." })
+    else if (collisions.has(key)) issues.push({ id: field.id, field: "label", message: "That field already exists in the record." })
+    else if (seen.has(key)) issues.push({ id: field.id, field: "label", message: "This label duplicates another custom field." })
+    else seen.add(key)
+
+    if (!field.value.trim()) issues.push({ id: field.id, field: "value", message: "Enter a value or remove this field." })
+    else if (field.type === "number") {
+      const result = parseManualNumber(field.value, currency)
+      if (result.error) issues.push({ id: field.id, field: "value", message: result.error })
+    } else if (field.type === "date" && !isRealDate(field.value)) {
+      issues.push({ id: field.id, field: "value", message: "Enter a real calendar date." })
+    } else if (field.type === "text" && field.value.length > 2000) {
+      issues.push({ id: field.id, field: "value", message: "Keep this to 2000 characters or fewer." })
+    }
+    if (field.label.length > 200) issues.push({ id: field.id, field: "label", message: "Keep the label to 200 characters or fewer." })
+  }
+  return issues
+}
+
+export function customFieldsPayload(fields: readonly CustomFieldInput[], currency = "USD"): { payload: Record<string, unknown>; issues: CustomFieldIssue[] } {
+  const issues = validateCustomFields(fields, currency)
+  if (issues.length > 0) return { payload: {}, issues }
+  const payload: Record<string, unknown> = {}
+  for (const field of fields) {
+    const key = normalizeCustomFieldKey(field.label)
+    payload[key] = field.type === "number" ? parseManualNumber(field.value, currency).value : field.value
+  }
+  return { payload, issues: [] }
+}
+
 const FINANCIAL_TYPES = new Set(["receipt", "invoice", "payslip", "bank_statement", "income_statement", "tax_document"])
 const NUMERIC_FIELDS = ["total_amount", "gross_income", "net_income", "tax_amount", "discount_amount"] as const
 

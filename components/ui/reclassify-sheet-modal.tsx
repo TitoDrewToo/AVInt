@@ -18,6 +18,7 @@ import { ALL_SC_CATEGORIES } from "@/lib/tax-bundle"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { toast } from "@/hooks/use-toast"
+import { normalizeCorrectionKey } from "@/lib/correction-contract"
 
 const EXPENSE_CATEGORIES = [...ALL_SC_CATEGORIES, "Other"]
 
@@ -71,6 +72,7 @@ type SheetAnalysis = {
 type DocumentFieldRow = {
   id: string
   file_id: string
+  source_key: string
   vendor_name: string | null
   employer_name: string | null
   document_date: string | null
@@ -342,7 +344,7 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
           .single(),
         supabase
           .from("document_fields")
-          .select("id, file_id, vendor_name, employer_name, document_date, currency, total_amount, gross_income, net_income, expense_category, income_source, payment_method, confidence_score, normalization_status, raw_json, created_at")
+          .select("id, file_id, source_key, vendor_name, employer_name, document_date, currency, total_amount, gross_income, net_income, expense_category, income_source, payment_method, confidence_score, normalization_status, raw_json, created_at")
           .eq("file_id", fileId)
           .order("created_at", { ascending: true }),
       ])
@@ -711,6 +713,43 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
         }
       }
 
+      const rowById = new Map(rows.map((row) => [row.id, row]))
+      const affectedSourceKeys = [...new Set(affectedRowIds.map((rowId) => rowById.get(rowId)?.source_key).filter((sourceKey): sourceKey is string => Boolean(sourceKey)))]
+      const { data: recordRows, error: recordRowsError } = await supabase
+        .from("records")
+        .select("id, source_key")
+        .eq("file_id", fileId)
+        .in("source_key", affectedSourceKeys)
+      if (recordRowsError) throw new Error(recordRowsError.message)
+      const recordBySourceKey = new Map((recordRows ?? []).map((record) => [record.source_key, record.id]))
+      const userToken = (await supabase.auth.getSession()).data.session?.access_token
+      if (!userToken) throw new Error("Your session expired. Please sign in again.")
+      const updateRecord = async (rowId: string, body: Record<string, unknown>) => {
+        const sourceKey = rowById.get(rowId)?.source_key
+        const recordId = sourceKey ? recordBySourceKey.get(sourceKey) : null
+        if (!recordId) throw new Error(`No record found for source row ${sourceKey ?? rowId}.`)
+        const response = await fetch(`/api/records/${recordId}/correct`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${userToken}` },
+          body: JSON.stringify(body),
+        })
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}))
+          throw new Error(payload.error ?? "The record projection could not be updated.")
+        }
+      }
+      for (const rowId of excludeIds) await updateRecord(rowId, { action: "exclude" })
+      const columnTargets: Record<string, string> = { document_date: "occurred_on", currency: "currency", expense_category: "category", total_amount: "amount", gross_income: "amount", net_income: "amount", vendor_name: "counterparty", employer_name: "counterparty" }
+      const numericAttributes = new Set(["tax_amount", "discount_amount"])
+      for (const group of setFieldGroups) {
+        const targetKind = columnTargets[group.field] ? "column" : "attribute"
+        const target = columnTargets[group.field] ?? normalizeCorrectionKey(group.field)
+        const valueType = numericAttributes.has(group.field) ? "number" : group.field === "document_date" ? "date" : "text"
+        for (const rowId of group.rowIds) {
+          await updateRecord(rowId, { change_kind: "reclassify", target_kind: targetKind, target, new_value: group.value, ...(targetKind === "attribute" ? { value_type: valueType } : {}) })
+        }
+      }
+
       if (savedFindingIds.length > 0) {
         const currentAnalysisJson = fileMeta?.analysis_json ?? {}
         const newAppliedIds = [
@@ -749,7 +788,7 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
           .single(),
         supabase
           .from("document_fields")
-          .select("id, file_id, vendor_name, employer_name, document_date, currency, total_amount, gross_income, net_income, expense_category, income_source, payment_method, confidence_score, normalization_status, raw_json, created_at")
+          .select("id, file_id, source_key, vendor_name, employer_name, document_date, currency, total_amount, gross_income, net_income, expense_category, income_source, payment_method, confidence_score, normalization_status, raw_json, created_at")
           .eq("file_id", fileId)
           .order("created_at", { ascending: true }),
       ])

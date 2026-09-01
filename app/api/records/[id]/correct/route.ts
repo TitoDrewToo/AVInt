@@ -16,10 +16,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!record || record.user_id !== auth.user.id) return NextResponse.json({ error: "Record not found" }, { status: 404 })
 
     const body = await req.json().catch(() => null)
+    if (body?.action === "exclude") {
+      const { data: excluded, error: excludeError } = await supabaseAdmin.from("records").update({ excluded_at: new Date().toISOString() }).eq("id", id).select("*").single()
+      if (excludeError) throw new Error(`record exclusion update failed: ${excludeError.message}`)
+      return NextResponse.json({ record: excluded })
+    }
     const targetKind = body?.target_kind
     const rawTarget = typeof body?.target === "string" ? body.target.trim() : ""
     if (targetKind !== "column" && targetKind !== "attribute") return NextResponse.json({ error: "target_kind must be column or attribute" }, { status: 400 })
     const target = targetKind === "attribute" ? normalizeCorrectionKey(rawTarget) : rawTarget
+    const changeKind = body?.change_kind ?? "user_edit"
+    if (changeKind !== "user_edit" && changeKind !== "reclassify") return NextResponse.json({ error: "Invalid change_kind" }, { status: 400 })
     if (targetKind === "column" ? !RECORD_FIELD_SET.has(target) : !isValidAttributeKey(rawTarget)) return NextResponse.json({ error: "Invalid correction target" }, { status: 400 })
 
     let newValue: unknown
@@ -41,7 +48,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
     const { error: revisionError } = await supabaseAdmin.rpc("insert_record_revision", {
       p_record_id: id,
-      p_change_kind: "user_edit",
+      p_change_kind: changeKind,
       p_target_kind: targetKind,
       p_target: target,
       p_previous_value: previousValue,

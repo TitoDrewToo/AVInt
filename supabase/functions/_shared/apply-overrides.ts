@@ -34,13 +34,19 @@ function attributePayload(value: unknown, userId: string, recordId: string, fiel
 
 export async function applyOverrides(client: QueryClient, recordIds: string[]): Promise<number> {
   if (recordIds.length === 0) return 0
-  const { data: revisions, error } = await client
+  const revisionQuery = (changeKind: "user_edit" | "reclassify") => client
     .from("record_revisions")
     .select("id, record_id, revision_number, target_kind, target, new_value")
     .in("record_id", recordIds)
-    .eq("change_kind", "user_edit")
+    .eq("change_kind", changeKind)
     .order("revision_number", { ascending: false })
-  if (error) throw new Error(`record revisions query failed: ${error.message}`)
+  const [{ data: userEdits, error: userEditError }, { data: reclassifications, error: reclassifyError }] = await Promise.all([
+    revisionQuery("user_edit"),
+    revisionQuery("reclassify"),
+  ])
+  if (userEditError) throw new Error(`record revisions query failed: ${userEditError.message}`)
+  if (reclassifyError) throw new Error(`record reclassifications query failed: ${reclassifyError.message}`)
+  const revisions = [...(userEdits ?? []), ...(reclassifications ?? [])].sort((a, b) => b.revision_number - a.revision_number)
 
   const latest = new Map<string, Record<string, unknown>>()
   for (const revision of (revisions ?? []) as Record<string, unknown>[]) {

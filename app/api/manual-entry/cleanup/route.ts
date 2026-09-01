@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from "next/server"
 
 import { supabaseAdmin } from "@/lib/mcp-auth"
 
-type CleanupFailure = { stage: string; message: string }
-
 export async function POST(request: NextRequest) {
   const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "")
   if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -19,41 +17,28 @@ export async function POST(request: NextRequest) {
     .from("files")
     .select("id, user_id, file_type")
     .eq("id", fileId)
+    .gte("created_at", new Date(Date.now() - 10 * 60 * 1000).toISOString())
     .maybeSingle()
   if (fileError) return NextResponse.json({ error: fileError.message }, { status: 500 })
   if (!file || file.user_id !== auth.user.id || file.file_type !== "manual") {
     return NextResponse.json({ error: "File not found" }, { status: 404 })
   }
 
-  const failures: CleanupFailure[] = []
-  const attempt = async (stage: string, operation: () => Promise<{ error: { message: string } | null }>) => {
-    try {
-      const { error } = await operation()
-      if (error) failures.push({ stage, message: error.message })
-    } catch (error) {
-      failures.push({ stage, message: error instanceof Error ? error.message : String(error) })
-    }
-  }
-
-  const { data: records, error: recordsReadError } = await supabaseAdmin
-    .from("records")
+  const { data: documentField, error: documentFieldsError } = await supabaseAdmin
+    .from("document_fields")
     .select("id")
     .eq("file_id", fileId)
-  if (recordsReadError) failures.push({ stage: "read_records", message: recordsReadError.message })
-
-  const recordIds = (records ?? []).map((record) => record.id)
-  if (recordIds.length > 0) {
-    await attempt("delete_record_attributes", async () => await supabaseAdmin.from("record_attributes").delete().in("record_id", recordIds))
+    .limit(1)
+    .maybeSingle()
+  if (documentFieldsError) return NextResponse.json({ error: documentFieldsError.message }, { status: 500 })
+  if (documentField) {
+    return NextResponse.json({ error: "File has document fields" }, { status: 409 })
   }
-  await attempt("delete_records", async () => await supabaseAdmin.from("records").delete().eq("file_id", fileId))
-  await attempt("delete_extractions", async () => await supabaseAdmin.from("extractions").delete().eq("file_id", fileId))
-  await attempt("delete_document_fields", async () => await supabaseAdmin.from("document_fields").delete().eq("file_id", fileId))
-  await attempt("delete_file", async () => await supabaseAdmin.from("files").delete().eq("id", fileId))
 
-  if (failures.length > 0) {
-    console.error("Manual entry cleanup failed", { fileId, userId: auth.user.id, failures })
-    return NextResponse.json({ error: "Manual entry cleanup failed", failures }, { status: 500 })
-  }
+  // All file children use ON DELETE CASCADE (except nullable audit links that
+  // use SET NULL), so deleting the narrowly verified parent is sufficient.
+  const { error: deleteError } = await supabaseAdmin.from("files").delete().eq("id", fileId)
+  if (deleteError) return NextResponse.json({ error: deleteError.message }, { status: 500 })
 
   return NextResponse.json({ cleaned: true, file_id: fileId })
 }

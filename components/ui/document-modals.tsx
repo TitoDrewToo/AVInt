@@ -362,6 +362,7 @@ export function ManualEntryModal({ isOpen, userId, onClose, onCreated }: ManualE
         .from("document_fields")
         .insert({
           file_id: fileRow.id,
+          source_key: "root",
           vendor_name: form.vendor_name || null,
           employer_name: form.employer_name || null,
           document_date: form.document_date || null,

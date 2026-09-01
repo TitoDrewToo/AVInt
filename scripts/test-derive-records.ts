@@ -10,7 +10,11 @@ function check(name: string, condition: boolean) {
 
 const vendorOnly = deriveRecords({ document_type: "receipt", vendor_name: "Vendor First", employer_name: null }, file)
 check("vendor survives a null employer", vendorOnly.records[0].counterparty === "Vendor First")
-check("null employer does not become an attribute", !vendorOnly.attributes.some((attribute) => attribute.field_key === "employer_name"))
+check("vendor provenance is written as an attribute", vendorOnly.attributes.some((attribute) => attribute.field_key === "vendor_name" && attribute.value === "Vendor First"))
+
+const employerOnly = deriveRecords({ document_type: "payslip", vendor_name: null, employer_name: "Employer First" }, file)
+check("employer survives a null vendor", employerOnly.records[0].counterparty === "Employer First")
+check("employer provenance is written as an attribute", employerOnly.attributes.some((attribute) => attribute.field_key === "employer_name" && attribute.value === "Employer First"))
 
 const twoParties = deriveRecords({ document_type: "contract", vendor_name: "Andrew Vincent Niloban", employer_name: "Horizon Digital Inc." }, file)
 check("first non-null counterparty wins", twoParties.records[0].counterparty === "Andrew Vincent Niloban")

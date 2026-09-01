@@ -195,14 +195,12 @@ function makeRecord(
 
 function attributesFor(row: Record<string, unknown>, file: FileInput, sourceKey: string, type: string): DerivedAttribute[] {
   const fieldConfidence = confidenceMap(row)
-  const counterparty = counterpartyFor(row)
   return Object.entries(row)
     .filter(([key, value]) => !META_FIELDS.has(key) && value !== null && value !== undefined)
     .filter(([key, value]) => ATTRIBUTE_FIELDS.has(key)
       || RECORD_COLUMN_BY_EXTRACTED[key] === undefined
       || ((key === "net_income" || key === "employer_name") && type !== "payslip")
-      || ((key === "vendor_name" || key === "employer_name") && value === counterpartyFor(row) && value !== counterparty))
-    .filter(([key, value]) => !(key === "employer_name" && type === "payslip" && value === counterparty))
+      || (key === "vendor_name" || key === "employer_name"))
     .map(([key, value]) => ({
       file_id: file.id,
       user_id: file.user_id,

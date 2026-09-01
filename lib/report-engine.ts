@@ -1,5 +1,5 @@
 import { generateQuickBooksCSV, generateXeroCSV } from "@/lib/accounting-csv"
-import { computeTaxBundle, type TaxRow } from "@/lib/tax-bundle"
+import { computeTaxBundle, type IncomeSourceClass, type TaxRow } from "@/lib/tax-bundle"
 import { type Entitlement } from "@/lib/entitlement"
 import { supabaseAdmin } from "@/lib/mcp-auth"
 import { overlapsDateRange } from "@/lib/report-utils"
@@ -15,7 +15,7 @@ function inPeriod(row: { document_date?: string | null; period_start?: string | 
   return overlapsDateRange(row, { dateFrom: filters.dateFrom ?? "", dateTo: filters.dateTo ?? "" })
 }
 
-async function taxRows(userId: string, filters: ReportFilters): Promise<TaxRow[]> {
+async function legacyTaxRows(userId: string, filters: ReportFilters): Promise<TaxRow[]> {
   const context = await createReportQueryContext(userId, filters)
   const fileIds = await context.fileIds()
   if (filters.targetFolder && fileIds.length === 0) return []
@@ -36,6 +36,141 @@ async function taxRows(userId: string, filters: ReportFilters): Promise<TaxRow[]
     document_type: row.files?.[0]?.document_type ?? row.files?.document_type ?? "unknown",
     storage_path: row.files?.[0]?.storage_path ?? row.files?.storage_path ?? null,
   }))
+}
+
+type RecordRow = {
+  id: string
+  file_id: string
+  source_key: string
+  parent_record_id: string | null
+  document_type: string | null
+  occurred_on: string | null
+  period_start: string | null
+  period_end: string | null
+  amount: number | string | null
+  currency: string | null
+  counterparty: string | null
+  counterparty_normalized: string | null
+  category: string | null
+  confidence: number | string | null
+  files: unknown
+}
+
+type RecordAttribute = { record_id: string; field_key: string; value: unknown }
+
+function nestedFileValue(files: unknown, key: string): unknown {
+  const file = Array.isArray(files) ? files[0] : files
+  return file && typeof file === "object" ? (file as Record<string, unknown>)[key] : null
+}
+
+function numberValue(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null
+  const parsed = typeof value === "number" ? value : Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === "string" ? value : value == null ? null : String(value)
+}
+
+const INCOME_SOURCE_CLASSES = new Set<IncomeSourceClass>(["business", "wage", "investment", "rental", "interest", "other"])
+
+function incomeSourceValue(value: unknown): IncomeSourceClass | null {
+  const candidate = stringValue(value)
+  return candidate && INCOME_SOURCE_CLASSES.has(candidate as IncomeSourceClass)
+    ? candidate as IncomeSourceClass
+    : null
+}
+
+function parseRawJson(value: unknown): unknown {
+  if (typeof value !== "string") return value
+  try {
+    return JSON.parse(value)
+  } catch {
+    return value
+  }
+}
+
+function recordAttributeMap(attributes: RecordAttribute[]) {
+  const byRecord = new Map<string, Map<string, unknown>>()
+  for (const attribute of attributes) {
+    const fields = byRecord.get(attribute.record_id) ?? new Map<string, unknown>()
+    fields.set(attribute.field_key, attribute.value)
+    byRecord.set(attribute.record_id, fields)
+  }
+  return byRecord
+}
+
+async function recordsTaxRows(userId: string, filters: ReportFilters): Promise<TaxRow[]> {
+  const context = await createReportQueryContext(userId, filters)
+  const fileIds = await context.fileIds()
+  if (filters.targetFolder && fileIds.length === 0) return []
+
+  let query = supabaseAdmin
+    .from("records")
+    .select("id, file_id, source_key, parent_record_id, document_type, occurred_on, period_start, period_end, amount, currency, counterparty, counterparty_normalized, category, confidence, files!inner(filename, document_type, storage_path, user_id)")
+    .eq("user_id", userId)
+    .is("parent_record_id", null)
+    .is("excluded_at", null)
+    .order("occurred_on", { ascending: false })
+  if (fileIds.length > 0) query = query.in("file_id", fileIds)
+
+  const { data, error } = await query
+  if (error) throw new Error(error.message)
+  const records = (data ?? []) as RecordRow[]
+  const recordIds = records.map((record) => record.id)
+  const { data: attributes, error: attributesError } = recordIds.length === 0
+    ? { data: [], error: null }
+    : await supabaseAdmin
+      .from("record_attributes")
+      .select("record_id, field_key, value")
+      .in("record_id", recordIds)
+  if (attributesError) throw new Error(attributesError.message)
+  const attrs = recordAttributeMap((attributes ?? []) as RecordAttribute[])
+
+  return records
+    .filter((record) => inPeriod({
+      document_date: record.occurred_on,
+      period_start: record.period_start,
+      period_end: record.period_end,
+    }, filters))
+    .map((record) => {
+      const fields = attrs.get(record.id) ?? new Map<string, unknown>()
+      const get = (key: string) => fields.get(key)
+      const files = record.files
+      const documentType = record.document_type ?? stringValue(nestedFileValue(files, "document_type")) ?? "unknown"
+      const isPayslip = documentType === "payslip"
+      const rawJson = parseRawJson(get("_raw_json"))
+      const rawTotalAmount = rawJson && typeof rawJson === "object"
+        ? numberValue((rawJson as Record<string, unknown>).total_amount)
+        : null
+      return {
+        file_id: record.file_id,
+        filename: stringValue(nestedFileValue(files, "filename")) ?? "document",
+        document_type: documentType,
+        vendor_name: stringValue(get("vendor_name")),
+        vendor_normalized: stringValue(record.counterparty_normalized),
+        employer_name: stringValue(get("employer_name")),
+        document_date: stringValue(record.occurred_on),
+        period_start: stringValue(record.period_start),
+        period_end: stringValue(record.period_end),
+        total_amount: isPayslip ? rawTotalAmount : numberValue(record.amount),
+        gross_income: numberValue(get("gross_income")),
+        net_income: isPayslip ? numberValue(record.amount) : numberValue(get("net_income")),
+        expense_category: stringValue(record.category),
+        income_source: incomeSourceValue(get("income_source")),
+        classification_rationale: stringValue(get("classification_rationale")),
+        jurisdiction: stringValue(get("jurisdiction")),
+        currency: stringValue(record.currency),
+        confidence_score: numberValue(record.confidence),
+        storage_path: stringValue(nestedFileValue(files, "storage_path")),
+        raw_json: rawJson ?? null,
+      }
+    })
+}
+
+async function taxRows(userId: string, filters: ReportFilters): Promise<TaxRow[]> {
+  return recordsTaxRows(userId, filters)
 }
 
 export async function getReport(userId: string, _entitlement: Entitlement, report: "tax-bundle" | "business-expense", filters: ReportFilters = {}) {

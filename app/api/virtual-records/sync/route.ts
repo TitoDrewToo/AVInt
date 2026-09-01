@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server"
 
 import { supabaseAdmin } from "@/lib/mcp-auth"
 import { syncVirtualRecord } from "@/lib/virtual-records"
+import { deriveRecords } from "@/supabase/functions/_shared/derive-records"
+import { persistDerived } from "@/supabase/functions/_shared/persist-derived"
+import { writeExtraction } from "@/supabase/functions/_shared/write-extraction"
 
 export async function POST(request: NextRequest) {
   const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "")
@@ -15,7 +18,7 @@ export async function POST(request: NextRequest) {
   if (!fileId) return NextResponse.json({ error: "file_id required" }, { status: 400 })
 
   const [{ data: file, error: fileError }, { data: row, error: rowError }] = await Promise.all([
-    supabaseAdmin.from("files").select("id, user_id, document_type").eq("id", fileId).maybeSingle(),
+    supabaseAdmin.from("files").select("id, user_id, document_type, file_type").eq("id", fileId).maybeSingle(),
     supabaseAdmin.from("document_fields").select("*").eq("file_id", fileId).order("created_at", { ascending: false }).limit(1).maybeSingle(),
   ])
   if (fileError || rowError) return NextResponse.json({ error: fileError?.message ?? rowError?.message }, { status: 500 })
@@ -23,6 +26,40 @@ export async function POST(request: NextRequest) {
   if (!row) return NextResponse.json({ error: "Document fields not found" }, { status: 404 })
 
   try {
+    if (file.file_type === "manual") {
+      const documentType = file.document_type || "general_document"
+      const payload = {
+        document_type: documentType,
+        vendor_name: row.vendor_name ?? row.counterparty_name ?? null,
+        employer_name: row.employer_name ?? null,
+        document_date: row.document_date ?? null,
+        currency: row.currency ?? null,
+        total_amount: row.total_amount ?? null,
+        gross_income: row.gross_income ?? null,
+        net_income: row.net_income ?? null,
+        expense_category: row.expense_category ?? null,
+        tax_amount: row.tax_amount ?? null,
+        invoice_number: row.invoice_number ?? null,
+        period_start: row.period_start ?? null,
+        period_end: row.period_end ?? null,
+        description: documentType === "general_document" ? row.notes ?? null : null,
+        notes: row.notes ?? null,
+        confidence: 1,
+      }
+      const extractionId = await writeExtraction(supabaseAdmin, {
+        userId: auth.user.id,
+        fileId,
+        documentType,
+        provider: "manual",
+        model: null,
+        payload,
+        sourceRowCount: 1,
+        attemptNumber: 1,
+      })
+      const derived = deriveRecords(payload, { id: fileId, user_id: auth.user.id }, { sourceKey: "root" })
+      if (derived.reason) throw new Error(`manual record derivation failed: ${derived.reason}`)
+      await persistDerived(supabaseAdmin, extractionId, derived)
+    }
     await syncVirtualRecord(supabaseAdmin, row, file)
     return NextResponse.json({ synced: true, file_id: fileId, source_record_id: row.id })
   } catch (error) {

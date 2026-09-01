@@ -4,53 +4,14 @@ import { useEffect, useState } from "react"
 import { X, PenLine, Tag } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { ALL_SC_CATEGORIES } from "@/lib/tax-bundle"
+import { DOCUMENT_TYPE_OPTIONS, fieldsForDocumentType, parseManualNumber, validateManualEntry, type ManualFieldDefinition, type ManualValidationInput } from "@/lib/document-type-fields"
+import { SUPPORTED_CURRENCIES, currencyDecimals } from "@/lib/currencies"
 
 // ---------------------------------------------------------------------------
 // Shared constants
 // ---------------------------------------------------------------------------
 
-const DOCUMENT_TYPES = [
-  { value: "receipt",          label: "Receipt" },
-  { value: "invoice",          label: "Invoice" },
-  { value: "payslip",          label: "Payslip" },
-  { value: "income_statement", label: "Income Statement" },
-  { value: "bank_statement",   label: "Bank Statement" },
-  { value: "contract",         label: "Contract" },
-  { value: "agreement",        label: "Agreement" },
-  { value: "tax_document",     label: "Tax Document" },
-  { value: "general_document", label: "General Document" },
-]
-
 const EXPENSE_CATEGORIES = [...ALL_SC_CATEGORIES, "Other"]
-
-const PAYMENT_METHODS = [
-  "Cash",
-  "Credit Card",
-  "Debit Card",
-  "Bank Transfer",
-  "ACH",
-  "Check",
-  "Apple Pay",
-  "Google Pay",
-  "PayPal",
-  "Venmo",
-  "Cash App",
-  "Zelle",
-  "GCash",
-  "Maya",
-  "GrabPay",
-  "PayPay",
-  "LINE Pay",
-  "Rakuten Pay",
-  "Interac e-Transfer",
-  "Revolut",
-  "Wise",
-  "PayID / Osko",
-  "Afterpay",
-  "Other",
-]
-
-const CURRENCIES = ["PHP", "USD", "EUR", "GBP", "SGD", "JPY", "AUD"]
 
 // ---------------------------------------------------------------------------
 // FormState
@@ -74,6 +35,7 @@ interface FormState {
   period_start: string
   period_end: string
   counterparty_name: string
+  description: string
   notes: string
 }
 
@@ -114,6 +76,7 @@ const EMPTY_FORM: FormState = {
   period_start: "",
   period_end: "",
   counterparty_name: "",
+  description: "",
   notes: "",
 }
 
@@ -155,23 +118,19 @@ function toFormState(data: DocumentFieldsFormRow): FormState {
     period_start: data.period_start ?? "",
     period_end: data.period_end ?? "",
     counterparty_name: data.counterparty_name ?? "",
+    description: "",
     notes: data.notes ?? "",
   }
 }
 
-// ---------------------------------------------------------------------------
-// Adaptive field helpers
-// ---------------------------------------------------------------------------
+function fieldsFor(form: FormState) {
+  return fieldsForDocumentType(form.document_type)
+}
 
-function isExpenseType(t: string) {
-  return ["receipt", "invoice", "general_document", "tax_document", "bank_statement"].includes(t)
-}
-function isIncomeType(t: string) {
-  return ["payslip", "income_statement"].includes(t)
-}
-function isContractType(t: string) {
-  return ["contract", "agreement"].includes(t)
-}
+const DOCUMENT_TYPES = DOCUMENT_TYPE_OPTIONS
+function isExpenseType(t: string) { return ["receipt", "invoice", "general_document", "tax_document", "bank_statement"].includes(t) }
+function isIncomeType(t: string) { return ["payslip", "income_statement"].includes(t) }
+function isContractType(t: string) { return ["contract", "agreement"].includes(t) }
 
 // ---------------------------------------------------------------------------
 // Shared style helpers
@@ -193,304 +152,30 @@ interface DocumentFormBodyProps {
   isManual: boolean
 }
 
-function DocumentFormBody({ form, onChange, isManual }: DocumentFormBodyProps) {
-  const expense  = isExpenseType(form.document_type)
-  const income   = isIncomeType(form.document_type)
-  const contract = isContractType(form.document_type)
-
-  return (
-    <div className="space-y-4">
-      {/* Document Type + Date */}
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <p className={sectionLabelCls}>Document Type</p>
-          <select
-            className={inputCls}
-            value={form.document_type}
-            onChange={(e) => onChange("document_type", e.target.value)}
-            required
-          >
-            {DOCUMENT_TYPES.map((dt) => (
-              <option key={dt.value} value={dt.value}>
-                {dt.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <p className={sectionLabelCls}>Date *</p>
-          <input
-            className={inputCls}
-            type="date"
-            required
-            value={form.document_date}
-            onChange={(e) => onChange("document_date", e.target.value)}
-          />
-        </div>
-      </div>
-
-      {/* Document Name — manual entry only */}
-      {isManual && (
-        <div>
-          <p className={sectionLabelCls}>Document Name</p>
-          <input
-            className={inputCls}
-            type="text"
-            placeholder="e.g. Office supplies receipt"
-            value={form.document_name}
-            onChange={(e) => onChange("document_name", e.target.value)}
-          />
-        </div>
-      )}
-
-      {/* Currency + Amount */}
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <p className={sectionLabelCls}>Currency</p>
-          <select
-            className={inputCls}
-            value={form.currency}
-            onChange={(e) => onChange("currency", e.target.value)}
-          >
-            {CURRENCIES.map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
-        </div>
-        {expense ? (
-          <div>
-            <p className={sectionLabelCls}>Total Amount *</p>
-            <input
-              className={inputCls}
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="Total Amount *"
-              value={form.total_amount}
-              onChange={(e) => onChange("total_amount", e.target.value)}
-            />
-          </div>
-        ) : (
-          <div />
-        )}
-      </div>
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Expense fields                                                       */}
-      {/* ------------------------------------------------------------------ */}
-      {expense && (
-        <div className="space-y-3 mt-4">
-          <p className={sectionLabelCls}>Expense Details</p>
-
-          {/* Vendor */}
-          <div>
-            <input
-              className={inputCls}
-              type="text"
-              placeholder="Vendor Name *"
-              value={form.vendor_name}
-              onChange={(e) => onChange("vendor_name", e.target.value)}
-            />
-          </div>
-
-          {/* Category + Payment Method */}
-          <div className="grid grid-cols-2 gap-3">
-            <select
-              className={inputCls}
-              value={form.expense_category}
-              onChange={(e) => onChange("expense_category", e.target.value)}
-            >
-              <option value="">Category…</option>
-              {EXPENSE_CATEGORIES.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-            <select
-              className={inputCls}
-              value={form.payment_method}
-              onChange={(e) => onChange("payment_method", e.target.value)}
-            >
-              <option value="">Payment Method…</option>
-              {PAYMENT_METHODS.map((m) => (
-                <option key={m} value={m}>{m}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Tax + Discount */}
-          <div className="grid grid-cols-2 gap-3">
-            <input
-              className={inputCls}
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="Tax Amount"
-              value={form.tax_amount}
-              onChange={(e) => onChange("tax_amount", e.target.value)}
-            />
-            <input
-              className={inputCls}
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="Discount Amount"
-              value={form.discount_amount}
-              onChange={(e) => onChange("discount_amount", e.target.value)}
-            />
-          </div>
-
-          {/* Invoice / Ref */}
-          <div>
-            <input
-              className={inputCls}
-              type="text"
-              placeholder="Invoice / Ref #"
-              value={form.invoice_number}
-              onChange={(e) => onChange("invoice_number", e.target.value)}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Income fields                                                        */}
-      {/* ------------------------------------------------------------------ */}
-      {income && (
-        <div className="space-y-3 mt-4">
-          <p className={sectionLabelCls}>Income Details</p>
-
-          <div>
-            <input
-              className={inputCls}
-              type="text"
-              placeholder="Employer Name *"
-              value={form.employer_name}
-              onChange={(e) => onChange("employer_name", e.target.value)}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <input
-              className={inputCls}
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="Gross Income *"
-              value={form.gross_income}
-              onChange={(e) => onChange("gross_income", e.target.value)}
-            />
-            <input
-              className={inputCls}
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="Net Income"
-              value={form.net_income}
-              onChange={(e) => onChange("net_income", e.target.value)}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <p className={sectionLabelCls}>Period Start</p>
-              <input
-                className={inputCls}
-                type="date"
-                value={form.period_start}
-                onChange={(e) => onChange("period_start", e.target.value)}
-              />
-            </div>
-            <div>
-              <p className={sectionLabelCls}>Period End</p>
-              <input
-                className={inputCls}
-                type="date"
-                value={form.period_end}
-                onChange={(e) => onChange("period_end", e.target.value)}
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Contract fields                                                      */}
-      {/* ------------------------------------------------------------------ */}
-      {contract && (
-        <div className="space-y-3 mt-4">
-          <p className={sectionLabelCls}>Contract Details</p>
-
-          <div>
-            <input
-              className={inputCls}
-              type="text"
-              placeholder="Counterparty Name *"
-              value={form.counterparty_name}
-              onChange={(e) => onChange("counterparty_name", e.target.value)}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <input
-              className={inputCls}
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="Total Value"
-              value={form.total_amount}
-              onChange={(e) => onChange("total_amount", e.target.value)}
-            />
-            <div /> {/* currency already shown above */}
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <p className={sectionLabelCls}>Period Start</p>
-              <input
-                className={inputCls}
-                type="date"
-                value={form.period_start}
-                onChange={(e) => onChange("period_start", e.target.value)}
-              />
-            </div>
-            <div>
-              <p className={sectionLabelCls}>Period End</p>
-              <input
-                className={inputCls}
-                type="date"
-                value={form.period_end}
-                onChange={(e) => onChange("period_end", e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div>
-            <input
-              className={inputCls}
-              type="text"
-              placeholder="Invoice / Ref #"
-              value={form.invoice_number}
-              onChange={(e) => onChange("invoice_number", e.target.value)}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Notes — always at bottom                                            */}
-      {/* ------------------------------------------------------------------ */}
-      <div className="mt-4">
-        <p className={sectionLabelCls}>Notes</p>
-        <textarea
-          className={`${inputCls} resize-none`}
-          rows={2}
-          placeholder="Optional notes…"
-          value={form.notes}
-          onChange={(e) => onChange("notes", e.target.value)}
-        />
-      </div>
+function DynamicDocumentFormBody({ form, onChange, isManual }: DocumentFormBodyProps) {
+  const validationInput = form as ManualValidationInput
+  const validationIssues = validateManualEntry(validationInput)
+  const issuesFor = (field: string) => validationIssues.filter((issue) => issue.field === field)
+  const renderField = (definition: ManualFieldDefinition) => {
+    const value = form[definition.formField]
+    const onFieldChange = (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => onChange(definition.formField, event.target.value)
+    if (definition.input === "currency") return <select className={inputCls} value={value} onChange={onFieldChange}>{SUPPORTED_CURRENCIES.map((item) => <option key={item.code} value={item.code}>{item.code} — {item.label}</option>)}</select>
+    if (definition.input === "category") return <select className={inputCls} value={value} onChange={onFieldChange}><option value="">Category…</option>{EXPENSE_CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}</select>
+    const numeric = definition.input === "number"
+    const fieldIssues = issuesFor(definition.formField)
+    return <>
+      <input className={inputCls} type={numeric ? "text" : definition.input} inputMode={numeric ? "decimal" : undefined} step={numeric ? 10 ** -currencyDecimals(form.currency) : undefined} placeholder={definition.label} value={value} onChange={onFieldChange} />
+      {fieldIssues.map((issue) => <p key={`${issue.severity}-${issue.message}`} className={`mt-1 text-xs ${issue.severity === "warning" ? "text-amber-600" : "text-destructive"}`}>{issue.message}</p>)}
+    </>
+  }
+  return <div className="space-y-4">
+    <div className="grid grid-cols-2 gap-3">
+      <div><p className={sectionLabelCls}>Document Type</p><select className={inputCls} value={form.document_type} onChange={(event) => onChange("document_type", event.target.value)} required>{DOCUMENT_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></div>
+      {isManual && <div><p className={sectionLabelCls}>Document Name</p><input className={inputCls} type="text" placeholder="e.g. Office supplies receipt" value={form.document_name} onChange={(event) => onChange("document_name", event.target.value)} /></div>}
     </div>
-  )
+    <div className="grid grid-cols-2 gap-3">{fieldsFor(form).map((definition) => <div key={definition.formField}><p className={sectionLabelCls}>{definition.label}</p>{renderField(definition)}</div>)}</div>
+    <div><p className={sectionLabelCls}>Notes</p><textarea className={`${inputCls} resize-none`} rows={2} placeholder="Optional notes…" value={form.notes} onChange={(event) => onChange("notes", event.target.value)} /></div>
+  </div>
 }
 
 // ---------------------------------------------------------------------------
@@ -557,8 +242,22 @@ export function ManualEntryModal({ isOpen, userId, onClose, onCreated }: ManualE
     if (isOpen) {
       setForm({ ...EMPTY_FORM })
       setError(null)
+      void (async () => {
+        const { data } = await supabase
+          .from("records")
+          .select("currency")
+          .eq("user_id", userId)
+          .not("currency", "is", null)
+          .order("occurred_on", { ascending: false, nullsFirst: false })
+          .limit(1)
+          .maybeSingle()
+        const recent = typeof data?.currency === "string" && SUPPORTED_CURRENCIES.some((currency) => currency.code === data.currency)
+          ? data.currency
+          : "USD"
+        setForm((previous) => ({ ...previous, currency: recent }))
+      })()
     }
-  }, [isOpen])
+  }, [isOpen, userId])
 
   function handleChange(field: keyof FormState, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }))
@@ -568,33 +267,20 @@ export function ManualEntryModal({ isOpen, userId, onClose, onCreated }: ManualE
     e.preventDefault()
     setError(null)
 
-    // Validation
-    if (!form.document_date) {
-      setError("Document date is required.")
-      return
-    }
-    if (isContractType(form.document_type) && !form.counterparty_name.trim()) {
-      setError("Counterparty name is required for contracts.")
-      return
-    }
-    if (
-      isExpenseType(form.document_type) &&
-      !form.total_amount.trim()
-    ) {
-      setError("Total amount is required for this document type.")
-      return
-    }
-    if (
-      isIncomeType(form.document_type) &&
-      !form.gross_income.trim()
-    ) {
-      setError("Gross income is required for this document type.")
+    const validationIssues = validateManualEntry(form)
+    const firstError = validationIssues.find((issue) => issue.severity === "error")
+    if (firstError) {
+      setError(firstError.message)
       return
     }
 
     setSaving(true)
     try {
       const filename = generateFilename(form)
+      const numericValue = (field: keyof Pick<FormState, "total_amount" | "gross_income" | "net_income" | "tax_amount" | "discount_amount">) => {
+        const parsed = parseManualNumber(form[field], form.currency)
+        return parsed.value
+      }
 
       // Insert into files
       const { data: fileRow, error: fileErr } = await supabase
@@ -623,12 +309,12 @@ export function ManualEntryModal({ isOpen, userId, onClose, onCreated }: ManualE
           vendor_name: form.vendor_name || null,
           employer_name: form.employer_name || null,
           document_date: form.document_date || null,
-          currency: form.currency || "PHP",
-          total_amount: parseFloat(form.total_amount) || null,
-          gross_income: parseFloat(form.gross_income) || null,
-          net_income: parseFloat(form.net_income) || null,
-          tax_amount: parseFloat(form.tax_amount) || null,
-          discount_amount: parseFloat(form.discount_amount) || null,
+          currency: form.currency || null,
+          total_amount: numericValue("total_amount"),
+          gross_income: numericValue("gross_income"),
+          net_income: numericValue("net_income"),
+          tax_amount: numericValue("tax_amount"),
+          discount_amount: numericValue("discount_amount"),
           expense_category: form.expense_category || null,
           payment_method: form.payment_method || null,
           invoice_number: form.invoice_number || null,
@@ -637,7 +323,7 @@ export function ManualEntryModal({ isOpen, userId, onClose, onCreated }: ManualE
           counterparty_name: form.counterparty_name || null,
           normalization_status: "manual",
           confidence_score: 1.0,
-          notes: form.notes || null,
+          notes: form.description || form.notes || null,
         })
 
       if (fieldsErr) {
@@ -689,7 +375,7 @@ export function ManualEntryModal({ isOpen, userId, onClose, onCreated }: ManualE
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="px-6 py-5">
-          <DocumentFormBody form={form} onChange={handleChange} isManual={true} />
+          <DynamicDocumentFormBody form={form} onChange={handleChange} isManual={true} />
 
           {/* Error */}
           {error && (
@@ -736,6 +422,7 @@ interface ReclassifyModalProps {
 
 export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: ReclassifyModalProps) {
   const [form, setForm] = useState<FormState>({ ...EMPTY_FORM })
+  const [fileType, setFileType] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -781,13 +468,14 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
     async function fetchFileDocType() {
       const { data } = await supabase
         .from("files")
-        .select("document_type")
+        .select("document_type, file_type")
         .eq("id", fileId)
         .single()
 
       if (data?.document_type) {
         setForm((prev) => ({ ...prev, document_type: data.document_type }))
       }
+      setFileType(data?.file_type ?? null)
     }
 
     fetchFileDocType()
@@ -841,12 +529,10 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
         throw new Error(fileErr.message ?? "Failed to update document type.")
       }
 
-      // A classification correction is also a recovery opportunity. The
-      // server route owns the service-role call to normalize-document after
-      // checking the file belongs to the signed-in user.
       const session = (await supabase.auth.getSession()).data.session
       if (session?.access_token) {
-        const retryResponse = await fetch("/api/retry-normalization", {
+        const endpoint = fileType === "manual" ? "/api/virtual-records/sync" : "/api/retry-normalization"
+        const retryResponse = await fetch(endpoint, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -854,9 +540,9 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
           },
           body: JSON.stringify({ file_id: fileId }),
         })
-        if (!retryResponse.ok) {
-          throw new Error("Classification saved, but normalization retry could not start.")
-        }
+        if (!retryResponse.ok) throw new Error(fileType === "manual"
+          ? "Manual entry saved, but its record could not be refreshed."
+          : "Classification saved, but normalization retry could not start.")
       }
 
       onSaved(fileId, form.document_type)
@@ -901,7 +587,7 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
             </div>
           ) : (
             <form onSubmit={handleSubmit}>
-              <DocumentFormBody form={form} onChange={handleChange} isManual={false} />
+              <DynamicDocumentFormBody form={form} onChange={handleChange} isManual={false} />
 
               {/* Error */}
               {error && (

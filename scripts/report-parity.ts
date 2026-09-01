@@ -13,7 +13,7 @@ import { createReportQueryContext } from "@/lib/report-query-context-server"
 import { overlapsDateRange } from "@/lib/report-utils"
 import { selectTaxBundleDefaultYear } from "@/lib/tax-bundle-default-year"
 
-type ReportKey = "tax-bundle" | "business-expense" | "expense-summary"
+type ReportKey = "tax-bundle" | "business-expense" | "expense-summary" | "income-summary"
 type ReportFilters = { dateFrom?: string; dateTo?: string; targetFolder?: string }
 type JsonObject = Record<string, unknown>
 type Identity = { file_id: string; source_key: string }
@@ -33,8 +33,8 @@ const [userInput, dateFrom, dateTo] = args
 const reportKey = (args.at(-1) ?? "") as ReportKey
 const targetFolder = args.length === 5 ? args[3] : undefined
 
-if (!userInput || !dateFrom || !dateTo || !["tax-bundle", "business-expense", "expense-summary"].includes(reportKey) || (args.length !== 4 && args.length !== 5)) {
-  console.error("Usage: report-parity <user-id-or-email> <date-from> <date-to> [folder-id] <tax-bundle|business-expense|expense-summary>")
+if (!userInput || !dateFrom || !dateTo || !["tax-bundle", "business-expense", "expense-summary", "income-summary"].includes(reportKey) || (args.length !== 4 && args.length !== 5)) {
+  console.error("Usage: report-parity <user-id-or-email> <date-from> <date-to> [folder-id] <tax-bundle|business-expense|expense-summary|income-summary>")
   process.exit(2)
 }
 
@@ -228,6 +228,62 @@ async function expenseSummaryRows(userId: string, filters: ReportFilters, source
   }))
 }
 
+async function incomeSummaryRows(userId: string, filters: ReportFilters, source: "document_fields" | "records") {
+  const documentTypes = ["payslip", "income_statement"]
+  const context = await createReportQueryContext(userId, filters)
+  const fileIds = await context.fileIds(documentTypes)
+  if (fileIds.length === 0) return []
+
+  if (source === "document_fields") {
+    let query = supabaseAdmin.from("document_fields")
+      .select("file_id, employer_name, document_date, gross_income, net_income, total_amount, currency, confidence_score, income_source, files!inner(filename, document_type)")
+      .neq("normalization_status", "excluded")
+      .order("document_date", { ascending: false })
+    query = query.in("file_id", fileIds)
+    if (filters.dateFrom) query = query.gte("document_date", filters.dateFrom)
+    if (filters.dateTo) query = query.lte("document_date", filters.dateTo)
+    const { data, error } = await query
+    if (error) throw new Error(error.message)
+    return data ?? []
+  }
+
+  let query = supabaseAdmin.from("records")
+    .select("id, file_id, document_type, occurred_on, amount, currency, confidence, files!inner(filename, document_type)")
+    .in("file_id", fileIds)
+    .is("parent_record_id", null)
+    .is("excluded_at", null)
+    .order("occurred_on", { ascending: false })
+  if (filters.dateFrom) query = query.gte("occurred_on", filters.dateFrom)
+  if (filters.dateTo) query = query.lte("occurred_on", filters.dateTo)
+  const { data, error } = await query
+  if (error) throw new Error(error.message)
+  const records = data ?? []
+  const { data: attributes, error: attributesError } = records.length === 0
+    ? { data: [], error: null }
+    : await supabaseAdmin.from("record_attributes").select("record_id, field_key, value").in("record_id", records.map((row) => row.id)).in("field_key", ["employer_name", "gross_income", "net_income", "income_source", "_raw_json"])
+  if (attributesError) throw new Error(attributesError.message)
+  const byRecord = new Map<string, Map<string, unknown>>()
+  for (const attribute of attributes ?? []) byRecord.set(attribute.record_id, new Map([...(byRecord.get(attribute.record_id) ?? []), [attribute.field_key, attribute.value]]))
+  return records.map((row) => {
+    const fields = byRecord.get(row.id) ?? new Map<string, unknown>()
+    const raw = parseJsonValue(fields.get("_raw_json"))
+    const rawTotal = raw && typeof raw === "object" ? valueAsNumber((raw as JsonObject).total_amount) : null
+    const isPayslip = (row.document_type ?? valueAsString(fileValue(row.files, "document_type"))) === "payslip"
+    return {
+      file_id: row.file_id,
+      employer_name: valueAsString(fields.get("employer_name")),
+      document_date: row.occurred_on,
+      gross_income: valueAsNumber(fields.get("gross_income")),
+      net_income: isPayslip ? valueAsNumber(row.amount) : valueAsNumber(fields.get("net_income")),
+      total_amount: isPayslip ? rawTotal : valueAsNumber(row.amount),
+      currency: row.currency,
+      confidence_score: row.confidence,
+      income_source: valueAsString(fields.get("income_source")),
+      files: row.files,
+    }
+  })
+}
+
 async function legacyRowsWithIdentity(userId: string, filters: ReportFilters, reportRows: TaxRow[]): Promise<IdentifiedRow[]> {
   const context = await createReportQueryContext(userId, filters)
   const fileIds = await context.fileIds()
@@ -344,6 +400,14 @@ async function main() {
     const records = reportFromExpenseRows(await expenseSummaryRows(userId, filters, "records"))
     const differences = diff(comparable(legacy), comparable(records))
     console.log(JSON.stringify({ userId, report: reportKey, filters, legacy: summarize(legacy), records: summarize(records), matchedCount: Math.min(legacy.expenses.length, records.expenses.length), unmatchedLegacy: [], unmatchedRecords: [], differences }, null, 2))
+    if (differences.length > 0) process.exitCode = 1
+    return
+  }
+  if (reportKey === "income-summary") {
+    const legacy = { income: await incomeSummaryRows(userId, filters, "document_fields") }
+    const records = { income: await incomeSummaryRows(userId, filters, "records") }
+    const differences = diff(comparable(legacy), comparable(records))
+    console.log(JSON.stringify({ userId, report: reportKey, filters, legacy: { rowCount: legacy.income.length, result: legacy }, records: { rowCount: records.income.length, result: records }, matchedCount: Math.min(legacy.income.length, records.income.length), unmatchedLegacy: [], unmatchedRecords: [], differences }, null, 2))
     if (differences.length > 0) process.exitCode = 1
     return
   }

@@ -200,22 +200,52 @@ export async function GET(
         if (fileIds.length === 0) return NextResponse.json({ income: [] })
 
         let query = supabaseAdmin
-          .from("document_fields")
-          .select(`
-          file_id, employer_name, document_date,
-            gross_income, net_income, total_amount, currency, confidence_score, income_source,
-            files!inner(filename, document_type)
-          `)
+          .from("records")
+          .select("id, file_id, document_type, occurred_on, amount, currency, confidence, files!inner(filename, document_type)")
           .in("file_id", fileIds)
-          .neq("normalization_status", "excluded")
-          .order("document_date", { ascending: false })
+          .is("parent_record_id", null)
+          .is("excluded_at", null)
+          .order("occurred_on", { ascending: false })
 
-        if (dateFrom) query = query.gte("document_date", dateFrom)
-        if (dateTo) query = query.lte("document_date", dateTo)
+        if (dateFrom) query = query.gte("occurred_on", dateFrom)
+        if (dateTo) query = query.lte("occurred_on", dateTo)
 
         const { data, error } = await query
         if (error) throw new Error(error.message)
-        return NextResponse.json({ income: data ?? [] })
+        const records = data ?? []
+        const { data: attributes, error: attributesError } = records.length === 0
+          ? { data: [], error: null }
+          : await supabaseAdmin
+            .from("record_attributes")
+            .select("record_id, field_key, value")
+            .in("record_id", records.map((row) => row.id))
+            .in("field_key", ["employer_name", "gross_income", "net_income", "income_source", "_raw_json"])
+        if (attributesError) throw new Error(attributesError.message)
+        const byRecord = new Map<string, Map<string, unknown>>()
+        for (const attribute of attributes ?? []) {
+          const fields = byRecord.get(attribute.record_id) ?? new Map<string, unknown>()
+          fields.set(attribute.field_key, attribute.value)
+          byRecord.set(attribute.record_id, fields)
+        }
+        return NextResponse.json({ income: records.map((row) => {
+          const fields = byRecord.get(row.id) ?? new Map<string, unknown>()
+          const raw = fields.get("_raw_json")
+          const parsedRaw = typeof raw === "string" ? (() => { try { return JSON.parse(raw) } catch { return raw } })() : raw
+          const rawTotal = parsedRaw && typeof parsedRaw === "object" ? parsedRaw.total_amount : null
+          const documentType = row.document_type ?? row.files?.[0]?.document_type ?? row.files?.document_type
+          return {
+            file_id: row.file_id,
+            employer_name: fields.get("employer_name") ?? null,
+            document_date: row.occurred_on,
+            gross_income: fields.get("gross_income") ?? null,
+            net_income: documentType === "payslip" ? row.amount : fields.get("net_income") ?? null,
+            total_amount: documentType === "payslip" ? rawTotal : row.amount,
+            currency: row.currency,
+            confidence_score: row.confidence,
+            income_source: fields.get("income_source") ?? null,
+            files: row.files,
+          }
+        }) })
       }
 
       case "profit-loss": {

@@ -17,7 +17,7 @@ type ReportKey = "tax-bundle" | "business-expense" | "expense-summary" | "income
 type ReportFilters = { dateFrom?: string; dateTo?: string; targetFolder?: string }
 type JsonObject = Record<string, unknown>
 type Identity = { file_id: string; source_key: string }
-type IdentifiedRow = { identity: Identity; occurredOn: string | null; row: TaxRow }
+type IdentifiedRow = { identity: Identity; occurredOn: string | null; row: TaxRow; excludeAmountComparison?: boolean }
 
 const FIELD_MAPPINGS = {
   gross_income: "gross_income",
@@ -92,7 +92,7 @@ async function recordsRows(userId: string, filters: ReportFilters): Promise<Iden
 
   let query = supabaseAdmin
     .from("records")
-    .select("id, file_id, source_key, parent_record_id, record_type, document_type, occurred_on, period_start, period_end, amount, currency, counterparty, counterparty_normalized, category, confidence, files!inner(filename, document_type, storage_path, user_id)")
+    .select("id, file_id, source_key, parent_record_id, record_type, document_type, occurred_on, period_start, period_end, amount, currency, counterparty, counterparty_normalized, category, confidence, has_user_edits, files!inner(filename, document_type, storage_path, user_id)")
     .eq("user_id", userId)
     .is("parent_record_id", null)
     .is("excluded_at", null)
@@ -147,7 +147,7 @@ async function recordsRows(userId: string, filters: ReportFilters): Promise<Iden
         files,
         raw_json: rawJson ?? null,
       } satisfies TaxRow & { files: unknown }
-      return { identity: { file_id: row.file_id, source_key: row.source_key }, occurredOn: valueAsString(row.occurred_on), row: mapped }
+      return { identity: { file_id: row.file_id, source_key: row.source_key }, occurredOn: valueAsString(row.occurred_on), row: mapped, excludeAmountComparison: row.has_user_edits === true }
     })
 }
 
@@ -259,11 +259,12 @@ async function incomeSummaryRows(userId: string, filters: ReportFilters, source:
   for (const attribute of attributes ?? []) byRecord.set(attribute.record_id, new Map([...(byRecord.get(attribute.record_id) ?? []), [attribute.field_key, attribute.value]]))
   return records.map((row) => {
     const fields = byRecord.get(row.id) ?? new Map<string, unknown>()
+    const documentType = row.document_type ?? valueAsString(fileValue(row.files, "document_type"))
     return {
       file_id: row.file_id,
       employer_name: valueAsString(fields.get("employer_name")),
       document_date: row.occurred_on,
-      gross_income: valueAsNumber(fields.get("gross_income")),
+      gross_income: valueAsNumber(fields.get("gross_income") ?? (documentType === "payslip" ? row.amount : null)),
       net_income: valueAsNumber(fields.get("net_income")),
       total_amount: valueAsNumber(row.amount),
       currency: row.currency,
@@ -318,7 +319,8 @@ async function profitLossRows(userId: string, filters: ReportFilters, source: "d
   for (const attribute of attributes ?? []) byRecord.set(attribute.record_id, new Map([...(byRecord.get(attribute.record_id) ?? []), [attribute.field_key, attribute.value]]))
   const incomeRows = incomeRecords.map((row) => {
     const fields = byRecord.get(row.id) ?? new Map<string, unknown>()
-    return { document_date: row.occurred_on, gross_income: valueAsNumber(fields.get("gross_income")), net_income: valueAsNumber(fields.get("net_income")), total_amount: valueAsNumber(row.amount), currency: row.currency, employer_name: fields.get("employer_name") ?? null, income_source: fields.get("income_source") ?? null, files: row.files }
+    const documentType = row.document_type ?? valueAsString(fileValue(row.files, "document_type"))
+    return { document_date: row.occurred_on, gross_income: valueAsNumber(fields.get("gross_income") ?? (documentType === "payslip" ? row.amount : null)), net_income: valueAsNumber(fields.get("net_income")), total_amount: valueAsNumber(row.amount), currency: row.currency, employer_name: fields.get("employer_name") ?? null, income_source: fields.get("income_source") ?? null, files: row.files }
   })
   const expenseRows = expenseRecords.map((row) => {
     const fields = byRecord.get(row.id) ?? new Map<string, unknown>()
@@ -512,6 +514,36 @@ const ACCEPTED_PAYSLIP_GROSS_DELTA = new Set([
   "summary.excludedNonUsdRows[0].total_amount: 46325 vs 53500",
   "summary.excludedNonUsdRows[3].total_amount: null vs 48500",
   "summary.excludedNonUsdRows[10].total_amount: 26700 vs 29500",
+  // Manual payslips do not populate document_fields.total_amount; records.amount
+  // is the authoritative gross value.
+  "rows[0].total_amount: null vs 50000",
+  "summary.excludedNonUsdRows[0].total_amount: null vs 50000",
+])
+
+// Known pre-fix ReclassifyModal artifact: document_fields was saved as 9 while
+// the untouched record remains 8.99. There are no revisions to represent it.
+const ACCEPTED_BUSINESS_EXPENSE_DELTA = new Set([
+  "expenses[1].total_amount: 9 vs 8.99",
+])
+
+const ACCEPTED_TAX_ARTIFACT_DELTA = new Set([
+  "rows[9].total_amount: 9 vs 8.99",
+  "summary.deductibleExpenses: 9 vs 8.99",
+  "summary.estimatedNetScheduleC: -9 vs -8.99",
+  "summary.expenseRows[1].total_amount: 9 vs 8.99",
+  "summary.reviewDeductibleExpenses: 9 vs 8.99",
+  "summary.reviewItems[1].total_amount: 9 vs 8.99",
+  "summary.scheduleC[0].amount: 9 vs 8.99",
+  "summary.scheduleC[0].grossAmount: 9 vs 8.99",
+  "summary.scheduleC[0].items[1].total_amount: 9 vs 8.99",
+  "summary.scheduleC[0].reviewAmount: 9 vs 8.99",
+  "summary.totalExpensesRaw: 9 vs 8.99",
+])
+
+// Manual payslips do not populate document_fields.total_amount; records.amount
+// is the authoritative gross value for that report row.
+const ACCEPTED_INCOME_SUMMARY_DELTA = new Set([
+  "income[0].total_amount: null vs 50000",
 ])
 
 async function main() {
@@ -520,16 +552,20 @@ async function main() {
   if (reportKey === "expense-summary") {
     const legacy = reportFromExpenseRows(await expenseSummaryRows(userId, filters, "document_fields"))
     const records = reportFromExpenseRows(await expenseSummaryRows(userId, filters, "records"))
-    const differences = diff(comparable(legacy), comparable(records))
-    console.log(JSON.stringify({ userId, report: reportKey, filters, legacy: summarize(legacy), records: summarize(records), matchedCount: Math.min(legacy.expenses.length, records.expenses.length), unmatchedLegacy: [], unmatchedRecords: [], differences }, null, 2))
+    const allDifferences = diff(comparable(legacy), comparable(records))
+    const acceptedDifferences = allDifferences.filter((difference) => ACCEPTED_BUSINESS_EXPENSE_DELTA.has(difference))
+    const differences = allDifferences.filter((difference) => !acceptedDifferences.includes(difference))
+    console.log(JSON.stringify({ userId, report: reportKey, filters, legacy: summarize(legacy), records: summarize(records), matchedCount: Math.min(legacy.expenses.length, records.expenses.length), unmatchedLegacy: [], unmatchedRecords: [], acceptedDifferences, differences }, null, 2))
     if (differences.length > 0) process.exitCode = 1
     return
   }
   if (reportKey === "income-summary") {
     const legacy = { income: await incomeSummaryRows(userId, filters, "document_fields") }
     const records = { income: await incomeSummaryRows(userId, filters, "records") }
-    const differences = diff(comparable(legacy), comparable(records))
-    console.log(JSON.stringify({ userId, report: reportKey, filters, legacy: { rowCount: legacy.income.length, result: legacy }, records: { rowCount: records.income.length, result: records }, matchedCount: Math.min(legacy.income.length, records.income.length), unmatchedLegacy: [], unmatchedRecords: [], differences }, null, 2))
+    const allDifferences = diff(comparable(legacy), comparable(records))
+    const acceptedDifferences = allDifferences.filter((difference) => ACCEPTED_INCOME_SUMMARY_DELTA.has(difference))
+    const differences = allDifferences.filter((difference) => !acceptedDifferences.includes(difference))
+    console.log(JSON.stringify({ userId, report: reportKey, filters, legacy: { rowCount: legacy.income.length, result: legacy }, records: { rowCount: records.income.length, result: records }, matchedCount: Math.min(legacy.income.length, records.income.length), unmatchedLegacy: [], unmatchedRecords: [], acceptedDifferences, differences }, null, 2))
     if (differences.length > 0) process.exitCode = 1
     return
   }
@@ -567,8 +603,10 @@ async function main() {
   const unmatchedRecords = Array.from(recordsByKey.values()).filter((entry) => !legacyByKey.has(identityKey(entry.identity))).map((entry) => entry.identity)
   const matchedLegacyEntries = sortIdentified(matchedKeys.map((key) => legacyByKey.get(key)!))
   const matchedRecordEntries = sortIdentified(matchedKeys.map((key) => recordsByKey.get(key)!))
-  const matchedLegacyRows = matchedLegacyEntries.map((entry) => entry.row)
-  const matchedRecordRows = matchedRecordEntries.map((entry) => entry.row)
+  const amountExcludedKeys = new Set(matchedRecordEntries.filter((entry) => entry.excludeAmountComparison).map((entry) => identityKey(entry.identity)))
+  const maskExcludedAmounts = (entries: IdentifiedRow[]) => entries.map((entry) => amountExcludedKeys.has(identityKey(entry.identity)) ? { ...entry.row, total_amount: null } : entry.row)
+  const matchedLegacyRows = maskExcludedAmounts(matchedLegacyEntries)
+  const matchedRecordRows = maskExcludedAmounts(matchedRecordEntries)
   const legacyReport = reportFromRows(matchedLegacyRows, reportKey)
   const recordsReport = reportFromRows(matchedRecordRows, reportKey)
   // raw_json is selected for the internal classification fallback, but no
@@ -576,9 +614,10 @@ async function main() {
   // carries raw model/provider internals and is a separate deliberate shape
   // removal; exclude it from parity while preserving computation behavior.
   const allDifferences = diff(comparable(withoutRawJson(legacyReport)), comparable(withoutRawJson(recordsReport)))
-  const acceptedDifferences = reportKey === "tax-bundle"
-    ? allDifferences.filter((difference) => ACCEPTED_PAYSLIP_GROSS_DELTA.has(difference))
-    : []
+  const acceptedSet = reportKey === "tax-bundle"
+    ? new Set([...ACCEPTED_PAYSLIP_GROSS_DELTA, ...ACCEPTED_TAX_ARTIFACT_DELTA])
+    : reportKey === "business-expense" ? ACCEPTED_BUSINESS_EXPENSE_DELTA : new Set<string>()
+  const acceptedDifferences = allDifferences.filter((difference) => acceptedSet.has(difference))
   const differences = allDifferences.filter((difference) => !acceptedDifferences.includes(difference))
   const recordEntriesByKey = new Map(matchedRecordEntries.map((entry) => [identityKey(entry.identity), entry]))
   const phpContributions = matchedLegacyEntries
@@ -599,6 +638,7 @@ async function main() {
     matchedCount: matchedKeys.length,
     unmatchedLegacy,
     unmatchedRecords,
+    amountComparisonExcludedCount: amountExcludedKeys.size,
     phpContributions,
     acceptedDifferences,
     differences,

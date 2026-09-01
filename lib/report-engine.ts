@@ -141,7 +141,7 @@ async function recordsTaxRows(userId: string, filters: ReportFilters): Promise<T
         period_start: stringValue(record.period_start),
         period_end: stringValue(record.period_end),
         total_amount: numberValue(record.amount),
-        gross_income: numberValue(get("gross_income")),
+        gross_income: numberValue(get("gross_income") ?? (documentType === "payslip" ? record.amount : null)),
         net_income: numberValue(get("net_income")),
         expense_category: stringValue(record.category),
         income_source: incomeSourceValue(get("income_source")),

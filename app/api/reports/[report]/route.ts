@@ -234,8 +234,8 @@ export async function GET(
             file_id: row.file_id,
             employer_name: fields.get("employer_name") ?? null,
             document_date: row.occurred_on,
-            gross_income: fields.get("gross_income") ?? null,
-            net_income: documentType === "payslip" ? row.amount : fields.get("net_income") ?? null,
+            gross_income: fields.get("gross_income") ?? (documentType === "payslip" ? row.amount : null),
+            net_income: fields.get("net_income") ?? null,
             total_amount: row.amount,
             currency: row.currency,
             confidence_score: row.confidence,
@@ -284,8 +284,8 @@ export async function GET(
             const documentType = row.document_type ?? row.files?.[0]?.document_type
             return {
               document_date: row.occurred_on,
-              gross_income: fields.get("gross_income") ?? null,
-              net_income: documentType === "payslip" ? row.amount : fields.get("net_income") ?? null,
+              gross_income: fields.get("gross_income") ?? (documentType === "payslip" ? row.amount : null),
+              net_income: fields.get("net_income") ?? null,
               total_amount: row.amount,
               currency: row.currency,
               employer_name: fields.get("employer_name") ?? null,

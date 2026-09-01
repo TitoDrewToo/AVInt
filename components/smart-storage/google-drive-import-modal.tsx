@@ -1,12 +1,13 @@
 "use client"
 
 import { useState } from "react"
+import type { ReactNode } from "react"
 import { Check, HardDrive, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import type { Session } from "@supabase/supabase-js"
 
-type Props = { session: Session | null; onImported: () => void }
+type Props = { session: Session | null; onImported: () => void; renderTrigger?: (open: () => void) => ReactNode }
 type PickerDocument = { id?: string; name?: string; mimeType?: string; url?: string; lastEditedUtc?: number }
 type PickerResponse = { action?: string; docs?: PickerDocument[] }
 type PickerConfig = { accessToken?: string; apiKey?: string; appId?: string; error?: string }
@@ -35,7 +36,7 @@ async function api(path: string, session: Session, init?: RequestInit) {
   return fetch(path, { ...init, headers: { Authorization: `Bearer ${session.access_token}`, ...(init?.headers ?? {}) } })
 }
 
-export function GoogleDriveImportModal({ session, onImported }: Props) {
+export function GoogleDriveImportModal({ session, onImported, renderTrigger }: Props) {
   const [open, setOpen] = useState(false)
   const [connected, setConnected] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -100,7 +101,7 @@ export function GoogleDriveImportModal({ session, onImported }: Props) {
   }
 
   return <>
-    <button type="button" onClick={() => void openModal()} disabled className="flex h-7 cursor-not-allowed items-center gap-1.5 rounded px-2 text-xs text-muted-foreground opacity-50" title="Google Drive import is temporarily unavailable"><HardDrive className="h-3.5 w-3.5" /> Import from Drive</button>
+    {renderTrigger ? renderTrigger(() => void openModal()) : <button type="button" onClick={() => void openModal()} disabled className="flex h-7 cursor-not-allowed items-center gap-1.5 rounded px-2 text-xs text-muted-foreground opacity-50" title="Google Drive import is temporarily unavailable"><HardDrive className="h-3.5 w-3.5" /> Import from Drive</button>}
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="max-w-lg" aria-describedby="google-drive-import-description">
         <DialogHeader><DialogTitle>Import from Google Drive</DialogTitle><DialogDescription id="google-drive-import-description">Choose files or folders in Google’s Drive picker. Imported files follow the same security scan and processing workflow as uploads.</DialogDescription></DialogHeader>

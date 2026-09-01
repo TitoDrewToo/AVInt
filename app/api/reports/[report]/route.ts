@@ -232,7 +232,7 @@ export async function GET(
           const raw = fields.get("_raw_json")
           const parsedRaw = typeof raw === "string" ? (() => { try { return JSON.parse(raw) } catch { return raw } })() : raw
           const rawTotal = parsedRaw && typeof parsedRaw === "object" ? parsedRaw.total_amount : null
-          const documentType = row.document_type ?? row.files?.[0]?.document_type ?? row.files?.document_type
+          const documentType = row.document_type ?? row.files?.[0]?.document_type
           return {
             file_id: row.file_id,
             employer_name: fields.get("employer_name") ?? null,
@@ -287,7 +287,7 @@ export async function GET(
             const raw = fields.get("_raw_json")
             const parsedRaw = typeof raw === "string" ? (() => { try { return JSON.parse(raw) } catch { return raw } })() : raw
             const rawTotal = parsedRaw && typeof parsedRaw === "object" ? parsedRaw.total_amount : null
-            const documentType = row.document_type ?? row.files?.[0]?.document_type ?? row.files?.document_type
+            const documentType = row.document_type ?? row.files?.[0]?.document_type
             return {
               document_date: row.occurred_on,
               gross_income: fields.get("gross_income") ?? null,
@@ -451,29 +451,69 @@ export async function GET(
         const fileIds = await reportContext.fileIds(["contract", "agreement"])
         if (fileIds.length === 0) return NextResponse.json({ docs: [] })
 
-        const { data, error } = await supabaseAdmin
-          .from("document_fields")
-          .select(`
-            file_id,
-            counterparty_name,
-            document_date,
-            period_start,
-            period_end,
-            invoice_number,
-            payment_method,
-            total_amount,
-            currency,
-            line_items,
-            confidence_score,
-            files!inner(filename, document_type)
-          `)
+        const { data: parents, error } = await supabaseAdmin
+          .from("records")
+          .select("id, file_id, occurred_on, period_start, period_end, amount, currency, confidence, files!inner(filename, document_type)")
           .in("file_id", fileIds)
-          .neq("normalization_status", "excluded")
-          .order("document_date", { ascending: false })
+          .is("parent_record_id", null)
+          .is("excluded_at", null)
+          .order("occurred_on", { ascending: false })
 
         if (error) throw new Error(error.message)
 
-        const docs = (data ?? []).filter((row) =>
+        const parentRows = parents ?? []
+        const { data: children, error: childrenError } = parentRows.length === 0
+          ? { data: [], error: null }
+          : await supabaseAdmin
+            .from("records")
+            .select("id, parent_record_id, source_key, amount")
+            .in("parent_record_id", parentRows.map((row) => row.id))
+            .is("excluded_at", null)
+            .order("source_key", { ascending: true })
+        if (childrenError) throw new Error(childrenError.message)
+        const allRecordIds = [...parentRows.map((row) => row.id), ...(children ?? []).map((row) => row.id)]
+        const { data: attributes, error: attributesError } = allRecordIds.length === 0
+          ? { data: [], error: null }
+          : await supabaseAdmin
+            .from("record_attributes")
+            .select("record_id, field_key, value")
+            .in("record_id", allRecordIds)
+        if (attributesError) throw new Error(attributesError.message)
+        const byRecord = new Map<string, Map<string, unknown>>()
+        for (const attribute of attributes ?? []) {
+          const fields = byRecord.get(attribute.record_id) ?? new Map<string, unknown>()
+          fields.set(attribute.field_key, attribute.value)
+          byRecord.set(attribute.record_id, fields)
+        }
+        const childrenByParent = new Map<string, typeof children>()
+        for (const child of children ?? []) {
+          const rows = childrenByParent.get(child.parent_record_id) ?? []
+          rows.push(child)
+          childrenByParent.set(child.parent_record_id, rows)
+        }
+
+        const docs = parentRows.map((row) => {
+          const fields = byRecord.get(row.id) ?? new Map<string, unknown>()
+          const lineItems = (childrenByParent.get(row.id) ?? []).map((child) => ({
+            ...Object.fromEntries(Array.from(byRecord.get(child.id) ?? new Map<string, unknown>()).filter(([key]) => key !== "line_items")),
+            amount: child.amount,
+            quantity: (byRecord.get(child.id) ?? new Map<string, unknown>()).get("quantity") ?? null,
+          }))
+          return {
+            file_id: row.file_id,
+            counterparty_name: fields.get("counterparty_name") ?? null,
+            document_date: row.occurred_on,
+            period_start: row.period_start,
+            period_end: row.period_end,
+            invoice_number: fields.get("invoice_number") ?? null,
+            payment_method: fields.get("payment_method") ?? null,
+            total_amount: row.amount,
+            currency: row.currency,
+            line_items: lineItems,
+            confidence_score: row.confidence,
+            files: row.files,
+          }
+        }).filter((row) =>
           overlapsDateRange(
             {
               document_date: row.document_date,

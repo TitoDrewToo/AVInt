@@ -21,52 +21,76 @@ let embedScriptPromise: Promise<void> | null = null
 let calInitialized = false
 let nextModalUid = Date.now()
 
-type CalApi = ((...args: unknown[]) => void) & { q?: unknown[]; t?: Date }
+type CalApi = ((...args: unknown[]) => void) & { loaded?: boolean; ns?: Record<string, CalApi>; q?: unknown[]; t?: Date }
 
-function bootstrapCal() {
-  if (typeof window.Cal === "function") return
+function bootstrapCal(): HTMLScriptElement | null {
+  if (typeof window.Cal === "function") return null
+
+  let script: HTMLScriptElement | null = null
+  const push = (api: CalApi, args: unknown[]) => {
+    api.q ??= []
+    api.q.push(args)
+  }
   const cal = ((...args: unknown[]) => {
-    cal.q ??= []
-    cal.q.push(args)
+    if (!cal.loaded) {
+      cal.ns = {}
+      cal.q ??= []
+      script = document.createElement("script")
+      script.async = true
+      script.src = "https://app.cal.com/embed/embed.js"
+      script.dataset.calEmbed = "true"
+      document.head.appendChild(script)
+      cal.loaded = true
+    }
+
+    if (args[0] === "init") {
+      const namespace = args[1]
+      if (typeof namespace === "string") {
+        const api = ((...nestedArgs: unknown[]) => push(api, nestedArgs)) as CalApi
+        cal.ns ??= {}
+        cal.ns[namespace] = api
+        push(api, args)
+        push(cal, ["initNamespace", namespace])
+      } else {
+        push(cal, args)
+      }
+      return
+    }
+    push(cal, args)
   }) as CalApi
   cal.q = []
   cal.t = new Date()
   window.Cal = cal
+  return script
 }
 
 function loadCalEmbed(): Promise<void> {
   if (typeof window === "undefined") return Promise.reject(new Error("Calendar is only available in a browser"))
-  bootstrapCal()
+  const script = bootstrapCal()
   if (embedScriptPromise) return embedScriptPromise
+
+  if (!calInitialized) {
+    const cal = window.Cal as CalApi | undefined
+    if (!cal) return Promise.reject(new Error("The calendar embed did not initialise"))
+    cal("init", { origin: "https://cal.com" })
+    calInitialized = true
+  }
+
   const promise = new Promise<void>((resolve, reject) => {
-    const existing = document.querySelector<HTMLScriptElement>('script[data-cal-embed="true"]')
+    const existing = script ?? document.querySelector<HTMLScriptElement>('script[data-cal-embed="true"]')
     if (existing) {
       existing.addEventListener("load", () => resolve(), { once: true })
       existing.addEventListener("error", () => reject(new Error("The calendar embed could not load")), { once: true })
       return
     }
-
-    const script = document.createElement("script")
-    script.async = true
-    script.src = "https://app.cal.com/embed/embed.js"
-    script.dataset.calEmbed = "true"
-    script.addEventListener("load", () => resolve(), { once: true })
-    script.addEventListener("error", () => reject(new Error("The calendar embed could not load")), { once: true })
-    document.head.appendChild(script)
+    resolve()
   }).catch((error) => {
     embedScriptPromise = null
     throw error
   })
 
   embedScriptPromise = promise
-  initializeCal()
   return promise
-}
-
-function initializeCal() {
-  if (calInitialized || typeof window === "undefined" || typeof window.Cal !== "function") return
-  window.Cal("init", { origin: "https://cal.com" })
-  calInitialized = true
 }
 
 export function toCalLink(value: string | undefined): string | null {

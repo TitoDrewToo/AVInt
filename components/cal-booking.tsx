@@ -17,14 +17,85 @@ function withPrefill(name?: string, email?: string): string | null {
   }
 }
 
-export function CalBookingLink({ name, email, className = "" }: { name?: string; email?: string; className?: string }) {
+let embedScriptPromise: Promise<void> | null = null
+
+function loadCalEmbed(): Promise<void> {
+  if (typeof window === "undefined") return Promise.reject(new Error("Calendar is only available in a browser"))
+  if (typeof window.Cal === "function") return Promise.resolve()
+  if (embedScriptPromise) return embedScriptPromise
+
+  const promise = new Promise<void>((resolve, reject) => {
+    const existing = document.querySelector<HTMLScriptElement>('script[data-cal-embed="true"]')
+    if (existing) {
+      existing.addEventListener("load", () => resolve(), { once: true })
+      existing.addEventListener("error", () => reject(new Error("The calendar embed could not load")), { once: true })
+      return
+    }
+
+    const script = document.createElement("script")
+    script.async = true
+    script.src = "https://app.cal.com/embed/embed.js"
+    script.dataset.calEmbed = "true"
+    script.addEventListener("load", () => resolve(), { once: true })
+    script.addEventListener("error", () => reject(new Error("The calendar embed could not load")), { once: true })
+    document.head.appendChild(script)
+  }).catch((error) => {
+    embedScriptPromise = null
+    throw error
+  })
+
+  embedScriptPromise = promise
+  return promise
+}
+
+function toCalLink(value: string): string | null {
+  try {
+    return new URL(value).pathname.replace(/^\/+|\/+$/g, "") || null
+  } catch {
+    return null
+  }
+}
+
+declare global {
+  interface Window {
+    Cal?: (...args: unknown[]) => void
+  }
+}
+
+export function CalBookingLink({ name, email, className = "", onUnavailable }: { name?: string; email?: string; className?: string; onUnavailable?: () => void }) {
   const href = withPrefill(name, email)
-  if (!href) return null
-  return <a href={href} target="_blank" rel="noreferrer" className={`inline-flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-4 py-2.5 text-sm font-medium text-primary transition-colors hover:border-primary/60 hover:bg-primary/15 ${className}`}>
+  const calLink = href ? toCalLink(href) : null
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const loadingRef = useRef(false)
+  const [loading, setLoading] = useState(false)
+
+  if (!href || !calLink) return null
+
+  async function openCalendar() {
+    if (loadingRef.current) return
+    if (typeof window.Cal === "function") return
+
+    loadingRef.current = true
+    setLoading(true)
+    try {
+      await loadCalEmbed()
+      if (typeof window.Cal !== "function") throw new Error("The calendar embed did not initialise")
+      buttonRef.current?.click()
+    } catch {
+      onUnavailable?.()
+    } finally {
+      loadingRef.current = false
+      setLoading(false)
+    }
+  }
+
+  const config = JSON.stringify({ ...(name ? { name } : {}), ...(email ? { email } : {}) })
+
+  return <button ref={buttonRef} type="button" data-cal-link={calLink} data-cal-config={config} onClick={openCalendar} disabled={loading} className={`inline-flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-4 py-2.5 text-sm font-medium text-primary transition-colors hover:border-primary/60 hover:bg-primary/15 disabled:cursor-wait disabled:opacity-70 ${className}`}>
     <CalendarDays className="h-4 w-4" />
-    Book a call
+    {loading ? "Opening calendar…" : "Book a call"}
     <ArrowUpRight className="h-4 w-4" />
-  </a>
+  </button>
 }
 
 export function CalBookingEmbed({ name, email }: { name: string; email: string }) {

@@ -4,8 +4,8 @@ import { ArrowUpRight, ChartColumn, Database, LayoutDashboard, Palette, ShieldCh
 import { Footer } from "@/components/footer"
 import { HomeDefaultSphere } from "@/components/home-default-sphere"
 import { Navbar } from "@/components/navbar"
-import { StudioInquiryForm } from "@/components/studio-inquiry-form"
 import { CalBookingLink } from "@/components/cal-booking"
+import { StudioContactSection } from "@/components/studio-contact-section"
 import { Button } from "@/components/ui/button"
 
 const studioDescription = "AVIntelligence is a systems and web development studio. We design and build web apps, internal tools, and AI systems end to end — agency-grade work, without the agency overhead."
@@ -186,16 +186,7 @@ export default function StudioPage() {
         </section>
 
         <section id="studio-inquiry" className="marketing-scroll-section marketing-scroll-section-final relative scroll-mt-24 px-6">
-          <div className="relative mx-auto max-w-4xl">
-            <div className="glass-surface rounded-3xl p-8 text-center md:p-12">
-              <p className="text-sm font-medium uppercase tracking-wider text-primary">Have something you want built?</p>
-              <div className="mt-8 flex justify-center">
-                <div className="flex flex-col items-center gap-1">
-                  <StudioInquiryForm />
-                </div>
-              </div>
-            </div>
-          </div>
+          <StudioContactSection />
         </section>
       </main>
       <Footer />

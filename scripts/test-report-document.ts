@@ -111,14 +111,27 @@ assert.match(JSON.stringify(mixedDocument), /Mixed currencies detected \(PHP, US
 const phpDocument = toReportDocument("profit-loss", { incomeRows: mixedRows.incomeRows, expenseRows: mixedRows.expenseRows.filter((row) => row.currency === "PHP") }, {})
 const phpItems = phpDocument.blocks.find((block) => block.type === "kpi")
 assert.deepEqual(phpItems?.type === "kpi" ? phpItems.items : [], [
-  { label: "Income · PHP", value: "₱50,000.00" },
-  { label: "Expenses · PHP", value: "₱48,495.40" },
-  { label: "Net · PHP", value: "₱1,504.60" },
+  { label: "Income · PHP", value: "50,000.00" },
+  { label: "Expenses · PHP", value: "48,495.40" },
+  { label: "Net · PHP", value: "1,504.60" },
 ])
 
 const singleDocument = toReportDocument("expense-summary", { expenses: [{ document_date: "2026-08-01", total_amount: 19.99, currency: "USD" }] }, {})
 const singleKpi = singleDocument.blocks.find((block) => block.type === "kpi")
-assert.deepEqual(singleKpi?.type === "kpi" ? singleKpi.items : [], [{ label: "Total · USD", value: "$19.99" }])
+assert.deepEqual(singleKpi?.type === "kpi" ? singleKpi.items : [], [{ label: "Total · USD", value: "19.99" }])
+
+function assertAsciiKpiValues(document: ReturnType<typeof toReportDocument>, label: string) {
+  const kpi = document.blocks.find((block) => block.type === "kpi")
+  assert.equal(kpi?.type, "kpi")
+  for (const item of kpi?.items ?? []) {
+    assert.ok([...item.value].every((character) => (character.codePointAt(0) ?? 0) <= 0x7f), `${label} contains a non-ASCII character`)
+  }
+}
+
+assertAsciiKpiValues(phpDocument, "PHP")
+assertAsciiKpiValues(singleDocument, "USD")
+assertAsciiKpiValues(toReportDocument("profit-loss", { incomeRows: [], expenseRows: [{ document_date: "2026-08-01", total_amount: 19.99, currency: "USD" }] }, {}), "negative")
+assertAsciiKpiValues(toReportDocument("expense-summary", { expenses: [{ document_date: "2026-08-01", total_amount: 0, currency: "PHP" }] }, {}), "zero")
 
 const unspecifiedDocument = toReportDocument("expense-summary", { expenses: [
   { document_date: "2026-08-01", total_amount: 100, currency: "PHP" },
@@ -127,8 +140,8 @@ const unspecifiedDocument = toReportDocument("expense-summary", { expenses: [
 ] }, {})
 const unspecifiedKpi = unspecifiedDocument.blocks.find((block) => block.type === "kpi")
 assert.deepEqual(unspecifiedKpi?.type === "kpi" ? unspecifiedKpi.items : [], [
-  { label: "Total · PHP", value: "₱100.00" },
-  { label: "Total · USD", value: "$10.00" },
+  { label: "Total · PHP", value: "100.00" },
+  { label: "Total · USD", value: "10.00" },
   { label: "Total · Unspecified currency", value: "7.00" },
 ])
 assert.match(JSON.stringify(unspecifiedDocument), /Unspecified currency/)
@@ -140,7 +153,7 @@ assert.equal(emptyKpi?.suppressed, true)
 assert.match(emptyKpi?.reason ?? "", /not stated as zero/)
 assert.ok(!JSON.stringify(emptySection).includes('"value":"0"'), "empty sections must not render a zero")
 
-  console.log("report-document tests: 11 passed")
+  console.log("report-document tests: 12 passed")
 }
 
 main().catch((error: unknown) => {

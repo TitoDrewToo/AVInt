@@ -28,12 +28,8 @@ type ReportResult = EngineReportResult | ReportSectionResult
 export type ReportKey = "tax-bundle" | "business-expense" | "profit-loss" | "income-summary" | "expense-summary" | "contract-summary" | "key-terms"
 
 function formatAmount(value: number, currency: string | null): string {
-  if (!currency) return new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)
-  try {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(value)
-  } catch {
-    return `${currency} ${value.toFixed(2)}`
-  }
+  void currency
+  return new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)
 }
 
 function dateBounds(rows: TaxRow[]): { from: string; to: string } {

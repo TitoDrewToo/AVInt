@@ -7,6 +7,7 @@ import { Tip } from "@/components/ui/tip"
 import { supabase } from "@/lib/supabase"
 import { AuthGuardModal } from "@/components/auth-guard-modal"
 import { printReportOutput } from "@/lib/report-print"
+import { ReportExportControls } from "@/components/report-export-controls"
 import { summarizeCurrencies } from "@/lib/report-utils"
 import type { Session } from "@supabase/supabase-js"
 import { AlertTriangle, ArrowLeft, FolderOpen, Printer } from "lucide-react"
@@ -182,6 +183,7 @@ function KeyTermsContent() {
     <div className="flex min-h-screen flex-col">
       <Navbar />
       <main className="flex-1 px-6 py-10">
+        <div className="mb-4 flex justify-end"><ReportExportControls report="key-terms" dateFrom={dateFrom} dateTo={dateTo} targetFolder={targetFolder} /></div>
         <div className="mx-auto max-w-4xl">
 
           {/* Back nav */}

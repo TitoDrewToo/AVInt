@@ -17,7 +17,7 @@ import { useSearchParams } from "next/navigation"
 import JSZip from "jszip"
 
 import { printReportOutput } from "@/lib/report-print"
-import { ReportPdfDownload } from "@/components/report-pdf-download"
+import { ReportExportControls } from "@/components/report-export-controls"
 import { trackActivationEvent } from "@/lib/analytics"
 import {
   getScheduleCLine,
@@ -808,7 +808,7 @@ function TaxBundleContent() {
                       <Download className="h-3.5 w-3.5" />
                       Export CSV
                     </Button></Tip>
-                    <ReportPdfDownload report="tax-bundle" dateFrom={dateFrom} dateTo={dateTo} targetFolder={targetFolder} />
+                    <ReportExportControls report="tax-bundle" dateFrom={dateFrom} dateTo={dateTo} targetFolder={targetFolder} />
                     <Tip text={tier === "free" ? "CSV exports for QuickBooks/Xero are a Pro feature." : quickBooksLayout === "4col" ? "Export for QuickBooks (Date, Description, Credit, Debit)." : "Export for QuickBooks (Date, Description, Amount; expenses negative)."}><Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={() => void downloadAccountingCSV("quickbooks")} disabled={tier === "free"} title={tier === "free" ? "CSV exports for QuickBooks/Xero are a Pro feature." : undefined}>
                       {tier === "free" ? "QuickBooks (upgrade)" : "QuickBooks CSV"}
                     </Button></Tip>

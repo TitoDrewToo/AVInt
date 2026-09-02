@@ -17,6 +17,7 @@ import { Navbar } from "@/components/navbar"
 import { Button } from "@/components/ui/button"
 import { Tip } from "@/components/ui/tip"
 import { printReportOutput } from "@/lib/report-print"
+import { ReportExportControls } from "@/components/report-export-controls"
 import { supabase } from "@/lib/supabase"
 import {
   computeTaxBundle,
@@ -385,6 +386,7 @@ function EmployedTaxBundleContent() {
                     </p>
                   </div>
                   <div className="flex shrink-0 flex-wrap gap-2 print:hidden">
+                    <ReportExportControls report="tax-bundle" dateFrom={dateFrom} dateTo={dateTo} targetFolder={targetFolder} />
                     <Button variant="outline" size="sm" className="gap-2 rounded text-xs" onClick={downloadCSV}>
                       <Download className="h-3.5 w-3.5" />
                       Export CSV

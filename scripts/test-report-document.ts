@@ -3,6 +3,7 @@ import Module from "node:module"
 import path from "node:path"
 
 import { toReportDocument } from "@/lib/report-document"
+import { rowsToCsv } from "@/lib/report-row-csv"
 
 // Node 25's tsx CJS resolver does not honor the wildcard export used by the
 // renderer's bundled hyphenation package. Production Next/Webpack resolution
@@ -74,6 +75,24 @@ const mapped = toReportDocument("tax-bundle", taxResult, { dateFrom: "2026-01-01
 assert.equal(mapped.title, "Tax Bundle — Schedule C")
 assert.equal(mapped.blocks[0]?.suppressed, true)
 assert.match(mapped.coverage?.statement ?? "", /No records/)
+
+for (const [report, result] of [
+  ["profit-loss", { incomeRows: [{ document_date: "2026-01-01", gross_income: 100, total_amount: 100, currency: "USD" }], expenseRows: [] }],
+  ["income-summary", { income: [{ document_date: "2026-01-01", employer_name: "Acme", total_amount: 100, currency: "USD" }] }],
+  ["expense-summary", { expenses: [{ document_date: "2026-01-01", vendor_name: "Shop", total_amount: 25, currency: "USD" }] }],
+  ["contract-summary", { contracts: [{ document_date: "2026-01-01", counterparty_name: "Acme", total_amount: 500, currency: "USD" }], obligations: {} }],
+  ["key-terms", { docs: [{ document_date: "2026-01-01", counterparty_name: "Acme", total_amount: 500, currency: "USD" }] }],
+] as const) {
+  const document = toReportDocument(report, result, { dateFrom: "2026-01-01", dateTo: "2026-01-31" })
+  assert.ok(document.blocks.some((block) => block.type === "table"), `${report} should produce a table block`)
+  assert.match(document.method ?? "", new RegExp(report))
+}
+
+const csv = rowsToCsv([{ value: "=SUM(A1)", comma: "a,b", multiline: "a\nb", quote: 'a"b' }])
+assert.match(csv, /'=SUM\(A1\)/)
+assert.match(csv, /"a,b"/)
+assert.match(csv, /"a\nb"/)
+assert.match(csv, /"a""b"/)
 
   console.log("report-document tests: 3 passed")
 }

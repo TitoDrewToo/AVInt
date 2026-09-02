@@ -15,7 +15,7 @@ import {
   type BusinessExpenseAssumptions,
 } from "@/lib/report-assumptions"
 import { printReportOutput } from "@/lib/report-print"
-import { ReportPdfDownload } from "@/components/report-pdf-download"
+import { ReportExportControls } from "@/components/report-export-controls"
 import { trackActivationEvent } from "@/lib/analytics"
 import { summarizeCurrencies } from "@/lib/report-utils"
 import { ALL_SC_CATEGORIES, getScheduleCLine } from "@/lib/tax-bundle"
@@ -466,7 +466,7 @@ function BusinessExpenseContent() {
                 <Download className="h-3.5 w-3.5" />
                 Export CSV
               </Button></Tip>
-              <ReportPdfDownload report="business-expense" dateFrom={dateFrom} dateTo={dateTo} targetFolder={targetFolder} />
+              <ReportExportControls report="business-expense" dateFrom={dateFrom} dateTo={dateTo} targetFolder={targetFolder} />
               <Tip text={tier === "free" ? "CSV exports for QuickBooks/Xero are a Pro feature." : quickBooksLayout === "4col" ? "Export for QuickBooks (Date, Description, Credit, Debit)." : "Export for QuickBooks (Date, Description, Amount; expenses negative)."}><Button variant="outline" size="sm" className="gap-2 rounded-md text-xs" onClick={() => void downloadAccountingCSV("quickbooks")} disabled={tier === "free"} title={tier === "free" ? "CSV exports for QuickBooks/Xero are a Pro feature." : undefined}>
                 {tier === "free" ? "QuickBooks (upgrade)" : "QuickBooks CSV"}
               </Button></Tip>

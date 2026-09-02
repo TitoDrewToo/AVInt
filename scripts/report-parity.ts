@@ -184,7 +184,7 @@ async function expenseSummaryRows(userId: string, filters: ReportFilters, source
 
   if (source === "document_fields") {
     let query = supabaseAdmin.from("document_fields")
-      .select("file_id, vendor_name, document_date, total_amount, currency, expense_category, confidence_score, files!inner(filename, document_type)")
+      .select("file_id, source_key, vendor_name, document_date, total_amount, currency, expense_category, confidence_score, files!inner(filename, document_type)")
       .neq("normalization_status", "excluded")
       .order("document_date", { ascending: false })
     if (fileIds.length > 0) query = query.in("file_id", fileIds)
@@ -192,11 +192,11 @@ async function expenseSummaryRows(userId: string, filters: ReportFilters, source
     if (filters.dateTo) query = query.lte("document_date", filters.dateTo)
     const { data, error } = await query
     if (error) throw new Error(error.message)
-    return data ?? []
+    return (data ?? []).map((row) => { const { source_key, ...output } = row; return { ...output, _parityIdentity: `${row.file_id}\u0000${source_key}` } })
   }
 
   let query = supabaseAdmin.from("records")
-    .select("id, file_id, parent_record_id, document_type, occurred_on, amount, currency, category, confidence, files!inner(filename, document_type)")
+    .select("id, file_id, source_key, parent_record_id, document_type, occurred_on, amount, currency, category, confidence, has_user_edits, files!inner(filename, document_type)")
     .in("file_id", fileIds)
     .is("parent_record_id", null)
     .is("excluded_at", null)
@@ -218,6 +218,8 @@ async function expenseSummaryRows(userId: string, filters: ReportFilters, source
     expense_category: row.category,
     confidence_score: row.confidence,
     files: row.files,
+    _parityIdentity: `${row.file_id}\u0000${row.source_key}`,
+    _excludeAmountComparison: row.has_user_edits === true,
   }))
 }
 
@@ -281,27 +283,27 @@ async function profitLossRows(userId: string, filters: ReportFilters, source: "d
   const expenseFileIds = await context.fileIds(["receipt", "invoice"])
   if (source === "document_fields") {
     const incomeRows = incomeFileIds.length === 0 ? [] : await (async () => {
-      let query = supabaseAdmin.from("document_fields").select("document_date, gross_income, net_income, total_amount, currency, employer_name, income_source, files!inner(document_type)").in("file_id", incomeFileIds).neq("normalization_status", "excluded").order("document_date", { ascending: true })
+      let query = supabaseAdmin.from("document_fields").select("file_id, source_key, document_date, gross_income, net_income, total_amount, currency, employer_name, income_source, files!inner(document_type)").in("file_id", incomeFileIds).neq("normalization_status", "excluded").order("document_date", { ascending: true })
       if (filters.dateFrom) query = query.gte("document_date", filters.dateFrom)
       if (filters.dateTo) query = query.lte("document_date", filters.dateTo)
       const { data, error } = await query
       if (error) throw new Error(error.message)
-      return data ?? []
+      return (data ?? []).map((row) => { const { file_id, source_key, ...output } = row; return { ...output, _parityIdentity: `${file_id}\u0000${source_key}` } })
     })()
     const expenseRows = expenseFileIds.length === 0 ? [] : await (async () => {
-      let query = supabaseAdmin.from("document_fields").select("document_date, total_amount, currency, vendor_name, expense_category, files!inner(document_type)").in("file_id", expenseFileIds).neq("normalization_status", "excluded").order("document_date", { ascending: true })
+      let query = supabaseAdmin.from("document_fields").select("file_id, source_key, document_date, total_amount, currency, vendor_name, expense_category, files!inner(document_type)").in("file_id", expenseFileIds).neq("normalization_status", "excluded").order("document_date", { ascending: true })
       if (filters.dateFrom) query = query.gte("document_date", filters.dateFrom)
       if (filters.dateTo) query = query.lte("document_date", filters.dateTo)
       const { data, error } = await query
       if (error) throw new Error(error.message)
-      return data ?? []
+      return (data ?? []).map((row) => { const { file_id, source_key, ...output } = row; return { ...output, _parityIdentity: `${file_id}\u0000${source_key}` } })
     })()
     return { incomeRows, expenseRows }
   }
 
   const queryRecords = async (fileIds: string[]) => {
     if (fileIds.length === 0) return []
-    let query = supabaseAdmin.from("records").select("id, file_id, document_type, occurred_on, amount, currency, category, confidence, files!inner(document_type)").in("file_id", fileIds).is("parent_record_id", null).is("excluded_at", null).order("occurred_on", { ascending: true })
+    let query = supabaseAdmin.from("records").select("id, file_id, source_key, document_type, occurred_on, amount, currency, category, confidence, has_user_edits, files!inner(document_type)").in("file_id", fileIds).is("parent_record_id", null).is("excluded_at", null).order("occurred_on", { ascending: true })
     if (filters.dateFrom) query = query.gte("occurred_on", filters.dateFrom)
     if (filters.dateTo) query = query.lte("occurred_on", filters.dateTo)
     const { data, error } = await query
@@ -320,11 +322,11 @@ async function profitLossRows(userId: string, filters: ReportFilters, source: "d
   const incomeRows = incomeRecords.map((row) => {
     const fields = byRecord.get(row.id) ?? new Map<string, unknown>()
     const documentType = row.document_type ?? valueAsString(fileValue(row.files, "document_type"))
-    return { document_date: row.occurred_on, gross_income: valueAsNumber(fields.get("gross_income") ?? (documentType === "payslip" ? row.amount : null)), net_income: valueAsNumber(fields.get("net_income")), total_amount: valueAsNumber(row.amount), currency: row.currency, employer_name: fields.get("employer_name") ?? null, income_source: fields.get("income_source") ?? null, files: row.files }
+    return { document_date: row.occurred_on, gross_income: valueAsNumber(fields.get("gross_income") ?? (documentType === "payslip" ? row.amount : null)), net_income: valueAsNumber(fields.get("net_income")), total_amount: valueAsNumber(row.amount), currency: row.currency, employer_name: fields.get("employer_name") ?? null, income_source: fields.get("income_source") ?? null, files: row.files, _parityIdentity: `${row.file_id}\u0000${row.source_key}`, _excludeAmountComparison: row.has_user_edits === true }
   })
   const expenseRows = expenseRecords.map((row) => {
     const fields = byRecord.get(row.id) ?? new Map<string, unknown>()
-    return { document_date: row.occurred_on, total_amount: row.amount, currency: row.currency, vendor_name: fields.get("vendor_name") ?? null, expense_category: row.category, files: row.files }
+    return { document_date: row.occurred_on, total_amount: row.amount, currency: row.currency, vendor_name: fields.get("vendor_name") ?? null, expense_category: row.category, files: row.files, _parityIdentity: `${row.file_id}\u0000${row.source_key}`, _excludeAmountComparison: row.has_user_edits === true }
   })
   return { incomeRows, expenseRows }
 }
@@ -478,6 +480,28 @@ function withoutRawJson(value: unknown): unknown {
   return value
 }
 
+function maskEditedAmounts(legacy: unknown, records: unknown): { legacy: unknown; records: unknown; excludedCount: number } {
+  const edited = new Set<string>()
+  function collect(value: unknown) {
+    if (Array.isArray(value)) return value.forEach(collect)
+    if (!value || typeof value !== "object") return
+    const row = value as JsonObject
+    if (row._excludeAmountComparison === true && typeof row._parityIdentity === "string") edited.add(row._parityIdentity)
+    Object.values(row).forEach(collect)
+  }
+  collect(records)
+  function transform(value: unknown): unknown {
+    if (Array.isArray(value)) return value.map(transform)
+    if (!value || typeof value !== "object") return value
+    const row = value as JsonObject
+    const identity = row._parityIdentity
+    const result = Object.fromEntries(Object.entries(row).filter(([key]) => !key.startsWith("_parity") && !key.startsWith("_exclude")).map(([key, entry]) => [key, transform(entry)]))
+    if (typeof identity === "string" && edited.has(identity) && "total_amount" in result) result.total_amount = null
+    return result
+  }
+  return { legacy: transform(legacy), records: transform(records), excludedCount: edited.size }
+}
+
 function diff(left: unknown, right: unknown, path = "", differences: string[] = []): string[] {
   if (Object.is(left, right)) return differences
   if (typeof left !== typeof right || left === null || right === null) {
@@ -546,16 +570,23 @@ const ACCEPTED_INCOME_SUMMARY_DELTA = new Set([
   "income[0].total_amount: null vs 50000",
 ])
 
+// A manual payslip has no document_fields.total_amount; records.amount is its
+// authoritative gross value. This shape is accepted only in profit-loss.
+const ACCEPTED_PROFIT_LOSS_DELTA = new Set([
+  "incomeRows[0].total_amount: null vs 50000",
+])
+
 async function main() {
   const userId = await resolveUserId(userInput)
   const filters = { dateFrom, dateTo, targetFolder }
   if (reportKey === "expense-summary") {
     const legacy = reportFromExpenseRows(await expenseSummaryRows(userId, filters, "document_fields"))
     const records = reportFromExpenseRows(await expenseSummaryRows(userId, filters, "records"))
-    const allDifferences = diff(comparable(legacy), comparable(records))
+    const masked = maskEditedAmounts(legacy, records)
+    const allDifferences = diff(comparable(masked.legacy), comparable(masked.records))
     const acceptedDifferences = allDifferences.filter((difference) => ACCEPTED_BUSINESS_EXPENSE_DELTA.has(difference))
     const differences = allDifferences.filter((difference) => !acceptedDifferences.includes(difference))
-    console.log(JSON.stringify({ userId, report: reportKey, filters, legacy: summarize(legacy), records: summarize(records), matchedCount: Math.min(legacy.expenses.length, records.expenses.length), unmatchedLegacy: [], unmatchedRecords: [], acceptedDifferences, differences }, null, 2))
+    console.log(JSON.stringify({ userId, report: reportKey, filters, legacy: summarize(legacy), records: summarize(records), matchedCount: Math.min(legacy.expenses.length, records.expenses.length), unmatchedLegacy: [], unmatchedRecords: [], amountComparisonExcludedCount: masked.excludedCount, acceptedDifferences, differences }, null, 2))
     if (differences.length > 0) process.exitCode = 1
     return
   }
@@ -572,8 +603,11 @@ async function main() {
   if (reportKey === "profit-loss") {
     const legacy = await profitLossRows(userId, filters, "document_fields")
     const records = await profitLossRows(userId, filters, "records")
-    const differences = diff(comparable(legacy), comparable(records))
-    console.log(JSON.stringify({ userId, report: reportKey, filters, legacy: { incomeCount: legacy.incomeRows.length, expenseCount: legacy.expenseRows.length, result: legacy }, records: { incomeCount: records.incomeRows.length, expenseCount: records.expenseRows.length, result: records }, matchedCount: Math.min(legacy.incomeRows.length, records.incomeRows.length) + Math.min(legacy.expenseRows.length, records.expenseRows.length), unmatchedLegacy: [], unmatchedRecords: [], differences }, null, 2))
+    const masked = maskEditedAmounts(legacy, records)
+    const allDifferences = diff(comparable(masked.legacy), comparable(masked.records))
+    const acceptedDifferences = allDifferences.filter((difference) => ACCEPTED_PROFIT_LOSS_DELTA.has(difference))
+    const differences = allDifferences.filter((difference) => !acceptedDifferences.includes(difference))
+    console.log(JSON.stringify({ userId, report: reportKey, filters, legacy: { incomeCount: legacy.incomeRows.length, expenseCount: legacy.expenseRows.length, result: legacy }, records: { incomeCount: records.incomeRows.length, expenseCount: records.expenseRows.length, result: records }, matchedCount: Math.min(legacy.incomeRows.length, records.incomeRows.length) + Math.min(legacy.expenseRows.length, records.expenseRows.length), unmatchedLegacy: [], unmatchedRecords: [], amountComparisonExcludedCount: masked.excludedCount, acceptedDifferences, differences }, null, 2))
     if (differences.length > 0) process.exitCode = 1
     return
   }

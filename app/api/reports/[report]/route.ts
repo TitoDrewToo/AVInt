@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
 
-import { authorizeReportRequest } from "@/lib/report-auth"
+import { authorizeReportRequest, claimReportExport } from "@/lib/report-auth"
 import { generateQuickBooksCSV, generateXeroCSV } from "@/lib/accounting-csv"
 import { overlapsDateRange } from "@/lib/report-utils"
 import { serverError } from "@/lib/api-error"
@@ -12,6 +12,7 @@ import { InvalidReportFolderError } from "@/lib/report-folder-scope-server"
 import { createReportQueryContext } from "@/lib/report-query-context-server"
 import { accountingExportRows } from "@/lib/report-export-shaping"
 import type { AccountingExportRow } from "@/lib/accounting-csv"
+import { getReportSection } from "@/lib/report-sections"
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -66,6 +67,10 @@ export async function GET(
 
   try {
     const reportContext = await createReportQueryContext(user.id, { dateFrom, dateTo, targetFolder })
+    if (exportFormat) {
+      const claim = await claimReportExport(report, user.id, ent)
+      if ("error" in claim) return claim.error
+    }
     // Shared server engine used by both the JWT route and the MCP connector.
     // Keep the HTTP response format stable while the MCP layer consumes the
     // same user-scoped data and CSV generators.
@@ -79,181 +84,11 @@ export async function GET(
       return NextResponse.json(await getReport(user.id, ent, reportKey, { dateFrom, dateTo, targetFolder }))
     }
 
+    if (["expense-summary", "income-summary", "profit-loss", "contract-summary", "key-terms"].includes(report)) {
+      return NextResponse.json(await getReportSection(report, user.id, reportContext, { dateFrom, dateTo, targetFolder }))
+    }
+
     switch (report) {
-      case "expense-summary": {
-        const fileIds = await reportContext.fileIds(["receipt", "invoice"])
-        if (fileIds.length === 0) return NextResponse.json({ expenses: [] })
-
-        let query = supabaseAdmin
-          .from("records")
-          .select("id, file_id, document_type, occurred_on, amount, currency, category, confidence, files!inner(filename, document_type)")
-          .in("file_id", fileIds)
-          .is("parent_record_id", null)
-          .is("excluded_at", null)
-          .order("occurred_on", { ascending: false })
-
-        if (dateFrom) query = query.gte("occurred_on", dateFrom)
-        if (dateTo) query = query.lte("occurred_on", dateTo)
-
-        const { data, error } = await query
-        if (error) throw new Error(error.message)
-        const records = data ?? []
-        const { data: attributes, error: attributesError } = records.length === 0
-          ? { data: [], error: null }
-          : await supabaseAdmin
-            .from("record_attributes")
-            .select("record_id, value")
-            .in("record_id", records.map((row) => row.id))
-            .eq("field_key", "vendor_name")
-        if (attributesError) throw new Error(attributesError.message)
-        const vendors = new Map((attributes ?? []).map((row) => [row.record_id, row.value]))
-        return NextResponse.json({ expenses: records.map((row) => ({
-          file_id: row.file_id,
-          vendor_name: vendors.get(row.id) ?? null,
-          document_date: row.occurred_on,
-          total_amount: row.amount,
-          currency: row.currency,
-          expense_category: row.category,
-          confidence_score: row.confidence,
-          files: row.files,
-        })) })
-      }
-
-      case "income-summary": {
-        const fileIds = await reportContext.fileIds(["payslip", "income_statement"])
-        if (fileIds.length === 0) return NextResponse.json({ income: [] })
-
-        let query = supabaseAdmin
-          .from("records")
-          .select("id, file_id, document_type, occurred_on, amount, currency, confidence, files!inner(filename, document_type)")
-          .in("file_id", fileIds)
-          .is("parent_record_id", null)
-          .is("excluded_at", null)
-          .order("occurred_on", { ascending: false })
-
-        if (dateFrom) query = query.gte("occurred_on", dateFrom)
-        if (dateTo) query = query.lte("occurred_on", dateTo)
-
-        const { data, error } = await query
-        if (error) throw new Error(error.message)
-        const records = data ?? []
-        const { data: attributes, error: attributesError } = records.length === 0
-          ? { data: [], error: null }
-          : await supabaseAdmin
-            .from("record_attributes")
-            .select("record_id, field_key, value")
-            .in("record_id", records.map((row) => row.id))
-            .in("field_key", ["employer_name", "gross_income", "net_income", "income_source"])
-        if (attributesError) throw new Error(attributesError.message)
-        const byRecord = new Map<string, Map<string, unknown>>()
-        for (const attribute of attributes ?? []) {
-          const fields = byRecord.get(attribute.record_id) ?? new Map<string, unknown>()
-          fields.set(attribute.field_key, attribute.value)
-          byRecord.set(attribute.record_id, fields)
-        }
-        return NextResponse.json({ income: records.map((row) => {
-          const fields = byRecord.get(row.id) ?? new Map<string, unknown>()
-          const documentType = row.document_type ?? row.files?.[0]?.document_type
-          return {
-            file_id: row.file_id,
-            employer_name: fields.get("employer_name") ?? null,
-            document_date: row.occurred_on,
-            gross_income: fields.get("gross_income") ?? (documentType === "payslip" ? row.amount : null),
-            net_income: fields.get("net_income") ?? null,
-            total_amount: row.amount,
-            currency: row.currency,
-            confidence_score: row.confidence,
-            income_source: fields.get("income_source") ?? null,
-            files: row.files,
-          }
-        }) })
-      }
-
-      case "profit-loss": {
-        const incomeFileIds = await reportContext.fileIds(["payslip", "income_statement"])
-        const expenseFileIds = await reportContext.fileIds(["receipt", "invoice"])
-
-        let incomeRows: unknown[] = []
-        let expenseRows: unknown[] = []
-
-        if (incomeFileIds.length > 0) {
-          let incomeQuery = supabaseAdmin
-            .from("records")
-            .select("id, document_type, occurred_on, amount, currency, files!inner(document_type)")
-            .in("file_id", incomeFileIds)
-            .is("parent_record_id", null)
-            .is("excluded_at", null)
-            .order("occurred_on", { ascending: true })
-          if (dateFrom) incomeQuery = incomeQuery.gte("occurred_on", dateFrom)
-          if (dateTo) incomeQuery = incomeQuery.lte("occurred_on", dateTo)
-          const { data, error } = await incomeQuery
-          if (error) throw new Error(error.message)
-          const records = data ?? []
-          const { data: attributes, error: attributesError } = records.length === 0
-            ? { data: [], error: null }
-            : await supabaseAdmin
-              .from("record_attributes")
-              .select("record_id, field_key, value")
-              .in("record_id", records.map((row) => row.id))
-              .in("field_key", ["employer_name", "gross_income", "net_income", "income_source"])
-          if (attributesError) throw new Error(attributesError.message)
-          const byRecord = new Map<string, Map<string, unknown>>()
-          for (const attribute of attributes ?? []) {
-            const fields = byRecord.get(attribute.record_id) ?? new Map<string, unknown>()
-            fields.set(attribute.field_key, attribute.value)
-            byRecord.set(attribute.record_id, fields)
-          }
-          incomeRows = records.map((row) => {
-            const fields = byRecord.get(row.id) ?? new Map<string, unknown>()
-            const documentType = row.document_type ?? row.files?.[0]?.document_type
-            return {
-              document_date: row.occurred_on,
-              gross_income: fields.get("gross_income") ?? (documentType === "payslip" ? row.amount : null),
-              net_income: fields.get("net_income") ?? null,
-              total_amount: row.amount,
-              currency: row.currency,
-              employer_name: fields.get("employer_name") ?? null,
-              income_source: fields.get("income_source") ?? null,
-              files: row.files,
-            }
-          })
-        }
-
-        if (expenseFileIds.length > 0) {
-          let expenseQuery = supabaseAdmin
-            .from("records")
-            .select("id, occurred_on, amount, currency, category, files!inner(document_type)")
-            .in("file_id", expenseFileIds)
-            .is("parent_record_id", null)
-            .is("excluded_at", null)
-            .order("occurred_on", { ascending: true })
-          if (dateFrom) expenseQuery = expenseQuery.gte("occurred_on", dateFrom)
-          if (dateTo) expenseQuery = expenseQuery.lte("occurred_on", dateTo)
-          const { data, error } = await expenseQuery
-          if (error) throw new Error(error.message)
-          const records = data ?? []
-          const { data: attributes, error: attributesError } = records.length === 0
-            ? { data: [], error: null }
-            : await supabaseAdmin
-              .from("record_attributes")
-              .select("record_id, value")
-              .in("record_id", records.map((row) => row.id))
-              .eq("field_key", "vendor_name")
-          if (attributesError) throw new Error(attributesError.message)
-          const vendors = new Map((attributes ?? []).map((row) => [row.record_id, row.value]))
-          expenseRows = records.map((row) => ({
-            document_date: row.occurred_on,
-            total_amount: row.amount,
-            currency: row.currency,
-            vendor_name: vendors.get(row.id) ?? null,
-            expense_category: row.category,
-            files: row.files,
-          }))
-        }
-
-        return NextResponse.json({ incomeRows, expenseRows })
-      }
-
       case "business-expense": {
         const fileIds = await reportContext.fileIds(["receipt", "invoice"])
         if (fileIds.length === 0) {
@@ -288,161 +123,6 @@ export async function GET(
         }
 
         return NextResponse.json({ expenses: data ?? [] })
-      }
-
-      case "contract-summary": {
-        const fileIds = await reportContext.fileIds(["contract", "agreement"])
-        if (fileIds.length === 0) return NextResponse.json({ contracts: [], obligations: {} })
-
-        const { data: records, error: contractErr } = await supabaseAdmin
-          .from("records")
-          .select("id, file_id, occurred_on, period_start, period_end, amount, currency, confidence, files!inner(filename, document_type)")
-          .in("file_id", fileIds)
-          .is("parent_record_id", null)
-          .is("excluded_at", null)
-          .order("occurred_on", { ascending: false })
-
-        if (contractErr) throw new Error(contractErr.message)
-
-        const { data: attributes, error: attributesError } = (records ?? []).length === 0
-          ? { data: [], error: null }
-          : await supabaseAdmin
-            .from("record_attributes")
-            .select("record_id, field_key, value")
-            .in("record_id", (records ?? []).map((row) => row.id))
-            .in("field_key", ["counterparty_name", "invoice_number", "payment_method"])
-        if (attributesError) throw new Error(attributesError.message)
-        const byRecord = new Map<string, Map<string, unknown>>()
-        for (const attribute of attributes ?? []) {
-          const fields = byRecord.get(attribute.record_id) ?? new Map<string, unknown>()
-          fields.set(attribute.field_key, attribute.value)
-          byRecord.set(attribute.record_id, fields)
-        }
-
-        const filteredContracts = (records ?? []).map((row) => {
-          const fields = byRecord.get(row.id) ?? new Map<string, unknown>()
-          return {
-            file_id: row.file_id,
-            counterparty_name: fields.get("counterparty_name") ?? null,
-            document_date: row.occurred_on,
-            period_start: row.period_start,
-            period_end: row.period_end,
-            invoice_number: fields.get("invoice_number") ?? null,
-            total_amount: row.amount,
-            currency: row.currency,
-            payment_method: fields.get("payment_method") ?? null,
-            confidence_score: row.confidence,
-            files: row.files,
-          }
-        }).filter((row) =>
-          overlapsDateRange(
-            {
-              document_date: row.document_date,
-              period_start: row.period_start,
-              period_end: row.period_end,
-            },
-            { dateFrom, dateTo },
-          ),
-        )
-
-        const visibleFileIds = filteredContracts.map((row) => row.file_id)
-        if (visibleFileIds.length === 0) return NextResponse.json({ contracts: [], obligations: {} })
-
-        const { data: obligs, error: obligErr } = await supabaseAdmin
-          .from("payment_obligations")
-          .select("*")
-          .in("file_id", visibleFileIds)
-          .order("due_date", { ascending: true })
-
-        if (obligErr) throw new Error(obligErr.message)
-
-        const obligations: Record<string, unknown[]> = {}
-        for (const row of obligs ?? []) {
-          if (!obligations[row.file_id]) obligations[row.file_id] = []
-          obligations[row.file_id].push(row)
-        }
-
-        return NextResponse.json({ contracts: filteredContracts, obligations })
-      }
-
-      case "key-terms": {
-        const fileIds = await reportContext.fileIds(["contract", "agreement"])
-        if (fileIds.length === 0) return NextResponse.json({ docs: [] })
-
-        const { data: parents, error } = await supabaseAdmin
-          .from("records")
-          .select("id, file_id, occurred_on, period_start, period_end, amount, currency, confidence, files!inner(filename, document_type)")
-          .in("file_id", fileIds)
-          .is("parent_record_id", null)
-          .is("excluded_at", null)
-          .order("occurred_on", { ascending: false })
-
-        if (error) throw new Error(error.message)
-
-        const parentRows = parents ?? []
-        const { data: children, error: childrenError } = parentRows.length === 0
-          ? { data: [], error: null }
-          : await supabaseAdmin
-            .from("records")
-            .select("id, parent_record_id, source_key, amount")
-            .in("parent_record_id", parentRows.map((row) => row.id))
-            .is("excluded_at", null)
-            .order("source_key", { ascending: true })
-        if (childrenError) throw new Error(childrenError.message)
-        const allRecordIds = [...parentRows.map((row) => row.id), ...(children ?? []).map((row) => row.id)]
-        const { data: attributes, error: attributesError } = allRecordIds.length === 0
-          ? { data: [], error: null }
-          : await supabaseAdmin
-            .from("record_attributes")
-            .select("record_id, field_key, value")
-            .in("record_id", allRecordIds)
-        if (attributesError) throw new Error(attributesError.message)
-        const byRecord = new Map<string, Map<string, unknown>>()
-        for (const attribute of attributes ?? []) {
-          const fields = byRecord.get(attribute.record_id) ?? new Map<string, unknown>()
-          fields.set(attribute.field_key, attribute.value)
-          byRecord.set(attribute.record_id, fields)
-        }
-        const childrenByParent = new Map<string, typeof children>()
-        for (const child of children ?? []) {
-          const rows = childrenByParent.get(child.parent_record_id) ?? []
-          rows.push(child)
-          childrenByParent.set(child.parent_record_id, rows)
-        }
-
-        const docs = parentRows.map((row) => {
-          const fields = byRecord.get(row.id) ?? new Map<string, unknown>()
-          const lineItems = (childrenByParent.get(row.id) ?? []).map((child) => ({
-            ...Object.fromEntries(Array.from(byRecord.get(child.id) ?? new Map<string, unknown>()).filter(([key]) => key !== "line_items")),
-            amount: child.amount,
-            quantity: (byRecord.get(child.id) ?? new Map<string, unknown>()).get("quantity") ?? null,
-          }))
-          return {
-            file_id: row.file_id,
-            counterparty_name: fields.get("counterparty_name") ?? null,
-            document_date: row.occurred_on,
-            period_start: row.period_start,
-            period_end: row.period_end,
-            invoice_number: fields.get("invoice_number") ?? null,
-            payment_method: fields.get("payment_method") ?? null,
-            total_amount: row.amount,
-            currency: row.currency,
-            line_items: lineItems,
-            confidence_score: row.confidence,
-            files: row.files,
-          }
-        }).filter((row) =>
-          overlapsDateRange(
-            {
-              document_date: row.document_date,
-              period_start: row.period_start,
-              period_end: row.period_end,
-            },
-            { dateFrom, dateTo },
-          ),
-        )
-
-        return NextResponse.json({ docs })
       }
 
       case "tax-bundle": {

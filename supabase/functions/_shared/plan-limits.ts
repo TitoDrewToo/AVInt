@@ -6,7 +6,7 @@ export const PLAN_LIMITS = {
     documentWindow: "calendar_month",
     softCap: false,
     nearLimitRatio: 0.8,
-    reportExports: 1,
+    reportExports: 5,
     advancedAnalytics: false,
     accountingExports: false,
     customDashboards: false,
@@ -52,7 +52,7 @@ export const PLAN_LIMITS = {
 } as const
 
 export const PLAN_PRICING = {
-  free: { price: "$0", annualPrice: null, featureLines: ["10 documents / month", "Smart Storage + document classification", "Basic dashboard", "1 report export / month"] },
+  free: { price: "$0", annualPrice: null, featureLines: ["10 documents / month", "Smart Storage + document classification", "Basic dashboard", "View every report · 5 exports / month"] },
   day_pass: { price: "$6", annualPrice: null, featureLines: ["50 documents (24-hour access)", "All reports + structured outputs", "Advanced Analytics + Smart & Custom Dashboards", "Export to QuickBooks & Xero"] },
   gift_code: { price: "$6", annualPrice: null, featureLines: ["50 documents (24-hour access)", "All reports + structured outputs", "Advanced Analytics + Smart & Custom Dashboards", "Export to QuickBooks & Xero"] },
   pro: { price: "$12", annualPrice: "$100", featureLines: ["500 documents / month", "All reports + structured outputs", "Advanced Analytics + Smart & Custom Dashboards", "Recurring-expense detection", "Export to QuickBooks & Xero", "Priority processing"] },

@@ -1,6 +1,7 @@
 import type { Entitlement } from "@/lib/entitlement"
 import type { ReportFilters } from "@/lib/report-engine"
 import type { TaxBundleSummary, TaxRow } from "@/lib/tax-bundle"
+import type { ReportSectionResult } from "@/lib/report-sections"
 
 export type ReportBlock =
   | { type: "kpi"; items: { label: string; value: string; note?: string }[] }
@@ -20,9 +21,11 @@ export type ReportDocument = {
   method?: string
 }
 
-type ReportResult =
+type EngineReportResult =
   | { rows: TaxRow[]; summary: TaxBundleSummary; totalOwnedDocs: number; detectedYears: number[]; defaultYear: number | null }
   | { expenses: TaxRow[] }
+type ReportResult = EngineReportResult | ReportSectionResult
+export type ReportKey = "tax-bundle" | "business-expense" | "profit-loss" | "income-summary" | "expense-summary" | "contract-summary" | "key-terms"
 
 function formatAmount(value: number, currency: string): string {
   try {
@@ -44,6 +47,26 @@ function periodFor(filters: ReportFilters, rows: TaxRow[]) {
 
 function suppressed(reason: string) {
   return { suppressed: true, reason }
+}
+
+function sectionDocument(title: string, result: ReportSectionResult, report: Exclude<ReportKey, "tax-bundle" | "business-expense">, filters: ReportFilters, generatedAt: string): ReportDocument {
+  const rows = "expenses" in result ? result.expenses : "income" in result ? result.income : "incomeRows" in result ? [...result.incomeRows, ...result.expenseRows] : "contracts" in result ? result.contracts : result.docs
+  const objects = rows.filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === "object")
+  const dates = objects.map((row) => row.document_date).filter((date): date is string => typeof date === "string").sort()
+  const period = { from: filters.dateFrom || dates[0] || "All dates", to: filters.dateTo || dates.at(-1) || "All dates" }
+  const reason = `No ${title.toLowerCase()} rows were returned for this reporting period; this block is not stated as zero.`
+  const columns = report === "profit-loss" ? ["Date", "Type", "Amount", "Currency"] : report === "contract-summary" || report === "key-terms" ? ["Date", "Counterparty", "Amount", "Currency"] : ["Date", report === "income-summary" ? "Employer" : "Vendor", "Amount", "Currency"]
+  const tableRows = report === "profit-loss"
+    ? objects.map((row) => [String(row.document_date ?? ""), "gross_income" in row ? "Income" : "Expense", (row.gross_income ?? row.total_amount ?? null) as string | number | null, (row.currency ?? null) as string | null])
+    : objects.map((row) => [String(row.document_date ?? ""), (row.employer_name ?? row.vendor_name ?? row.counterparty_name ?? null) as string | null, (row.total_amount ?? null) as string | number | null, (row.currency ?? null) as string | null])
+  const amount = objects.reduce((sum, row) => { const value = row.total_amount ?? row.gross_income; return sum + (typeof value === "number" ? value : Number(value) || 0) }, 0)
+  const currency = String(objects.find((row) => row.currency)?.currency ?? "USD")
+  const titleMap: Record<typeof report, string> = { "profit-loss": "Profit & Loss", "income-summary": "Income Summary", "expense-summary": "Expense Summary", "contract-summary": "Contract Summary", "key-terms": "Key Terms" }
+  return { title: titleMap[report], subtitle: `${period.from} to ${period.to}`, period, generatedAt, coverage: { statement: objects.length > 0 ? `Figures cover the rows returned for ${period.from} through ${period.to}.` : `No rows were returned for ${period.from} through ${period.to}.`, complete: objects.length > 0 }, blocks: [
+    objects.length > 0 ? { type: "kpi", items: [{ label: "Rows", value: String(objects.length) }, { label: "Amount", value: formatAmount(amount, currency) }] } : { type: "kpi", items: [], ...suppressed(reason) },
+    objects.length > 0 ? { type: "table", title: `${titleMap[report]} detail`, columns, rows: tableRows } : { type: "table", title: `${titleMap[report]} detail`, columns, rows: [], ...suppressed(reason) },
+    { type: "note", text: `Method: this document uses the existing ${report} JSON report result. No new data source or calculation is used for PDF output.` },
+  ], method: `Source: Smart Storage ${report} report engine.` }
 }
 
 function taxDocument(result: Extract<ReportResult, { rows: TaxRow[] }>, filters: ReportFilters, generatedAt: string): ReportDocument {
@@ -117,13 +140,14 @@ function businessDocument(result: Extract<ReportResult, { expenses: TaxRow[] }>,
 }
 
 export function toReportDocument(
-  report: "tax-bundle" | "business-expense",
+  report: ReportKey,
   result: ReportResult,
   filters: ReportFilters = {},
   generatedAt = new Date().toISOString(),
 ): ReportDocument {
-  if (report === "tax-bundle" && "rows" in result) return taxDocument(result, filters, generatedAt)
-  if (report === "business-expense" && "expenses" in result) return businessDocument(result, filters, generatedAt)
+  if (report === "tax-bundle" && "rows" in result) return taxDocument(result as Extract<EngineReportResult, { rows: TaxRow[] }>, filters, generatedAt)
+  if (report === "business-expense" && "expenses" in result) return businessDocument(result as Extract<EngineReportResult, { expenses: TaxRow[] }>, filters, generatedAt)
+  if (report !== "tax-bundle" && report !== "business-expense") return sectionDocument(report.replaceAll("-", " "), result as ReportSectionResult, report, filters, generatedAt)
   throw new Error(`Report result does not match ${report}`)
 }
 

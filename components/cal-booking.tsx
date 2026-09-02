@@ -148,7 +148,7 @@ export function CalBookingLink({ name, email, className = "", onUnavailable }: {
 
   const config = JSON.stringify({ ...(name ? { name } : {}), ...(email ? { email } : {}) })
 
-  return <button type="button" data-cal-link={calLink} data-cal-config={config} onClick={openCalendar} disabled={loading} className={`inline-flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-4 py-2.5 text-sm font-medium text-primary transition-colors hover:border-primary/60 hover:bg-primary/15 disabled:cursor-wait disabled:opacity-70 ${className}`}>
+  return <button type="button" data-cal-link={calLink} data-cal-config={config} onClick={openCalendar} disabled={loading} className={`cw-button-flow inline-flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-4 py-2.5 text-sm font-medium text-primary transition-colors hover:border-primary/60 hover:bg-primary/15 disabled:cursor-wait disabled:opacity-70 ${className}`}>
     <CalendarDays className="h-4 w-4" />
     {loading ? "Opening calendar…" : "Book a call"}
     <ArrowUpRight className="h-4 w-4" />

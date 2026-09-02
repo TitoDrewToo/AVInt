@@ -19,6 +19,7 @@ function withPrefill(name?: string, email?: string): string | null {
 
 let embedScriptPromise: Promise<void> | null = null
 let calInitialized = false
+let nextModalUid = Date.now()
 
 type CalApi = ((...args: unknown[]) => void) & { q?: unknown[]; t?: Date }
 
@@ -87,6 +88,7 @@ export function CalBookingLink({ name, email, className = "", onUnavailable }: {
   const href = withPrefill(name, email)
   const calLink = toCalLink(href ?? undefined)
   const loadingRef = useRef(false)
+  const modalUid = useRef(++nextModalUid)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
@@ -111,7 +113,7 @@ export function CalBookingLink({ name, email, className = "", onUnavailable }: {
       await loadCalEmbed()
       const cal = window.Cal as CalApi | undefined
       if (!cal) throw new Error("The calendar embed did not initialise")
-      cal("modal", { calLink, config: JSON.parse(config) })
+      cal("modal", { calLink, config: JSON.parse(config), uid: modalUid.current })
     } catch {
       onUnavailable?.()
     } finally {

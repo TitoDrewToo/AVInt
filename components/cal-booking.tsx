@@ -104,7 +104,6 @@ export function CalBookingLink({ name, email, className = "", onUnavailable }: {
 
   async function openCalendar() {
     if (loadingRef.current) return
-    if (typeof window.Cal === "function") return
 
     loadingRef.current = true
     setLoading(true)

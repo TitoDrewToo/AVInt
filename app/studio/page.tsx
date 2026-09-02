@@ -60,17 +60,6 @@ const capabilities = [
   },
 ]
 
-function InternalButton({ href, children }: { href: string; children: React.ReactNode }) {
-  return (
-    <Link href={href}>
-      <Button variant="outline" size="lg" className="cw-button-flow glass-surface-sm rounded-xl hover:text-primary">
-        {children}
-        <ArrowUpRight className="h-4 w-4" />
-      </Button>
-    </Link>
-  )
-}
-
 export default function StudioPage() {
   return (
     <div className="relative flex min-h-screen flex-col">
@@ -115,8 +104,7 @@ export default function StudioPage() {
                   <a href="#studio-inquiry"><Button size="lg" className="cw-button-flow rounded-xl bg-primary text-primary-foreground hover:bg-primary/90">Start a project<ArrowUpRight className="h-4 w-4" /></Button></a>
                   <span className="select-text text-xs text-muted-foreground">or email developer@avintph.com</span>
                 </div>
-                <CalBookingLink />
-                <InternalButton href="/products/chroma-fairy">See a live build</InternalButton>
+                <CalBookingLink className="glass-surface-sm rounded-xl border bg-background shadow-xs hover:bg-accent hover:text-primary" />
               </div>
             </div>
           </div>

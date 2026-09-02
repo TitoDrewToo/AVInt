@@ -2,7 +2,6 @@ import type { Entitlement } from "@/lib/entitlement"
 import type { ReportFilters } from "@/lib/report-engine"
 import type { TaxBundleSummary, TaxRow } from "@/lib/tax-bundle"
 import type { ReportSectionResult } from "@/lib/report-sections"
-import { summarizeCurrencies } from "@/lib/report-utils"
 
 export type ReportBlock =
   | { type: "kpi"; items: { label: string; value: string; note?: string }[] }
@@ -28,11 +27,12 @@ type EngineReportResult =
 type ReportResult = EngineReportResult | ReportSectionResult
 export type ReportKey = "tax-bundle" | "business-expense" | "profit-loss" | "income-summary" | "expense-summary" | "contract-summary" | "key-terms"
 
-function formatAmount(value: number, currency: string): string {
+function formatAmount(value: number, currency: string | null): string {
+  if (!currency) return new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)
   try {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: currency || "USD" }).format(value)
+    return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(value)
   } catch {
-    return `${currency || "USD"} ${value.toFixed(2)}`
+    return `${currency} ${value.toFixed(2)}`
   }
 }
 
@@ -57,10 +57,9 @@ function sectionDocument(title: string, result: ReportSectionResult, report: Exc
   const dates = objects.map((row) => row.document_date).filter((date): date is string => typeof date === "string").sort()
   const period = { from: filters.dateFrom || dates[0] || "All dates", to: filters.dateTo || dates.at(-1) || "All dates" }
   const reason = `No ${title.toLowerCase()} rows were returned for this reporting period; this block is not stated as zero.`
-  const currencySummary = summarizeCurrencies(objects.map((row) => ({ currency: typeof row.currency === "string" ? row.currency : null, total_amount: typeof row.total_amount === "number" ? row.total_amount : null, gross_income: typeof row.gross_income === "number" ? row.gross_income : null })))
   const byCurrency = new Map<string, { income: number; expenses: number; total: number }>()
   for (const row of objects) {
-    const currency = String(row.currency ?? "USD").toUpperCase()
+    const currency = typeof row.currency === "string" && row.currency.trim() ? row.currency.trim().toUpperCase() : "UNSPECIFIED"
     const bucket = byCurrency.get(currency) ?? { income: 0, expenses: 0, total: 0 }
     const value = Number(row.total_amount ?? row.gross_income)
     const amount = Number.isFinite(value) ? value : 0
@@ -70,6 +69,9 @@ function sectionDocument(title: string, result: ReportSectionResult, report: Exc
     } else bucket.total += amount
     byCurrency.set(currency, bucket)
   }
+  const currencyLabels = Array.from(byCurrency.keys()).map((currency) => currency === "UNSPECIFIED" ? "Unspecified currency" : currency)
+  const hasMixedCurrency = byCurrency.size > 1
+  const hasUnspecifiedCurrency = byCurrency.has("UNSPECIFIED")
   const columns = isProfitLoss ? ["Date", "Type", "Amount", "Currency"] : report === "contract-summary" || report === "key-terms" ? ["Date", "Counterparty", "Amount", "Currency"] : ["Date", report === "income-summary" ? "Employer" : "Vendor", "Amount", "Currency"]
   const tableRows = report === "profit-loss"
     ? objects.map((row) => [String(row.document_date ?? ""), "gross_income" in row ? "Income" : "Expense", (row.gross_income ?? row.total_amount ?? null) as string | number | null, (row.currency ?? null) as string | null])
@@ -77,16 +79,19 @@ function sectionDocument(title: string, result: ReportSectionResult, report: Exc
   const titleMap: Record<typeof report, string> = { "profit-loss": "Profit & Loss", "income-summary": "Income Summary", "expense-summary": "Expense Summary", "contract-summary": "Contract Summary", "key-terms": "Key Terms" }
   const kpiItems = isProfitLoss
     ? Array.from(byCurrency.entries()).flatMap(([currency, values]) => [
-        { label: `Income · ${currency}`, value: formatAmount(values.income, currency) },
-        { label: `Expenses · ${currency}`, value: formatAmount(values.expenses, currency) },
-        { label: `Net · ${currency}`, value: formatAmount(values.income - values.expenses, currency) },
+        { label: `Income · ${currency === "UNSPECIFIED" ? "Unspecified currency" : currency}`, value: formatAmount(values.income, currency === "UNSPECIFIED" ? null : currency) },
+        { label: `Expenses · ${currency === "UNSPECIFIED" ? "Unspecified currency" : currency}`, value: formatAmount(values.expenses, currency === "UNSPECIFIED" ? null : currency) },
+        { label: `Net · ${currency === "UNSPECIFIED" ? "Unspecified currency" : currency}`, value: formatAmount(values.income - values.expenses, currency === "UNSPECIFIED" ? null : currency) },
       ])
-    : Array.from(byCurrency.entries()).map(([currency, values]) => ({ label: `Total · ${currency}`, value: formatAmount(values.total, currency) }))
-  const mixedCurrencyNote = currencySummary.mixedCurrency ? { type: "note" as const, text: `Mixed currencies detected (${currencySummary.currencies.join(", ")}). Values are shown separately by currency; no combined total is stated.` } : null
+    : Array.from(byCurrency.entries()).map(([currency, values]) => ({ label: `Total · ${currency === "UNSPECIFIED" ? "Unspecified currency" : currency}`, value: formatAmount(values.total, currency === "UNSPECIFIED" ? null : currency) }))
+  const notes = [
+    hasMixedCurrency ? `Mixed currencies detected (${currencyLabels.join(", ")}). Values are shown separately by bucket; no combined total is stated.` : null,
+    hasUnspecifiedCurrency ? "Rows with no currency are reported separately as Unspecified currency and are not combined with any currency total." : null,
+  ].filter((text): text is string => Boolean(text))
   const method = `Method: this document maps the existing ${report} JSON result. Currency groups are kept separate${isProfitLoss ? ", and profit, expense, and net values are calculated independently per currency" : ""}; no cross-currency total is calculated.`
   return { title: titleMap[report], subtitle: `${period.from} to ${period.to}`, period, generatedAt, coverage: { statement: objects.length > 0 ? `Figures cover the rows returned for ${period.from} through ${period.to}.` : `No rows were returned for ${period.from} through ${period.to}.`, complete: objects.length > 0 }, blocks: [
     objects.length > 0 ? { type: "kpi", items: kpiItems } : { type: "kpi", items: [], ...suppressed(reason) },
-    ...(mixedCurrencyNote ? [mixedCurrencyNote] : []),
+    ...notes.map((text) => ({ type: "note" as const, text })),
     objects.length > 0 ? { type: "table", title: `${titleMap[report]} detail`, columns, rows: tableRows } : { type: "table", title: `${titleMap[report]} detail`, columns, rows: [], ...suppressed(reason) },
     { type: "note", text: method },
   ], method: `Source: Smart Storage ${report} report engine; currency-safe document mapping.` }

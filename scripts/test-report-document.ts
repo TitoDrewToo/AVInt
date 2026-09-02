@@ -120,6 +120,20 @@ const singleDocument = toReportDocument("expense-summary", { expenses: [{ docume
 const singleKpi = singleDocument.blocks.find((block) => block.type === "kpi")
 assert.deepEqual(singleKpi?.type === "kpi" ? singleKpi.items : [], [{ label: "Total · USD", value: "$19.99" }])
 
+const unspecifiedDocument = toReportDocument("expense-summary", { expenses: [
+  { document_date: "2026-08-01", total_amount: 100, currency: "PHP" },
+  { document_date: "2026-08-02", total_amount: 10, currency: "USD" },
+  { document_date: "2026-08-03", total_amount: 7, currency: null },
+] }, {})
+const unspecifiedKpi = unspecifiedDocument.blocks.find((block) => block.type === "kpi")
+assert.deepEqual(unspecifiedKpi?.type === "kpi" ? unspecifiedKpi.items : [], [
+  { label: "Total · PHP", value: "₱100.00" },
+  { label: "Total · USD", value: "$10.00" },
+  { label: "Total · Unspecified currency", value: "7.00" },
+])
+assert.match(JSON.stringify(unspecifiedDocument), /Unspecified currency/)
+assert.ok(!JSON.stringify(unspecifiedDocument).includes("$17.00"), "unknown-currency amounts must not enter USD totals")
+
 const emptySection = toReportDocument("expense-summary", { expenses: [] }, {})
 const emptyKpi = emptySection.blocks.find((block) => block.type === "kpi")
 assert.equal(emptyKpi?.suppressed, true)

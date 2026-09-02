@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 import Link from "next/link"
-import { ArrowUpRight, Database, LayoutDashboard, Palette, ShieldCheck, Sparkles, Store, Workflow } from "lucide-react"
+import { ArrowUpRight, ChartColumn, Database, LayoutDashboard, Palette, ShieldCheck, Sparkles, Store, Workflow } from "lucide-react"
 import { Footer } from "@/components/footer"
 import { HomeDefaultSphere } from "@/components/home-default-sphere"
 import { Navbar } from "@/components/navbar"
@@ -36,6 +36,11 @@ const capabilities = [
     icon: <Database className="h-5 w-5" />,
     title: "Custom ingestion → intelligence systems",
     description: "The engine behind Smart Storage, built for any workflow: turn your documents, forms, or data into structured, usable output. We shape it to how your business actually runs.",
+  },
+  {
+    icon: <ChartColumn className="h-5 w-5" />,
+    title: "Analytics & reporting",
+    description: "Dashboards and reports built on your own data — what people actually look at, what converts, what changed month on month. A figure only appears over a period its data genuinely covers, so a number you're shown is a number you can trust.",
   },
   {
     icon: <LayoutDashboard className="h-5 w-5" />,

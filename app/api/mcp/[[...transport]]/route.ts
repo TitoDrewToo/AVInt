@@ -3,7 +3,7 @@ import { z } from "zod"
 import { NextRequest, NextResponse } from "next/server"
 
 import { computeEntitlement } from "@/lib/entitlement"
-import { entitlementForUser, OAuthAccountRequiredError, resolveOAuthToken, supabaseAdmin } from "@/lib/mcp-auth"
+import { entitlementForUser, OAuthAccountRequiredError, resolveOAuthToken, supabaseAdmin, withMcpStage } from "@/lib/mcp-auth"
 import { MCP_CONNECTOR_ENABLED, MCP_OAUTH_ENABLED, MCP_RATE_LIMITS, oauthProtectedResourceUrl, upgradeMessage } from "@/lib/mcp-config"
 import { checkRateLimit, type RateLimitBucket } from "@/lib/rate-limit"
 import { ingestFiles } from "@/lib/smart-storage-ingest"
@@ -33,18 +33,24 @@ function limitedResult(message: string) {
 }
 
 async function toolGuard(userId: string, entitlement: ReturnType<typeof computeEntitlement>, tool: "ingest" | "report" | "export" | "profile") {
-  if (entitlement.tier !== "pro" && entitlement.tier !== "business") {
-    return featureResult(`The Claude connector is a Pro feature — contact AVIntelligence at ${process.env.NEXT_PUBLIC_APP_URL ?? "https://www.avintph.com"}/studio#studio-inquiry.`)
-  }
-  const config = MCP_RATE_LIMITS[tool]
-  const bucket = `mcp-${tool}` as RateLimitBucket
-  if (!(await checkRateLimit(bucket, userId, config.windowSeconds, config.maxCalls))) {
-    return limitedResult(`You've reached the ${tool} connector burst limit (${config.maxCalls} calls).`)
-  }
-  if (tool === "ingest" && !(await checkRateLimit("mcp-ingest-global", "global", MCP_RATE_LIMITS.globalIngest.windowSeconds, MCP_RATE_LIMITS.globalIngest.maxCalls))) {
-    return limitedResult("Smart Storage is busy processing a high volume of uploads; please retry in a moment.")
-  }
-  return null
+  return withMcpStage(`toolGuard_${tool}_rate_limit`, async () => {
+    if (entitlement.tier !== "pro" && entitlement.tier !== "business") {
+      return featureResult(`The Claude connector is a Pro feature — contact AVIntelligence at ${process.env.NEXT_PUBLIC_APP_URL ?? "https://www.avintph.com"}/studio#studio-inquiry.`)
+    }
+    const config = MCP_RATE_LIMITS[tool]
+    const bucket = `mcp-${tool}` as RateLimitBucket
+    if (!(await checkRateLimit(bucket, userId, config.windowSeconds, config.maxCalls))) {
+      return limitedResult(`You've reached the ${tool} connector burst limit (${config.maxCalls} calls).`)
+    }
+    if (tool === "ingest" && !(await checkRateLimit("mcp-ingest-global", "global", MCP_RATE_LIMITS.globalIngest.windowSeconds, MCP_RATE_LIMITS.globalIngest.maxCalls))) {
+      return limitedResult("Smart Storage is busy processing a high volume of uploads; please retry in a moment.")
+    }
+    return null
+  })
+}
+
+async function timedTool<T>(name: string, operation: () => Promise<T>): Promise<T> {
+  return withMcpStage(`tool_handler_${name}`, operation)
 }
 
 function buildHandler(userId: string, entitlement: ReturnType<typeof computeEntitlement>) {
@@ -53,23 +59,23 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
       title: "Smart Storage ingest",
       description: "Upload up to 6 financial documents (receipts, invoices, payslips, statements) to the signed-in AVIntelligence user's own Smart Storage, prescan them, and return normalized structured records. Operates only on the authenticated user's account.",
       inputSchema: z.object({ files: z.array(fileSchema).min(1).max(6) }),
-    }, async ({ files }) => {
+    }, async ({ files }) => timedTool("smart_storage.ingest", async () => {
       const blocked = await toolGuard(userId, entitlement, "ingest")
       if (blocked) return blocked
       const result = await ingestFiles(userId, entitlement, files)
       return { content: [{ type: "text", text: JSON.stringify({ records: result }, null, 2) }] }
-    })
+    }))
 
     server.registerTool("smart_storage.profile", {
       title: "Smart Storage data profile",
       description: "Read-only. Describe the signed-in user's current normalized data model, available document types, currencies, readiness, and recent records. Use this before suggesting a dashboard visual or other custom output.",
       inputSchema: z.object({}),
-    }, async () => {
+    }, async () => timedTool("smart_storage.profile", async () => {
       const blocked = await toolGuard(userId, entitlement, "profile")
       if (blocked) return blocked
       const profile = await buildDashboardAIContext(userId)
       return { content: [{ type: "text", text: JSON.stringify(profile, null, 2) }] }
-    })
+    }))
 
     server.registerTool("smart_storage.virtual_model", {
       title: "Smart Storage virtual data model",
@@ -81,30 +87,30 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
         fieldKey: z.string().max(120).optional(),
         customOnly: z.boolean().optional().default(false),
       }),
-    }, async ({ search, status, documentType, fieldKey, customOnly }) => {
+    }, async ({ search, status, documentType, fieldKey, customOnly }) => timedTool("smart_storage.virtual_model", async () => {
       const blocked = await toolGuard(userId, entitlement, "profile")
       if (blocked) return blocked
       const model = await readVirtualModel(userId, { search, status, documentType, fieldKey, customOnly })
       return { content: [{ type: "text", text: JSON.stringify({ ...model, bounded: true, maxRecords: 40, truncationGuidance: model.truncated ? "Results are partial. Narrow by status, documentType, fieldKey, or search before drawing conclusions." : null }, null, 2) }] }
-    })
+    }))
 
     server.registerTool("smart_storage.report", {
       title: "Smart Storage report",
       description: "Read-only. Compute a tax bundle (Schedule C-style) or business-expense report over the signed-in AVIntelligence user's own stored documents, optionally scoped to a date period and folder (including descendants). Returns JSON; does not modify any data.",
       inputSchema: z.object({ type: z.enum(["tax_bundle", "business_expense"]), period: periodSchema, includeRows: z.boolean().optional().default(false) }),
-    }, async ({ type, period, includeRows }) => {
+    }, async ({ type, period, includeRows }) => timedTool("smart_storage.report", async () => {
       const blocked = await toolGuard(userId, entitlement, "report")
       if (blocked) return blocked
       const report = type === "tax_bundle" ? "tax-bundle" : "business-expense"
       const result = await getReport(userId, entitlement, report, period ?? {})
       return { content: [{ type: "text", text: JSON.stringify(shapeMcpReportResult(result, includeRows), null, 2) }] }
-    })
+    }))
 
     server.registerTool("smart_storage.export", {
       title: "Smart Storage export",
       description: "Read-only. Generate import-ready accounting file text (QuickBooks 3-col, QuickBooks 4-col, or Xero) from the signed-in AVIntelligence user's own stored expenses, optionally scoped to a date period and folder (including descendants). Returns CSV text; does not modify any data.",
       inputSchema: z.object({ target: z.enum(["quickbooks_3col", "quickbooks_4col", "xero"]), period: periodSchema }),
-    }, async ({ target, period }) => {
+    }, async ({ target, period }) => timedTool("smart_storage.export", async () => {
       const blocked = await toolGuard(userId, entitlement, "export")
       if (blocked) return blocked
       if (!PLAN_LIMITS[entitlement.tier].accountingExports) return capResult(`Accounting export isn't available on the ${entitlement.tier} plan; your records are saved. Contact AVIntelligence at ${process.env.NEXT_PUBLIC_APP_URL ?? "https://www.avintph.com"}/studio#studio-inquiry.`)
@@ -119,7 +125,7 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
       }
       const report = await getExport(userId, entitlement, "tax-bundle", target, period ?? {})
       return { content: [{ type: "text", text: report }] }
-    })
+    }))
   }, {
     serverInfo: { name: "avintelligence-smart-storage", version: "1.0.0" },
     instructions: [
@@ -134,6 +140,9 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
 
 async function handle(req: NextRequest) {
   if (!MCP_CONNECTOR_ENABLED) return NextResponse.json({ error: "Not found" }, { status: 404 })
+  const requestStartedAt = Date.now()
+  console.info(`[mcp-stage] stage=request_received elapsed_ms=0 method=${req.method}`)
+  console.info(`[mcp-stage] stage=resolveOAuthToken_start elapsed_ms=${Date.now() - requestStartedAt}`)
   let identity: { userId: string } | null
   try {
     identity = await resolveOAuthToken(req)
@@ -150,7 +159,7 @@ async function handle(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers })
   }
   try {
-    const entitlement = await entitlementForUser(identity.userId)
+    const entitlement = await withMcpStage("entitlementForUser_route", () => entitlementForUser(identity.userId))
     return buildHandler(identity.userId, entitlement)(req)
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "MCP request failed" }, { status: 500 })

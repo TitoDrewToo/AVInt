@@ -24,6 +24,23 @@ function bearerValue(value: string | null) {
 
 const oauthJwks = new Map<string, ReturnType<typeof createRemoteJWKSet>>()
 
+export function logMcpStage(stage: string, startedAt: number, outcome = "complete") {
+  console.info(`[mcp-stage] stage=${stage} elapsed_ms=${Date.now() - startedAt} outcome=${outcome}`)
+}
+
+export async function withMcpStage<T>(stage: string, operation: () => Promise<T>): Promise<T> {
+  const startedAt = Date.now()
+  console.info(`[mcp-stage] stage=${stage} event=start`)
+  try {
+    const result = await operation()
+    logMcpStage(stage, startedAt)
+    return result
+  } catch (error) {
+    logMcpStage(stage, startedAt, "failed")
+    throw error
+  }
+}
+
 function getOAuthJwks(issuer: string) {
   let jwks = oauthJwks.get(issuer)
   if (!jwks) {
@@ -34,35 +51,44 @@ function getOAuthJwks(issuer: string) {
 }
 
 async function emailFromOAuthClaims(payload: JWTPayload) {
-  if (typeof payload.email === "string" && payload.email.trim()) return payload.email.trim().toLowerCase()
-  if (typeof payload.sub !== "string" || !payload.sub) return null
-  const workos = getWorkOSClient()
-  if (!workos) return null
-  const user = await workos.userManagement.getUser(payload.sub)
-  return user.email?.trim().toLowerCase() || null
+  return withMcpStage("emailFromOAuthClaims", async () => {
+    if (typeof payload.email === "string" && payload.email.trim()) return payload.email.trim().toLowerCase()
+    if (typeof payload.sub !== "string" || !payload.sub) return null
+    const subject = payload.sub
+    const workos = getWorkOSClient()
+    if (!workos) return null
+    const user = await withMcpStage("workos_userManagement_getUser", () => workos.userManagement.getUser(subject))
+    return user.email?.trim().toLowerCase() || null
+  })
 }
 
 export async function resolveOAuthToken(req: Request): Promise<{ userId: string } | null> {
-  if (!MCP_OAUTH_ENABLED) return null
+  const startedAt = Date.now()
+  let outcome = "complete"
   const token = bearerValue(req.headers.get("authorization"))
-  if (!token) return null
   const issuer = workosIssuer()
   const resource = mcpResourceUrl()
-  if (!issuer || !resource || !process.env.WORKOS_API_KEY || !process.env.WORKOS_CLIENT_ID) return null
   try {
-    const { payload } = await jwtVerify(token, getOAuthJwks(issuer), { issuer, audience: resource })
+    if (!MCP_OAUTH_ENABLED) return null
+    if (!token) return null
+    if (!issuer || !resource || !process.env.WORKOS_API_KEY || !process.env.WORKOS_CLIENT_ID) return null
+    const { payload } = await withMcpStage("jwtVerify_JWKS", async () => jwtVerify(token, getOAuthJwks(issuer), { issuer, audience: resource }))
     const email = await emailFromOAuthClaims(payload)
     if (!email) throw new OAuthAccountRequiredError()
-    const { data: userId, error } = await supabaseAdmin.rpc("get_user_id_by_email", { p_email: email })
+    const { data: userId, error } = await withMcpStage("get_user_id_by_email_RPC", async () => {
+      const result = await supabaseAdmin.rpc("get_user_id_by_email", { p_email: email })
+      return result
+    })
     if (error) throw new Error(error.message)
     if (!userId) throw new OAuthAccountRequiredError()
     return { userId }
   } catch (error) {
+    outcome = "failed"
     if (error instanceof OAuthAccountRequiredError) throw error
     // Diagnostic (observability-first): surface WHY jwtVerify rejected the token.
     // Never logs the token or any secret — only claim identifiers and the jose code.
     try {
-      const claims = decodeJwt(token)
+      const claims = decodeJwt(token ?? "")
       const audValue = Array.isArray(claims.aud) ? claims.aud.join(",") : claims.aud
       console.error("[mcp-oauth] token verify failed", {
         code: (error as { code?: string })?.code ?? null,
@@ -79,22 +105,26 @@ export async function resolveOAuthToken(req: Request): Promise<{ userId: string 
       })
     }
     return null
+  } finally {
+    logMcpStage("resolveOAuthToken", startedAt, outcome)
   }
 }
 
 export async function entitlementForUser(userId: string): Promise<Entitlement> {
-  const { data, error } = await supabaseAdmin.from("subscriptions").select("status, plan, current_period_end").eq("user_id", userId).maybeSingle()
-  if (error) throw new Error(error.message)
-  const subscriptionEntitlement = computeEntitlement(data)
-  if (subscriptionEntitlement.isActive) return subscriptionEntitlement
-  const { data: firmClient, error: firmError } = await supabaseAdmin
-    .from("firm_clients")
-    .select("created_at, firms!inner(status)")
-    .eq("user_id", userId)
-    .eq("firms.status", "active")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  if (firmError) throw new Error(firmError.message)
-  return computeFirmClientEntitlement(firmClient?.created_at)
+  return withMcpStage("entitlementForUser", async () => {
+    const { data, error } = await supabaseAdmin.from("subscriptions").select("status, plan, current_period_end").eq("user_id", userId).maybeSingle()
+    if (error) throw new Error(error.message)
+    const subscriptionEntitlement = computeEntitlement(data)
+    if (subscriptionEntitlement.isActive) return subscriptionEntitlement
+    const { data: firmClient, error: firmError } = await supabaseAdmin
+      .from("firm_clients")
+      .select("created_at, firms!inner(status)")
+      .eq("user_id", userId)
+      .eq("firms.status", "active")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (firmError) throw new Error(firmError.message)
+    return computeFirmClientEntitlement(firmClient?.created_at)
+  })
 }

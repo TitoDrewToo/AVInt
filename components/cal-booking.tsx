@@ -36,7 +36,6 @@ function bootstrapCal() {
 function loadCalEmbed(): Promise<void> {
   if (typeof window === "undefined") return Promise.reject(new Error("Calendar is only available in a browser"))
   bootstrapCal()
-  initializeCal()
   if (embedScriptPromise) return embedScriptPromise
   const promise = new Promise<void>((resolve, reject) => {
     const existing = document.querySelector<HTMLScriptElement>('script[data-cal-embed="true"]')
@@ -59,6 +58,7 @@ function loadCalEmbed(): Promise<void> {
   })
 
   embedScriptPromise = promise
+  initializeCal()
   return promise
 }
 

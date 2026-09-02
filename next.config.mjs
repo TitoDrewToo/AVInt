@@ -1,7 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   outputFileTracingIncludes: {
-    "/**": ["./docs/System_Journal.md"],
+    "/**": [
+      "./docs/System_Journal.md",
+      "./node_modules/.pnpm/pdfkit@*/node_modules/pdfkit/js/standard-fonts/**",
+      "./node_modules/.pnpm/pdfkit@*/node_modules/pdfkit/js/data/**",
+    ],
   },
   allowedDevOrigins: ["192.168.254.175"],
   images: {

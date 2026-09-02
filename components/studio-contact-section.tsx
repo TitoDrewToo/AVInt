@@ -3,12 +3,13 @@
 import { useState } from "react"
 import { CalBookingLink } from "@/components/cal-booking"
 import { StudioInquiryForm } from "@/components/studio-inquiry-form"
+import { getStudioContactState } from "@/components/studio-contact-state"
 
-const hasBookingUrl = Boolean(process.env.NEXT_PUBLIC_CALCOM_BOOKING_URL?.trim())
+const initialState = getStudioContactState(process.env.NEXT_PUBLIC_CALCOM_BOOKING_URL)
 
 export function StudioContactSection() {
-  const [bookingAvailable, setBookingAvailable] = useState(hasBookingUrl)
-  const [showForm, setShowForm] = useState(!hasBookingUrl)
+  const [bookingAvailable, setBookingAvailable] = useState(initialState.bookingAvailable)
+  const [showForm, setShowForm] = useState(initialState.showForm)
 
   function showFallback() {
     setBookingAvailable(false)

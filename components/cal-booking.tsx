@@ -18,12 +18,27 @@ function withPrefill(name?: string, email?: string): string | null {
 }
 
 let embedScriptPromise: Promise<void> | null = null
+let calInitialized = false
+
+type CalApi = ((...args: unknown[]) => void) & { q?: unknown[]; t?: Date }
+
+function bootstrapCal() {
+  if (typeof window.Cal === "function") return
+  const cal = ((...args: unknown[]) => {
+    cal.q ??= []
+    cal.q.push(args)
+  }) as CalApi
+  cal.q = []
+  cal.t = new Date()
+  window.Cal = cal
+}
 
 function loadCalEmbed(): Promise<void> {
   if (typeof window === "undefined") return Promise.reject(new Error("Calendar is only available in a browser"))
   if (typeof window.Cal === "function") return Promise.resolve()
   if (embedScriptPromise) return embedScriptPromise
 
+  bootstrapCal()
   const promise = new Promise<void>((resolve, reject) => {
     const existing = document.querySelector<HTMLScriptElement>('script[data-cal-embed="true"]')
     if (existing) {
@@ -48,7 +63,8 @@ function loadCalEmbed(): Promise<void> {
   return promise
 }
 
-function toCalLink(value: string): string | null {
+export function toCalLink(value: string | undefined): string | null {
+  if (!value?.trim()) return null
   try {
     return new URL(value).pathname.replace(/^\/+|\/+$/g, "") || null
   } catch {
@@ -58,14 +74,13 @@ function toCalLink(value: string): string | null {
 
 declare global {
   interface Window {
-    Cal?: (...args: unknown[]) => void
+    Cal?: CalApi
   }
 }
 
 export function CalBookingLink({ name, email, className = "", onUnavailable }: { name?: string; email?: string; className?: string; onUnavailable?: () => void }) {
   const href = withPrefill(name, email)
-  const calLink = href ? toCalLink(href) : null
-  const buttonRef = useRef<HTMLButtonElement>(null)
+  const calLink = toCalLink(href ?? undefined)
   const loadingRef = useRef(false)
   const [loading, setLoading] = useState(false)
 
@@ -79,8 +94,13 @@ export function CalBookingLink({ name, email, className = "", onUnavailable }: {
     setLoading(true)
     try {
       await loadCalEmbed()
-      if (typeof window.Cal !== "function") throw new Error("The calendar embed did not initialise")
-      buttonRef.current?.click()
+      const cal = window.Cal as CalApi | undefined
+      if (!cal) throw new Error("The calendar embed did not initialise")
+      if (!calInitialized) {
+        cal("init", { origin: "https://cal.com" })
+        calInitialized = true
+      }
+      cal("modal", { calLink, config: JSON.parse(config) })
     } catch {
       onUnavailable?.()
     } finally {
@@ -91,7 +111,7 @@ export function CalBookingLink({ name, email, className = "", onUnavailable }: {
 
   const config = JSON.stringify({ ...(name ? { name } : {}), ...(email ? { email } : {}) })
 
-  return <button ref={buttonRef} type="button" data-cal-link={calLink} data-cal-config={config} onClick={openCalendar} disabled={loading} className={`inline-flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-4 py-2.5 text-sm font-medium text-primary transition-colors hover:border-primary/60 hover:bg-primary/15 disabled:cursor-wait disabled:opacity-70 ${className}`}>
+  return <button type="button" data-cal-link={calLink} data-cal-config={config} onClick={openCalendar} disabled={loading} className={`inline-flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-4 py-2.5 text-sm font-medium text-primary transition-colors hover:border-primary/60 hover:bg-primary/15 disabled:cursor-wait disabled:opacity-70 ${className}`}>
     <CalendarDays className="h-4 w-4" />
     {loading ? "Opening calendar…" : "Book a call"}
     <ArrowUpRight className="h-4 w-4" />

@@ -35,10 +35,9 @@ function bootstrapCal() {
 
 function loadCalEmbed(): Promise<void> {
   if (typeof window === "undefined") return Promise.reject(new Error("Calendar is only available in a browser"))
-  if (typeof window.Cal === "function") return Promise.resolve()
-  if (embedScriptPromise) return embedScriptPromise
-
   bootstrapCal()
+  initializeCal()
+  if (embedScriptPromise) return embedScriptPromise
   const promise = new Promise<void>((resolve, reject) => {
     const existing = document.querySelector<HTMLScriptElement>('script[data-cal-embed="true"]')
     if (existing) {
@@ -63,6 +62,12 @@ function loadCalEmbed(): Promise<void> {
   return promise
 }
 
+function initializeCal() {
+  if (calInitialized || typeof window === "undefined" || typeof window.Cal !== "function") return
+  window.Cal("init", { origin: "https://cal.com" })
+  calInitialized = true
+}
+
 export function toCalLink(value: string | undefined): string | null {
   if (!value?.trim()) return null
   try {
@@ -84,6 +89,17 @@ export function CalBookingLink({ name, email, className = "", onUnavailable }: {
   const loadingRef = useRef(false)
   const [loading, setLoading] = useState(false)
 
+  useEffect(() => {
+    if (!href || !calLink) return
+    let active = true
+    loadCalEmbed().catch(() => {
+      if (active) onUnavailable?.()
+    })
+    return () => {
+      active = false
+    }
+  }, [calLink, href, onUnavailable])
+
   if (!href || !calLink) return null
 
   async function openCalendar() {
@@ -96,10 +112,6 @@ export function CalBookingLink({ name, email, className = "", onUnavailable }: {
       await loadCalEmbed()
       const cal = window.Cal as CalApi | undefined
       if (!cal) throw new Error("The calendar embed did not initialise")
-      if (!calInitialized) {
-        cal("init", { origin: "https://cal.com" })
-        calInitialized = true
-      }
       cal("modal", { calLink, config: JSON.parse(config) })
     } catch {
       onUnavailable?.()

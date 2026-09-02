@@ -12,6 +12,7 @@ import { shapeMcpReportResult } from "@/lib/mcp-report-shaping"
 import { buildDashboardAIContext } from "@/lib/dashboard-ai-context"
 import { readVirtualModel } from "@/lib/virtual-model"
 import { PLAN_LIMITS, usageWindowForTier } from "@/supabase/functions/_shared/plan-limits"
+import { corsPreflight, withCors } from "@/lib/mcp-cors"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -152,7 +153,7 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
 }
 
 async function handle(req: NextRequest) {
-  if (!MCP_CONNECTOR_ENABLED) return NextResponse.json({ error: "Not found" }, { status: 404 })
+  if (!MCP_CONNECTOR_ENABLED) return withCors(req, NextResponse.json({ error: "Not found" }, { status: 404 }))
   const requestStartedAt = Date.now()
   console.info(`[mcp-stage] stage=request_received elapsed_ms=0 method=${req.method}`)
   console.info(`[mcp-stage] stage=resolveOAuthToken_start elapsed_ms=${Date.now() - requestStartedAt}`)
@@ -160,8 +161,8 @@ async function handle(req: NextRequest) {
   try {
     identity = await resolveOAuthToken(req)
   } catch (error) {
-    if (error instanceof OAuthAccountRequiredError) return NextResponse.json({ error: error.message }, { status: 403 })
-    return NextResponse.json({ error: "OAuth authentication failed" }, { status: 401 })
+    if (error instanceof OAuthAccountRequiredError) return withCors(req, NextResponse.json({ error: error.message }, { status: 403 }))
+    return withCors(req, NextResponse.json({ error: "OAuth authentication failed" }, { status: 401 }))
   }
   if (!identity) {
     const headers = new Headers()
@@ -169,7 +170,7 @@ async function handle(req: NextRequest) {
       const metadata = oauthProtectedResourceUrl()
       if (metadata) headers.set("WWW-Authenticate", `Bearer error="unauthorized", error_description="Authorization needed", resource_metadata="${metadata}"`)
     }
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers })
+    return withCors(req, NextResponse.json({ error: "Unauthorized" }, { status: 401, headers }))
   }
   try {
     const entitlement = await withMcpStage("entitlementForUser_route", () => entitlementForUser(identity.userId))
@@ -177,12 +178,15 @@ async function handle(req: NextRequest) {
     const handlerStartedAt = Date.now()
     const response = await buildHandler(identity.userId, entitlement)(req)
     console.info(`[mcp-stage] stage=handler_returned elapsed_ms=${Date.now() - handlerStartedAt}`)
-    return response
+    return withCors(req, response)
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "MCP request failed" }, { status: 500 })
+    return withCors(req, NextResponse.json({ error: error instanceof Error ? error.message : "MCP request failed" }, { status: 500 }))
   }
 }
 
+export function OPTIONS(req: NextRequest) {
+  return corsPreflight(req)
+}
 export const GET = handle
 export const POST = handle
 export const DELETE = handle

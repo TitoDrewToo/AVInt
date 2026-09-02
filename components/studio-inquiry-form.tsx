@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react"
 import { ArrowUpRight } from "lucide-react"
 import { submitStudioInquiry } from "@/app/studio/actions"
 import { Button } from "@/components/ui/button"
+import { CalBookingEmbed } from "@/components/cal-booking"
 
 type FormStatus = "idle" | "sending" | "success" | "error"
 
@@ -13,6 +14,7 @@ export function StudioInquiryForm() {
   const [honeypot, setHoneypot] = useState("")
   const [startedAt] = useState(() => Date.now())
   const [values, setValues] = useState({ name: "", email: "", company: "", message: "" })
+  const [submittedValues, setSubmittedValues] = useState({ name: "", email: "" })
 
   function update(field: keyof typeof values, value: string) {
     setValues((current) => ({ ...current, [field]: value }))
@@ -29,12 +31,13 @@ export function StudioInquiryForm() {
       setStatus("error")
       return
     }
+    setSubmittedValues({ name: values.name, email: values.email })
     setStatus("success")
     setValues({ name: "", email: "", company: "", message: "" })
   }
 
   if (status === "success") {
-    return <div className="glass-surface rounded-3xl p-8 text-center md:p-12" role="status"><p className="text-sm font-medium uppercase tracking-wider text-primary">Received</p><h3 className="mt-5 text-2xl font-semibold text-foreground md:text-3xl">Let’s talk about what you want to build.</h3><p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-muted-foreground">Thanks for reaching out. We’ll review the details and follow up at the email you provided.</p><p className="mt-6 select-text text-sm text-muted-foreground">Or email developer@avintph.com</p></div>
+    return <div className="glass-surface rounded-3xl p-8 text-center md:p-12" role="status"><p className="text-sm font-medium uppercase tracking-wider text-primary">Received</p><h3 className="mt-5 text-2xl font-semibold text-foreground md:text-3xl">Let’s talk about what you want to build.</h3><p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-muted-foreground">Thanks for reaching out. We’ll review the details and follow up at the email you provided.</p><CalBookingEmbed name={submittedValues.name} email={submittedValues.email} /><p className="mt-6 select-text text-sm text-muted-foreground">Or email developer@avintph.com</p></div>
   }
 
   return <form className="glass-surface rounded-3xl p-6 text-left md:p-10" onSubmit={submit} noValidate>

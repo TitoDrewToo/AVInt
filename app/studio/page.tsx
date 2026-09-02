@@ -5,6 +5,7 @@ import { Footer } from "@/components/footer"
 import { HomeDefaultSphere } from "@/components/home-default-sphere"
 import { Navbar } from "@/components/navbar"
 import { StudioInquiryForm } from "@/components/studio-inquiry-form"
+import { CalBookingLink } from "@/components/cal-booking"
 import { Button } from "@/components/ui/button"
 
 const studioDescription = "AVIntelligence is a systems and web development studio. We design and build web apps, internal tools, and AI systems end to end — agency-grade work, without the agency overhead."
@@ -114,6 +115,7 @@ export default function StudioPage() {
                   <a href="#studio-inquiry"><Button size="lg" className="cw-button-flow rounded-xl bg-primary text-primary-foreground hover:bg-primary/90">Start a project<ArrowUpRight className="h-4 w-4" /></Button></a>
                   <span className="select-text text-xs text-muted-foreground">or email developer@avintph.com</span>
                 </div>
+                <CalBookingLink />
                 <InternalButton href="/products/chroma-fairy">See a live build</InternalButton>
               </div>
             </div>

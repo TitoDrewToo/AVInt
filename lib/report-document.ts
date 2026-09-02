@@ -2,6 +2,7 @@ import type { Entitlement } from "@/lib/entitlement"
 import type { ReportFilters } from "@/lib/report-engine"
 import type { TaxBundleSummary, TaxRow } from "@/lib/tax-bundle"
 import type { ReportSectionResult } from "@/lib/report-sections"
+import { summarizeCurrencies } from "@/lib/report-utils"
 
 export type ReportBlock =
   | { type: "kpi"; items: { label: string; value: string; note?: string }[] }
@@ -50,23 +51,45 @@ function suppressed(reason: string) {
 }
 
 function sectionDocument(title: string, result: ReportSectionResult, report: Exclude<ReportKey, "tax-bundle" | "business-expense">, filters: ReportFilters, generatedAt: string): ReportDocument {
+  const isProfitLoss = report === "profit-loss"
   const rows = "expenses" in result ? result.expenses : "income" in result ? result.income : "incomeRows" in result ? [...result.incomeRows, ...result.expenseRows] : "contracts" in result ? result.contracts : result.docs
   const objects = rows.filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === "object")
   const dates = objects.map((row) => row.document_date).filter((date): date is string => typeof date === "string").sort()
   const period = { from: filters.dateFrom || dates[0] || "All dates", to: filters.dateTo || dates.at(-1) || "All dates" }
   const reason = `No ${title.toLowerCase()} rows were returned for this reporting period; this block is not stated as zero.`
-  const columns = report === "profit-loss" ? ["Date", "Type", "Amount", "Currency"] : report === "contract-summary" || report === "key-terms" ? ["Date", "Counterparty", "Amount", "Currency"] : ["Date", report === "income-summary" ? "Employer" : "Vendor", "Amount", "Currency"]
+  const currencySummary = summarizeCurrencies(objects.map((row) => ({ currency: typeof row.currency === "string" ? row.currency : null, total_amount: typeof row.total_amount === "number" ? row.total_amount : null, gross_income: typeof row.gross_income === "number" ? row.gross_income : null })))
+  const byCurrency = new Map<string, { income: number; expenses: number; total: number }>()
+  for (const row of objects) {
+    const currency = String(row.currency ?? "USD").toUpperCase()
+    const bucket = byCurrency.get(currency) ?? { income: 0, expenses: 0, total: 0 }
+    const value = Number(row.total_amount ?? row.gross_income)
+    const amount = Number.isFinite(value) ? value : 0
+    if (isProfitLoss) {
+      if ("gross_income" in row) bucket.income += amount
+      else bucket.expenses += amount
+    } else bucket.total += amount
+    byCurrency.set(currency, bucket)
+  }
+  const columns = isProfitLoss ? ["Date", "Type", "Amount", "Currency"] : report === "contract-summary" || report === "key-terms" ? ["Date", "Counterparty", "Amount", "Currency"] : ["Date", report === "income-summary" ? "Employer" : "Vendor", "Amount", "Currency"]
   const tableRows = report === "profit-loss"
     ? objects.map((row) => [String(row.document_date ?? ""), "gross_income" in row ? "Income" : "Expense", (row.gross_income ?? row.total_amount ?? null) as string | number | null, (row.currency ?? null) as string | null])
     : objects.map((row) => [String(row.document_date ?? ""), (row.employer_name ?? row.vendor_name ?? row.counterparty_name ?? null) as string | null, (row.total_amount ?? null) as string | number | null, (row.currency ?? null) as string | null])
-  const amount = objects.reduce((sum, row) => { const value = row.total_amount ?? row.gross_income; return sum + (typeof value === "number" ? value : Number(value) || 0) }, 0)
-  const currency = String(objects.find((row) => row.currency)?.currency ?? "USD")
   const titleMap: Record<typeof report, string> = { "profit-loss": "Profit & Loss", "income-summary": "Income Summary", "expense-summary": "Expense Summary", "contract-summary": "Contract Summary", "key-terms": "Key Terms" }
+  const kpiItems = isProfitLoss
+    ? Array.from(byCurrency.entries()).flatMap(([currency, values]) => [
+        { label: `Income · ${currency}`, value: formatAmount(values.income, currency) },
+        { label: `Expenses · ${currency}`, value: formatAmount(values.expenses, currency) },
+        { label: `Net · ${currency}`, value: formatAmount(values.income - values.expenses, currency) },
+      ])
+    : Array.from(byCurrency.entries()).map(([currency, values]) => ({ label: `Total · ${currency}`, value: formatAmount(values.total, currency) }))
+  const mixedCurrencyNote = currencySummary.mixedCurrency ? { type: "note" as const, text: `Mixed currencies detected (${currencySummary.currencies.join(", ")}). Values are shown separately by currency; no combined total is stated.` } : null
+  const method = `Method: this document maps the existing ${report} JSON result. Currency groups are kept separate${isProfitLoss ? ", and profit, expense, and net values are calculated independently per currency" : ""}; no cross-currency total is calculated.`
   return { title: titleMap[report], subtitle: `${period.from} to ${period.to}`, period, generatedAt, coverage: { statement: objects.length > 0 ? `Figures cover the rows returned for ${period.from} through ${period.to}.` : `No rows were returned for ${period.from} through ${period.to}.`, complete: objects.length > 0 }, blocks: [
-    objects.length > 0 ? { type: "kpi", items: [{ label: "Rows", value: String(objects.length) }, { label: "Amount", value: formatAmount(amount, currency) }] } : { type: "kpi", items: [], ...suppressed(reason) },
+    objects.length > 0 ? { type: "kpi", items: kpiItems } : { type: "kpi", items: [], ...suppressed(reason) },
+    ...(mixedCurrencyNote ? [mixedCurrencyNote] : []),
     objects.length > 0 ? { type: "table", title: `${titleMap[report]} detail`, columns, rows: tableRows } : { type: "table", title: `${titleMap[report]} detail`, columns, rows: [], ...suppressed(reason) },
-    { type: "note", text: `Method: this document uses the existing ${report} JSON report result. No new data source or calculation is used for PDF output.` },
-  ], method: `Source: Smart Storage ${report} report engine.` }
+    { type: "note", text: method },
+  ], method: `Source: Smart Storage ${report} report engine; currency-safe document mapping.` }
 }
 
 function taxDocument(result: Extract<ReportResult, { rows: TaxRow[] }>, filters: ReportFilters, generatedAt: string): ReportDocument {

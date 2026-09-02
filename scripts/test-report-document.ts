@@ -94,7 +94,39 @@ assert.match(csv, /"a,b"/)
 assert.match(csv, /"a\nb"/)
 assert.match(csv, /"a""b"/)
 
-  console.log("report-document tests: 3 passed")
+const mixedRows = {
+  incomeRows: [{ document_date: "2026-08-01", gross_income: 50000, total_amount: 50000, currency: "PHP" }],
+  expenseRows: [1571.4, 37730, 3200, 120, 5874].map((total_amount) => ({ document_date: "2026-08-02", total_amount, currency: "PHP" })).concat([
+    { document_date: "2026-08-03", total_amount: 8.99, currency: "USD" },
+    { document_date: "2026-08-04", total_amount: 11, currency: "USD" },
+  ]),
+}
+const mixedDocument = toReportDocument("profit-loss", mixedRows, {})
+const mixedKpi = mixedDocument.blocks.find((block) => block.type === "kpi")
+assert.equal(mixedKpi?.type, "kpi")
+assert.deepEqual(mixedKpi?.items.map((item) => item.label), ["Income · PHP", "Expenses · PHP", "Net · PHP", "Income · USD", "Expenses · USD", "Net · USD"])
+assert.ok(!JSON.stringify(mixedDocument).includes("98515.39"), "mixed currencies must not produce a combined figure")
+assert.match(JSON.stringify(mixedDocument), /Mixed currencies detected \(PHP, USD\)/)
+
+const phpDocument = toReportDocument("profit-loss", { incomeRows: mixedRows.incomeRows, expenseRows: mixedRows.expenseRows.filter((row) => row.currency === "PHP") }, {})
+const phpItems = phpDocument.blocks.find((block) => block.type === "kpi")
+assert.deepEqual(phpItems?.type === "kpi" ? phpItems.items : [], [
+  { label: "Income · PHP", value: "₱50,000.00" },
+  { label: "Expenses · PHP", value: "₱48,495.40" },
+  { label: "Net · PHP", value: "₱1,504.60" },
+])
+
+const singleDocument = toReportDocument("expense-summary", { expenses: [{ document_date: "2026-08-01", total_amount: 19.99, currency: "USD" }] }, {})
+const singleKpi = singleDocument.blocks.find((block) => block.type === "kpi")
+assert.deepEqual(singleKpi?.type === "kpi" ? singleKpi.items : [], [{ label: "Total · USD", value: "$19.99" }])
+
+const emptySection = toReportDocument("expense-summary", { expenses: [] }, {})
+const emptyKpi = emptySection.blocks.find((block) => block.type === "kpi")
+assert.equal(emptyKpi?.suppressed, true)
+assert.match(emptyKpi?.reason ?? "", /not stated as zero/)
+assert.ok(!JSON.stringify(emptySection).includes('"value":"0"'), "empty sections must not render a zero")
+
+  console.log("report-document tests: 11 passed")
 }
 
 main().catch((error: unknown) => {

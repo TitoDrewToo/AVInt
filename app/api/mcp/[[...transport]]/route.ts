@@ -53,6 +53,19 @@ async function timedTool<T>(name: string, operation: () => Promise<T>): Promise<
   return withMcpStage(`tool_handler_${name}`, operation)
 }
 
+async function logJsonRpcMethod(req: NextRequest) {
+  let method = "unknown"
+  let name = "unknown"
+  try {
+    const body = await req.clone().json() as { method?: unknown; params?: { name?: unknown } }
+    if (typeof body.method === "string") method = body.method
+    if (typeof body.params?.name === "string") name = body.params.name
+  } catch {
+    // Leave the request untouched and log an unknown method when its clone is not readable.
+  }
+  console.info(`[mcp-stage] stage=jsonrpc_method method=${method} name=${name}`)
+}
+
 function buildHandler(userId: string, entitlement: ReturnType<typeof computeEntitlement>) {
   return createMcpHandler((server) => {
     server.registerTool("smart_storage.ingest", {
@@ -160,7 +173,11 @@ async function handle(req: NextRequest) {
   }
   try {
     const entitlement = await withMcpStage("entitlementForUser_route", () => entitlementForUser(identity.userId))
-    return buildHandler(identity.userId, entitlement)(req)
+    await logJsonRpcMethod(req)
+    const handlerStartedAt = Date.now()
+    const response = await buildHandler(identity.userId, entitlement)(req)
+    console.info(`[mcp-stage] stage=handler_returned elapsed_ms=${Date.now() - handlerStartedAt}`)
+    return response
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "MCP request failed" }, { status: 500 })
   }

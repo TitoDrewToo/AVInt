@@ -93,10 +93,10 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
 
     server.registerTool("smart_storage.virtual_model", {
       title: "Smart Storage virtual data model",
-      description: "Read-only. Inspect the signed-in user's bounded virtual records, typed fields, custom-field catalog, source files, statuses, confidence, and source evidence. Use this for questions that do not fit the fixed report templates. The response reports when the 40-record bound truncated results; narrow the request before drawing conclusions. Never invent fields or values not returned here.",
+      description: "Read-only. Inspect the signed-in user's bounded records, typed attributes, custom-field catalog, source files, lifecycle status, review state, confidence, and provenance. Use this for questions that do not fit the fixed report templates. The response reports when the 40-record bound truncated results; narrow the request before drawing conclusions. Status filters are record lifecycle states: derived, reviewed, or superseded. Never invent fields or values not returned here.",
       inputSchema: z.object({
         search: z.string().max(120).optional(),
-        status: z.enum(["raw", "normalized", "manual", "failed"]).optional(),
+        status: z.enum(["derived", "reviewed", "superseded"]).optional(),
         documentType: z.string().max(80).optional(),
         fieldKey: z.string().max(120).optional(),
         customOnly: z.boolean().optional().default(false),

@@ -36,7 +36,6 @@ import {
   Menu,
   Loader2,
   HardDrive,
-  Database,
   PanelRight,
 } from "lucide-react"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
@@ -45,7 +44,6 @@ import { LeftFolderItem } from "@/components/smart-storage/left-folder-item"
 import { StorageItemMenu } from "@/components/smart-storage/storage-item-menu"
 import { GoogleDriveImportModal } from "@/components/smart-storage/google-drive-import-modal"
 import { ProcessingActivityWindow } from "@/components/smart-storage/processing-activity-window"
-import { DataModelView } from "@/components/smart-storage/data-model-view"
 import { useRouter } from "next/navigation"
 import {
   formatStorageAllowance,
@@ -346,7 +344,6 @@ export default function SmartStoragePage() {
   const [reclassifyTarget, setReclassifyTarget] = useState<{ fileId: string; filename: string } | null>(null)
   const [reclassifySheetTarget, setReclassifySheetTarget] = useState<{ fileId: string; filename: string } | null>(null)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
-  const [dataModelOpen, setDataModelOpen] = useState(false)
   const [reportsOpen, setReportsOpen] = useState(false)
   const [renamingFileId, setRenamingFileId] = useState<string | null>(null)
   const [renameFileValue, setRenameFileValue] = useState("")
@@ -1753,13 +1750,6 @@ export default function SmartStoragePage() {
       )}
 
       <div className="flex shrink-0 items-center gap-1">
-        <Tip text="Inspect the virtual data model formed from your normalized files."><button
-          onClick={() => { setReportsOpen(false); setDataModelOpen(true) }}
-          className="flex h-7 items-center gap-1.5 rounded px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <Database className="h-3.5 w-3.5" />
-          Data Model
-        </button></Tip>
         <Tip text="Open reports in a separate drawer."><button
           onClick={() => setReportsOpen(true)}
           aria-expanded={reportsOpen}
@@ -2898,24 +2888,6 @@ export default function SmartStoragePage() {
               })}
             </div>
           </div>
-        </SheetContent>
-      </Sheet>
-
-      <Sheet open={dataModelOpen} onOpenChange={setDataModelOpen}>
-        <SheetContent side="top" className="inset-x-0 top-0 h-full w-full max-w-none border-b-0 p-0">
-          <DataModelView
-            files={files}
-            onManualEntry={() => setManualEntryOpen(true)}
-            onReclassify={(file) => {
-              if (isSpreadsheetFile(file)) setReclassifySheetTarget({ fileId: file.id, filename: file.filename })
-              else setReclassifyTarget({ fileId: file.id, filename: file.filename })
-            }}
-            onRetry={(file) => { void handleRetryProcessing(file) }}
-            onOpenSource={(file) => {
-              setDataModelOpen(false)
-              void handleOpenFile(file.id)
-            }}
-          />
         </SheetContent>
       </Sheet>
 

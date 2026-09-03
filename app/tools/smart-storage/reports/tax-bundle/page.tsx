@@ -533,23 +533,29 @@ function TaxBundleContent() {
 
   // ── Category Reassignment ───────────────────────────────────────────────────
 
-  async function saveCategory(fileId: string, newCategory: string) {
+  async function saveCategory(recordId: string | undefined, newCategory: string) {
     try {
-      const { error: updateError } = await supabase
-        .from("document_fields")
-        .update({ expense_category: newCategory })
-        .eq("file_id", fileId)
-
-      if (updateError) throw updateError
+      if (!recordId) throw new Error("This report row has no record identity. Refresh the report and try again.")
+      const token = (await supabase.auth.getSession()).data.session?.access_token
+      if (!token) throw new Error("Your session has expired. Sign in again before saving a category.")
+      const response = await fetch(`/api/records/${recordId}/correct`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ target_kind: "column", target: "category", new_value: newCategory, change_kind: "reclassify" }),
+      })
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}))
+        throw new Error(payload.error ?? "The category correction could not be saved.")
+      }
 
       // Update local state
       setRows(prev => prev.map(r =>
-        r.file_id === fileId ? { ...r, expense_category: newCategory } : r
+        r.record_id === recordId ? { ...r, expense_category: newCategory } : r
       ))
       // Remove from reassigning map
       setReassigning(prev => {
         const next = { ...prev }
-        delete next[fileId]
+        delete next[recordId]
         return next
       })
     } catch (err) {
@@ -1194,7 +1200,7 @@ function TaxBundleContent() {
                           </p>
                           <div className="mt-3 space-y-2">
                             {uncategorizedItems.map((item) => (
-                              <div key={item.file_id} className="flex flex-wrap items-center gap-2 rounded border border-border/50 bg-background/50 p-2">
+                            <div key={item.record_id ?? item.file_id} className="flex flex-wrap items-center gap-2 rounded border border-border/50 bg-background/50 p-2">
                                 <span className="min-w-0 flex-1 truncate text-xs text-foreground" title={item.filename}>
                                   {item.vendor_name ?? item.filename}
                                 </span>
@@ -1203,20 +1209,20 @@ function TaxBundleContent() {
                                 </span>
                                 <select
                                   className="rounded border border-border bg-background px-2 py-1 text-xs text-foreground"
-                                  value={reassigning[item.file_id] ?? ""}
-                                  onChange={e => setReassigning(prev => ({ ...prev, [item.file_id]: e.target.value }))}
+                                  value={reassigning[item.record_id ?? item.file_id] ?? ""}
+                                  onChange={e => setReassigning(prev => ({ ...prev, [item.record_id ?? item.file_id]: e.target.value }))}
                                 >
                                   <option value="">Select category...</option>
                                   {ALL_SC_CATEGORIES.map(cat => (
                                     <option key={cat} value={cat}>{cat} ({getScheduleCLine(cat)})</option>
                                   ))}
                                 </select>
-                                {reassigning[item.file_id] && (
+                                {reassigning[item.record_id ?? item.file_id] && (
                                   <Button
                                     variant="outline"
                                     size="sm"
                                     className="h-7 gap-1 rounded px-2 text-[10px]"
-                                    onClick={() => saveCategory(item.file_id, reassigning[item.file_id])}
+                                    onClick={() => saveCategory(item.record_id, reassigning[item.record_id ?? item.file_id])}
                                   >
                                     <Save className="h-3 w-3" /> Save
                                   </Button>

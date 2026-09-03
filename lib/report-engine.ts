@@ -108,6 +108,7 @@ async function recordsTaxRows(userId: string, filters: ReportFilters): Promise<T
       const files = record.files
       const documentType = record.document_type ?? stringValue(nestedFileValue(files, "document_type")) ?? "unknown"
       return {
+        record_id: record.id,
         file_id: record.file_id,
         filename: stringValue(nestedFileValue(files, "filename")) ?? "document",
         document_type: documentType,

@@ -99,6 +99,8 @@ export function getDeductStatus(category: string | null, confidence: number | nu
 // ── Row + Summary Types ──────────────────────────────────────────────────────
 
 export interface TaxRow {
+  /** Record identity used for record-layer corrections; absent on legacy fixtures. */
+  record_id?: string
   file_id: string
   filename: string
   document_type: string

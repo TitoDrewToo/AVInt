@@ -331,15 +331,49 @@ serve(async (req) => {
       })
     }
 
-    const { data: rows, error: rowsError } = await supabase
-      .from("document_fields")
-      .select("id, file_id, vendor_name, employer_name, document_date, currency, total_amount, gross_income, net_income, expense_category, income_source, payment_method, confidence_score, normalization_status, raw_json, created_at")
+    const { data: records, error: rowsError } = await supabase
+      .from("records")
+      .select("id, file_id, source_key, record_type, occurred_on, currency, amount, category, confidence, status, needs_review, excluded_at, created_at")
       .eq("file_id", file_id)
       .order("created_at", { ascending: true })
       .limit(1000)
     if (rowsError) throw new Error(rowsError.message)
 
-    const compactRows = (rows ?? []).slice(0, 250).map((row: any, index: number) => ({
+    const recordIds = (records ?? []).map((record: any) => record.id)
+    const { data: attributes, error: attributesError } = recordIds.length
+      ? await supabase.from("record_attributes").select("record_id, field_key, value").in("record_id", recordIds)
+      : { data: [], error: null }
+    if (attributesError) throw new Error(attributesError.message)
+    const attributeMap = new Map<string, Record<string, unknown>>()
+    for (const attribute of attributes ?? []) {
+      const values = attributeMap.get(attribute.record_id) ?? {}
+      values[attribute.field_key] = attribute.value
+      attributeMap.set(attribute.record_id, values)
+    }
+    const rows = (records ?? []).map((record: any, index: number) => {
+      const attrs = attributeMap.get(record.id) ?? {}
+      const sourceIndex = record.source_key === "root" ? 0 : Number(record.source_key)
+      return {
+        ...attrs,
+        id: record.id,
+        file_id: record.file_id,
+        source_key: record.source_key,
+        record_type: record.record_type,
+        vendor_name: attrs.vendor_name ?? null,
+        employer_name: attrs.employer_name ?? null,
+        document_date: record.occurred_on,
+        currency: record.currency,
+        total_amount: record.record_type === "payslip" ? null : record.amount,
+        gross_income: record.record_type === "payslip" ? record.amount : attrs.gross_income ?? null,
+        net_income: attrs.net_income ?? null,
+        expense_category: record.category,
+        confidence_score: record.confidence,
+        normalization_status: record.excluded_at ? "excluded" : record.status === "derived" ? "normalized" : record.status,
+        raw_json: { source_index: Number.isFinite(sourceIndex) ? sourceIndex : index },
+      }
+    })
+
+    const compactRows = rows.slice(0, 250).map((row: any, index: number) => ({
       id: row.id,
       index: index + 1,
       vendor_name: row.vendor_name,
@@ -415,7 +449,7 @@ Do NOT use shorthand or alternative field names. Do NOT invent new fields. Use e
           title: "3-6 words",
           rationale: "1-2 sentences",
           confidence: "0..1",
-          affected_row_ids: ["document_fields.id"],
+          affected_row_ids: ["records.id"],
           proposed_action: { kind: ["exclude", "set_field"], field: "field name", value: "string" },
         }],
       },

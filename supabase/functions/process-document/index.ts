@@ -1041,7 +1041,8 @@ serve(async (req) => {
     const extracted = extractedRows[0]
     isCsv = isCsv || extractedRows.length > 1
 
-    // 9. Insert all rows into document_fields
+    // 9. Keep extracted rows in memory for normalization. Records and
+    // attributes are persisted by persistDerived; the legacy field table is no longer maintained.
     const rowsToInsert = extractedRows.map((row: any, index: number) => {
       const sourceIndex = row._source_index ?? index
       const sourceRow = sourceRows?.[sourceIndex] ?? null
@@ -1074,30 +1075,11 @@ serve(async (req) => {
       }
     })
 
-    logEvent(FN, "rows_to_insert", {
+    logEvent(FN, "rows_to_normalize", {
       file_id,
       rows_to_insert_count: rowsToInsert.length,
       sample_first_row: rowsToInsert[0] ?? null,
     })
-
-    const { data: insertedRows, error: insertError } = await supabase
-      .from("document_fields")
-      .upsert(rowsToInsert, { onConflict: "file_id,source_key" })
-      .select("*")
-
-    logEvent(FN, "insert_result", {
-      file_id,
-      inserted_count: insertedRows?.length ?? 0,
-      insert_error: insertError?.message ?? null,
-    })
-
-    if (insertError) {
-      throw new Error(`document_fields insert failed: ${insertError.message}`)
-    }
-
-    if ((!insertedRows || insertedRows.length === 0) && !isSpreadsheetInput(mimeType, file.filename ?? "")) {
-      throw new Error("document_fields insert returned no rows")
-    }
 
     // User-triggered reprocesses are recorded as retry usage and never claim
     // another billable document slot.
@@ -1189,17 +1171,26 @@ serve(async (req) => {
     // makes extracted-but-not-yet-normalized rows visible to the model layer,
     // with the document type already resolved from extraction.
     const virtualFile = { ...file, document_type: isCsv ? "csv_export" : normalizeExtractedDocumentType(extracted, mimeType) }
-    await Promise.all(insertedRows.map(async (row: any) => {
+    const { data: persistedRows, error: persistedRowsError } = await supabase
+      .from("records")
+      .select("id, source_key")
+      .eq("file_id", file_id)
+      .in("source_key", rowsToInsert.map((row: any) => row.source_key))
+    if (persistedRowsError) throw new Error(`records lookup failed: ${persistedRowsError.message}`)
+    const recordIds = new Map((persistedRows ?? []).map((row: any) => [row.source_key, row.id]))
+    await Promise.all(rowsToInsert.map(async (row: any) => {
+      const recordId = recordIds.get(row.source_key)
+      if (!recordId) return
       try {
-        await syncVirtualRecord(supabase, row, virtualFile)
+        await syncVirtualRecord(supabase, { ...row, id: recordId, normalization_status: "raw" }, virtualFile)
       } catch (error) {
-        logError(FN, "virtual_record_sync", error, { file_id, document_field_id: row.id })
+        logError(FN, "virtual_record_sync", error, { file_id, record_id: recordId })
       }
     }))
 
     // 10. Call normalize-document for each row
     // CSVs have multiple rows — normalize each individually using inline fields
-    const rowsForNormalization = insertedRows ?? []
+    const rowsForNormalization = rowsToInsert
     const normalizeOne = (row: any, currentJobId?: string) => fetch(
       `${SUPABASE_URL}/functions/v1/normalize-document`,
       {
@@ -1215,7 +1206,7 @@ serve(async (req) => {
     if (rowsForNormalization.length === 1) {
       const normalizeResponse = await normalizeOne(rowsForNormalization[0], job_id)
       if (!normalizeResponse.ok) {
-        // normalize-document handles its own failure state in document_fields
+        // normalize-document handles its own failure state in the extraction
         // process-document still returns success — extraction completed.
         const errText = await normalizeResponse.text()
         logError(FN, "normalize_nonfatal", new Error(errText), { file_id, job_id })

@@ -9,6 +9,7 @@ import { persistDerived } from "../_shared/persist-derived.ts"
 import { writeExtraction } from "../_shared/write-extraction.ts"
 import { attemptNumberForSourceKey } from "../_shared/write-extraction.ts"
 import { buildExtractionPayload } from "../_shared/extraction-payload.ts"
+import { loadDerivedRow } from "../_shared/derived-row.ts"
 
 const FN = "normalize-document"
 
@@ -190,20 +191,13 @@ serve(async (req) => {
   let fields: any
 
   try {
-    // 1. Use inline fields if provided (from reprocess-documents), otherwise query DB
+    // 1. Use inline fields if provided; otherwise reconstruct from the durable
+    // extraction, records, and record_attributes layers.
     if (inlineFields) {
       fields = inlineFields
     } else {
-      const { data: fieldsArr, error: fieldsError } = await supabase
-        .from("document_fields")
-        .select("*")
-        .eq("file_id", file_id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-
-      if (fieldsError) throw new Error(`document_fields query error: ${fieldsError.message}`)
-      if (!fieldsArr?.length) throw new Error("document_fields not found for file_id: " + file_id)
-      fields = fieldsArr[0]
+      fields = await loadDerivedRow(supabase, file_id, requestedSourceKey)
+      if (!fields) throw new Error("No extracted record found for file_id: " + file_id)
     }
 
     const { data: ownerFile } = await supabase
@@ -364,7 +358,8 @@ serve(async (req) => {
       throw new Error(`Failed to parse AI output: ${rawText}`)
     }
 
-    // 4. Update document_fields with all normalized + enriched values
+    // 4. Merge normalized values into a fresh extraction and persist the
+    // derived records/attributes. The legacy field table is not updated.
     //    Fall back to original extraction values if normalization returns null for a field
     //    that was already populated — never overwrite good data with null
     const now = new Date().toISOString()
@@ -416,55 +411,6 @@ serve(async (req) => {
       normalization_error: null,
       normalization_attempts: 0,
     }
-
-    await supabase
-      .from("document_fields")
-      .update({
-        // Core fields
-        vendor_name:              normalized.vendor_name              ?? fields.vendor_name,
-        vendor_normalized:        normalized.vendor_normalized        ?? null,
-        employer_name:            normalized.employer_name            ?? fields.employer_name,
-        document_date:            normalized.document_date            ?? fields.document_date,
-        currency:                 normalized.currency                 ?? fields.currency,
-        jurisdiction:             normalized.jurisdiction             ?? null,
-        total_amount:             normalized.total_amount             ?? fields.total_amount,
-        gross_income:             normalized.gross_income             ?? fields.gross_income,
-        net_income:               normalized.net_income               ?? fields.net_income,
-        expense_category:         normalized.expense_category         ?? fields.expense_category,
-        income_source:            normalized.income_source            ?? null,
-        classification_rationale: normalized.classification_rationale ?? null,
-        confidence_score:         normalized.confidence_score         ?? fields.confidence_score,
-        // Enrichment fields (v1)
-        tax_amount:               normalized.tax_amount               ?? null,
-        discount_amount:          normalized.discount_amount          ?? null,
-        invoice_number:           normalized.invoice_number           ?? null,
-        payment_method:           normalized.payment_method           ?? null,
-        period_start:             effectivePeriodStart,
-        period_end:               effectivePeriodEnd,
-        counterparty_name:        normalized.counterparty_name        ?? null,
-        // Merchant enrichment (v3) — powers spending-first analytics families
-        merchant_domain:          normalized.merchant_domain          ?? null,
-        merchant_address_city:    normalized.merchant_address_city    ?? null,
-        merchant_address_region:  normalized.merchant_address_region  ?? null,
-        merchant_address_country: normalized.merchant_address_country ?? null,
-        is_recurring:             normalized.is_recurring === true,
-        recurrence_cadence:       normalized.is_recurring === true ? (normalized.recurrence_cadence ?? null) : null,
-        line_items:               normalized.line_items               ?? fields.raw_json?.line_items ?? null,
-        // Preserve full AI outputs in raw_json.
-        raw_json: {
-          ...(fields.raw_json ?? {}),
-          normalization_enriched: normalized,
-          normalization_provider: normalizationProvider,
-          ...(normalizationProvider === "openai" ? { openai_enriched: normalized } : {}),
-        },
-        // Pipeline state
-        normalization_status:   "normalized",
-        normalization_version:  NORMALIZATION_VERSION,
-        normalized_at:          now,
-        normalization_error:    null,
-        normalization_attempts: 0,
-      })
-      .eq("id", fields.id)
 
     if (ownerFile?.user_id) {
       const sourceKey = requestedSourceKey ?? fields.source_key
@@ -570,33 +516,8 @@ serve(async (req) => {
       // When the specific row is known, target by id and bump the retry counter.
       // Early failures (before `fields` resolves) fall back to file_id — those
       // never reach the AI provider so we don't count them against the ceiling.
-      if (fields?.id != null) {
-        await supabase
-          .from("document_fields")
-          .update({
-            normalization_status:   "failed",
-            normalization_error:    error.message,
-            normalization_attempts: (fields.normalization_attempts ?? 0) + 1,
-          })
-          .eq("id", fields.id)
-        const { data: failedRow } = await supabase.from("document_fields").select("*").eq("id", fields.id).maybeSingle()
-        if (failedRow) {
-          const { data: failedFile } = await supabase.from("files").select("user_id, document_type").eq("id", file_id).maybeSingle()
-          try {
-            await syncVirtualRecord(supabase, failedRow, failedFile)
-          } catch (virtualError) {
-            logError(FN, "virtual_record_failure_sync", virtualError, { file_id, document_field_id: fields.id })
-          }
-        }
-      } else {
-        await supabase
-          .from("document_fields")
-          .update({
-            normalization_status: "failed",
-            normalization_error:  error.message,
-          })
-          .eq("file_id", file_id)
-      }
+      // Failure state is owned by the extraction layer. Do not recreate the
+      // The legacy status write is intentionally absent here.
 
       // Mark job completed anyway — file was processed, normalization is best-effort
       if (job_id) {

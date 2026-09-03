@@ -8,6 +8,7 @@ import { persistDerived } from "../_shared/persist-derived.ts"
 import { writeExtraction } from "../_shared/write-extraction.ts"
 import { attemptNumberForSourceKey } from "../_shared/write-extraction.ts"
 import { buildExtractionPayload } from "../_shared/extraction-payload.ts"
+import { loadDerivedRow, sourceRowsFromExtraction } from "../_shared/derived-row.ts"
 
 const OPENAI_API_KEY            = Deno.env.get("OPENAI_API_KEY")!
 const ANTHROPIC_API_KEY         = Deno.env.get("ANTHROPIC_API_KEY")!
@@ -32,22 +33,6 @@ function buildCorsHeaders(req: Request) {
 // When the primary prompt changes, mirror it here and bump NORMALIZATION_VERSION
 // so downstream version-gated flows can distinguish freshly re-normalized rows.
 const NORMALIZATION_VERSION = 3
-
-async function closeFileProcessingJobIfNoRawRows(supabase: any, file_id: string) {
-  const { count: rawCount } = await supabase
-    .from("document_fields")
-    .select("id", { count: "exact", head: true })
-    .eq("file_id", file_id)
-    .eq("normalization_status", "raw")
-
-  if ((rawCount ?? 0) === 0) {
-    await supabase
-      .from("processing_jobs")
-      .update({ status: "completed", completed_at: new Date().toISOString() })
-      .eq("file_id", file_id)
-      .in("status", ["uploaded", "processing"])
-  }
-}
 
 const SYSTEM_PROMPT = `You are a financial document normalization AI.
 
@@ -229,60 +214,43 @@ async function normalizeRow(supabase: any, row: any): Promise<void> {
   const effectivePeriodStart = normalized.period_start ?? effectiveDocDate
   const effectivePeriodEnd   = normalized.period_end   ?? effectiveDocDate
 
-  await supabase
-    .from("document_fields")
-    .update({
-      // Core
-      vendor_name:              normalized.vendor_name              ?? row.vendor_name,
-      vendor_normalized:        normalized.vendor_normalized        ?? row.vendor_normalized ?? null,
-      employer_name:            normalized.employer_name            ?? row.employer_name,
-      document_date:            normalized.document_date            ?? row.document_date,
-      currency:                 normalized.currency                 ?? row.currency,
-      jurisdiction:             normalized.jurisdiction             ?? row.jurisdiction ?? null,
-      total_amount:             normalized.total_amount             ?? row.total_amount,
-      gross_income:             normalized.gross_income             ?? row.gross_income,
-      net_income:               normalized.net_income               ?? row.net_income,
-      expense_category:         normalized.expense_category         ?? row.expense_category,
-      income_source:            normalized.income_source            ?? row.income_source ?? null,
-      classification_rationale: normalized.classification_rationale ?? row.classification_rationale ?? null,
-      confidence_score:         normalized.confidence_score         ?? row.confidence_score,
-      // Enrichment (v1–v2)
-      tax_amount:               normalized.tax_amount               ?? row.tax_amount ?? null,
-      discount_amount:          normalized.discount_amount          ?? row.discount_amount ?? null,
-      invoice_number:           normalized.invoice_number           ?? row.invoice_number ?? null,
-      payment_method:           normalized.payment_method           ?? row.payment_method ?? null,
-      period_start:             effectivePeriodStart,
-      period_end:               effectivePeriodEnd,
-      counterparty_name:        normalized.counterparty_name        ?? row.counterparty_name ?? null,
-      // Merchant enrichment (v3)
-      merchant_domain:          normalized.merchant_domain          ?? row.merchant_domain ?? null,
-      merchant_address_city:    normalized.merchant_address_city    ?? row.merchant_address_city ?? null,
-      merchant_address_region:  normalized.merchant_address_region  ?? row.merchant_address_region ?? null,
-      merchant_address_country: normalized.merchant_address_country ?? row.merchant_address_country ?? null,
-      is_recurring:             normalized.is_recurring === true,
-      recurrence_cadence:       normalized.is_recurring === true ? (normalized.recurrence_cadence ?? null) : null,
-      line_items:               normalized.line_items               ?? row.line_items ?? row.raw_json?.line_items ?? null,
-      raw_json: {
-        ...(row.raw_json ?? {}),
-        normalization_enriched: normalized,
-        normalization_provider: normalizationProvider,
-        ...(normalizationProvider === "openai" ? { openai_enriched: normalized } : {}),
-      },
-      // Pipeline state
-      normalization_status:  "normalized",
-      normalization_version: NORMALIZATION_VERSION,
-      normalized_at:         now,
-      normalization_error:   null,
-      normalization_attempts: 0,
-    })
-    .eq("id", row.id)
+  const normalizedRow = {
+    ...row,
+    vendor_name: normalized.vendor_name ?? row.vendor_name,
+    vendor_normalized: normalized.vendor_normalized ?? row.vendor_normalized ?? null,
+    employer_name: normalized.employer_name ?? row.employer_name,
+    document_date: normalized.document_date ?? row.document_date,
+    currency: normalized.currency ?? row.currency,
+    jurisdiction: normalized.jurisdiction ?? row.jurisdiction ?? null,
+    total_amount: normalized.total_amount ?? row.total_amount,
+    gross_income: normalized.gross_income ?? row.gross_income,
+    net_income: normalized.net_income ?? row.net_income,
+    expense_category: normalized.expense_category ?? row.expense_category,
+    income_source: normalized.income_source ?? row.income_source ?? null,
+    classification_rationale: normalized.classification_rationale ?? row.classification_rationale ?? null,
+    confidence_score: normalized.confidence_score ?? row.confidence_score,
+    tax_amount: normalized.tax_amount ?? row.tax_amount ?? null,
+    discount_amount: normalized.discount_amount ?? row.discount_amount ?? null,
+    invoice_number: normalized.invoice_number ?? row.invoice_number ?? null,
+    payment_method: normalized.payment_method ?? row.payment_method ?? null,
+    period_start: effectivePeriodStart,
+    period_end: effectivePeriodEnd,
+    counterparty_name: normalized.counterparty_name ?? row.counterparty_name ?? null,
+    merchant_domain: normalized.merchant_domain ?? row.merchant_domain ?? null,
+    merchant_address_city: normalized.merchant_address_city ?? row.merchant_address_city ?? null,
+    merchant_address_region: normalized.merchant_address_region ?? row.merchant_address_region ?? null,
+    merchant_address_country: normalized.merchant_address_country ?? row.merchant_address_country ?? null,
+    is_recurring: normalized.is_recurring === true,
+    recurrence_cadence: normalized.is_recurring === true ? (normalized.recurrence_cadence ?? null) : null,
+    line_items: normalized.line_items ?? row.line_items ?? row.raw_json?.line_items ?? null,
+    raw_json: { ...(row.raw_json ?? {}), normalization_enriched: normalized, normalization_provider: normalizationProvider },
+  }
 
-  const { data: updatedRow } = await supabase.from("document_fields").select("*").eq("id", row.id).maybeSingle()
   const { data: ownerFile } = await supabase.from("files").select("user_id, document_type").eq("id", row.file_id).maybeSingle()
-  if (updatedRow && ownerFile) {
+  if (ownerFile) {
     const sourceKey = row.source_key
     if (!sourceKey) throw new Error("source_key is required for reprocessing")
-    const extractionPayload = buildExtractionPayload(updatedRow, ownerFile.document_type ?? "general_document")
+    const extractionPayload = buildExtractionPayload(normalizedRow, ownerFile.document_type ?? "general_document")
     const extractionId = await writeExtraction(supabase, {
       userId: ownerFile.user_id,
       fileId: row.file_id,
@@ -297,7 +265,7 @@ async function normalizeRow(supabase: any, row: any): Promise<void> {
     if (derived.reason) throw new Error(`record derivation failed: ${derived.reason}`)
     await persistDerived(supabase, extractionId, derived)
     try {
-      await syncVirtualRecord(supabase, updatedRow, ownerFile)
+      await syncVirtualRecord(supabase, normalizedRow, ownerFile)
     } catch (virtualError) {
       console.error(`Failed to sync virtual record ${row.id}:`, virtualError instanceof Error ? virtualError.message : String(virtualError))
     }
@@ -321,10 +289,11 @@ serve(async (req) => {
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-  const { data: rawRows, error } = await supabase
-    .from("document_fields")
-    .select("*")
-    .eq("normalization_status", "raw")
+  const { data: initialExtractions, error } = await supabase
+    .from("extractions")
+    .select("id, file_id, payload, document_type, attempt_number, status, created_at")
+    .eq("attempt_number", 1)
+    .eq("status", "succeeded")
     .lt("created_at", new Date(Date.now() - 5 * 60 * 1000).toISOString())
     .order("created_at", { ascending: true })
     .limit(REPROCESS_BATCH_LIMIT)
@@ -337,30 +306,39 @@ serve(async (req) => {
     })
   }
 
-  if (!rawRows?.length) {
+  const rawRows: any[] = []
+  for (const extraction of initialExtractions ?? []) {
+    const { data: attempts } = await supabase
+      .from("extractions")
+      .select("attempt_number")
+      .eq("file_id", extraction.file_id)
+      .gt("attempt_number", 1)
+      .eq("status", "succeeded")
+    for (const { sourceKey, row } of sourceRowsFromExtraction(extraction.payload)) {
+      if ((attempts ?? []).some((attempt: any) => attempt.attempt_number === attemptNumberForSourceKey(sourceKey))) continue
+      const derivedRow = await loadDerivedRow(supabase, extraction.file_id, sourceKey)
+      if (derivedRow) rawRows.push({ ...derivedRow, file_id: extraction.file_id, source_key: sourceKey })
+      if (rawRows.length >= REPROCESS_BATCH_LIMIT) break
+    }
+    if (rawRows.length >= REPROCESS_BATCH_LIMIT) break
+  }
+
+  if (!rawRows.length) {
     return new Response(JSON.stringify({ message: "No raw records to process", count: 0 }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     })
   }
 
-  console.log(`Reprocessing ${rawRows.length} raw document_fields records`)
+  console.log(`Reprocessing ${rawRows.length} extracted records awaiting normalization`)
 
   const taskResults = await Promise.allSettled(
     rawRows.map(async (row: any): Promise<{ file_id: string; status: string; error?: string }> => {
       const attempts = row.normalization_attempts ?? 0
       if (attempts >= MAX_NORMALIZATION_ATTEMPTS) {
-        await supabase
-          .from("document_fields")
-          .update({
-            normalization_status: "failed",
-            normalization_error: "Retry ceiling reached",
-          })
-          .eq("id", row.id)
-        const { data: failedRow } = await supabase.from("document_fields").select("*").eq("id", row.id).maybeSingle()
         const { data: failedFile } = await supabase.from("files").select("user_id, document_type").eq("id", row.file_id).maybeSingle()
-        if (failedRow && failedFile) {
+        if (failedFile) {
           try {
-            await syncVirtualRecord(supabase, failedRow, failedFile)
+            await syncVirtualRecord(supabase, row, failedFile)
           } catch (virtualError) {
             console.error(`Failed to sync failed virtual record ${row.id}:`, virtualError instanceof Error ? virtualError.message : String(virtualError))
           }
@@ -368,24 +346,12 @@ serve(async (req) => {
         return { file_id: row.file_id, status: "failed", error: "Retry ceiling reached" }
       }
 
-      await supabase
-        .from("document_fields")
-        .update({ normalization_attempts: attempts + 1 })
-        .eq("id", row.id)
-
       try {
         await normalizeRow(supabase, { ...row, normalization_attempts: attempts + 1 })
         return { file_id: row.file_id, status: "normalized" }
       } catch (err: any) {
         const message = err?.message ?? "Normalization failed"
         console.error(`Failed to normalize file_id ${row.file_id}:`, message)
-        await supabase
-          .from("document_fields")
-          .update({
-            normalization_status: "raw",
-            normalization_error: message,
-          })
-          .eq("id", row.id)
         return { file_id: row.file_id, status: "retry_pending", error: message }
       }
     })
@@ -396,9 +362,6 @@ serve(async (req) => {
       ? result.value
       : { file_id: "unknown", status: "failed", error: result.reason?.message ?? "Task failed" }
   )
-
-  const touchedFileIds = [...new Set(results.map((result) => result.file_id).filter((fileId) => fileId !== "unknown"))]
-  await Promise.allSettled(touchedFileIds.map((fileId) => closeFileProcessingJobIfNoRawRows(supabase, fileId)))
 
   const succeeded = results.filter((r) => r.status === "normalized").length
   const failed    = results.filter((r) => r.status === "failed").length

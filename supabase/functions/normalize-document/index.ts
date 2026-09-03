@@ -39,6 +39,7 @@ async function settleNormalizationBatch(supabase: any, file_id: string, batchId:
   const { data, error } = await supabase.rpc("avint_settle_document_normalization", {
     p_file_id: file_id,
     p_batch_id: batchId ?? null,
+    p_completed_rows: 1,
   })
   if (error) throw new Error(`Normalization settlement failed: ${error.message}`)
   return data

@@ -1161,6 +1161,8 @@ serve(async (req) => {
       .update({
         document_type: isCsv ? "csv_export" : normalizeExtractedDocumentType(extracted, mimeType),
         normalization_batch_id: normalizationBatchId,
+        normalization_expected: rowsToInsert.length,
+        normalization_settled: 0,
         // Extraction is complete, but normalization may still be running for
         // multi-row inputs. The normalizer advances this to `normalized` only
         // after the final raw row reaches a terminal state.

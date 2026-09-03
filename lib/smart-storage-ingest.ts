@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { supabaseAdmin } from "@/lib/mcp-auth"
 import { type Entitlement } from "@/lib/entitlement"
-import { isStableIngestCompletion, type IngestCompletionSnapshot } from "@/lib/ingest-completion"
+import { isIngestComplete, type IngestCompletionSnapshot } from "@/lib/ingest-completion"
 import { PLAN_LIMITS, usageWindowForTier } from "@/supabase/functions/_shared/plan-limits"
 
 export type IngestFile = { name: string; mimeType: string; data: string; source?: { provider: "google_drive"; fileId: string; url?: string; modifiedAt?: string } }
@@ -58,7 +58,6 @@ export async function ingestFiles(userId: string, entitlement: Entitlement, file
     const deadline = Date.now() + TIMEOUT_MS
     let records: any[] = []
     let counts = EMPTY_COUNTS
-    let previousSnapshot: IngestCompletionSnapshot | null = null
     let terminalFailure: string | null = null
     while (Date.now() < deadline) {
       const { data: extractionRows } = await supabaseAdmin
@@ -71,19 +70,20 @@ export async function ingestFiles(userId: string, entitlement: Entitlement, file
         break
       }
 
-      const [{ data: recordRows, count: recordCount }, { count: parentCount }, { count: lineItemCount }] = await Promise.all([
+      const [{ data: recordRows, count: recordCount }, { count: parentCount }, { count: lineItemCount }, { data: fileState }] = await Promise.all([
         supabaseAdmin.from("records").select("*, record_attributes(*)", { count: "exact" }).eq("file_id", file.id),
         supabaseAdmin.from("records").select("id", { count: "exact", head: true }).eq("file_id", file.id).is("parent_record_id", null),
         supabaseAdmin.from("records").select("id", { count: "exact", head: true }).eq("file_id", file.id).not("parent_record_id", "is", null),
+        supabaseAdmin.from("files").select("upload_status").eq("id", file.id).maybeSingle(),
       ])
       records = recordRows ?? []
       counts = { record_count: recordCount ?? 0, parent_count: parentCount ?? 0, line_item_count: lineItemCount ?? 0 }
       const currentSnapshot: IngestCompletionSnapshot = {
+        uploadStatus: fileState?.upload_status ?? null,
         records: records.map((record) => ({ id: record.id, parent_record_id: record.parent_record_id, extraction_id: record.extraction_id })),
         extractionStatuses: (extractionRows ?? []).map((extraction) => extraction.status),
       }
-      if (isStableIngestCompletion(previousSnapshot, currentSnapshot)) break
-      previousSnapshot = currentSnapshot
+      if (isIngestComplete(currentSnapshot)) break
       await new Promise((resolve) => setTimeout(resolve, POLL_MS))
     }
     results.push({

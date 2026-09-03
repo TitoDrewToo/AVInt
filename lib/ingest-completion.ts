@@ -5,21 +5,17 @@ export type IngestRecordSnapshot = {
 }
 
 export type IngestCompletionSnapshot = {
+  uploadStatus: string | null
   records: IngestRecordSnapshot[]
   extractionStatuses: string[]
 }
 
-function signature(snapshot: IngestCompletionSnapshot) {
-  return JSON.stringify({
-    records: snapshot.records
-      .map((record) => [record.id, record.parent_record_id, record.extraction_id])
-      .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
-    extractionStatuses: [...snapshot.extractionStatuses].sort(),
-  })
+export function isIngestComplete(snapshot: IngestCompletionSnapshot) {
+  if (snapshot.records.length === 0) return false
+  if (snapshot.uploadStatus !== "normalized") return false
+  return snapshot.extractionStatuses.every((status) => status === "succeeded")
 }
 
-export function isStableIngestCompletion(previous: IngestCompletionSnapshot | null, current: IngestCompletionSnapshot) {
-  if (current.records.length === 0) return false
-  if (current.extractionStatuses.some((status) => status !== "succeeded")) return false
-  return previous !== null && signature(previous) === signature(current)
+export function hasSettledNormalization(expected: number | null, settled: number) {
+  return expected !== null && settled >= expected
 }

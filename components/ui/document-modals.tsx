@@ -80,25 +80,6 @@ const EMPTY_FORM: FormState = {
   notes: "",
 }
 
-const DOCUMENT_FIELDS_FORM_SELECT = `
-  document_date,
-  currency,
-  vendor_name,
-  total_amount,
-  expense_category,
-  payment_method,
-  tax_amount,
-  discount_amount,
-  invoice_number,
-  employer_name,
-  gross_income,
-  net_income,
-  period_start,
-  period_end,
-  counterparty_name,
-  notes
-`
-
 function toFormState(data: DocumentFieldsFormRow): FormState {
   return {
     document_type: "receipt",
@@ -331,110 +312,50 @@ export function ManualEntryModal({ isOpen, userId, onClose, onCreated }: ManualE
     }
 
     setSaving(true)
-    let createdFileId: string | null = null
     try {
       const filename = generateFilename(form)
-      const customPayload = customFieldsPayload(customFields, form.currency).payload
       const numericValue = (field: keyof Pick<FormState, "total_amount" | "gross_income" | "net_income" | "tax_amount" | "discount_amount">) => {
         const parsed = parseManualNumber(form[field], form.currency)
         return parsed.value
       }
 
-      // Insert into files
-      const { data: fileRow, error: fileErr } = await supabase
-        .from("files")
-        .insert({
-          user_id: userId,
-          filename,
-          file_type: "manual",
-          file_size: 0,
-          document_type: form.document_type,
-          storage_path: "",
-          folder_id: null,
-        })
-        .select()
-        .single()
-
-      if (fileErr || !fileRow) {
-        throw new Error(fileErr?.message ?? "Failed to create file record.")
-      }
-      createdFileId = fileRow.id
-
-      // Insert into document_fields
-      const { error: fieldsErr } = await supabase
-        .from("document_fields")
-        .insert({
-          file_id: fileRow.id,
-          source_key: "root",
-          vendor_name: form.vendor_name || null,
-          employer_name: form.employer_name || null,
-          document_date: form.document_date || null,
-          currency: form.currency || null,
-          total_amount: numericValue("total_amount"),
-          gross_income: numericValue("gross_income"),
-          net_income: numericValue("net_income"),
-          tax_amount: numericValue("tax_amount"),
-          discount_amount: numericValue("discount_amount"),
-          expense_category: form.expense_category || null,
-          payment_method: form.payment_method || null,
-          invoice_number: form.invoice_number || null,
-          period_start: form.period_start || null,
-          period_end: form.period_end || null,
-          counterparty_name: form.counterparty_name || null,
-          normalization_status: "manual",
-          confidence_score: 1.0,
-          notes: form.description || form.notes || null,
-        })
-
-      if (fieldsErr) {
-        throw new Error(fieldsErr.message ?? "Failed to save document fields.")
-      }
-
-      // Manual records bypass the Edge Function ingestion chain, so project
-      // the saved row into the same virtual data layer before refreshing the
-      // workspace. The endpoint re-checks ownership server-side.
       const accessToken = (await supabase.auth.getSession()).data.session?.access_token
-      if (accessToken) {
-        const syncResponse = await fetch("/api/virtual-records/sync", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
-          body: JSON.stringify({ file_id: fileRow.id, custom_fields: customFields, custom_payload: customPayload }),
-        })
-        if (!syncResponse.ok) throw new Error("Manual entry saved, but the data model could not be refreshed.")
-      }
-
-      const { error: statusError } = await supabase.from("files").update({ upload_status: "done" }).eq("id", fileRow.id)
-      if (statusError) throw new Error(`Manual entry saved, but its completion status could not be updated: ${statusError.message}`)
-
-      onCreated(fileRow as InsertedFile)
+      if (!accessToken) throw new Error("Your session has expired. Please sign in again.")
+      const response = await fetch("/api/manual-entry", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({
+          fields: {
+            filename,
+            document_type: form.document_type,
+            document_date: form.document_date || null,
+            currency: form.currency || null,
+            vendor_name: form.vendor_name || null,
+            total_amount: numericValue("total_amount"),
+            expense_category: form.expense_category || null,
+            payment_method: form.payment_method || null,
+            tax_amount: numericValue("tax_amount"),
+            discount_amount: numericValue("discount_amount"),
+            invoice_number: form.invoice_number || null,
+            employer_name: form.employer_name || null,
+            gross_income: numericValue("gross_income"),
+            net_income: numericValue("net_income"),
+            period_start: form.period_start || null,
+            period_end: form.period_end || null,
+            counterparty: form.counterparty_name || null,
+            description: form.description || form.notes || null,
+          },
+          custom_fields: customFields,
+        }),
+      })
+      const result = await response.json().catch(() => null)
+      if (!response.ok || !result?.file) throw new Error(result?.error ?? "Failed to save manual entry.")
+      onCreated(result.file as InsertedFile)
       setForm({ ...EMPTY_FORM })
       setCustomFields([])
       onClose()
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "An unexpected error occurred."
-
-      // The client can create the file row, but derived rows are service-role
-      // managed. Ask the authenticated server route to remove every row this
-      // attempt created, in reverse order, before showing the original error.
-      if (createdFileId) {
-        const accessToken = (await supabase.auth.getSession()).data.session?.access_token
-        if (accessToken) {
-          try {
-            const cleanupResponse = await fetch("/api/manual-entry/cleanup", {
-              method: "POST",
-              headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
-              body: JSON.stringify({ file_id: createdFileId }),
-            })
-            if (!cleanupResponse.ok) {
-              console.error("Manual entry cleanup failed", { fileId: createdFileId, status: cleanupResponse.status })
-            }
-          } catch (cleanupError) {
-            console.error("Manual entry cleanup failed", { fileId: createdFileId, error: cleanupError })
-          }
-        } else {
-          console.error("Manual entry cleanup skipped: no authenticated session", { fileId: createdFileId })
-        }
-      }
 
       setError(message)
     } finally {
@@ -524,7 +445,7 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
   const [attributeSnapshot, setAttributeSnapshot] = useState<Record<string, unknown>>({})
   const [correctedFields, setCorrectedFields] = useState<Record<string, unknown>>({})
 
-  // Fetch existing document_fields when fileId changes
+  // Fetch the record projection and its attributes when fileId changes.
   useEffect(() => {
     if (!isOpen || !fileId) return
 
@@ -537,27 +458,30 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
       setRecordSnapshotFileId(null)
       setAttributeSnapshot({})
       try {
-        const { data, error: fetchErr } = await supabase
-          .from("document_fields")
-          .select(DOCUMENT_FIELDS_FORM_SELECT)
-          .eq("file_id", fileId)
-          .single()
-
-        if (fetchErr && fetchErr.code !== "PGRST116") {
-          // PGRST116 = no rows — that's OK, just use empty form
-          throw new Error(fetchErr.message)
-        }
-
-        if (data) {
-          setForm(toFormState(data))
-        } else {
-          setForm({ ...EMPTY_FORM })
-        }
         const { data: record, error: recordErr } = await supabase.from("records").select("*").eq("file_id", fileId).is("parent_record_id", null).maybeSingle()
         if (recordErr) throw new Error(`Failed to load the record: ${recordErr.message}`)
         if (record?.id) {
           const { data: attributes, error: attributesErr } = await supabase.from("record_attributes").select("field_key, value, value_type").eq("record_id", record.id)
           if (attributesErr) throw new Error(`Failed to load the record attributes: ${attributesErr.message}`)
+          const values = Object.fromEntries((attributes ?? []).map((attribute) => [attribute.field_key, attribute.value]))
+          setForm(toFormState({
+            document_date: record.occurred_on,
+            currency: record.currency,
+            vendor_name: values.vendor_name ?? (record.record_type === "payslip" ? null : record.counterparty),
+            total_amount: record.record_type === "payslip" ? null : record.amount,
+            expense_category: record.category,
+            payment_method: values.payment_method,
+            tax_amount: values.tax_amount,
+            discount_amount: values.discount_amount,
+            invoice_number: values.invoice_number,
+            employer_name: values.employer_name ?? (record.record_type === "payslip" ? record.counterparty : null),
+            gross_income: record.record_type === "payslip" ? record.amount : values.gross_income,
+            net_income: values.net_income,
+            period_start: record.period_start,
+            period_end: record.period_end,
+            counterparty_name: record.counterparty,
+            notes: values.notes,
+          } as DocumentFieldsFormRow))
           setCustomFields(customFieldsFromAttributes(attributes ?? []))
           setRecordSnapshot(record)
           setRecordSnapshotFileId(fileId)
@@ -646,6 +570,7 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
     try {
       const numericValue = (field: keyof Pick<FormState, "total_amount" | "gross_income" | "net_income" | "tax_amount" | "discount_amount">) => parseManualNumber(form[field], form.currency).value
       const recordTargets: Array<{ formField: keyof FormState; targetKind: "column" | "attribute"; target: string; value: unknown }> = [
+        { formField: "document_type", targetKind: "column", target: "record_type", value: form.document_type },
         { formField: "document_date", targetKind: "column", target: "occurred_on", value: form.document_date || null },
         { formField: "currency", targetKind: "column", target: "currency", value: form.currency || null },
         { formField: "expense_category", targetKind: "column", target: "category", value: form.expense_category || null },
@@ -654,6 +579,9 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
         { formField: "counterparty_name", targetKind: "column", target: "counterparty", value: form.counterparty_name || null },
         { formField: "vendor_name", targetKind: "attribute", target: "vendor_name", value: form.vendor_name || null },
         { formField: "employer_name", targetKind: "attribute", target: "employer_name", value: form.employer_name || null },
+        { formField: "payment_method", targetKind: "attribute", target: "payment_method", value: form.payment_method || null },
+        { formField: "invoice_number", targetKind: "attribute", target: "invoice_number", value: form.invoice_number || null },
+        { formField: "description", targetKind: "attribute", target: "description", value: form.description || form.notes || null },
         { formField: isIncomeType(form.document_type) ? "gross_income" : "total_amount", targetKind: "column", target: "amount", value: isIncomeType(form.document_type) ? numericValue("gross_income") : numericValue("total_amount") },
       ]
       const corrections = recordTargets.filter(({ targetKind, target, value }) => {
@@ -691,43 +619,6 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
         corrected[target] = previous
       }
       if (Object.keys(corrected).length > 0) setCorrectedFields((previous) => ({ ...previous, ...corrected }))
-      // Update document_fields
-      const { error: fieldsErr } = await supabase
-        .from("document_fields")
-        .update({
-          vendor_name: form.vendor_name || null,
-          employer_name: form.employer_name || null,
-          document_date: form.document_date || null,
-          currency: form.currency || null,
-          total_amount: numericValue("total_amount"),
-          gross_income: numericValue("gross_income"),
-          net_income: numericValue("net_income"),
-          tax_amount: numericValue("tax_amount"),
-          discount_amount: numericValue("discount_amount"),
-          expense_category: form.expense_category || null,
-          payment_method: form.payment_method || null,
-          invoice_number: form.invoice_number || null,
-          period_start: form.period_start || null,
-          period_end: form.period_end || null,
-          counterparty_name: form.counterparty_name || null,
-          notes: form.notes || null,
-        })
-        .eq("file_id", fileId)
-
-      if (fieldsErr) {
-        throw new Error(fieldsErr.message ?? "Failed to update document fields.")
-      }
-
-      // Update files.document_type
-      const { error: fileErr } = await supabase
-        .from("files")
-        .update({ document_type: form.document_type })
-        .eq("id", fileId)
-
-      if (fileErr) {
-        throw new Error(fileErr.message ?? "Failed to update document type.")
-      }
-
       // Every correction request above is awaited before retry-normalization, so
       // applyOverrides sees the revisions when the record is re-derived.
       const endpoint = fileType === "manual" ? "/api/virtual-records/sync" : "/api/retry-normalization"

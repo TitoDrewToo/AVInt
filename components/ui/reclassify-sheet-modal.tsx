@@ -84,6 +84,7 @@ type DocumentFieldRow = {
   income_source: string | null
   payment_method: string | null
   confidence_score: number | string | null
+  needs_review: boolean
   normalization_status: string | null
   raw_json: any
   created_at: string
@@ -142,12 +143,60 @@ function amountForRow(row: DocumentFieldRow) {
   return row.total_amount ?? row.gross_income ?? row.net_income ?? null
 }
 
+async function loadRecordRows(fileId: string): Promise<DocumentFieldRow[]> {
+  const { data: records, error: recordsError } = await supabase
+    .from("records")
+    .select("id, file_id, source_key, record_type, occurred_on, amount, currency, category, counterparty, confidence, needs_review, excluded_at")
+    .eq("file_id", fileId)
+    .order("source_key", { ascending: true })
+  if (recordsError) throw new Error(recordsError.message)
+  const ids = (records ?? []).map((record) => record.id)
+  const { data: attributes, error: attributesError } = ids.length === 0
+    ? { data: [], error: null }
+    : await supabase.from("record_attributes").select("record_id, field_key, value, value_type").in("record_id", ids)
+  if (attributesError) throw new Error(attributesError.message)
+  const byRecord = new Map<string, Record<string, unknown>>()
+  for (const attribute of attributes ?? []) {
+    const values = byRecord.get(attribute.record_id) ?? {}
+    values[attribute.field_key] = attribute.value
+    byRecord.set(attribute.record_id, values)
+  }
+  return (records ?? []).map((record) => {
+    const values = byRecord.get(record.id) ?? {}
+    const scalar = (key: string): string | number | null => {
+      const value = values[key]
+      return typeof value === "string" || typeof value === "number" ? value : null
+    }
+    const text = (key: string): string | null => typeof values[key] === "string" ? values[key] as string : null
+    return {
+      id: record.id,
+      file_id: record.file_id,
+      source_key: record.source_key,
+      vendor_name: text("vendor_name") ?? (record.record_type === "payslip" ? null : record.counterparty) as string | null,
+      employer_name: text("employer_name") ?? (record.record_type === "payslip" ? record.counterparty : null) as string | null,
+      document_date: record.occurred_on as string | null,
+      currency: record.currency as string | null,
+      total_amount: record.record_type === "payslip" ? null : record.amount,
+      gross_income: record.record_type === "payslip" ? record.amount : scalar("gross_income"),
+      net_income: scalar("net_income"),
+      expense_category: record.category as string | null,
+      income_source: text("income_source"),
+      payment_method: text("payment_method"),
+      confidence_score: record.confidence,
+      needs_review: record.needs_review === true,
+      normalization_status: record.excluded_at ? "excluded" : "normalized",
+      raw_json: null,
+      created_at: "",
+    }
+  })
+}
+
 function displayVendor(row: DocumentFieldRow) {
   return row.vendor_name ?? row.employer_name ?? "Unassigned"
 }
 
 function rowNeedsReview(row: DocumentFieldRow) {
-  return row.normalization_status !== "excluded" && Number(row.confidence_score ?? 1) < 0.7
+  return row.normalization_status !== "excluded" && row.needs_review
 }
 
 function findingMatchesRows(finding: AnalysisFinding, rows: DocumentFieldRow[]) {
@@ -336,23 +385,18 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
     setLoading(true)
     setError(null)
     try {
-      const [{ data: fileData, error: fileError }, { data: fieldRows, error: rowsError }] = await Promise.all([
+        const [{ data: fileData, error: fileError }, fieldRows] = await Promise.all([
         supabase
           .from("files")
           .select("analysis_json, analyzed_at, source_rows_json, storage_path")
           .eq("id", fileId)
           .single(),
-        supabase
-          .from("document_fields")
-          .select("id, file_id, source_key, vendor_name, employer_name, document_date, currency, total_amount, gross_income, net_income, expense_category, income_source, payment_method, confidence_score, normalization_status, raw_json, created_at")
-          .eq("file_id", fileId)
-          .order("created_at", { ascending: true }),
+        loadRecordRows(fileId),
       ])
       if (fileError) throw new Error(fileError.message)
-      if (rowsError) throw new Error(rowsError.message)
       setFileMeta(fileData as FileMeta)
-      setRows((fieldRows ?? []) as DocumentFieldRow[])
-      setAppliedFindingIds(persistedAppliedFindingIds((fileData as FileMeta).analysis_json, (fieldRows ?? []) as DocumentFieldRow[]))
+      setRows(fieldRows)
+      setAppliedFindingIds(persistedAppliedFindingIds((fileData as FileMeta).analysis_json, fieldRows))
       if (resetWorkflow) {
         setSelected(new Set())
         setPendingChanges([])
@@ -684,50 +728,17 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
     const affectedRowIds = [...new Set(changesToSave.flatMap((change) => change.affected_row_ids))]
     const fieldChangedRowIds = [...new Set(changesToSave.filter((change) => change.action.kind === "set_field").flatMap((change) => change.affected_row_ids))]
     const savedFindingIds = changesToSave.flatMap((change) => change.finding_id ? [change.finding_id] : [])
+    const savedRowIds = new Set<string>()
+    const savedOperations = new Set<string>()
+    const failedRows: Array<{ rowId: string; reason: string }> = []
     try {
       const { excludeIds, setFieldGroups } = groupedDocumentFieldUpdates(changesToSave)
-      if (excludeIds.size > 0) {
-        const rowIds = [...excludeIds]
-        const { data, error } = await supabase
-          .from("document_fields")
-          .update({ normalization_status: "excluded" })
-          .in("id", rowIds)
-          .select("id")
-        if (error) throw new Error(error.message)
-        if ((data?.length ?? 0) !== rowIds.length) {
-          throw new Error(`Expected to exclude ${rowIds.length} row${rowIds.length === 1 ? "" : "s"}, but database updated ${data?.length ?? 0}.`)
-        }
-      }
-
-      for (const group of setFieldGroups) {
-        if (group.rowIds.size === 0) continue
-        const rowIds = [...group.rowIds]
-        const { data, error } = await supabase
-          .from("document_fields")
-          .update({ [group.field]: group.value })
-          .in("id", rowIds)
-          .select("id")
-        if (error) throw new Error(error.message)
-        if ((data?.length ?? 0) !== rowIds.length) {
-          throw new Error(`Expected to update ${rowIds.length} row${rowIds.length === 1 ? "" : "s"}, but database updated ${data?.length ?? 0}.`)
-        }
-      }
-
       const rowById = new Map(rows.map((row) => [row.id, row]))
-      const affectedSourceKeys = [...new Set(affectedRowIds.map((rowId) => rowById.get(rowId)?.source_key).filter((sourceKey): sourceKey is string => Boolean(sourceKey)))]
-      const { data: recordRows, error: recordRowsError } = await supabase
-        .from("records")
-        .select("id, source_key")
-        .eq("file_id", fileId)
-        .in("source_key", affectedSourceKeys)
-      if (recordRowsError) throw new Error(recordRowsError.message)
-      const recordBySourceKey = new Map((recordRows ?? []).map((record) => [record.source_key, record.id]))
       const userToken = (await supabase.auth.getSession()).data.session?.access_token
       if (!userToken) throw new Error("Your session expired. Please sign in again.")
       const updateRecord = async (rowId: string, body: Record<string, unknown>) => {
-        const sourceKey = rowById.get(rowId)?.source_key
-        const recordId = sourceKey ? recordBySourceKey.get(sourceKey) : null
-        if (!recordId) throw new Error(`No record found for source row ${sourceKey ?? rowId}.`)
+        const recordId = rowById.get(rowId)?.id
+        if (!recordId) throw new Error(`No record found for source row ${rowId}.`)
         const response = await fetch(`/api/records/${recordId}/correct`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${userToken}` },
@@ -738,16 +749,37 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
           throw new Error(payload.error ?? "The record projection could not be updated.")
         }
       }
-      for (const rowId of excludeIds) await updateRecord(rowId, { action: "exclude" })
+      for (const rowId of excludeIds) {
+        try { await updateRecord(rowId, { action: "exclude" }); savedRowIds.add(rowId); savedOperations.add(`${rowId}:exclude`) }
+        catch (error) { failedRows.push({ rowId, reason: error instanceof Error ? error.message : String(error) }) }
+      }
       const columnTargets: Record<string, string> = { document_date: "occurred_on", currency: "currency", expense_category: "category", total_amount: "amount", gross_income: "amount", net_income: "amount", vendor_name: "counterparty", employer_name: "counterparty" }
       const numericAttributes = new Set(["tax_amount", "discount_amount"])
       for (const group of setFieldGroups) {
-        const targetKind = columnTargets[group.field] ? "column" : "attribute"
-        const target = columnTargets[group.field] ?? normalizeCorrectionKey(group.field)
-        const valueType = numericAttributes.has(group.field) ? "number" : group.field === "document_date" ? "date" : "text"
         for (const rowId of group.rowIds) {
-          await updateRecord(rowId, { change_kind: "reclassify", target_kind: targetKind, target, new_value: group.value, ...(targetKind === "attribute" ? { value_type: valueType } : {}) })
+          try {
+            const targetKind = columnTargets[group.field] ? "column" : "attribute"
+            const target = columnTargets[group.field] ?? normalizeCorrectionKey(group.field)
+            const valueType = numericAttributes.has(group.field) ? "number" : group.field === "document_date" ? "date" : "text"
+            await updateRecord(rowId, { change_kind: "reclassify", target_kind: targetKind, target, new_value: group.value, ...(targetKind === "attribute" ? { value_type: valueType } : {}) })
+            savedRowIds.add(rowId)
+            savedOperations.add(`${rowId}:set:${group.field}:${JSON.stringify(group.value)}`)
+          } catch (error) { failedRows.push({ rowId, reason: error instanceof Error ? error.message : String(error) }) }
         }
+      }
+
+      if (failedRows.length > 0) {
+        const failedIds = new Set(failedRows.map((item) => item.rowId))
+        setPendingChanges(changesToSave.map((change) => ({
+          ...change,
+          affected_row_ids: change.affected_row_ids.filter((rowId) => {
+            const operationKey = change.action.kind === "exclude"
+              ? `${rowId}:exclude`
+              : `${rowId}:set:${normalizeFieldName(change.action.field ?? "")}:${JSON.stringify(change.action.value ?? null)}`
+            return !savedOperations.has(operationKey)
+          }),
+        })).filter((change) => change.affected_row_ids.length > 0))
+        throw new Error(`Partial save: ${savedRowIds.size} row${savedRowIds.size === 1 ? "" : "s"} saved; ${failedIds.size} row${failedIds.size === 1 ? "" : "s"} not saved (${failedRows.map((item) => `${item.rowId}: ${item.reason}`).join("; ")}).`)
       }
 
       if (savedFindingIds.length > 0) {
@@ -780,22 +812,17 @@ export function ReclassifySheetModal({ isOpen, fileId, filename, onClose, onSave
         }
       }
 
-      const [{ data: fileData, error: fileError }, { data: fieldRows, error: rowsError }] = await Promise.all([
+      const [{ data: fileData, error: fileError }, fieldRows] = await Promise.all([
         supabase
           .from("files")
           .select("analysis_json, analyzed_at, source_rows_json, storage_path")
           .eq("id", fileId)
           .single(),
-        supabase
-          .from("document_fields")
-          .select("id, file_id, source_key, vendor_name, employer_name, document_date, currency, total_amount, gross_income, net_income, expense_category, income_source, payment_method, confidence_score, normalization_status, raw_json, created_at")
-          .eq("file_id", fileId)
-          .order("created_at", { ascending: true }),
+        loadRecordRows(fileId),
       ])
       if (fileError) throw new Error(fileError.message)
-      if (rowsError) throw new Error(rowsError.message)
       const nextFileMeta = fileData as FileMeta
-      const nextRows = (fieldRows ?? []) as DocumentFieldRow[]
+      const nextRows = fieldRows
 
       setFileMeta(nextFileMeta)
       setRows(nextRows)

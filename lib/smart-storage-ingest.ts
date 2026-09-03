@@ -54,14 +54,35 @@ export async function ingestFiles(userId: string, entitlement: Entitlement, file
       continue
     }
     const deadline = Date.now() + TIMEOUT_MS
-    let fields: any[] = []
+    let records: any[] = []
+    let terminalFailure: string | null = null
     while (Date.now() < deadline) {
-      const { data } = await supabaseAdmin.from("document_fields").select("*").eq("file_id", file.id).neq("normalization_status", "excluded")
-      fields = data ?? []
-      if (fields.length > 0 && fields.every((field) => ["normalized", "manual"].includes(field.normalization_status))) break
+      const { data: extractionRows } = await supabaseAdmin
+        .from("extractions")
+        .select("id, status")
+        .eq("file_id", file.id)
+      const failedExtraction = (extractionRows ?? []).find((extraction) => extraction.status !== "succeeded")
+      if (failedExtraction) {
+        terminalFailure = `Extraction ended with status ${failedExtraction.status}.`
+        break
+      }
+
+      const { data: recordRows } = await supabaseAdmin
+        .from("records")
+        .select("*, record_attributes(*)")
+        .eq("file_id", file.id)
+      records = recordRows ?? []
+      if (records.length > 0) break
       await new Promise((resolve) => setTimeout(resolve, POLL_MS))
     }
-    results.push({ file_id: file.id, filename: file.filename, status: fields.length ? "normalized" : "processing", fair_use_warning: Boolean(claim?.[0]?.fair_use_warning), records: fields })
+    results.push({
+      file_id: file.id,
+      filename: file.filename,
+      status: terminalFailure ? "failed" : records.length ? "normalized" : "processing",
+      ...(terminalFailure ? { message: terminalFailure } : {}),
+      fair_use_warning: Boolean(claim?.[0]?.fair_use_warning),
+      records,
+    })
   }
   return results
 }

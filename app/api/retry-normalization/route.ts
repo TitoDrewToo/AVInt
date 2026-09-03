@@ -4,8 +4,6 @@ import { serverError } from "@/lib/api-error"
 import { checkRateLimit } from "@/lib/rate-limit"
 import { supabaseAdmin } from "@/lib/mcp-auth"
 
-const MAX_ROWS_PER_REQUEST = 50
-
 export async function POST(req: NextRequest) {
   try {
     const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "")
@@ -19,9 +17,6 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json()
     const fileId = typeof body.file_id === "string" ? body.file_id : ""
-    const requestedRowIds = Array.isArray(body.row_ids)
-      ? body.row_ids.filter((value: unknown): value is string => typeof value === "string").slice(0, MAX_ROWS_PER_REQUEST)
-      : []
     if (!fileId) return NextResponse.json({ error: "file_id required" }, { status: 400 })
 
     const { data: file, error: fileError } = await supabaseAdmin
@@ -33,26 +28,57 @@ export async function POST(req: NextRequest) {
     if (!file || file.user_id !== auth.user.id) return NextResponse.json({ error: "File not found" }, { status: 404 })
     if (file.upload_status === "quarantined") return NextResponse.json({ error: "Quarantined files cannot be retried here" }, { status: 409 })
 
-    let query = supabaseAdmin
-      .from("document_fields")
-      .select("*")
+    const { data: extraction, error: extractionError } = await supabaseAdmin
+      .from("extractions")
+      .select("id, status, attempt_number")
       .eq("file_id", fileId)
-      .eq("normalization_status", "failed")
-      .order("created_at", { ascending: true })
-      .limit(MAX_ROWS_PER_REQUEST)
-    if (requestedRowIds.length > 0) query = query.in("id", requestedRowIds)
+      .order("attempt_number", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (extractionError) throw new Error(extractionError.message)
 
-    const { data: rows, error: rowsError } = await query
-    if (rowsError) throw new Error(rowsError.message)
+    const { count: recordCount, error: recordsError } = await supabaseAdmin
+      .from("records")
+      .select("id", { count: "exact", head: true })
+      .eq("file_id", fileId)
+      .is("excluded_at", null)
+    if (recordsError) throw new Error(recordsError.message)
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
     if (!supabaseUrl || !serviceRoleKey) throw new Error("Normalization retry is not configured")
 
-    // A classified file with no extracted rows needs extraction recovery first.
+    // A missing or failed extraction needs extraction recovery first. Failure
+    // and completeness belong to extractions; records only hold derived facts.
+    if (!extraction || extraction.status === "failed") {
+      if (["approved", "uploaded", "processing"].includes(file.upload_status)) {
+        if (file.upload_status === "processing") {
+          const { error: resetError } = await supabaseAdmin
+            .from("files")
+            .update({ upload_status: "approved" })
+            .eq("id", fileId)
+            .eq("user_id", auth.user.id)
+          if (resetError) throw new Error(resetError.message)
+        }
+        const response = await fetch(`${supabaseUrl}/functions/v1/process-document`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${serviceRoleKey}`,
+            apikey: serviceRoleKey,
+          },
+          body: JSON.stringify({ file_id: fileId }),
+        })
+        if (!response.ok) return NextResponse.json({ error: "Extraction retry could not start" }, { status: 502 })
+        return NextResponse.json({ retried: 0, failed: 0, extractionStarted: true })
+      }
+      return NextResponse.json({ retried: 0, failed: 0, message: "No failed extraction requires retry." })
+    }
+
+    // A classified file with no derived rows needs extraction recovery first.
     // It already passed prescan, so resetting a failed processing attempt to
     // approved keeps the existing process-document gate intact.
-    if (!rows?.length) {
+    if (recordCount === 0) {
       if (["approved", "uploaded", "processing"].includes(file.upload_status)) {
         if (file.upload_status === "processing") {
           const { error: resetError } = await supabaseAdmin
@@ -77,25 +103,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ retried: 0, failed: 0, message: "No failed normalization rows require retry." })
     }
 
-    const results = await Promise.all(rows.map(async (row) => {
-      const response = await fetch(`${supabaseUrl}/functions/v1/normalize-document`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${serviceRoleKey}`,
-          apikey: serviceRoleKey,
-        },
-        body: JSON.stringify({ file_id: fileId, fields: row }),
-      })
-      return response.ok
-    }))
-
-    const retried = results.filter(Boolean).length
-    const failed = results.length - retried
-    if (failed > 0 && retried === 0) {
-      return NextResponse.json({ error: "Normalization retry could not start", retried, failed }, { status: 502 })
-    }
-    return NextResponse.json({ retried, failed })
+    return NextResponse.json({ retried: 0, failed: 0, message: "No failed extraction requires retry." })
   } catch (error) {
     return serverError(error, { route: "retry-normalization", stage: "unhandled" })
   }

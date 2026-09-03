@@ -2,7 +2,6 @@ import { createClient, serve } from "../_shared/deps.ts"
 import { type AiProvider, isProviderFailure, providerChain } from "../_shared/ai-providers.ts"
 import { fetchWithTimeout } from "../_shared/fetch.ts"
 import { recordAiUsage } from "../_shared/ai-usage.ts"
-import { syncVirtualRecord } from "../_shared/virtual-records.ts"
 import { deriveRecords } from "../_shared/derive-records.ts"
 import { persistDerived } from "../_shared/persist-derived.ts"
 import { writeExtraction } from "../_shared/write-extraction.ts"
@@ -264,11 +263,6 @@ async function normalizeRow(supabase: any, row: any): Promise<void> {
     const derived = deriveRecords(extractionPayload, { id: row.file_id, user_id: ownerFile.user_id }, { sourceKey })
     if (derived.reason) throw new Error(`record derivation failed: ${derived.reason}`)
     await persistDerived(supabase, extractionId, derived)
-    try {
-      await syncVirtualRecord(supabase, normalizedRow, ownerFile)
-    } catch (virtualError) {
-      console.error(`Failed to sync virtual record ${row.id}:`, virtualError instanceof Error ? virtualError.message : String(virtualError))
-    }
   }
 }
 
@@ -335,14 +329,6 @@ serve(async (req) => {
     rawRows.map(async (row: any): Promise<{ file_id: string; status: string; error?: string }> => {
       const attempts = row.normalization_attempts ?? 0
       if (attempts >= MAX_NORMALIZATION_ATTEMPTS) {
-        const { data: failedFile } = await supabase.from("files").select("user_id, document_type").eq("id", row.file_id).maybeSingle()
-        if (failedFile) {
-          try {
-            await syncVirtualRecord(supabase, row, failedFile)
-          } catch (virtualError) {
-            console.error(`Failed to sync failed virtual record ${row.id}:`, virtualError instanceof Error ? virtualError.message : String(virtualError))
-          }
-        }
         return { file_id: row.file_id, status: "failed", error: "Retry ceiling reached" }
       }
 

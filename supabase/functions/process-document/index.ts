@@ -5,7 +5,6 @@ import { fetchWithTimeout } from "../_shared/fetch.ts"
 import { PLAN_LIMITS, planTierForSubscription, usageWindowForTier } from "../_shared/plan-limits.ts"
 import { asExtractedDocumentRows, type ExtractedDocumentRow } from "../_shared/extraction-boundary.ts"
 import { recordAiUsage } from "../_shared/ai-usage.ts"
-import { syncVirtualRecord } from "../_shared/virtual-records.ts"
 import { deriveRecords } from "../_shared/derive-records.ts"
 import { persistDerived } from "../_shared/persist-derived.ts"
 import { writeExtraction } from "../_shared/write-extraction.ts"
@@ -1173,24 +1172,6 @@ serve(async (req) => {
     // Materialize the generalized record contract before normalization. This
     // makes extracted-but-not-yet-normalized rows visible to the model layer,
     // with the document type already resolved from extraction.
-    const virtualFile = { ...file, document_type: isCsv ? "csv_export" : normalizeExtractedDocumentType(extracted, mimeType) }
-    const { data: persistedRows, error: persistedRowsError } = await supabase
-      .from("records")
-      .select("id, source_key")
-      .eq("file_id", file_id)
-      .in("source_key", rowsToInsert.map((row: any) => row.source_key))
-    if (persistedRowsError) throw new Error(`records lookup failed: ${persistedRowsError.message}`)
-    const recordIds = new Map((persistedRows ?? []).map((row: any) => [row.source_key, row.id]))
-    await Promise.all(rowsToInsert.map(async (row: any) => {
-      const recordId = recordIds.get(row.source_key)
-      if (!recordId) return
-      try {
-        await syncVirtualRecord(supabase, { ...row, id: recordId, normalization_status: "raw" }, virtualFile)
-      } catch (error) {
-        logError(FN, "virtual_record_sync", error, { file_id, record_id: recordId })
-      }
-    }))
-
     // 10. Call normalize-document for each row
     // CSVs have multiple rows — normalize each individually using inline fields
     const rowsForNormalization = rowsToInsert

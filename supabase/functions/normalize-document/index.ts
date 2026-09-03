@@ -3,7 +3,6 @@ import { type AiProvider, isProviderFailure, providerChain } from "../_shared/ai
 import { logError, logEvent } from "../_shared/log.ts"
 import { fetchWithTimeout } from "../_shared/fetch.ts"
 import { recordAiUsage } from "../_shared/ai-usage.ts"
-import { syncVirtualRecord } from "../_shared/virtual-records.ts"
 import { deriveRecords } from "../_shared/derive-records.ts"
 import { persistDerived } from "../_shared/persist-derived.ts"
 import { writeExtraction } from "../_shared/write-extraction.ts"
@@ -429,12 +428,6 @@ serve(async (req) => {
       const derived = deriveRecords(extractionPayload, { id: file_id, user_id: ownerFile.user_id }, { sourceKey })
       if (derived.reason) throw new Error(`record derivation failed: ${derived.reason}`)
       await persistDerived(supabase, extractionId, derived)
-    }
-
-    try {
-      await syncVirtualRecord(supabase, normalizedRow, ownerFile)
-    } catch (virtualError) {
-      logError(FN, "virtual_record_sync", virtualError, { file_id, document_field_id: fields.id })
     }
 
     // 5. Auto-create payment_obligations for contract/agreement docs with PDC/payment schedules

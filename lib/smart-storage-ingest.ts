@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { supabaseAdmin } from "@/lib/mcp-auth"
 import { type Entitlement } from "@/lib/entitlement"
+import { isStableIngestCompletion, type IngestCompletionSnapshot } from "@/lib/ingest-completion"
 import { PLAN_LIMITS, usageWindowForTier } from "@/supabase/functions/_shared/plan-limits"
 
 export type IngestFile = { name: string; mimeType: string; data: string; source?: { provider: "google_drive"; fileId: string; url?: string; modifiedAt?: string } }
@@ -57,6 +58,7 @@ export async function ingestFiles(userId: string, entitlement: Entitlement, file
     const deadline = Date.now() + TIMEOUT_MS
     let records: any[] = []
     let counts = EMPTY_COUNTS
+    let previousSnapshot: IngestCompletionSnapshot | null = null
     let terminalFailure: string | null = null
     while (Date.now() < deadline) {
       const { data: extractionRows } = await supabaseAdmin
@@ -76,7 +78,12 @@ export async function ingestFiles(userId: string, entitlement: Entitlement, file
       ])
       records = recordRows ?? []
       counts = { record_count: recordCount ?? 0, parent_count: parentCount ?? 0, line_item_count: lineItemCount ?? 0 }
-      if (counts.record_count > 0) break
+      const currentSnapshot: IngestCompletionSnapshot = {
+        records: records.map((record) => ({ id: record.id, parent_record_id: record.parent_record_id, extraction_id: record.extraction_id })),
+        extractionStatuses: (extractionRows ?? []).map((extraction) => extraction.status),
+      }
+      if (isStableIngestCompletion(previousSnapshot, currentSnapshot)) break
+      previousSnapshot = currentSnapshot
       await new Promise((resolve) => setTimeout(resolve, POLL_MS))
     }
     results.push({

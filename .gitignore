@@ -32,6 +32,7 @@ supabase/.temp/
 tsconfig.tsbuildinfo
 .claude/worktrees/
 .gstack/
+.baselines/m4-phase1/
 
 # MCP connector local test artifacts (do not ship)
 mcp-smoke-test.mjs

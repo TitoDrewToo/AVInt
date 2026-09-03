@@ -105,26 +105,22 @@ export function setCachedSmartStorageData(
 async function enrichFiles(files: any[]): Promise<UploadedFile[]> {
   const fileIds = files.map((file) => file.id)
   const latestJobByFileId = new Map<string, ProcessingJobSummary>()
-  const documentFieldCountByFileId = new Map<string, number>()
-  const normalizationByFileId = new Map<string, {
-    hasRaw: boolean
-    hasFailed: boolean
-    hasNormalized: boolean
-    error: string | null
-  }>()
+  const recordCountByFileId = new Map<string, number>()
+  const normalizedFileIds = new Set<string>()
   const extractionFileIds = new Set<string>()
 
   if (fileIds.length > 0) {
-    const [{ data: jobs }, { data: documentFields }, { data: extractions }] = await Promise.all([
+    const [{ data: jobs }, { data: records }, { data: extractions }] = await Promise.all([
       supabase
         .from("processing_jobs")
         .select("file_id, status, created_at, error_message")
         .in("file_id", fileIds)
         .order("created_at", { ascending: false }),
       supabase
-        .from("document_fields")
-        .select("file_id, normalization_status, normalization_error")
-        .in("file_id", fileIds),
+        .from("records")
+        .select("file_id")
+        .in("file_id", fileIds)
+        .is("excluded_at", null),
       supabase.from("extractions").select("file_id").in("file_id", fileIds),
     ])
     for (const extraction of extractions ?? []) extractionFileIds.add(extraction.file_id)
@@ -138,21 +134,15 @@ async function enrichFiles(files: any[]): Promise<UploadedFile[]> {
         })
       }
     }
-    for (const field of documentFields ?? []) {
-      documentFieldCountByFileId.set(field.file_id, (documentFieldCountByFileId.get(field.file_id) ?? 0) + 1)
-      const current = normalizationByFileId.get(field.file_id) ?? { hasRaw: false, hasFailed: false, hasNormalized: false, error: null }
-      current.hasRaw ||= field.normalization_status === "raw"
-      current.hasFailed ||= field.normalization_status === "failed"
-      current.hasNormalized ||= field.normalization_status === "normalized" || field.normalization_status === "manual"
-      if (field.normalization_status === "failed" && !current.error) current.error = field.normalization_error
-      normalizationByFileId.set(field.file_id, current)
+    for (const record of records ?? []) {
+      recordCountByFileId.set(record.file_id, (recordCountByFileId.get(record.file_id) ?? 0) + 1)
+      normalizedFileIds.add(record.file_id)
     }
   }
 
   return files.map((file) => {
     const job = latestJobByFileId.get(file.id) ?? null
-    const normalization = normalizationByFileId.get(file.id)
-    const fieldsCount = documentFieldCountByFileId.get(file.id) ?? 0
+    const fieldsCount = recordCountByFileId.get(file.id) ?? 0
     const isQuarantined = file.upload_status === "quarantined"
     const ageMs = job?.created_at ? Date.now() - Date.parse(job.created_at) : 0
     const isActive = ["uploaded", "pending_scan", "scanning", "processing"].includes(job?.status ?? "")
@@ -166,7 +156,7 @@ async function enrichFiles(files: any[]): Promise<UploadedFile[]> {
     })
     let attentionState: SmartStorageAttentionState = null
     if (!isQuarantined) {
-      if (normalization?.hasFailed) attentionState = "normalization_failed"
+      if (job?.status === "failed" && fieldsCount > 0) attentionState = "normalization_failed"
       else if (stalled || (job?.status === "failed" && fieldsCount === 0)) attentionState = "extraction_failed"
       else if (isSlow) attentionState = "processing_slow"
       else if (!isActive && (!file.document_type || file.document_type === "unknown")) attentionState = "classification_required"
@@ -175,8 +165,7 @@ async function enrichFiles(files: any[]): Promise<UploadedFile[]> {
     let pipelineStage: UploadedFile["pipeline_stage"] = "unknown"
     if (isQuarantined) pipelineStage = "quarantined"
     else if (attentionState) pipelineStage = "attention"
-    else if (normalization?.hasRaw) pipelineStage = "normalizing"
-    else if (normalization?.hasNormalized) pipelineStage = "ready"
+    else if (normalizedFileIds.has(file.id)) pipelineStage = "ready"
     else if (["pending_scan", "scanning"].includes(file.upload_status ?? "") || job?.status === "scanning") pipelineStage = "scanning"
     else if (["uploaded", "processing"].includes(file.upload_status ?? "") || job?.status === "processing") pipelineStage = "extracting"
     else if (file.upload_status === "normalized") pipelineStage = "ready"
@@ -188,8 +177,8 @@ async function enrichFiles(files: any[]): Promise<UploadedFile[]> {
       upload_status: stalled ? "failed" : file.upload_status,
       stalled_from_status: stalled ? (file.upload_status ?? job?.status ?? null) : null,
       attention_state: attentionState,
-      normalization_status: normalization?.hasFailed ? "failed" : normalization?.hasRaw ? "raw" : normalization?.hasNormalized ? "normalized" : null,
-      normalization_error: normalization?.error ?? null,
+      normalization_status: normalizedFileIds.has(file.id) ? "normalized" : null,
+      normalization_error: null,
       pipeline_stage: pipelineStage,
     }
   })
@@ -270,23 +259,34 @@ export async function fetchSmartStorageReportAvailability(userId: string): Promi
     return availability
   }
 
-  const { data: fields, error: fieldsError } = await supabase
-    .from("document_fields")
-    .select("file_id, total_amount, gross_income, net_income, vendor_name, employer_name, counterparty_name, files!inner(document_type, user_id)")
-    .eq("files.user_id", userId)
-    .in("normalization_status", ["normalized", "manual"])
-  if (fieldsError) throw new Error(fieldsError.message)
-
-  const rows = fields ?? []
-  const documentTypeFor = (row: any) => {
-    const file = Array.isArray(row.files) ? row.files[0] : row.files
-    return file?.document_type ?? ""
+  const { data: records, error: recordsError } = await supabase
+    .from("records")
+    .select("id, file_id, document_type, amount, category, files!inner(document_type, user_id)")
+    .eq("user_id", userId)
+    .is("parent_record_id", null)
+    .is("excluded_at", null)
+  if (recordsError) throw new Error(recordsError.message)
+  const recordRows = records ?? []
+  const { data: attributes, error: attributesError } = recordRows.length === 0
+    ? { data: [], error: null }
+    : await supabase
+      .from("record_attributes")
+      .select("record_id, field_key, value")
+      .in("record_id", recordRows.map((row) => row.id))
+      .in("field_key", ["vendor_name", "employer_name", "counterparty_name"])
+  if (attributesError) throw new Error(attributesError.message)
+  const attributesByRecord = new Map<string, Map<string, unknown>>()
+  for (const attribute of attributes ?? []) {
+    const fields = attributesByRecord.get(attribute.record_id) ?? new Map<string, unknown>()
+    fields.set(attribute.field_key, attribute.value)
+    attributesByRecord.set(attribute.record_id, fields)
   }
+  const documentTypeFor = (row: any) => row.document_type ?? (Array.isArray(row.files) ? row.files[0]?.document_type : row.files?.document_type) ?? ""
   const isExpense = (row: any) => ["receipt", "invoice"].includes(documentTypeFor(row))
   const isIncome = (row: any) => ["payslip", "income_statement"].includes(documentTypeFor(row))
   const isContract = (row: any) => ["contract", "agreement"].includes(documentTypeFor(row))
-  const hasExpense = rows.some((row) => isExpense(row) && row.total_amount != null)
-  const hasIncome = rows.some((row) => isIncome(row) && (row.gross_income != null || row.net_income != null || row.total_amount != null))
+  const hasExpense = recordRows.some((row) => isExpense(row) && row.amount != null)
+  const hasIncome = recordRows.some((row) => isIncome(row) && row.amount != null)
 
   for (const report of REPORTS) {
     if (!report.coreEnabled) {
@@ -299,7 +299,7 @@ export async function fetchSmartStorageReportAvailability(userId: string): Promi
       case "income_amount":      availability[report.id] = hasIncome; break
       case "expense_or_income":  availability[report.id] = hasExpense || hasIncome; break
       case "income_and_expense": availability[report.id] = hasIncome && hasExpense; break
-      case "contract_fields":    availability[report.id] = rows.some((row) => isContract(row) && (row.vendor_name || row.employer_name || row.counterparty_name)); break
+      case "contract_fields":    availability[report.id] = recordRows.some((row) => { const fields = attributesByRecord.get(row.id); return isContract(row) && Boolean(fields?.get("vendor_name") || fields?.get("employer_name") || fields?.get("counterparty_name")) }); break
     }
   }
 

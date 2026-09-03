@@ -20,30 +20,26 @@ function attributesObject(attributes: any[]): Record<string, unknown> {
 }
 
 export async function loadDerivedRow(client: QueryClient, fileId: string, sourceKey?: string): Promise<any | null> {
-  const { data: extractions, error: extractionError } = await client
-    .from("extractions")
-    .select("id, payload, document_type, attempt_number, status, created_at")
-    .eq("file_id", fileId)
-    .eq("status", "succeeded")
-    .order("attempt_number", { ascending: true })
-  if (extractionError) throw new Error(`extractions query error: ${extractionError.message}`)
-  const initial = (extractions ?? []).find((row: any) => row.attempt_number === 1)
-  if (!initial) return null
-  const rows = payloadRows(initial.payload)
-  const index = sourceKey && sourceKey !== "root" ? Number(sourceKey) : 0
-  const key = sourceKey ?? sourceKeyForIndex(initial.payload, index)
-  const extracted = rows[index] ?? rows[0]
-  if (!extracted || typeof extracted !== "object") return null
-
-  const { data: record, error: recordError } = await client
+  let recordQuery = client
     .from("records")
     .select("*")
     .eq("file_id", fileId)
-    .eq("source_key", key)
     .is("parent_record_id", null)
-    .maybeSingle()
+  if (sourceKey !== undefined) recordQuery = recordQuery.eq("source_key", sourceKey)
+  const { data: record, error: recordError } = await recordQuery.maybeSingle()
   if (recordError) throw new Error(`records query error: ${recordError.message}`)
   if (!record) return null
+
+  const { data: extraction, error: extractionError } = await client
+    .from("extractions")
+    .select("id, payload, document_type, status, created_at")
+    .eq("id", record.extraction_id)
+    .maybeSingle()
+  if (extractionError) throw new Error(`extractions query error: ${extractionError.message}`)
+  if (!extraction || extraction.status !== "succeeded") return null
+  const extracted = extraction.payload
+  if (!extracted || typeof extracted !== "object") return null
+  const key = record.source_key
 
   const { data: attributes, error: attributesError } = await client
     .from("record_attributes")

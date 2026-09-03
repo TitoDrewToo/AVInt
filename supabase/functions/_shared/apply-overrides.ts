@@ -34,19 +34,13 @@ function attributePayload(value: unknown, userId: string, recordId: string, fiel
 
 export async function applyOverrides(client: QueryClient, recordIds: string[]): Promise<number> {
   if (recordIds.length === 0) return 0
-  const revisionQuery = (changeKind: "user_edit" | "reclassify") => client
+  const { data: revisions, error: revisionsError } = await client
     .from("record_revisions")
-    .select("id, record_id, revision_number, target_kind, target, new_value")
+    .select("id, record_id, revision_number, target_kind, target, new_value, change_kind")
     .in("record_id", recordIds)
-    .eq("change_kind", changeKind)
+    .in("change_kind", ["user_edit", "reclassify", "rollback"])
     .order("revision_number", { ascending: false })
-  const [{ data: userEdits, error: userEditError }, { data: reclassifications, error: reclassifyError }] = await Promise.all([
-    revisionQuery("user_edit"),
-    revisionQuery("reclassify"),
-  ])
-  if (userEditError) throw new Error(`record revisions query failed: ${userEditError.message}`)
-  if (reclassifyError) throw new Error(`record reclassifications query failed: ${reclassifyError.message}`)
-  const revisions = [...(userEdits ?? []), ...(reclassifications ?? [])].sort((a, b) => b.revision_number - a.revision_number)
+  if (revisionsError) throw new Error(`record revisions query failed: ${revisionsError.message}`)
 
   const latest = new Map<string, Record<string, unknown>>()
   for (const revision of (revisions ?? []) as Record<string, unknown>[]) {
@@ -60,6 +54,7 @@ export async function applyOverrides(client: QueryClient, recordIds: string[]): 
   const columnValues = new Map<string, Record<string, unknown>>()
   const attributeRevisions: Array<{ recordId: string; target: string; value: unknown }> = []
   for (const revision of latest.values()) {
+    if (revision.change_kind === "rollback") continue
     const recordId = revision.record_id as string
     const target = revision.target as string
     const value = revisionValue(revision)
@@ -96,10 +91,11 @@ export async function applyOverrides(client: QueryClient, recordIds: string[]): 
     if (attributesError) throw new Error(`record attribute override upsert failed: ${attributesError.message}`)
   }
 
-  const editedRecordIds = new Set<string>([...columnValues.keys(), ...attributeRevisions.map((revision) => revision.recordId)])
-  for (const recordId of editedRecordIds) {
-    const { error: updateError } = await client.from("records").update({ ...(columnValues.get(recordId) ?? {}), has_user_edits: true }).eq("id", recordId)
+  const activeEditedRecordIds = new Set<string>([...columnValues.keys(), ...attributeRevisions.map((revision) => revision.recordId)])
+  const touchedRecordIds = new Set<string>([...latest.values()].map((revision) => revision.record_id as string))
+  for (const recordId of touchedRecordIds) {
+    const { error: updateError } = await client.from("records").update({ ...(columnValues.get(recordId) ?? {}), has_user_edits: activeEditedRecordIds.has(recordId) }).eq("id", recordId)
     if (updateError) throw new Error(`record override update failed: ${updateError.message}`)
   }
-  return editedRecordIds.size
+  return activeEditedRecordIds.size
 }

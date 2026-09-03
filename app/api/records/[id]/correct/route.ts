@@ -26,12 +26,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (targetKind !== "column" && targetKind !== "attribute") return NextResponse.json({ error: "target_kind must be column or attribute" }, { status: 400 })
     const target = targetKind === "attribute" ? normalizeCorrectionKey(rawTarget) : rawTarget
     const changeKind = body?.change_kind ?? "user_edit"
-    if (changeKind !== "user_edit" && changeKind !== "reclassify") return NextResponse.json({ error: "Invalid change_kind" }, { status: 400 })
+    if (changeKind !== "user_edit" && changeKind !== "reclassify" && changeKind !== "rollback") return NextResponse.json({ error: "Invalid change_kind" }, { status: 400 })
     if (targetKind === "column" ? !RECORD_FIELD_SET.has(target) : !isValidAttributeKey(rawTarget)) return NextResponse.json({ error: "Invalid correction target" }, { status: 400 })
 
     let newValue: unknown
     try {
-      if (targetKind === "attribute") {
+      if (changeKind === "rollback") {
+        newValue = null
+      } else if (targetKind === "attribute") {
         if (body?.value_type !== "text" && body?.value_type !== "number" && body?.value_type !== "date") return NextResponse.json({ error: "value_type must be text, number, or date for attributes" }, { status: 400 })
         newValue = coerceAttributeValue(body.value_type as CorrectionAttributeType, body?.new_value)
       } else {

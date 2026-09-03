@@ -12,6 +12,8 @@ assert.ok(validateCustomFields([
 ]).some((issue) => issue.message.includes("duplicates")))
 assert.equal(customFieldsPayload([{ id: "1", label: "Warranty months", type: "number", value: "1,234.56" }]).payload.warranty_months, 1234.56)
 assert.ok(customFieldsPayload([{ id: "1", label: "Warranty months", type: "number", value: "abc" }]).issues.length > 0)
+assert.ok(customFieldsPayload([{ id: "1", label: "raw_json", type: "text", value: "model output" }]).issues.some((issue) => issue.field === "label"))
+assert.ok(validateCustomFields([{ id: "1", label: "Custom object", type: "text", value: { nested: true } as unknown as string }]).some((issue) => issue.message.includes("unsupported value")))
 
 type Query = {
   table: string
@@ -29,7 +31,7 @@ type Query = {
   then: (resolve: (value: { data: unknown[]; error: null; count?: number }) => unknown) => unknown
 }
 
-function fakeClient(existingAttributes: Array<{ id: string; field_key: string }>) {
+function fakeClient(existingAttributes: Array<{ id: string; field_key: string }>, revisions: unknown[] = []) {
   const deleted: string[] = []
   const client = { from(table: string): Query {
     const query: Query = {
@@ -40,6 +42,7 @@ function fakeClient(existingAttributes: Array<{ id: string; field_key: string }>
       delete() { return query }, update() { return query },
       then(resolve) {
         if (table === "records" && Array.isArray(query.payload)) return resolve({ data: (query.payload as Array<{ source_key: string }>).map((row, index) => ({ id: `record-${index}`, source_key: row.source_key, parent_record_id: null })), error: null })
+        if (table === "record_revisions") return resolve({ data: revisions, error: null })
         if (table === "record_attributes" && query.payload === undefined && !query.head) return resolve({ data: existingAttributes, error: null })
         if (query.head) return resolve({ data: [], error: null, count: 0 })
         return resolve({ data: [], error: null })
@@ -63,6 +66,13 @@ async function main() {
   const second = fakeClient([{ id: "old", field_key: "old_field" }])
   await persistDerived(second.client, "extraction-2", noAttributes)
   assert.deepEqual(second.deleted, [])
+
+  const rollbackAttribute = deriveRecords({ document_type: "receipt", document_date: "2026-01-01", currency: "USD", total_amount: 10, description: "kept derived field" }, file)
+  const rollback = fakeClient([{ id: "user", field_key: "user_note" }], [{
+    id: "rollback", record_id: "record-0", revision_number: 1, target_kind: "attribute", target: "user_note", new_value: null, change_kind: "rollback",
+  }])
+  await persistDerived(rollback.client, "extraction-3", rollbackAttribute)
+  assert.deepEqual(rollback.deleted, ["user"])
   console.log("custom-field fixtures: normalization, collisions, coercion, and pruning passed")
 }
 

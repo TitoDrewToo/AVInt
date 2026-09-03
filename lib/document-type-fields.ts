@@ -59,13 +59,16 @@ const MAPPED_EXTRACTION_FIELDS = new Set([
   "classification_rationale", "merchant_domain", "merchant_address_country", "amount", "counterparty", "category",
 ])
 
+// Provider/provenance payloads are not user-authored fields.
+const NON_USER_ATTRIBUTE_KEYS = new Set(["raw_json", "_raw_json", "gemini_raw", "openai_enriched"])
+
 export function normalizeCustomFieldKey(label: string): string {
   return label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "")
 }
 
 function customFieldCollisionKeys(): Set<string> {
   const typedKeys = Object.values(DOCUMENT_TYPE_FIELDS ?? {}).flatMap((fields) => fields.map((field) => field.extractionField))
-  return new Set([...MAPPED_EXTRACTION_FIELDS, ...typedKeys].map(normalizeCustomFieldKey))
+  return new Set([...MAPPED_EXTRACTION_FIELDS, ...typedKeys, ...NON_USER_ATTRIBUTE_KEYS].map(normalizeCustomFieldKey))
 }
 
 export function isCustomFieldKey(key: string): boolean {
@@ -82,6 +85,10 @@ export function validateCustomFields(fields: readonly CustomFieldInput[], curren
   const seen = new Set<string>()
   for (const field of fields) {
     const key = normalizeCustomFieldKey(field.label)
+    if (typeof field.value !== "string") {
+      issues.push({ id: field.id, field: "value", message: "This field has an unsupported value. Enter text, a number, or a date." })
+      continue
+    }
     if (!field.label.trim()) issues.push({ id: field.id, field: "label", message: "Enter a label or remove this field." })
     else if (!key) issues.push({ id: field.id, field: "label", message: "Label must contain letters or numbers." })
     else if (collisions.has(key)) issues.push({ id: field.id, field: "label", message: "That field already exists in the record." })

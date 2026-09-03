@@ -220,11 +220,13 @@ function customFieldId() {
 }
 
 function customFieldsFromAttributes(rows: Array<{ field_key: string; value: unknown; value_type: string }>): CustomFieldInput[] {
-  return rows.filter((row) => isCustomFieldKey(row.field_key)).slice(0, 10).map((row) => ({
+  return rows.filter((row) => isCustomFieldKey(row.field_key)
+    && (row.value == null || typeof row.value === "string" || (row.value_type === "number" && typeof row.value === "number") || (row.value_type === "date" && typeof row.value === "string")))
+    .slice(0, 10).map((row) => ({
     id: customFieldId(),
     label: humanizeCustomFieldKey(row.field_key),
     type: humanizeAttributeType(row.value_type),
-    value: row.value == null ? "" : String(row.value),
+    value: row.value == null ? "" : typeof row.value === "string" ? row.value : String(row.value),
   }))
 }
 

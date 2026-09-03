@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import { deriveRecords } from "../supabase/functions/_shared/derive-records"
 import { persistDerived } from "../supabase/functions/_shared/persist-derived"
+import { classifyRow } from "../lib/document-classification"
 
 const file = { id: "file-1", user_id: "user-1" }
 
@@ -95,6 +96,23 @@ const envelopedCsv = deriveRecords({
   rows: [{ document_date: "2026-08-01", currency: "USD", total_amount: 25 }],
 }, file)
 check("spreadsheet rows inherit envelope record type", envelopedCsv.records[0].record_type === "transaction_record")
+
+const csvIncome = deriveRecords({ document_type: "csv_export", document_date: "2026-06-01", currency: "USD", total_amount: 4200, income_source: "business", expense_category: null }, file)
+check("CSV income source resolves inflow", csvIncome.records[0].direction === "inflow")
+check("CSV income source does not need review for direction", csvIncome.records[0].needs_review === false)
+
+const csvExpense = deriveRecords({ document_type: "csv_export", document_date: "2026-06-01", currency: "USD", total_amount: 100, expense_category: "Office", income_source: null }, file)
+check("CSV expense category resolves outflow", csvExpense.records[0].direction === "outflow")
+
+const csvUnknown = deriveRecords({ document_type: "csv_export", document_date: "2026-06-01", currency: "USD", total_amount: 100 }, file)
+check("unresolved CSV direction is null", csvUnknown.records[0].direction === null)
+check("unresolved CSV direction needs review", csvUnknown.records[0].needs_review === true)
+
+const csvExplicit = deriveRecords({ document_type: "csv_export", document_date: "2026-06-01", currency: "USD", total_amount: 100, direction: "inflow", expense_category: "Office" }, file)
+check("explicit CSV direction wins over category", csvExplicit.records[0].direction === "inflow")
+check("classification uses inflow direction", classifyRow({ document_type: "csv_export", direction: "inflow", total_amount: 4200 }) === "income")
+check("classification uses outflow direction", classifyRow({ document_type: "csv_export", direction: "outflow", total_amount: 100 }) === "expense")
+check("classification falls back to income source", classifyRow({ document_type: "csv_export", direction: null, income_source: "business", total_amount: 4200 }) === "income")
 
 const datedAttribute = deriveRecords({
   document_type: "contract", document_date: "2026-08-01", currency: "PHP", custom_date: "2026-09-15",

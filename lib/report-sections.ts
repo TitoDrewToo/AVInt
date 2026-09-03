@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js"
 import { overlapsDateRange } from "@/lib/report-utils"
+import { classifyRow } from "@/lib/document-classification"
 import type { ReportFilters } from "@/lib/report-engine"
 import type { ReportQueryContext } from "@/lib/report-query-context-server"
 
@@ -35,9 +36,9 @@ export async function getExpenseSummary(userId: string, _context: Context, filte
 }
 
 export async function getIncomeSummary(userId: string, context: Context, filters: Filters): Promise<{ income: unknown[] }> {
-  const fileIds = await context.fileIds(["payslip", "income_statement"])
-  if (fileIds.length === 0) return { income: [] }
-  let query = supabaseAdmin.from("records").select("id, file_id, document_type, occurred_on, amount, currency, confidence, files!inner(filename, document_type)").in("file_id", fileIds).is("parent_record_id", null).is("excluded_at", null).order("occurred_on", { ascending: false })
+  const fileIds = await context.fileIds()
+  let query = supabaseAdmin.from("records").select("id, file_id, document_type, occurred_on, amount, currency, direction, confidence, files!inner(filename, document_type)").is("parent_record_id", null).is("excluded_at", null).order("occurred_on", { ascending: false })
+  if (fileIds.length > 0) query = query.in("file_id", fileIds)
   if (filters.dateFrom) query = query.gte("occurred_on", filters.dateFrom)
   if (filters.dateTo) query = query.lte("occurred_on", filters.dateTo)
   const { data, error } = await query
@@ -47,31 +48,24 @@ export async function getIncomeSummary(userId: string, context: Context, filters
   if (attributesError) throw new Error(attributesError.message)
   const byRecord = new Map<string, Map<string, unknown>>()
   for (const attribute of attributes ?? []) { const fields = byRecord.get(attribute.record_id) ?? new Map<string, unknown>(); fields.set(attribute.field_key, attribute.value); byRecord.set(attribute.record_id, fields) }
-  return { income: records.map((row) => { const fields = byRecord.get(row.id) ?? new Map<string, unknown>(); const documentType = row.document_type ?? row.files?.[0]?.document_type; return { file_id: row.file_id, employer_name: fields.get("employer_name") ?? null, document_date: row.occurred_on, gross_income: fields.get("gross_income") ?? (documentType === "payslip" ? row.amount : null), net_income: fields.get("net_income") ?? null, total_amount: row.amount, currency: row.currency, confidence_score: row.confidence, income_source: fields.get("income_source") ?? null, files: row.files } }) }
+  return { income: records.map((row) => { const fields = byRecord.get(row.id) ?? new Map<string, unknown>(); const documentType = row.document_type ?? row.files?.[0]?.document_type; return { row, fields, documentType } }).filter(({ row, fields }) => classifyRow({ document_type: row.document_type, files: row.files, direction: row.direction, income_source: fields.get("income_source"), total_amount: row.amount }) === "income").map(({ row, fields, documentType }) => ({ file_id: row.file_id, employer_name: fields.get("employer_name") ?? null, document_date: row.occurred_on, gross_income: fields.get("gross_income") ?? (documentType === "payslip" ? row.amount : null), net_income: fields.get("net_income") ?? null, total_amount: row.amount, currency: row.currency, confidence_score: row.confidence, income_source: fields.get("income_source") ?? null, files: row.files })) }
 }
 
 export async function getProfitLoss(userId: string, context: Context, filters: Filters): Promise<{ incomeRows: unknown[]; expenseRows: unknown[] }> {
-  const incomeFileIds = await context.fileIds(["payslip", "income_statement"])
-  const expenseFileIds = await context.fileIds(["receipt", "invoice"])
-  let incomeRows: unknown[] = []; let expenseRows: unknown[] = []
-  if (incomeFileIds.length > 0) {
-    let query = supabaseAdmin.from("records").select("id, document_type, occurred_on, amount, currency, files!inner(document_type)").in("file_id", incomeFileIds).is("parent_record_id", null).is("excluded_at", null).order("occurred_on", { ascending: true })
+  const fileIds = await context.fileIds()
+  {
+    let query = supabaseAdmin.from("records").select("id, file_id, document_type, occurred_on, amount, currency, direction, category, files!inner(document_type)").is("parent_record_id", null).is("excluded_at", null).order("occurred_on", { ascending: true })
+    if (fileIds.length > 0) query = query.in("file_id", fileIds)
     if (filters.dateFrom) query = query.gte("occurred_on", filters.dateFrom); if (filters.dateTo) query = query.lte("occurred_on", filters.dateTo)
     const { data, error } = await query; if (error) throw new Error(error.message); const records = data ?? []
-    const { data: attributes, error: attributesError } = records.length === 0 ? { data: [], error: null } : await supabaseAdmin.from("record_attributes").select("record_id, field_key, value").in("record_id", records.map((row) => row.id)).in("field_key", ["employer_name", "gross_income", "net_income", "income_source"])
+    const { data: attributes, error: attributesError } = records.length === 0 ? { data: [], error: null } : await supabaseAdmin.from("record_attributes").select("record_id, field_key, value").in("record_id", records.map((row) => row.id)).in("field_key", ["employer_name", "gross_income", "net_income", "income_source", "vendor_name"])
     if (attributesError) throw new Error(attributesError.message)
     const byRecord = new Map<string, Map<string, unknown>>(); for (const attribute of attributes ?? []) { const fields = byRecord.get(attribute.record_id) ?? new Map<string, unknown>(); fields.set(attribute.field_key, attribute.value); byRecord.set(attribute.record_id, fields) }
-    incomeRows = records.map((row) => { const fields = byRecord.get(row.id) ?? new Map<string, unknown>(); const documentType = row.document_type ?? row.files?.[0]?.document_type; return { document_date: row.occurred_on, gross_income: fields.get("gross_income") ?? (documentType === "payslip" ? row.amount : null), net_income: fields.get("net_income") ?? null, total_amount: row.amount, currency: row.currency, employer_name: fields.get("employer_name") ?? null, income_source: fields.get("income_source") ?? null, files: row.files } })
+    const classified = records.map((row) => { const fields = byRecord.get(row.id) ?? new Map<string, unknown>(); const documentType = row.document_type ?? row.files?.[0]?.document_type; return { row, fields, documentType, classification: classifyRow({ document_type: row.document_type, files: row.files, direction: row.direction, income_source: fields.get("income_source"), total_amount: row.amount, expense_category: row.category }) } })
+    const incomeRows = classified.filter(({ classification }) => classification === "income").map(({ row, fields, documentType }) => ({ document_date: row.occurred_on, gross_income: fields.get("gross_income") ?? (documentType === "payslip" ? row.amount : null), net_income: fields.get("net_income") ?? null, total_amount: row.amount, currency: row.currency, employer_name: fields.get("employer_name") ?? null, income_source: fields.get("income_source") ?? null, files: row.files }))
+    const expenseRows = classified.filter(({ classification }) => classification === "expense").map(({ row, fields }) => ({ document_date: row.occurred_on, total_amount: row.amount, currency: row.currency, vendor_name: fields.get("vendor_name") ?? null, expense_category: row.category, files: row.files }))
+    return { incomeRows, expenseRows }
   }
-  if (expenseFileIds.length > 0) {
-    let query = supabaseAdmin.from("records").select("id, occurred_on, amount, currency, category, files!inner(document_type)").in("file_id", expenseFileIds).is("parent_record_id", null).is("excluded_at", null).order("occurred_on", { ascending: true })
-    if (filters.dateFrom) query = query.gte("occurred_on", filters.dateFrom); if (filters.dateTo) query = query.lte("occurred_on", filters.dateTo)
-    const { data, error } = await query; if (error) throw new Error(error.message); const records = data ?? []
-    const { data: attributes, error: attributesError } = records.length === 0 ? { data: [], error: null } : await supabaseAdmin.from("record_attributes").select("record_id, value").in("record_id", records.map((row) => row.id)).eq("field_key", "vendor_name")
-    if (attributesError) throw new Error(attributesError.message); const vendors = new Map((attributes ?? []).map((row) => [row.record_id, row.value]))
-    expenseRows = records.map((row) => ({ document_date: row.occurred_on, total_amount: row.amount, currency: row.currency, vendor_name: vendors.get(row.id) ?? null, expense_category: row.category, files: row.files }))
-  }
-  return { incomeRows, expenseRows }
 }
 
 export async function getContractSummary(userId: string, context: Context, filters: Filters): Promise<{ contracts: unknown[]; obligations: Record<string, unknown[]> }> {

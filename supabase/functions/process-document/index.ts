@@ -80,6 +80,7 @@ Extract these fields:
   "gross_income": number or null,
   "net_income": number or null,
   "expense_category": "Food|Transport|Housing|Utilities|Healthcare|Entertainment|Shopping|Travel|Office|Salary|Other or null",
+  "direction": "inflow|outflow|neutral or null — use the source direction/debit-credit signal when present",
   "line_items": [{"description": "string", "amount": number, "due_date": "YYYY-MM-DD or null", "check_number": "string or null", "bank_name": "string or null"}],
   "confidence": number between 0 and 1
 }
@@ -110,6 +111,7 @@ Given column headers from one sheet of a spreadsheet, map each header to one of 
 Canonical fields:
 - vendor_name, employer_name, document_date, currency, total_amount
 - gross_income, net_income, tax_amount, discount_amount, expense_category
+- direction (inflow|outflow|neutral) or the source debit/credit signal
 - payment_method, invoice_number, period_start, period_end, counterparty_name
 - line_item_description, line_item_amount, line_item_due_date, line_item_check_number, line_item_bank_name
 
@@ -275,6 +277,7 @@ function fallbackKeywordMapping(headers: string[]): Record<string, string> {
     else if (/tax/.test(lower)) map[header] = "tax_amount"
     else if (/discount/.test(lower)) map[header] = "discount_amount"
     else if (/currency/.test(lower)) map[header] = "currency"
+    else if (/direction|debit.*credit|credit.*debit|transaction.*type/.test(lower)) map[header] = "direction"
     else if (/category|expense.*type|gl.*code/.test(lower)) map[header] = "expense_category"
     else if (/payment.*method|method/.test(lower)) map[header] = "payment_method"
     else if (/invoice.*(number|#|ref)|reference|receipt/.test(lower)) map[header] = "invoice_number"

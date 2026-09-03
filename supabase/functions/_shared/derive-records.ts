@@ -17,7 +17,7 @@ export type DerivedRecord = {
   occurred_on: unknown
   amount: unknown
   currency: unknown
-  direction: "inflow" | "outflow" | "neutral"
+  direction: "inflow" | "outflow" | "neutral" | null
   counterparty: unknown
   counterparty_normalized: unknown
   category: unknown
@@ -164,6 +164,7 @@ function makeRecord(
     || (occurredOn === null && !hasNumericExtractionValue(row))
     || (FINANCIAL_TYPES.has(type) && (amount === null || occurredOn === null))
     || (amount !== null && currency == null)
+    || (type === "csv_export" && deriveDirection(row, type) === null)
 
   const record: DerivedRecord = {
     file_id: file.id,

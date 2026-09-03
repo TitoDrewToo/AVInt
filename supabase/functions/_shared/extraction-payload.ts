@@ -21,6 +21,7 @@ const EXTRACTION_FIELDS = [
   "payment_method",
   "period_start",
   "period_end",
+  "direction",
   "counterparty_name",
   "merchant_domain",
   "merchant_address_city",

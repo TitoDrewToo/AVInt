@@ -13,6 +13,8 @@ export type ClassifiableDocumentRow = {
   currency?: string | null
   vendor_name?: string | null
   expense_category?: string | null
+  direction?: unknown
+  income_source?: unknown
 }
 
 function stringValue(value: unknown): string | null {
@@ -66,6 +68,12 @@ export function isCreditOrRefundRow(row: ClassifiableDocumentRow): boolean {
 
 export function classifyRow(row: ClassifiableDocumentRow): "income" | "expense" | null {
   if (isAggregateRow(row)) return null
+
+  const direction = stringValue(row.direction)
+  if (direction === "inflow") return "income"
+  if (direction === "outflow") return "expense"
+  if (direction === "neutral") return null
+  if (stringValue(row.income_source)) return "income"
   if (isCreditOrRefundRow(row)) return "income"
 
   const contentType = rowDocumentType(row)

@@ -10,7 +10,7 @@ import { printReportOutput } from "@/lib/report-print"
 import { ReportExportControls } from "@/components/report-export-controls"
 import { summarizeCurrencies } from "@/lib/report-utils"
 import type { Session } from "@supabase/supabase-js"
-import { AlertTriangle, ArrowLeft, ChevronDown, ChevronUp, RefreshCw, FolderOpen, Printer } from "lucide-react"
+import { AlertTriangle, ArrowLeft, ChevronDown, ChevronUp, FolderOpen, Printer } from "lucide-react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 
@@ -125,8 +125,6 @@ function ContractSummaryContent() {
   const [expandedFileId, setExpandedFileId] = useState<string | null>(null)
   const [markPaidForm, setMarkPaidForm]   = useState<MarkPaidForm | null>(null)
   const [saving, setSaving]               = useState(false)
-  const [backfilling, setBackfilling]     = useState(false)
-  const [backfillDone, setBackfillDone]   = useState<number | null>(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -230,25 +228,6 @@ function ContractSummaryContent() {
       }
     } finally {
       setSaving(false)
-    }
-  }
-
-  // ── Backfill ───────────────────────────────────────────────────────────────
-
-  async function handleBackfill() {
-    setBackfilling(true)
-    setBackfillDone(null)
-    try {
-      const { data: { session: s } } = await supabase.auth.getSession()
-      const res = await fetch("/api/obligations/backfill", {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${s?.access_token}` },
-      })
-      const json = await res.json()
-      setBackfillDone(json.created ?? 0)
-      if (json.created > 0) await loadContracts()
-    } finally {
-      setBackfilling(false)
     }
   }
 
@@ -507,21 +486,6 @@ function ContractSummaryContent() {
                   <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
                     Contract Detail
                   </p>
-                  <div className="flex items-center gap-3">
-                    {backfillDone !== null && (
-                      <span className="text-[10px] text-muted-foreground">
-                        {backfillDone === 0 ? "Already up to date" : `${backfillDone} obligation${backfillDone !== 1 ? "s" : ""} imported`}
-                      </span>
-                    )}
-                    <button
-                      onClick={handleBackfill}
-                      disabled={backfilling}
-                      className="flex items-center gap-1.5 rounded border border-border px-2.5 py-1 text-[10px] uppercase tracking-[0.15em] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
-                    >
-                      <RefreshCw className={`h-3 w-3 ${backfilling ? "animate-spin" : ""}`} />
-                      {backfilling ? "Importing…" : "Import Schedules"}
-                    </button>
-                  </div>
                 </div>
 
                 <div className="overflow-x-auto">

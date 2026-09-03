@@ -50,7 +50,7 @@ export async function readVirtualModel(userId: string, query: VirtualModelQuery 
 
   let recordsQuery = supabaseAdmin
     .from("records")
-    .select("id, file_id, source_key, parent_record_id, record_type, document_type, occurred_on, period_start, period_end, amount, amount_base, currency, fx_rate, fx_rate_date, direction, counterparty, counterparty_normalized, category, description, is_recurring, confidence, field_confidence, needs_review, has_user_edits, status, created_at, updated_at, files!inner(filename, document_type, upload_status)", { count: "exact" })
+    .select("id, file_id, source_key, parent_record_id, record_type, document_type, occurred_on, period_start, period_end, amount, amount_base, currency, fx_rate, fx_rate_date, direction, counterparty, counterparty_normalized, category, description, is_recurring, confidence, field_confidence, needs_review, has_user_edits, excluded_at, status, created_at, updated_at, files!inner(filename, document_type, upload_status)", { count: "exact" })
     .eq("user_id", userId)
     .in("file_id", fileIds)
     .order("updated_at", { ascending: false })

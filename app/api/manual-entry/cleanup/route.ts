@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
 
   const { data: file, error: fileError } = await supabaseAdmin
     .from("files")
-    .select("id, user_id, file_type")
+    .select("id, user_id, file_type, upload_status")
     .eq("id", fileId)
     .gte("created_at", new Date(Date.now() - 10 * 60 * 1000).toISOString())
     .maybeSingle()
@@ -24,15 +24,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "File not found" }, { status: 404 })
   }
 
-  const { data: documentField, error: documentFieldsError } = await supabaseAdmin
-    .from("document_fields")
-    .select("id")
+  const { data: extraction, error: extractionError } = await supabaseAdmin
+    .from("extractions")
+    .select("id, status")
     .eq("file_id", fileId)
+    .order("attempt_number", { ascending: false })
     .limit(1)
     .maybeSingle()
-  if (documentFieldsError) return NextResponse.json({ error: documentFieldsError.message }, { status: 500 })
-  if (documentField) {
-    return NextResponse.json({ error: "File has document fields" }, { status: 409 })
+  if (extractionError) return NextResponse.json({ error: extractionError.message }, { status: 500 })
+  if (extraction?.status === "succeeded" || ["done", "normalized"].includes(file.upload_status ?? "")) {
+    return NextResponse.json({ error: "File processing completed" }, { status: 409 })
   }
 
   // All file children use ON DELETE CASCADE (except nullable audit links that

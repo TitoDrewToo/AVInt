@@ -32,7 +32,6 @@ function buildCorsHeaders(req: Request) {
 
 // ── OpenAI system prompt ──────────────────────────────────────────────────────
 // Version bumped when this prompt changes. Rows stamped with a lower
-// normalization_version can be lazily re-normalized by scripts/renormalize.ts.
 const NORMALIZATION_VERSION = 3
 
 async function settleNormalizationBatch(supabase: any, file_id: string, batchId: string | null | undefined) {

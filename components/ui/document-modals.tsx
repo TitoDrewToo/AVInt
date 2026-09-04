@@ -623,7 +623,7 @@ export function ReclassifyModal({ isOpen, fileId, filename, onClose, onSaved }: 
       if (Object.keys(corrected).length > 0) setCorrectedFields((previous) => ({ ...previous, ...corrected }))
       // Every correction request above is awaited before retry-normalization, so
       // applyOverrides sees the revisions when the record is re-derived.
-      const endpoint = fileType === "manual" ? "/api/virtual-records/sync" : "/api/retry-normalization"
+      const endpoint = fileType === "manual" ? "/api/records/resync" : "/api/retry-normalization"
       const retryResponse = await fetch(endpoint, {
         method: "POST",
         headers: {

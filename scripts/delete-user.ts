@@ -76,16 +76,15 @@ async function getPreview(supabase: SupabaseClient, userId: string) {
   if (filesError) throw new Error(`File preview failed: ${filesError.message}`)
 
   const fileIds = (files ?? []).map((file) => file.id)
-  const countForFileIds = async (table: "document_fields" | "processing_jobs") => {
+  const countForFileIds = async (table: "processing_jobs") => {
     if (!fileIds.length) return 0
     const { count, error } = await supabase.from(table).select("id", { count: "exact", head: true }).in("file_id", fileIds)
     if (error) throw new Error(`${table} preview failed: ${error.message}`)
     return count ?? 0
   }
 
-  const [{ count: subscriptions, error: subscriptionsError }, documentFields, processingJobs, storagePaths] = await Promise.all([
+  const [{ count: subscriptions, error: subscriptionsError }, processingJobs, storagePaths] = await Promise.all([
     supabase.from("subscriptions").select("id", { count: "exact", head: true }).eq("user_id", userId),
-    countForFileIds("document_fields"),
     countForFileIds("processing_jobs"),
     listStoragePaths(supabase, userId),
   ])
@@ -93,7 +92,6 @@ async function getPreview(supabase: SupabaseClient, userId: string) {
 
   return {
     files: files?.length ?? 0,
-    document_fields: documentFields,
     processing_jobs: processingJobs,
     subscriptions: subscriptions ?? 0,
     storage_objects: storagePaths.length,
@@ -110,7 +108,6 @@ function printPreview(user: AuthUser, preview: Awaited<ReturnType<typeof getPrev
     last_sign_in_at: user.last_sign_in_at ?? null,
     would_remove: {
       files: preview.files,
-      document_fields: preview.document_fields,
       processing_jobs: preview.processing_jobs,
       subscriptions: preview.subscriptions,
       storage_objects: preview.storage_objects,
@@ -179,15 +176,12 @@ async function verify(supabase: SupabaseClient) {
   const { data: files, error: filesError } = await supabase.from("files").select("id, user_id")
   if (filesError) throw new Error(`Files verification failed: ${filesError.message}`)
   const fileIds = new Set((files ?? []).map((file) => file.id))
-  const { data: documentFields, error: fieldsError } = await supabase.from("document_fields").select("id, file_id")
-  if (fieldsError) throw new Error(`Document fields verification failed: ${fieldsError.message}`)
   const { data: processingJobs, error: jobsError } = await supabase.from("processing_jobs").select("id, file_id")
   if (jobsError) throw new Error(`Processing jobs verification failed: ${jobsError.message}`)
   const { data: subscriptions, error: subscriptionsError } = await supabase.from("subscriptions").select("id, user_id")
   if (subscriptionsError) throw new Error(`Subscriptions verification failed: ${subscriptionsError.message}`)
 
   const orphanFiles = (files ?? []).filter((file) => !userIds.has(file.user_id)).length
-  const orphanDocumentFields = (documentFields ?? []).filter((row) => !fileIds.has(row.file_id)).length
   const orphanProcessingJobs = (processingJobs ?? []).filter((row) => !fileIds.has(row.file_id)).length
   const orphanSubscriptions = (subscriptions ?? []).filter((row) => row.user_id !== null && !userIds.has(row.user_id)).length
   const allStoragePaths = await listStoragePaths(supabase, "")
@@ -202,7 +196,6 @@ async function verify(supabase: SupabaseClient) {
     exact_keep_accounts: exactKeepAccounts,
     orphaned: {
       files: orphanFiles,
-      document_fields: orphanDocumentFields,
       processing_jobs: orphanProcessingJobs,
       subscriptions: orphanSubscriptions,
       storage_objects: allStoragePaths.length,
@@ -215,7 +208,7 @@ async function verify(supabase: SupabaseClient) {
     },
   }
   console.log(JSON.stringify(result, null, 2))
-  if (!exactKeepAccounts || orphanFiles || orphanDocumentFields || orphanProcessingJobs || orphanSubscriptions || orphanStorage.length) process.exitCode = 2
+  if (!exactKeepAccounts || orphanFiles || orphanProcessingJobs || orphanSubscriptions || orphanStorage.length) process.exitCode = 2
 }
 
 async function main() {

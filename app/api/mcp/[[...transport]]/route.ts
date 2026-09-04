@@ -13,6 +13,10 @@ import { buildDashboardAIContext } from "@/lib/dashboard-ai-context"
 import { readVirtualModel } from "@/lib/virtual-model"
 import { PLAN_LIMITS, usageWindowForTier } from "@/supabase/functions/_shared/plan-limits"
 import { corsPreflight, withCors } from "@/lib/mcp-cors"
+import { createReportDefinition, getReportDefinition, listReportDefinitions, ReportDefinitionConflictError, ReportDefinitionNotFoundError, updateReportDefinition } from "@/lib/report-definition-store"
+import { ReportDefinitionExecutionError, runReportDefinition } from "@/lib/report-definition-engine"
+import { listSavedDashboardWidgets, saveDashboardWidget } from "@/lib/dashboard-widget-store"
+import { logApiError } from "@/lib/api-error"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -31,6 +35,14 @@ function featureResult(message: string) {
 
 function limitedResult(message: string) {
   return { content: [{ type: "text" as const, text: `${message} Retry after a short pause.` }], isError: true }
+}
+
+function mcpToolError(error: unknown, userId: string, stage: string, fallback: string) {
+  if (error instanceof TypeError || error instanceof ReportDefinitionNotFoundError || error instanceof ReportDefinitionConflictError || error instanceof ReportDefinitionExecutionError) {
+    return featureResult(error.message)
+  }
+  logApiError(error, { route: "mcp", stage, userId })
+  return featureResult(fallback)
 }
 
 async function toolGuard(userId: string, entitlement: ReturnType<typeof computeEntitlement>, tool: "ingest" | "report" | "export" | "profile") {
@@ -120,6 +132,83 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
       return { content: [{ type: "text", text: JSON.stringify(shapeMcpReportResult(result, includeRows), null, 2) }] }
     }))
 
+    server.registerTool("smart_storage.list_report_definitions", {
+      title: "List saved Smart Storage reports",
+      description: "Read-only. List the signed-in user's refreshable saved report definitions, optionally matching a report name. Use the returned exact slug with smart_storage.run_report_definition.",
+      inputSchema: z.object({ search: z.string().max(120).optional() }),
+    }, async ({ search }) => timedTool("smart_storage.list_report_definitions", async () => {
+      const blocked = await toolGuard(userId, entitlement, "report")
+      if (blocked) return blocked
+      try {
+        const definitions = await listReportDefinitions(userId, search)
+        return { content: [{ type: "text" as const, text: JSON.stringify({ definitions }, null, 2) }] }
+      } catch (error) { return mcpToolError(error, userId, "list_report_definitions", "Saved reports could not be loaded.") }
+    }))
+
+    server.registerTool("smart_storage.run_report_definition", {
+      title: "Run a saved Smart Storage report",
+      description: "Read-only. Resolve an exact owned report slug and recompute it from the current normalized records or dataset. Returns the same guarded ReportDocument used by the AVIntelligence UI and PDF renderer.",
+      inputSchema: z.object({ slug: z.string().min(1).max(80) }),
+    }, async ({ slug }) => timedTool("smart_storage.run_report_definition", async () => {
+      const blocked = await toolGuard(userId, entitlement, "report")
+      if (blocked) return blocked
+      try {
+        const definition = await getReportDefinition(userId, slug)
+        const document = await runReportDefinition(userId, definition)
+        return { content: [{ type: "text" as const, text: JSON.stringify({ definition: { slug: definition.slug, version: definition.version }, document }, null, 2) }] }
+      } catch (error) { return mcpToolError(error, userId, "run_report_definition", "The saved report could not be run.") }
+    }))
+
+    server.registerTool("smart_storage.save_report_definition", {
+      title: "Save a refreshable Smart Storage report",
+      description: "Create or update a report definition using only the declarative AVIntelligence contract. Never submit SQL, HTML, executable expressions, or computed snapshot rows. Inspect smart_storage.virtual_model first and use only returned fields. To update, provide the exact slug and expectedVersion.",
+      inputSchema: z.object({
+        definition: z.record(z.string(), z.unknown()),
+        slug: z.string().min(1).max(80).optional(),
+        expectedVersion: z.number().int().positive().optional(),
+      }),
+    }, async ({ definition, slug, expectedVersion }) => timedTool("smart_storage.save_report_definition", async () => {
+      const blocked = await toolGuard(userId, entitlement, "report")
+      if (blocked) return blocked
+      try {
+        const saved = slug
+          ? await updateReportDefinition(userId, slug, definition, expectedVersion ?? 0, "assistant")
+          : await createReportDefinition(userId, definition, "assistant")
+        return { content: [{ type: "text" as const, text: JSON.stringify({ definition: saved, next: `Run ${saved.slug} to validate it against current data.` }, null, 2) }] }
+      } catch (error) { return mcpToolError(error, userId, "save_report_definition", "The saved report could not be written.") }
+    }))
+
+    server.registerTool("smart_dashboard.list_visuals", {
+      title: "List saved Smart Dashboard visuals",
+      description: "Read-only. List the signed-in user's saved generated visuals and whether each is plotted on the dashboard.",
+      inputSchema: z.object({}),
+    }, async () => timedTool("smart_dashboard.list_visuals", async () => {
+      const blocked = await toolGuard(userId, entitlement, "profile")
+      if (blocked) return blocked
+      try {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ visuals: await listSavedDashboardWidgets(userId) }, null, 2) }] }
+      } catch (error) { return mcpToolError(error, userId, "list_visuals", "Dashboard visuals could not be loaded.") }
+    }))
+
+    server.registerTool("smart_dashboard.save_visual", {
+      title: "Save a Smart Dashboard visual",
+      description: "Save a validated visual using an existing Smart Dashboard renderer and optionally plot it immediately. Inspect smart_storage.profile first. Chart semantics are fixed by widget_type: line/area show time trends, pie/bar show composition, stacked-bar shows grouped composition, and composed-chart/banded-area show supported advanced trends.",
+      inputSchema: z.object({
+        widget_type: z.enum(["line-chart", "area-chart", "bar-chart", "pie-chart", "stacked-bar", "composed-chart", "banded-area"]),
+        title: z.string().min(1).max(120),
+        description: z.string().max(500).nullable().optional(),
+        insight: z.string().max(800).nullable().optional(),
+        plot: z.boolean().optional().default(true),
+      }),
+    }, async ({ widget_type, title, description, insight, plot }) => timedTool("smart_dashboard.save_visual", async () => {
+      const blocked = await toolGuard(userId, entitlement, "report")
+      if (blocked) return blocked
+      try {
+        const visual = await saveDashboardWidget(userId, { widget_type, title, description: description ?? null, insight: insight ?? null }, plot)
+        return { content: [{ type: "text" as const, text: JSON.stringify({ visual, plotted: plot }, null, 2) }] }
+      } catch (error) { return mcpToolError(error, userId, "save_visual", "The dashboard visual could not be saved.") }
+    }))
+
     server.registerTool("smart_storage.export", {
       title: "Smart Storage export",
       description: "Read-only. Generate import-ready accounting file text (QuickBooks 3-col, QuickBooks 4-col, or Xero) from the signed-in AVIntelligence user's own stored expenses, optionally scoped to a date period and folder (including descendants). Returns CSV text; does not modify any data.",
@@ -147,7 +236,7 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
       "A document-intelligence service that turns a user's files into a permissioned normalized data model, dashboards, structured outputs, and selected accounting exports.",
       "Every tool acts ONLY on the documents belonging to the signed-in AVIntelligence account, matched by the authenticated email. No data is shared across accounts.",
       "Access requires an active Pro or Business plan. Authentication is handled via AVIntelligence's OAuth (WorkOS); this server never receives passwords.",
-      "Tools: smart_storage.ingest (add documents), smart_storage.profile (inspect the fixed data profile), smart_storage.virtual_model (inspect bounded typed virtual records and fields), smart_storage.report (selected report examples), smart_storage.export (QuickBooks / Xero file). Report, profile, virtual_model, and export are read-only.",
+      "Tools: smart_storage.ingest (add documents), smart_storage.profile and smart_storage.virtual_model (inspect the data model), smart_storage.report (fixed examples), smart_storage.list_report_definitions and smart_storage.run_report_definition (saved refreshable reports), smart_storage.save_report_definition (create or update a validated declarative report), smart_storage.export (QuickBooks / Xero file), and smart_dashboard.list_visuals / smart_dashboard.save_visual (inspect or save validated dashboard visuals). Read tools never modify data; save tools affect only the signed-in user's reports or dashboard.",
     ].join(" "),
   })
 }

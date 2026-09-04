@@ -53,6 +53,7 @@ export async function loadDerivedRow(client: QueryClient, fileId: string, source
     ...attributesObject(attributes ?? []),
     id: record.id,
     file_id: fileId,
+    extraction_id: record.extraction_id,
     source_key: key,
     document_date: record.occurred_on ?? extractedRow.document_date ?? null,
     currency: record.currency ?? extractedRow.currency ?? null,

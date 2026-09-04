@@ -2,6 +2,7 @@ import { createClient, serve } from "../_shared/deps.ts"
 import { type AiProvider, isProviderFailure, providerChain } from "../_shared/ai-providers.ts"
 import { fetchWithTimeout } from "../_shared/fetch.ts"
 import { recordAiUsage } from "../_shared/ai-usage.ts"
+import { ensureExtraction } from "../_shared/write-extraction.ts"
 import { analyzePdf } from "../_shared/pdf-prescan.ts"
 
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY")!
@@ -157,7 +158,11 @@ function analyzeCsv(bytes: Uint8Array): { ok: boolean; reason?: string } {
 }
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const hash = await crypto.subtle.digest("SHA-256", bytes)
+  // Deno's WebCrypto requires an ArrayBuffer-backed view; callers may provide
+  // a Uint8Array whose generic backing type also permits SharedArrayBuffer.
+  const digestInput = new Uint8Array(bytes.byteLength)
+  digestInput.set(bytes)
+  const hash = await crypto.subtle.digest("SHA-256", digestInput.buffer)
   return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("")
 }
 
@@ -492,6 +497,13 @@ serve(async (req) => {
     })
   }
 
+  const ensuredExtraction = await ensureExtraction(supabase, {
+    userId: file.user_id,
+    fileId: file_id,
+    attemptNumber: 1,
+  })
+  const extractionId = ensuredExtraction.id
+
   await supabase.from("files").update({ upload_status: "scanning" }).eq("id", file_id)
 
   try {
@@ -596,6 +608,7 @@ serve(async (req) => {
             fileType: file.file_type,
             fileSizeBytes: file.file_size,
             documentType: file.document_type,
+            extractionId,
             workloadClass: "document",
             operation: "prescan_safety",
             provider,
@@ -614,6 +627,7 @@ serve(async (req) => {
             fileType: file.file_type,
             fileSizeBytes: file.file_size,
             documentType: file.document_type,
+            extractionId,
             workloadClass: "document",
             operation: "prescan_safety",
             provider,
@@ -658,7 +672,7 @@ serve(async (req) => {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
       },
-      body: JSON.stringify({ file_id }),
+      body: JSON.stringify({ file_id, extraction_id: extractionId }),
     }).catch(err => console.error("process-document chain failed:", err))
     // @ts-ignore - EdgeRuntime is a Supabase runtime global
     if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(chain)
@@ -672,6 +686,7 @@ serve(async (req) => {
     const reason = isReject ? err.code : "internal_error"
     const message = isReject ? err.message : "Scan failed. Please try again or contact support."
     await quarantineRow(supabase, file, reason, message)
+    await supabase.from("extractions").delete().eq("id", extractionId)
     return new Response(
       JSON.stringify({ quarantined: true, reason, message }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },

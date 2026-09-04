@@ -5,8 +5,7 @@ import { fetchWithTimeout } from "../_shared/fetch.ts"
 import { recordAiUsage } from "../_shared/ai-usage.ts"
 import { deriveRecords } from "../_shared/derive-records.ts"
 import { persistDerived } from "../_shared/persist-derived.ts"
-import { writeExtraction } from "../_shared/write-extraction.ts"
-import { attemptNumberForSourceKey } from "../_shared/write-extraction.ts"
+import { attemptNumberForSourceKey, ensureExtraction, writeExtraction } from "../_shared/write-extraction.ts"
 import { buildExtractionPayload } from "../_shared/extraction-payload.ts"
 import { loadDerivedRow } from "../_shared/derived-row.ts"
 
@@ -188,6 +187,7 @@ serve(async (req) => {
   // Hoisted so the catch block can target the specific row (by id) when it's
   // known, and increment normalization_attempts against that row.
   let fields: any
+  let normalizationExtractionId: string | null = null
 
   try {
     // 1. Use inline fields if provided; otherwise reconstruct from the durable
@@ -205,6 +205,14 @@ serve(async (req) => {
       .eq("id", file_id)
       .maybeSingle()
     const userId = ownerFile?.user_id ?? null
+    const sourceKey = requestedSourceKey ?? fields.source_key
+    if (!sourceKey) throw new Error("source_key is required for normalization")
+    if (!userId) throw new Error("File owner could not be resolved for normalization")
+    normalizationExtractionId = (await ensureExtraction(supabase, {
+      userId,
+      fileId: file_id,
+      attemptNumber: attemptNumberForSourceKey(sourceKey),
+    })).id
 
     // Retry ceiling. Skip rows that have repeatedly failed normalization to
     // avoid burning provider tokens on unreparable inputs. Success resets the
@@ -305,7 +313,7 @@ serve(async (req) => {
         await recordAiUsage(supabase, {
           userId,
           fileId: file_id,
-          documentFieldId: fields.id,
+          extractionId: fields.extraction_id,
           fileType: ownerFile?.file_type,
           fileSizeBytes: ownerFile?.file_size,
           documentType: ownerFile?.document_type,
@@ -326,7 +334,7 @@ serve(async (req) => {
         await recordAiUsage(supabase, {
           userId,
           fileId: file_id,
-          documentFieldId: fields.id,
+          extractionId: fields.extraction_id,
           fileType: ownerFile?.file_type,
           fileSizeBytes: ownerFile?.file_size,
           documentType: ownerFile?.document_type,
@@ -412,10 +420,9 @@ serve(async (req) => {
     }
 
     if (ownerFile?.user_id) {
-      const sourceKey = requestedSourceKey ?? fields.source_key
-      if (!sourceKey) throw new Error("source_key is required for normalization")
       const extractionPayload = buildExtractionPayload(normalizedRow, ownerFile.document_type ?? "general_document")
       const extractionId = await writeExtraction(supabase, {
+        id: normalizationExtractionId ?? undefined,
         userId: ownerFile.user_id,
         fileId: file_id,
         documentType: ownerFile.document_type ?? "general_document",
@@ -523,12 +530,25 @@ serve(async (req) => {
           })
           .eq("id", job_id)
       }
+      if (normalizationExtractionId) {
+        await supabase
+          .from("extractions")
+          .update({
+            status: "failed",
+            error_category: "normalization",
+            payload: { error: error instanceof Error ? error.message : String(error) },
+          })
+          .eq("id", normalizationExtractionId)
+      }
       await settleNormalizationBatch(supabase, file_id, fields?.normalization_batch_id)
     } catch (innerErr: any) {
       logError(FN, "failure_state_update", innerErr, { file_id, job_id })
     }
 
-    return new Response(JSON.stringify({ error: "Something went wrong" }), {
+    return new Response(JSON.stringify({
+      error: error instanceof Error ? error.message : String(error),
+      stage: "normalization",
+    }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     })

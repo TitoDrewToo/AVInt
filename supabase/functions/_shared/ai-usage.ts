@@ -40,7 +40,7 @@ function errorCategory(error: unknown): string | null {
 export async function recordAiUsage(supabase: any, input: {
   userId?: string | null
   fileId?: string | null
-  documentFieldId?: string | null
+  extractionId?: string | null
   fileType?: string | null
   fileSizeBytes?: number | null
   sourceRowCount?: number | null
@@ -64,7 +64,7 @@ export async function recordAiUsage(supabase: any, input: {
     const { error } = await supabase.from("ai_usage_events").insert({
       user_id: input.userId ?? null,
       file_id: input.fileId ?? null,
-      document_field_id: input.documentFieldId ?? null,
+      extraction_id: input.extractionId ?? null,
       file_type: input.fileType ?? null,
       file_size_bytes: input.fileSizeBytes ?? null,
       source_row_count: input.sourceRowCount ?? null,

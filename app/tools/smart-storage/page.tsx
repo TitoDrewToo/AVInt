@@ -36,6 +36,7 @@ import {
   Menu,
   Loader2,
   HardDrive,
+  Database,
   PanelRight,
 } from "lucide-react"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
@@ -102,6 +103,14 @@ const ReclassifyModal = dynamic(
 )
 const ReclassifySheetModal = dynamic(
   () => import("@/components/ui/reclassify-sheet-modal").then((mod) => mod.ReclassifySheetModal),
+  { ssr: false },
+)
+const DataModelView = dynamic(
+  () => import("@/components/smart-storage/data-model-view").then((mod) => mod.DataModelView),
+  { ssr: false },
+)
+const SavedReportManager = dynamic(
+  () => import("@/components/smart-storage/saved-report-manager").then((mod) => mod.SavedReportManager),
   { ssr: false },
 )
 
@@ -344,6 +353,7 @@ export default function SmartStoragePage() {
   const [reclassifyTarget, setReclassifyTarget] = useState<{ fileId: string; filename: string } | null>(null)
   const [reclassifySheetTarget, setReclassifySheetTarget] = useState<{ fileId: string; filename: string } | null>(null)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [dataModelOpen, setDataModelOpen] = useState(false)
   const [reportsOpen, setReportsOpen] = useState(false)
   const [renamingFileId, setRenamingFileId] = useState<string | null>(null)
   const [renameFileValue, setRenameFileValue] = useState("")
@@ -1750,6 +1760,14 @@ export default function SmartStoragePage() {
       )}
 
       <div className="flex shrink-0 items-center gap-1">
+        <Tip text="Inspect how folders and files become records, datasets, and reusable fields."><button
+          onClick={() => { setReportsOpen(false); setDataModelOpen(true) }}
+          aria-expanded={dataModelOpen}
+          className={`flex h-7 items-center gap-1.5 rounded px-2 text-xs transition-colors hover:bg-muted hover:text-foreground ${dataModelOpen ? "text-primary" : "text-muted-foreground"}`}
+        >
+          <Database className="h-3.5 w-3.5" />
+          Data Model
+        </button></Tip>
         <Tip text="Open reports in a separate drawer."><button
           onClick={() => setReportsOpen(true)}
           aria-expanded={reportsOpen}
@@ -2690,10 +2708,12 @@ export default function SmartStoragePage() {
 
           {/* Reports drawer is opened from the toolbar. The main workspace keeps its navigation pane. */}
           <Sheet open={reportsOpen} onOpenChange={setReportsOpen}>
-            <SheetContent side="right" className="w-full max-w-sm gap-0 border-l border-border bg-card p-0">
+            <SheetContent side="right" className="w-full max-w-2xl gap-0 border-l border-border bg-card p-0">
             <div className="border-b border-border px-4 py-3">
               <h2 className="text-sm font-semibold text-foreground">Reports</h2>
             </div>
+
+            {isPro && <SavedReportManager folderId={currentFolderId === "root" ? null : currentFolderId} />}
 
             <div className="flex flex-col gap-3 p-3">
               {/* Date range toggle */}
@@ -2888,6 +2908,27 @@ export default function SmartStoragePage() {
               })}
             </div>
           </div>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={dataModelOpen} onOpenChange={setDataModelOpen}>
+        <SheetContent side="top" className="inset-x-0 top-0 h-full w-full max-w-none border-b-0 p-0">
+          <DataModelView
+            files={files}
+            folders={folders}
+            onManualEntry={() => setManualEntryOpen(true)}
+            onReclassify={(file) => {
+              if (isSpreadsheetFile(file)) setReclassifySheetTarget({ fileId: file.id, filename: file.filename })
+              else setReclassifyTarget({ fileId: file.id, filename: file.filename })
+            }}
+            onRetry={(file) => { void handleRetryProcessing(file) }}
+            onOpenSource={(file) => {
+              setDataModelOpen(false)
+              void supabase.storage.from("documents").createSignedUrl(file.storage_path, 60).then(({ data }) => {
+                if (data?.signedUrl) window.open(data.signedUrl, "_blank", "noopener,noreferrer")
+              })
+            }}
+          />
         </SheetContent>
       </Sheet>
 

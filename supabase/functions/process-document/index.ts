@@ -7,7 +7,7 @@ import { asExtractedDocumentRows, type ExtractedDocumentRow } from "../_shared/e
 import { recordAiUsage } from "../_shared/ai-usage.ts"
 import { deriveRecords } from "../_shared/derive-records.ts"
 import { persistDerived } from "../_shared/persist-derived.ts"
-import { writeExtraction } from "../_shared/write-extraction.ts"
+import { ensureExtraction, writeExtraction } from "../_shared/write-extraction.ts"
 import { buildExtractionPayload } from "../_shared/extraction-payload.ts"
 import { buildDatasetSheet, replaceSpreadsheetDatasets, type DatasetSheet } from "../_shared/dataset-layer.ts"
 
@@ -438,6 +438,7 @@ async function mapHeadersForSheet(
   fileType: string | null,
   fileSizeBytes: number | null,
   documentType: string | null,
+  extractionId: string,
   isRetry = false,
 ): Promise<{ mapping: Record<string, string>; document_type: string }> {
   const userInput = JSON.stringify({
@@ -480,6 +481,7 @@ async function mapHeadersForSheet(
     fileType,
     fileSizeBytes,
     documentType,
+    extractionId,
     workloadClass: "spreadsheet",
     operation: "spreadsheet_header_mapping",
     provider: "gemini",
@@ -505,6 +507,7 @@ async function extractSpreadsheetRows(
   fileType: string | null,
   fileSizeBytes: number | null,
   documentType: string | null,
+  extractionId: string,
   isRetry = false,
 ): Promise<{ extractedRows: ExtractedDocumentRow[]; sourceRows: any[] }> {
   const XLSX = await import("https://esm.sh/xlsx@0.18.5")
@@ -555,7 +558,7 @@ async function extractSpreadsheetRows(
     let documentType = "general_document"
     let mappingMethod = "ai"
     try {
-      const result = await mapHeadersForSheet(supabase, sheetName, headers, sampleForMapping, fileId, userId, fileType, fileSizeBytes, documentType, isRetry)
+      const result = await mapHeadersForSheet(supabase, sheetName, headers, sampleForMapping, fileId, userId, fileType, fileSizeBytes, documentType, extractionId, isRetry)
       mapping = result.mapping
       documentType = result.document_type
     } catch (err: any) {
@@ -565,6 +568,7 @@ async function extractSpreadsheetRows(
         fileType,
         fileSizeBytes,
         documentType,
+        extractionId,
         workloadClass: "spreadsheet",
         operation: "spreadsheet_header_mapping",
         provider: "gemini",
@@ -811,6 +815,7 @@ async function callExtractionWithFallback(
   fileType: string | null,
   fileSizeBytes: number | null,
   documentType: string | null,
+  extractionId: string,
   isRetry = false,
 ): Promise<{ rawText: string; provider: AiProvider }> {
   let lastError: unknown = null
@@ -828,6 +833,7 @@ async function callExtractionWithFallback(
         fileType,
         fileSizeBytes,
         documentType,
+        extractionId,
         workloadClass: "document",
         operation: "extraction",
         provider,
@@ -847,6 +853,7 @@ async function callExtractionWithFallback(
         fileType,
         fileSizeBytes,
         documentType,
+        extractionId,
         workloadClass: "document",
         operation: "extraction",
         provider,
@@ -894,6 +901,8 @@ serve(async (req) => {
 
   // Read body once and store
   let body: any = {}
+  let activeExtractionId: string | null = null
+
   try {
     const text = await req.text()
     if (text) body = JSON.parse(text)
@@ -926,6 +935,14 @@ serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       })
     }
+
+    const ensuredExtraction = await ensureExtraction(supabase, {
+      id: typeof body.extraction_id === "string" ? body.extraction_id : undefined,
+      userId: file.user_id,
+      fileId: file_id,
+      attemptNumber: 1,
+    })
+    activeExtractionId = ensuredExtraction.id
 
     // Phase B gate: only proceed on approved or legacy uploaded rows.
     // approved → passed prescan, safe to OCR.
@@ -998,7 +1015,7 @@ serve(async (req) => {
     // SheetJS deterministically splits spreadsheet rows; AI only maps headers.
     if (isSpreadsheetInput(mimeType, file.filename ?? "")) {
       try {
-        const spreadsheetResult = await extractSpreadsheetRows(supabase, uint8Array, mimeType, file.filename ?? "", file_id, file.user_id, file.file_type, file.file_size, file.document_type, isReprocess)
+        const spreadsheetResult = await extractSpreadsheetRows(supabase, uint8Array, mimeType, file.filename ?? "", file_id, file.user_id, file.file_type, file.file_size, file.document_type, activeExtractionId, isReprocess)
         extractedRows = asExtractedDocumentRows(spreadsheetResult.extractedRows)
         sourceRows = spreadsheetResult.sourceRows
         extractionProvider = "deterministic"
@@ -1023,7 +1040,7 @@ serve(async (req) => {
       }
     } else {
       const base64 = toBase64(uint8Array)
-      const { rawText, provider } = await callExtractionWithFallback(supabase, mimeType, base64, uint8Array, file_id, file.user_id, file.file_type, file.file_size, file.document_type, isReprocess)
+      const { rawText, provider } = await callExtractionWithFallback(supabase, mimeType, base64, uint8Array, file_id, file.user_id, file.file_type, file.file_size, file.document_type, activeExtractionId, isReprocess)
       extractionProvider = provider
 
       try {
@@ -1138,6 +1155,7 @@ serve(async (req) => {
 
     const extractionPayload = extractedRows.length === 1 ? extractedRows[0] : extractedRows
     const extractionId = await writeExtraction(supabase, {
+      id: activeExtractionId,
       userId: file.user_id,
       fileId: file_id,
       documentType: isCsv ? "csv_export" : normalizeExtractedDocumentType(extracted, mimeType),
@@ -1176,7 +1194,7 @@ serve(async (req) => {
     // with the document type already resolved from extraction.
     // 10. Call normalize-document for each row
     // CSVs have multiple rows — normalize each individually using inline fields
-    const rowsForNormalization = rowsToInsert
+    const rowsForNormalization = rowsToInsert.map((row: any) => ({ ...row, extraction_id: extractionId }))
     const normalizeOne = (row: any, currentJobId?: string) => fetch(
       `${SUPABASE_URL}/functions/v1/normalize-document`,
       {
@@ -1185,7 +1203,7 @@ serve(async (req) => {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
         },
-        body: JSON.stringify({ file_id, job_id: currentJobId, source_key: row.source_key, fields: row, reprocess: isReprocess }),
+        body: JSON.stringify({ file_id, job_id: currentJobId, source_key: row.source_key, fields: row, reprocess: isReprocess, extraction_id: extractionId }),
       },
     )
 
@@ -1222,6 +1240,16 @@ serve(async (req) => {
     try {
       if (body?.file_id) {
         const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        if (activeExtractionId) {
+          await supabase
+            .from("extractions")
+            .update({
+              status: "failed",
+              error_category: "process_document",
+              payload: { error: error instanceof Error ? error.message : String(error) },
+            })
+            .eq("id", activeExtractionId)
+        }
         await supabase
           .from("processing_jobs")
           .update({ status: "failed", error_message: error.message })
@@ -1230,7 +1258,10 @@ serve(async (req) => {
       }
     } catch {}
 
-    return new Response(JSON.stringify({ error: "Something went wrong" }), {
+    return new Response(JSON.stringify({
+      error: error instanceof Error ? error.message : String(error),
+      stage: "process_document",
+    }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     })

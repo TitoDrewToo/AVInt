@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { supabaseAdmin } from "@/lib/mcp-auth"
 import { type Entitlement } from "@/lib/entitlement"
-import { isIngestComplete, type IngestCompletionSnapshot } from "@/lib/ingest-completion"
+import { isIngestComplete, isTerminalExtractionFailure, type IngestCompletionSnapshot } from "@/lib/ingest-completion"
 import { PLAN_LIMITS, usageWindowForTier } from "@/supabase/functions/_shared/plan-limits"
 
 export type IngestFile = { name: string; mimeType: string; data: string; source?: { provider: "google_drive"; fileId: string; url?: string; modifiedAt?: string } }
@@ -50,7 +50,20 @@ export async function ingestFiles(userId: string, entitlement: Entitlement, file
     }
     const edgeUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/prescan-document`
     const prescan = await fetch(edgeUrl, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}` }, body: JSON.stringify({ file_id: file.id, user_id: userId }) })
-    if (!prescan.ok) throw new Error(`prescan-document failed: ${await prescan.text()}`)
+    const prescanPayload = await prescan.json().catch(() => null) as { quarantined?: boolean; reason?: string; message?: string } | null
+    if (!prescan.ok) throw new Error(`prescan-document failed: ${prescanPayload?.message ?? prescanPayload?.reason ?? prescan.statusText}`)
+    if (prescanPayload?.quarantined) {
+      results.push({
+        file_id: file.id,
+        filename: file.filename,
+        status: "rejected",
+        message: prescanPayload.message ?? "The file did not pass the Smart Storage safety scan.",
+        reason: prescanPayload.reason ?? "prescan_rejected",
+        ...EMPTY_COUNTS,
+        records: [],
+      })
+      continue
+    }
     if (options.waitForNormalization === false) {
       results.push({ file_id: file.id, filename: file.filename, status: "processing", ...EMPTY_COUNTS, fair_use_warning: Boolean(claim?.[0]?.fair_use_warning), records: [] })
       continue
@@ -59,12 +72,13 @@ export async function ingestFiles(userId: string, entitlement: Entitlement, file
     let records: any[] = []
     let counts = EMPTY_COUNTS
     let terminalFailure: string | null = null
+    let normalizationComplete = false
     while (Date.now() < deadline) {
       const { data: extractionRows } = await supabaseAdmin
         .from("extractions")
         .select("id, status")
         .eq("file_id", file.id)
-      const failedExtraction = (extractionRows ?? []).find((extraction) => extraction.status !== "succeeded")
+      const failedExtraction = (extractionRows ?? []).find((extraction) => isTerminalExtractionFailure(extraction.status))
       if (failedExtraction) {
         terminalFailure = `Extraction ended with status ${failedExtraction.status}.`
         break
@@ -83,13 +97,16 @@ export async function ingestFiles(userId: string, entitlement: Entitlement, file
         records: records.map((record) => ({ id: record.id, parent_record_id: record.parent_record_id, extraction_id: record.extraction_id })),
         extractionStatuses: (extractionRows ?? []).map((extraction) => extraction.status),
       }
-      if (isIngestComplete(currentSnapshot)) break
+      if (isIngestComplete(currentSnapshot)) {
+        normalizationComplete = true
+        break
+      }
       await new Promise((resolve) => setTimeout(resolve, POLL_MS))
     }
     results.push({
       file_id: file.id,
       filename: file.filename,
-      status: terminalFailure ? "failed" : records.length ? "normalized" : "processing",
+      status: terminalFailure ? "failed" : normalizationComplete ? "normalized" : "processing",
       ...(terminalFailure ? { message: terminalFailure } : {}),
       ...counts,
       fair_use_warning: Boolean(claim?.[0]?.fair_use_warning),

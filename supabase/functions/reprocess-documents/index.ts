@@ -138,7 +138,7 @@ async function callAI(supabase: any, row: any, systemPrompt: string, userInput: 
       await recordAiUsage(supabase, {
         userId: ownerFile?.user_id ?? null,
         fileId: row.file_id,
-        documentFieldId: row.id,
+        extractionId: row.extraction_id,
         fileType: ownerFile?.file_type,
         fileSizeBytes: ownerFile?.file_size,
         documentType: ownerFile?.document_type,
@@ -159,7 +159,7 @@ async function callAI(supabase: any, row: any, systemPrompt: string, userInput: 
       await recordAiUsage(supabase, {
         userId: ownerFile?.user_id ?? null,
         fileId: row.file_id,
-        documentFieldId: row.id,
+        extractionId: row.extraction_id,
         fileType: ownerFile?.file_type,
         fileSizeBytes: ownerFile?.file_size,
         documentType: ownerFile?.document_type,

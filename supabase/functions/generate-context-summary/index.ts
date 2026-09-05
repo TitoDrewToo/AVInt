@@ -209,32 +209,26 @@ serve(async (req) => {
       })
     }
 
-    const [summaryResult, categoryResult, counterpartyResult, currencyResult] = await Promise.all([
-      supabase.rpc("get_record_summary", { p_user_id: user_id, p_from, p_to }),
-      supabase.rpc("get_record_amounts_by_category", { p_user_id: user_id, p_from, p_to, p_limit: 5 }),
-      supabase.rpc("get_record_amounts_by_counterparty", { p_user_id: user_id, p_from, p_to, p_limit: 5 }),
-      supabase.from("records").select("currency").eq("user_id", user_id).is("parent_record_id", null).not("currency", "is", null).limit(100),
-    ])
-    if (summaryResult.error) throw new Error(`record summary failed: ${summaryResult.error.message}`)
-    if (categoryResult.error) throw new Error(`category aggregate failed: ${categoryResult.error.message}`)
-    if (counterpartyResult.error) throw new Error(`counterparty aggregate failed: ${counterpartyResult.error.message}`)
-    if (currencyResult.error) throw new Error(`currency sample failed: ${currencyResult.error.message}`)
-
-    const aggregateSummary = summaryResult.data?.[0] ?? {}
-    const categories = categoryResult.data ?? []
-    const counterparties = counterpartyResult.data ?? []
-    const currencies = [...new Set((currencyResult.data ?? []).map((row: any) => row.currency).filter(Boolean))]
+    const currencyResult = await supabase.rpc("get_dashboard_currencies", { p_user_id: user_id, p_from, p_to })
+    if (currencyResult.error) throw new Error(`currency aggregate failed: ${currencyResult.error.message}`)
+    const currencies = (currencyResult.data ?? []).map((row: any) => String(row.currency)).filter(Boolean)
+    const currency = currencies[0] ?? "UNSPECIFIED"
+    const analyticsResult = await supabase.rpc("get_dashboard_record_analytics", { p_user_id: user_id, p_from, p_to, p_currency: currency })
+    if (analyticsResult.error) throw new Error(`record analytics failed: ${analyticsResult.error.message}`)
+    const analyticsRows = analyticsResult.data ?? []
+    const summaryRows = analyticsRows.filter((row: any) => row.bucket_kind === "summary")
+    const categories = analyticsRows.filter((row: any) => row.bucket_kind === "category")
+    const counterparties = analyticsRows.filter((row: any) => row.bucket_kind === "counterparty")
 
     // 2. Build a concise data summary for the AI prompt
-    const totalIncome = Number(aggregateSummary.total_inflow ?? 0)
-    const totalExpenses = Number(aggregateSummary.total_outflow ?? 0)
+    const totalIncome = summaryRows.filter((row: any) => row.direction === "inflow").reduce((sum: number, row: any) => sum + Number(row.amount ?? 0), 0)
+    const totalExpenses = summaryRows.filter((row: any) => row.direction === "outflow").reduce((sum: number, row: any) => sum + Number(row.amount ?? 0), 0)
     const topCategories = categories
-      .filter((row: any) => row.direction === "outflow" || row.category === "Other")
-      .map((row: any) => `${row.category}: ${Number(row.amount ?? 0).toLocaleString()}`)
-    const employers = counterparties.filter((row: any) => row.direction === "inflow").map((row: any) => row.counterparty)
-    const vendors = counterparties.filter((row: any) => row.direction === "outflow").map((row: any) => row.counterparty)
-    const currency = currencies[0] ?? "PHP"
-    const monthsTracked = Number(aggregateSummary.months_tracked ?? 0)
+      .filter((row: any) => row.direction === "outflow").slice(0, 5)
+      .map((row: any) => `${row.bucket_key}: ${Number(row.amount ?? 0).toLocaleString()}`)
+    const employers = counterparties.filter((row: any) => row.direction === "inflow").slice(0, 5).map((row: any) => row.bucket_key)
+    const vendors = counterparties.filter((row: any) => row.direction === "outflow").slice(0, 5).map((row: any) => row.bucket_key)
+    const monthsTracked = new Set(analyticsRows.filter((row: any) => row.bucket_kind === "month").map((row: any) => row.bucket_key)).size
     const documentTypes = [...new Set(userFiles.map((f) => f.document_type))]
     const dataQualityNotes = [
       monthsTracked > 0 ? `${monthsTracked} month${monthsTracked === 1 ? "" : "s"} with dated records` : "no dated records detected",

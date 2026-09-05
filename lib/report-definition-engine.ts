@@ -84,6 +84,10 @@ async function loadDataset(userId: string, definition: ReportDefinition): Promis
   return { rows: values, availableFields, dateField: source.dateField ?? null, currencyField: source.currencyField ?? null, sourceLabel: `dataset ${dataset.name}` }
 }
 
+export async function loadReportDefinitionSource(userId: string, definition: ReportDefinition): Promise<LoadedReportDefinitionSource> {
+  return definition.source.kind === "records" ? loadRecords(userId, definition) : loadDataset(userId, definition)
+}
+
 function overlaps(start: string, end: string, from: string, to: string) {
   if (!start && !end) return false
   const low = start || end; const high = end || start
@@ -127,7 +131,7 @@ function suppressed(type: ReportBlock["type"], reason: string): ReportBlock & { 
 }
 
 export async function runReportDefinition(userId: string, definition: ReportDefinition, now = new Date()): Promise<ReportDocument> {
-  const source = definition.source.kind === "records" ? await loadRecords(userId, definition) : await loadDataset(userId, definition)
+  const source = await loadReportDefinitionSource(userId, definition)
   return compileReportDefinition(definition, source, now)
 }
 

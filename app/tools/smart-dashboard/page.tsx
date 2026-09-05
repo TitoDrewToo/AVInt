@@ -102,6 +102,8 @@ type DrilldownState = {
   label: string
 }
 
+type DashboardPageSummary = { id: string; name: string; slug: string; kind: "personal" | "business" | "custom"; position: number; layout?: Record<string, unknown> }
+
 const CURRENCY_SCOPED_WIDGET_TYPES = new Set([
   "kpi-income",
   "kpi-expenses",
@@ -183,7 +185,7 @@ function currencyHasWidgetData(bucket: DashboardCurrencyBucket | undefined, widg
 }
 
 function widgetSupportsMergedCurrency(widget: Widget) {
-  return (KPI_CURRENCY_VIEW_WIDGET_TYPES.has(widget.type) || CHART_CURRENCY_VIEW_WIDGET_TYPES.has(widget.type)) && !widget.rdConfig && !widget.conversion_locked
+  return (KPI_CURRENCY_VIEW_WIDGET_TYPES.has(widget.type) || CHART_CURRENCY_VIEW_WIDGET_TYPES.has(widget.type)) && !widget.rdConfig && !widget.visualConfig && !widget.conversion_locked
 }
 
 function widgetHasMultipleCurrencyViews(widget: Widget, model: DashboardCurrencyModel) {
@@ -192,7 +194,7 @@ function widgetHasMultipleCurrencyViews(widget: Widget, model: DashboardCurrency
 }
 
 function titleCurrencyForWidget(widget: Widget, model: DashboardCurrencyModel, activeCurrency?: string | null) {
-  if (!CURRENCY_SCOPED_WIDGET_TYPES.has(widget.type) || widget.rdConfig) return null
+  if (!CURRENCY_SCOPED_WIDGET_TYPES.has(widget.type) || widget.rdConfig || widget.visualConfig) return null
   if (KPI_CURRENCY_VIEW_WIDGET_TYPES.has(widget.type) && widget.currencyMode !== "merged") return null
   if (activeCurrency && model.buckets[activeCurrency]) return activeCurrency
   return model.currencies.find((currency) => currencyHasWidgetData(model.buckets[currency], widget.type)) ?? null
@@ -416,7 +418,7 @@ function WidgetContent({
   const MULTI_COLORS = extendPalette(effectiveAccent, 16, themeMode)
   const [activePieIndex, setActivePieIndex] = useState<number | null>(null)
   const [activeCurrency, setActiveCurrency] = useState(currencyModel.primaryCurrency)
-  const isCurrencyScopedWidget = CURRENCY_SCOPED_WIDGET_TYPES.has(widget.type) && !widget.rdConfig
+  const isCurrencyScopedWidget = CURRENCY_SCOPED_WIDGET_TYPES.has(widget.type) && !widget.rdConfig && !widget.visualConfig
   const isMergedMode = widgetSupportsMergedCurrency(widget) && widget.currencyMode === "merged" && mergedCurrencyModel.currencies.length > 0
   const activeCurrencyModel = isMergedMode ? mergedCurrencyModel : currencyModel
   const widgetCurrencies = useMemo(
@@ -749,8 +751,16 @@ function WidgetContent({
   // Sonnet R&D widgets — render the transformed data[] Sonnet returned,
   // not the dashboard's generic monthly/category series. Shared tick/grid
   // styling matches the rest of the chart library.
-  if (widget.rdConfig) {
-    const rd = widget.rdConfig
+  if (widget.rdConfig || widget.visualConfig) {
+    const rd = widget.rdConfig ?? {
+      source: "rd" as const,
+      angle: "cross_doc_correlation" as const,
+      chart_type: widget.type as RdWidgetConfig["chart_type"],
+      data: widget.visualConfig!.data,
+      x_key: widget.visualConfig!.x_key,
+      data_key: widget.visualConfig!.data_key,
+      currency: "",
+    }
     const effectiveChartType = variantToChartType(widget.chartVariant) ?? rd.chart_type
     const rdSymbol = currencyToSymbol(rd.currency)
     const axisProps = {
@@ -1481,6 +1491,8 @@ export default function SmartDashboardPage() {
   const [contextSummaryDate, setContextSummaryDate] = useState<string | null>(null)
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false)
   const [advancedWidgetsList, setAdvancedWidgetsList] = useState<AdvancedWidget[]>([])
+  const [dashboardPages, setDashboardPages] = useState<DashboardPageSummary[]>([])
+  const [activePageSlug, setActivePageSlug] = useState("personal")
   const [isRunningAnalytics, setIsRunningAnalytics] = useState(false)
   const [analyticsToast, setAnalyticsToast] = useState<string | null>(null)
   const [standardOpen, setStandardOpen] = useState(true)
@@ -1581,29 +1593,33 @@ export default function SmartDashboardPage() {
       setLayout([])
       return
     }
-    const [{ data, error: layoutError }, { data: activeAdvancedWidgets, error: advancedError }] = await Promise.all([
-      supabase
-        .from("dashboard_layouts")
-        .select("layout")
-        .eq("user_id", session.user.id)
-        .maybeSingle(),
-      supabase
-        .from("advanced_widgets")
-        .select("id, widget_type, title, description, insight")
-        .eq("user_id", session.user.id)
-        .or("expires_at.is.null,expires_at.gt." + new Date().toISOString()),
-    ])
-    if (layoutError || advancedError) {
+    const { data: { session: currentSession } } = await supabase.auth.getSession()
+    const response = await fetch(`/api/dashboard-visuals?page=${encodeURIComponent(activePageSlug)}`, { headers: { Authorization: `Bearer ${currentSession?.access_token ?? ""}` } })
+    if (!response.ok) {
       setDataError("We could not refresh your dashboard layout. Please try again.")
       return
     }
-    if (data?.layout) {
-      const saved = data.layout
+    const surface = await response.json()
+    const pages = (surface.pages ?? []) as DashboardPageSummary[]
+    const activeAdvancedWidgets = (surface.visuals ?? []) as AdvancedWidget[]
+    setDashboardPages(pages)
+    setAdvancedWidgetsList(activeAdvancedWidgets.filter(isRenderableDashboardWidget))
+    const page = pages.find((candidate) => candidate.slug === activePageSlug)
+    if (page?.layout) {
+      const saved = page.layout as any
       const preferences = normalizeDashboardPreferences(saved.preferences)
-      const activeAdvancedIds = new Set((activeAdvancedWidgets ?? []).filter(isRenderableDashboardWidget).map((widget) => widget.id))
+      const activeAdvancedIds = new Set((activeAdvancedWidgets ?? []).filter((widget) => {
+        if (!isRenderableDashboardWidget(widget)) return false
+        const isDefinition = widget.config?.source === "definition"
+        return !isDefinition || Boolean(widget.resolved_config)
+      }).map((widget) => widget.id))
+      const advancedById = new Map(activeAdvancedWidgets.map((widget) => [widget.id, widget]))
       const savedWidgets: Widget[] = saved.widgets?.length
         ? applyWidgetCurrencyModes(saved.widgets, preferences.widgetCurrencyModes)
           .filter((widget) => !widget.advancedId || activeAdvancedIds.has(widget.advancedId))
+          .map((widget) => widget.advancedId && advancedById.get(widget.advancedId)?.resolved_config
+            ? { ...widget, visualConfig: advancedById.get(widget.advancedId)!.resolved_config }
+            : widget)
         : []
       const widgetById = new Map<string, Widget>(savedWidgets.map((widget) => [widget.id, widget]))
       setWidgets(savedWidgets)
@@ -1625,7 +1641,7 @@ export default function SmartDashboardPage() {
       setWidgets([])
       setLayout([])
     }
-  }, [session])
+  }, [activePageSlug, session])
 
   // ── Load data ──────────────────────────────────────────────────────────────
   const loadData = useCallback(async () => {
@@ -1776,15 +1792,13 @@ export default function SmartDashboardPage() {
   // ── Advanced widgets ────────────────────────────────────────────────────────
   const loadAdvancedWidgets = useCallback(async () => {
     if (!session?.user?.id) return
-    const { data } = await supabase
-      .from("advanced_widgets")
-      .select("*")
-      .eq("user_id", session.user.id)
-      .or("expires_at.is.null,expires_at.gt." + new Date().toISOString())
-      .order("is_starred", { ascending: false })
-      .order("created_at", { ascending: false })
-    if (data) setAdvancedWidgetsList(data.filter(isRenderableDashboardWidget))
-  }, [session])
+    const { data: { session: currentSession } } = await supabase.auth.getSession()
+    const response = await fetch(`/api/dashboard-visuals?page=${encodeURIComponent(activePageSlug)}`, { headers: { Authorization: `Bearer ${currentSession?.access_token ?? ""}` } })
+    if (!response.ok) return
+    const data = await response.json()
+    setDashboardPages(data.pages ?? [])
+    setAdvancedWidgetsList((data.visuals ?? []).filter(isRenderableDashboardWidget))
+  }, [activePageSlug, session])
 
   useEffect(() => { loadAdvancedWidgets() }, [loadAdvancedWidgets])
 
@@ -1836,13 +1850,14 @@ export default function SmartDashboardPage() {
 
   const plotAdvancedWidget = async (aw: AdvancedWidget) => {
     if (!isRenderableDashboardWidget(aw)) return
+    if (aw.config?.source === "definition" && !aw.resolved_config) return
     if (widgets.some(w => w.advancedId === aw.id)) return
     await supabase.from("advanced_widgets").update({ is_plotted: true, expires_at: null }).eq("id", aw.id)
     setAdvancedWidgetsList(prev => prev.map(w => w.id === aw.id ? { ...w, is_plotted: true, expires_at: null } : w))
     const rdConfig = aw.widget_type === "rd-insight" && aw.config && (aw.config as any).source === "rd"
       ? (aw.config as unknown as RdWidgetConfig)
       : undefined
-    const newWidget: Widget = {
+      const newWidget: Widget = {
       id:         `adv-${aw.id}`,
       type:       rdConfig ? rdConfig.chart_type : aw.widget_type,
       title:      aw.title,
@@ -1850,6 +1865,7 @@ export default function SmartDashboardPage() {
       advancedId: aw.id,
       insight:    aw.insight ?? undefined,
       rdConfig,
+      visualConfig: aw.resolved_config,
     }
     const lastY = layout.length ? Math.max(...layout.map(l => l.y + l.h)) : 0
     const minSize = WIDGET_MIN_SIZE[aw.widget_type] ?? widgetMinSize(newWidget.type)
@@ -1894,6 +1910,9 @@ export default function SmartDashboardPage() {
           user_id: session.user.id,
           existing_widget_types: widgets.map(w => w.type),
           plotted_advanced_types: plottedAdvancedTypes,
+          page_id: dashboardPages.find((page) => page.slug === activePageSlug)?.id ?? null,
+          from_date: dateFrom || null,
+          to_date: dateTo || null,
         }),
       })
 
@@ -1906,6 +1925,9 @@ export default function SmartDashboardPage() {
             body: JSON.stringify({
               user_id: session.user.id,
               haiku_chart_families: plottedAdvancedTypes,
+              page_id: dashboardPages.find((page) => page.slug === activePageSlug)?.id ?? null,
+              from_date: dateFrom || null,
+              to_date: dateTo || null,
             }),
           }).catch(() => null)
         : Promise.resolve(null)
@@ -1985,8 +2007,9 @@ export default function SmartDashboardPage() {
     const closeEditor = options.closeEditor ?? true
     const showConfirm = options.showConfirm ?? true
     setIsSaving(true)
-    await supabase.from("dashboard_layouts").upsert({
-      user_id: session.user.id,
+    const activePage = dashboardPages.find((page) => page.slug === activePageSlug)
+    if (!activePage) { setIsSaving(false); return }
+    await supabase.from("dashboard_pages").update({
       layout: {
         widgets: nextWidgets,
         gridLayout: nextLayout,
@@ -1997,7 +2020,7 @@ export default function SmartDashboardPage() {
         },
       },
       updated_at: new Date().toISOString(),
-    }, { onConflict: "user_id" })
+    }).eq("id", activePage.id).eq("user_id", session.user.id)
     setIsSaving(false)
     setIsDirty(false)
     if (closeEditor) {
@@ -2021,14 +2044,16 @@ export default function SmartDashboardPage() {
     fallbackLayout: LayoutItem[] = layout,
   ) => {
     if (!session?.user?.id) return
+    const activePage = dashboardPages.find((page) => page.slug === activePageSlug)
+    if (!activePage) return
     const { data } = await supabase
-      .from("dashboard_layouts")
+      .from("dashboard_pages")
       .select("layout")
+      .eq("id", activePage.id)
       .eq("user_id", session.user.id)
       .maybeSingle()
     const savedLayout = data?.layout && typeof data.layout === "object" ? data.layout as any : {}
-    await supabase.from("dashboard_layouts").upsert({
-      user_id: session.user.id,
+    await supabase.from("dashboard_pages").update({
       layout: {
         ...savedLayout,
         widgets: savedLayout.widgets ?? fallbackWidgets,
@@ -2040,7 +2065,7 @@ export default function SmartDashboardPage() {
         },
       },
       updated_at: new Date().toISOString(),
-    }, { onConflict: "user_id" })
+    }).eq("id", activePage.id).eq("user_id", session.user.id)
   }
 
   const updatePrimaryCurrencyPreference = async (currency: string) => {
@@ -2309,6 +2334,21 @@ export default function SmartDashboardPage() {
   const dashboardToolbar = (
     <div className="flex min-w-0 items-center justify-between gap-2">
       <div className="flex min-w-0 flex-1 items-center gap-2 overflow-visible">
+        {dashboardPages.length > 0 && (
+          <div className="flex shrink-0 items-center gap-0.5 rounded-lg border border-border p-0.5" aria-label="Dashboard pages">
+            {dashboardPages.map((page) => (
+              <button
+                key={page.id}
+                type="button"
+                onClick={() => { setActivePageSlug(page.slug); setSelectedWidgetId(null); setIsEditingLayout(false) }}
+                className={`rounded-md px-2.5 py-1 text-xs transition-colors ${activePageSlug === page.slug ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+                title={`${page.name} dashboard page`}
+              >
+                {page.name}
+              </button>
+            ))}
+          </div>
+        )}
         <button
           type="button"
           onClick={() => void refreshDashboard()}

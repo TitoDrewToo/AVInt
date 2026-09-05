@@ -16,6 +16,15 @@ export interface Widget {
   advancedId?: string
   insight?: string
   rdConfig?: RdWidgetConfig
+  visualConfig?: DashboardVisualConfig
+}
+
+export interface DashboardVisualConfig {
+  source: "definition"
+  data: Array<{ label: string; value: number; currency?: string }>
+  x_key: "label"
+  data_key: "value"
+  coverage: { rowCount: number; complete: boolean; statement: string }
 }
 
 export interface RdWidgetConfig {
@@ -40,6 +49,9 @@ export interface AdvancedWidget {
   is_plotted: boolean
   created_at: string
   expires_at: string | null
+  page_id?: string | null
+  resolved_config?: DashboardVisualConfig
+  resolution_error?: string
 }
 
 export interface LayoutItem {

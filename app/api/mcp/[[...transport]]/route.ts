@@ -181,30 +181,32 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
     server.registerTool("smart_dashboard.list_visuals", {
       title: "List saved Smart Dashboard visuals",
       description: "Read-only. List the signed-in user's saved generated visuals and whether each is plotted on the dashboard.",
-      inputSchema: z.object({}),
-    }, async () => timedTool("smart_dashboard.list_visuals", async () => {
+      inputSchema: z.object({ page_slug: z.string().min(1).max(80).optional() }),
+    }, async ({ page_slug }) => timedTool("smart_dashboard.list_visuals", async () => {
       const blocked = await toolGuard(userId, entitlement, "profile")
       if (blocked) return blocked
       try {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ visuals: await listSavedDashboardWidgets(userId) }, null, 2) }] }
+        return { content: [{ type: "text" as const, text: JSON.stringify({ visuals: await listSavedDashboardWidgets(userId, page_slug) }, null, 2) }] }
       } catch (error) { return mcpToolError(error, userId, "list_visuals", "Dashboard visuals could not be loaded.") }
     }))
 
     server.registerTool("smart_dashboard.save_visual", {
       title: "Save a Smart Dashboard visual",
-      description: "Save a validated visual using an existing Smart Dashboard renderer and optionally plot it immediately. Inspect smart_storage.profile first. Chart semantics are fixed by widget_type: line/area show time trends, pie/bar show composition, stacked-bar shows grouped composition, and composed-chart/banded-area show supported advanced trends.",
+      description: "Save a refreshable visual backed by canonical Smart Storage records or a dataset and optionally plot it on a dashboard page. Inspect smart_storage.virtual_model first. The definition is declarative: source, scope, period, filters, dimension, metric, and limit; SQL and executable expressions are never accepted.",
       inputSchema: z.object({
-        widget_type: z.enum(["line-chart", "area-chart", "bar-chart", "pie-chart", "stacked-bar", "composed-chart", "banded-area"]),
+        widget_type: z.enum(["line-chart", "area-chart", "bar-chart", "pie-chart"]),
         title: z.string().min(1).max(120),
         description: z.string().max(500).nullable().optional(),
         insight: z.string().max(800).nullable().optional(),
+        definition: z.record(z.string(), z.unknown()),
+        page_slug: z.string().min(1).max(80).optional().default("personal"),
         plot: z.boolean().optional().default(true),
       }),
-    }, async ({ widget_type, title, description, insight, plot }) => timedTool("smart_dashboard.save_visual", async () => {
+    }, async ({ widget_type, title, description, insight, definition, page_slug, plot }) => timedTool("smart_dashboard.save_visual", async () => {
       const blocked = await toolGuard(userId, entitlement, "report")
       if (blocked) return blocked
       try {
-        const visual = await saveDashboardWidget(userId, { widget_type, title, description: description ?? null, insight: insight ?? null }, plot)
+        const visual = await saveDashboardWidget(userId, { widget_type, title, description: description ?? null, insight: insight ?? null, definition }, plot, page_slug)
         return { content: [{ type: "text" as const, text: JSON.stringify({ visual, plotted: plot }, null, 2) }] }
       } catch (error) { return mcpToolError(error, userId, "save_visual", "The dashboard visual could not be saved.") }
     }))

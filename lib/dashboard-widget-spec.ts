@@ -1,10 +1,12 @@
 import { getEnabledAnalyticsWidgetTypes, type AdvancedWidgetType } from "@/lib/advanced-analytics-config"
+import { validateDashboardVisualDefinition, type DashboardVisualDefinition } from "@/lib/dashboard-visual-definition"
 
 export interface ValidatedDashboardWidgetSpec {
   widgetType: AdvancedWidgetType
   title: string
   description: string | null
   insight: string | null
+  definition: DashboardVisualDefinition | null
 }
 
 const MAX_TITLE_LENGTH = 120
@@ -33,7 +35,10 @@ export function validateDashboardWidgetSpec(value: unknown): ValidatedDashboardW
   if (typeof widgetType !== "string" || !getEnabledAnalyticsWidgetTypes().includes(widgetType as AdvancedWidgetType)) return null
   if (!title || (raw.description != null && !description) || (raw.insight != null && !insight)) return null
 
-  return { widgetType: widgetType as AdvancedWidgetType, title, description, insight }
+  const rawDefinition = raw.definition ?? (raw.config && typeof raw.config === "object" && !Array.isArray(raw.config) ? (raw.config as Record<string, unknown>).definition : undefined)
+  const definitionResult = rawDefinition === undefined ? null : validateDashboardVisualDefinition(rawDefinition)
+  if (rawDefinition !== undefined && (!definitionResult || !definitionResult.ok)) return null
+  return { widgetType: widgetType as AdvancedWidgetType, title, description, insight, definition: definitionResult?.ok ? definitionResult.value : null }
 }
 
 export function isRenderableDashboardWidget(value: unknown): boolean {

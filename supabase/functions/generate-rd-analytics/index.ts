@@ -266,7 +266,7 @@ serve(async (req) => {
     })
   }
 
-  const { user_id, haiku_chart_families, from_date: p_from = null, to_date: p_to = null } = body
+  const { user_id, page_id, haiku_chart_families, from_date: p_from = null, to_date: p_to = null } = body
   if (!user_id) {
     return new Response(JSON.stringify({ error: "user_id required" }), {
       status: 400,
@@ -320,6 +320,17 @@ serve(async (req) => {
   }
 
   try {
+    let dashboardPageId: string
+    if (page_id) {
+      const { data: ownedPage, error: pageError } = await supabase.from("dashboard_pages").select("id").eq("id", page_id).eq("user_id", user_id).maybeSingle()
+      if (pageError || !ownedPage) return new Response(JSON.stringify({ error: "Dashboard page not found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } })
+      dashboardPageId = ownedPage.id
+    } else {
+      const { data: personalPage, error: pageError } = await supabase.from("dashboard_pages").upsert({ user_id, name: "Personal", slug: "personal", kind: "personal", position: 0 }, { onConflict: "user_id,slug" }).select("id").single()
+      if (pageError || !personalPage) throw new Error(`Dashboard page resolution failed: ${pageError?.message ?? "missing page"}`)
+      dashboardPageId = personalPage.id
+    }
+
     // ── 1. Load corpus ─────────────────────────────────────────────────────
     const { data: userFiles } = await supabase
       .from("files")
@@ -335,18 +346,24 @@ serve(async (req) => {
       })
     }
 
-    const [summaryResult, monthResult, counterpartyResult, evidenceResult] = await Promise.all([
-      supabase.rpc("get_record_summary", { p_user_id: user_id, p_from, p_to }),
-      supabase.rpc("get_record_amounts_by_month", { p_user_id: user_id, p_from, p_to }),
-      supabase.rpc("get_record_amounts_by_counterparty", { p_user_id: user_id, p_from, p_to, p_limit: 25 }),
-      supabase.from("records").select("counterparty, occurred_on, amount, direction, currency, category, record_type, field_confidence").eq("user_id", user_id).is("parent_record_id", null).limit(20),
+    const currencyResult = await supabase.rpc("get_dashboard_currencies", { p_user_id: user_id, p_from, p_to })
+    if (currencyResult.error) throw new Error(`currency query failed: ${currencyResult.error.message}`)
+    const currency = currencyResult.data?.[0]?.currency ?? "UNSPECIFIED"
+    let evidenceQuery = supabase.from("records").select("counterparty, counterparty_normalized, occurred_on, amount, direction, currency, category, record_type, field_confidence").eq("user_id", user_id).is("parent_record_id", null).is("excluded_at", null).limit(20)
+    evidenceQuery = currency === "UNSPECIFIED" ? evidenceQuery.is("currency", null) : evidenceQuery.eq("currency", currency)
+    if (p_from) evidenceQuery = evidenceQuery.gte("occurred_on", p_from)
+    if (p_to) evidenceQuery = evidenceQuery.lte("occurred_on", p_to)
+    const [analyticsResult, evidenceResult] = await Promise.all([
+      supabase.rpc("get_dashboard_record_analytics", { p_user_id: user_id, p_from, p_to, p_currency: currency }),
+      evidenceQuery,
     ])
-    for (const [name, result] of [["summary", summaryResult], ["month", monthResult], ["counterparty", counterpartyResult], ["evidence", evidenceResult]] as const) {
+    for (const [name, result] of [["analytics", analyticsResult], ["evidence", evidenceResult]] as const) {
       if (result.error) throw new Error(`${name} query failed: ${result.error.message}`)
     }
-    const summary = summaryResult.data?.[0] ?? {}
-    const monthRows = monthResult.data ?? []
-    const counterpartyRows = counterpartyResult.data ?? []
+    const analyticsRows = analyticsResult.data ?? []
+    const summaryRows = analyticsRows.filter((row: any) => row.bucket_kind === "summary")
+    const monthRows = analyticsRows.filter((row: any) => row.bucket_kind === "month")
+    const counterpartyRows = analyticsRows.filter((row: any) => row.bucket_kind === "counterparty")
     const rows = (evidenceResult.data ?? []).map((record: any) => ({
       ...record,
       vendor_name: record.direction === "outflow" ? record.counterparty : null,
@@ -357,7 +374,7 @@ serve(async (req) => {
 
     // ── 2. Sufficiency gate ────────────────────────────────────────────────
     const months = new Set<string>(monthRows.map((row: any) => String(row.period_start).slice(0, 7)))
-    const transactionCount = Number(summary.record_count ?? 0)
+    const transactionCount = summaryRows.reduce((sum: number, row: any) => sum + Number(row.record_count ?? 0), 0)
 
     if (months.size < RD_MIN_MONTHS || transactionCount < RD_MIN_TRANSACTIONS) {
       return new Response(
@@ -372,8 +389,7 @@ serve(async (req) => {
       )
     }
 
-    const currency = rows.find((x) => x.currency)?.currency ?? "PHP"
-    const symbol = currency === "PHP" ? "₱" : currency === "EUR" ? "€" : currency === "GBP" ? "£" : "$"
+    const symbol = currency === "UNSPECIFIED" ? "" : currency === "PHP" ? "₱" : currency === "EUR" ? "€" : currency === "GBP" ? "£" : "$"
 
     // ── 3. Aggregations Sonnet needs as grounding ──────────────────────────
     // Monthly series for anomaly baselining, returned by Postgres.
@@ -381,7 +397,7 @@ serve(async (req) => {
     const monthlyIncome: Record<string, number> = {}
     const monthlyCount: Record<string, number> = {}
     for (const r of monthRows as any[]) {
-      const mo = String(r.period_start).slice(0, 7)
+      const mo = String(r.bucket_key)
       monthlyCount[mo] = (monthlyCount[mo] ?? 0) + Number(r.record_count ?? 0)
       if (r.direction === "outflow") monthlySpend[mo] = (monthlySpend[mo] ?? 0) + Number(r.amount ?? 0)
       if (r.direction === "inflow") monthlyIncome[mo] = (monthlyIncome[mo] ?? 0) + Number(r.amount ?? 0)
@@ -399,11 +415,11 @@ serve(async (req) => {
 
     // Recurrence signal
     const recurringSpend = 0
-    const oneOffSpend = Number(summary.total_outflow ?? 0)
+    const oneOffSpend = summaryRows.filter((row: any) => row.direction === "outflow").reduce((sum: number, row: any) => sum + Number(row.amount ?? 0), 0)
     const recurringByMonth: Record<string, number> = {}
     const oneOffByMonth:    Record<string, number> = {}
     for (const r of monthRows as any[]) {
-      if (r.direction === "outflow") oneOffByMonth[String(r.period_start).slice(0, 7)] = Number(r.amount ?? 0)
+      if (r.direction === "outflow") oneOffByMonth[String(r.bucket_key)] = Number(r.amount ?? 0)
     }
 
     // Geographic concentration
@@ -413,7 +429,7 @@ serve(async (req) => {
     // Vendor concentration
     const topVendors = counterpartyRows
       .filter((row: any) => row.direction === "outflow")
-      .map((row: any) => ({ name: row.counterparty, total: Number(row.amount ?? 0), count: Number(row.record_count ?? 0), domain: null }))
+      .map((row: any) => ({ name: row.bucket_key, total: Number(row.amount ?? 0), count: Number(row.record_count ?? 0), domain: null }))
 
     // ── 4. raw_json sample (stratified) ────────────────────────────────────
     const sampled = sampleDocs(rows, 20, 10)
@@ -530,6 +546,7 @@ no genuinely non-redundant insight is data-supported.`
 
       return [{
         user_id,
+        page_id: dashboardPageId,
         widget_type: "rd-insight",
         title:       w.title,
         description: w.description ?? null,
@@ -555,6 +572,7 @@ no genuinely non-redundant insight is data-supported.`
       .from("advanced_widgets")
       .delete()
       .eq("user_id", user_id)
+      .eq("page_id", dashboardPageId)
       .eq("is_starred", false)
       .eq("widget_type", "rd-insight")
 

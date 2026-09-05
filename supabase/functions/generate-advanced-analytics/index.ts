@@ -143,7 +143,7 @@ serve(async (req) => {
     })
   }
 
-  const { user_id, existing_widget_types, plotted_advanced_types, from_date: p_from = null, to_date: p_to = null } = body
+  const { user_id, page_id, existing_widget_types, plotted_advanced_types, from_date: p_from = null, to_date: p_to = null } = body
   if (!user_id) {
     return new Response(JSON.stringify({ error: "user_id required" }), {
       status: 400,
@@ -204,6 +204,17 @@ serve(async (req) => {
   }
 
   try {
+    let dashboardPageId: string
+    if (page_id) {
+      const { data: ownedPage, error: pageError } = await supabase.from("dashboard_pages").select("id").eq("id", page_id).eq("user_id", user_id).maybeSingle()
+      if (pageError || !ownedPage) return new Response(JSON.stringify({ error: "Dashboard page not found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } })
+      dashboardPageId = ownedPage.id
+    } else {
+      const { data: personalPage, error: pageError } = await supabase.from("dashboard_pages").upsert({ user_id, name: "Personal", slug: "personal", kind: "personal", position: 0 }, { onConflict: "user_id,slug" }).select("id").single()
+      if (pageError || !personalPage) throw new Error(`Dashboard page resolution failed: ${pageError?.message ?? "missing page"}`)
+      dashboardPageId = personalPage.id
+    }
+
     // ── 1. Fetch user files ─────────────────────────────────────────────────
     const { data: userFiles } = await supabase
       .from("files")
@@ -220,47 +231,54 @@ serve(async (req) => {
       })
     }
 
-    const [summaryResult, directionResult, categoryResult, monthResult, counterpartyResult, currencyResult] = await Promise.all([
-      supabase.rpc("get_record_summary", { p_user_id: user_id, p_from, p_to }),
-      supabase.rpc("get_record_amounts_by_direction", { p_user_id: user_id, p_from, p_to }),
-      supabase.rpc("get_record_amounts_by_category", { p_user_id: user_id, p_from, p_to, p_limit: 25 }),
-      supabase.rpc("get_record_amounts_by_month", { p_user_id: user_id, p_from, p_to }),
-      supabase.rpc("get_record_amounts_by_counterparty", { p_user_id: user_id, p_from, p_to, p_limit: 25 }),
-      supabase.from("records").select("currency").eq("user_id", user_id).is("parent_record_id", null).not("currency", "is", null).limit(100),
+    const currencyResult = await supabase.rpc("get_dashboard_currencies", { p_user_id: user_id, p_from, p_to })
+    if (currencyResult.error) throw new Error(`currency aggregate failed: ${currencyResult.error.message}`)
+    const currencies = (currencyResult.data ?? []).map((row: any) => String(row.currency)).filter(Boolean)
+    const currency = currencies[0] ?? "UNSPECIFIED"
+    const [analyticsResult, attributeResult] = await Promise.all([
+      supabase.rpc("get_dashboard_record_analytics", { p_user_id: user_id, p_from, p_to, p_currency: currency }),
+      supabase.rpc("get_dashboard_attribute_analytics", {
+        p_user_id: user_id,
+        p_field_keys: ["tax_amount", "payment_method", "income_source", "jurisdiction", "discount_amount"],
+        p_from,
+        p_to,
+        p_currency: currency,
+      }),
     ])
-    for (const [name, result] of [["summary", summaryResult], ["direction", directionResult], ["category", categoryResult], ["month", monthResult], ["counterparty", counterpartyResult], ["currency", currencyResult]] as const) {
+    for (const [name, result] of [["record", analyticsResult], ["attribute", attributeResult]] as const) {
       if (result.error) throw new Error(`${name} aggregate failed: ${result.error.message}`)
     }
-    const summary = summaryResult.data?.[0] ?? {}
-    const categoryRows = categoryResult.data ?? []
-    const monthRows = monthResult.data ?? []
-    const counterpartyRows = counterpartyResult.data ?? []
-    const currency = currencyResult.data?.[0]?.currency ?? "PHP"
-    const symbol   = currency === "PHP" ? "₱" : currency === "EUR" ? "€" : currency === "GBP" ? "£" : "$"
-    const currencies = [...new Set((currencyResult.data ?? []).map((x: any) => x.currency).filter(Boolean))]
+    const analyticsRows = analyticsResult.data ?? []
+    const attributeRows = attributeResult.data ?? []
+    const summaryRows = analyticsRows.filter((row: any) => row.bucket_kind === "summary")
+    const categoryRows = analyticsRows.filter((row: any) => row.bucket_kind === "category")
+    const monthRows = analyticsRows.filter((row: any) => row.bucket_kind === "month")
+    const counterpartyRows = analyticsRows.filter((row: any) => row.bucket_kind === "counterparty")
+    const symbol   = currency === "UNSPECIFIED" ? "" : currency === "PHP" ? "₱" : currency === "EUR" ? "€" : currency === "GBP" ? "£" : "$"
     const currencyNote = currencies.length > 1
-      ? `mixed currencies detected (${currencies.join(", ")}); only generate combined money insights when the provided aggregate is explicitly meaningful, and mention currency uncertainty in insight text`
+      ? `mixed currencies detected (${currencies.join(", ")}); this run is scoped to ${currency}, the dominant currency by record count, and does not combine currencies`
       : `single primary currency detected (${currency})`
 
-    // ── 3. Core aggregations are returned by Postgres, never truncated in JS ─
-    const totalIncome   = Number(summary.total_inflow ?? 0)
-    const totalExpenses = Number(summary.total_outflow ?? 0)
+    // ── 3. Canonical aggregates are currency-scoped and omit excluded rows ──
+    const totalIncome = summaryRows.filter((row: any) => row.direction === "inflow").reduce((sum: number, row: any) => sum + Number(row.amount ?? 0), 0)
+    const totalExpenses = summaryRows.filter((row: any) => row.direction === "outflow").reduce((sum: number, row: any) => sum + Number(row.amount ?? 0), 0)
     const netPosition   = totalIncome - totalExpenses
     const savingsRate   = totalIncome > 0 ? ((netPosition / totalIncome) * 100).toFixed(1) : "0"
-    const totalTax = 0
-    const categories: Record<string, number> = Object.fromEntries(categoryRows.filter((x: any) => x.direction === "outflow" || x.category === "Other").map((x: any) => [x.category, Number(x.amount ?? 0)]))
+    const totalTax = attributeRows.filter((row: any) => row.field_key === "tax_amount").reduce((sum: number, row: any) => sum + Number(row.numeric_total ?? 0), 0)
+    const categories: Record<string, number> = Object.fromEntries(categoryRows.filter((x: any) => x.direction === "outflow").slice(0, 25).map((x: any) => [x.bucket_key, Number(x.amount ?? 0)]))
     const topCategory = Object.entries(categories).sort((a, b) => b[1] - a[1])[0]
-    const months = Number(summary.months_tracked ?? 0)
-    const transactionCount = Number(summary.record_count ?? 0)
-    const topVendors = counterpartyRows.filter((x: any) => x.direction === "outflow").map((x: any) => ({ name: x.counterparty, total: Number(x.amount ?? 0), count: Number(x.record_count ?? 0) }))
-    const employers = counterpartyRows.filter((x: any) => x.direction === "inflow").map((x: any) => x.counterparty).filter(Boolean)
-    const paymentMethods: Record<string, number> = {}
-    const incomeSourceTotals: Record<string, number> = { inflow: totalIncome }
-    const jurisdictionTotals: Record<string, number> = {}
+    const months = new Set(monthRows.map((row: any) => row.bucket_key)).size
+    const transactionCount = summaryRows.reduce((sum: number, row: any) => sum + Number(row.record_count ?? 0), 0)
+    const topVendors = counterpartyRows.filter((x: any) => x.direction === "outflow").slice(0, 25).map((x: any) => ({ name: x.bucket_key, total: Number(x.amount ?? 0), count: Number(x.record_count ?? 0) }))
+    const employers = counterpartyRows.filter((x: any) => x.direction === "inflow").map((x: any) => x.bucket_key).filter(Boolean)
+    const categoricalTotals = (fieldKey: string) => Object.fromEntries(attributeRows.filter((row: any) => row.field_key === fieldKey && row.value_text).map((row: any) => [row.value_text, Number(row.numeric_total ?? row.record_count ?? 0)]))
+    const paymentMethods: Record<string, number> = Object.fromEntries(attributeRows.filter((row: any) => row.field_key === "payment_method" && row.value_text).map((row: any) => [row.value_text, Number(row.record_count ?? 0)]))
+    const incomeSourceTotals: Record<string, number> = categoricalTotals("income_source")
+    const jurisdictionTotals: Record<string, number> = categoricalTotals("jurisdiction")
     const monthlyExpenses: Record<string, number> = {}
     const monthlyIncomeMap: Record<string, number> = {}
     for (const x of monthRows as any[]) {
-      const mo = String(x.period_start).slice(0, 7)
+      const mo = String(x.bucket_key)
       if (x.direction === "inflow") monthlyIncomeMap[mo] = (monthlyIncomeMap[mo] ?? 0) + Number(x.amount ?? 0)
       if (x.direction === "outflow") monthlyExpenses[mo] = (monthlyExpenses[mo] ?? 0) + Number(x.amount ?? 0)
     }
@@ -298,7 +316,7 @@ serve(async (req) => {
         }
       })
 
-      const discountTotal = 0
+      const discountTotal = attributeRows.filter((row: any) => row.field_key === "discount_amount").reduce((sum: number, row: any) => sum + Number(row.numeric_total ?? 0), 0)
       const discountEvents: Array<{ vendor: string | null; amount: number; date: string | null }> = []
       const incomeSources = counterpartyRows.filter((x: any) => x.direction === "inflow").map((x: any) => ({ employer: x.counterparty, total: Number(x.amount ?? 0) }))
 
@@ -331,6 +349,7 @@ serve(async (req) => {
       .from("advanced_widgets")
       .delete()
       .eq("user_id", user_id)
+      .eq("page_id", dashboardPageId)
       .eq("is_starred", false)
       .neq("widget_type", "rd-insight")
 
@@ -487,6 +506,7 @@ ${taxTimelineSummary || "no tax timeline data"}`
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
     const rows = generatedWidgets.map((w: any) => ({
       user_id,
+      page_id: dashboardPageId,
       widget_type:  w.widget_type,
       title:        w.title,
       description:  w.description ?? null,

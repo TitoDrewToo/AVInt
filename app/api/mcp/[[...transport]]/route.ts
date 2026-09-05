@@ -48,7 +48,7 @@ function mcpToolError(error: unknown, userId: string, stage: string, fallback: s
 async function toolGuard(userId: string, entitlement: ReturnType<typeof computeEntitlement>, tool: "ingest" | "report" | "export" | "profile") {
   return withMcpStage(`toolGuard_${tool}_rate_limit`, async () => {
     if (entitlement.tier !== "pro" && entitlement.tier !== "business") {
-      return featureResult(`The Claude connector is a Pro feature — contact AVIntelligence at ${process.env.NEXT_PUBLIC_APP_URL ?? "https://www.avintph.com"}/studio#studio-inquiry.`)
+      return featureResult(`Smart Storage MCP access is a Pro or Business feature — view plans at ${process.env.NEXT_PUBLIC_APP_URL ?? "https://www.avintph.com"}/pricing.`)
     }
     const config = MCP_RATE_LIMITS[tool]
     const bucket = `mcp-${tool}` as RateLimitBucket

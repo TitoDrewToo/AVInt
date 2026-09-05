@@ -38,7 +38,7 @@ language sql stable security definer set search_path = public as $$
     where r.user_id = p_user_id and r.parent_record_id is null and r.excluded_at is null
       and (p_from is null or r.occurred_on >= p_from) and (p_to is null or r.occurred_on <= p_to)
       and (p_currency is null or coalesce(nullif(upper(trim(r.currency)), ''), 'UNSPECIFIED') = upper(p_currency))
-  ), buckets as (
+  ), buckets(bucket_kind, bucket_key, direction, record_count, amount) as (
     select 'summary'::text, 'all'::text, direction, count(*)::bigint, coalesce(sum(amount), 0) from scoped group by direction
     union all
     select 'category', coalesce(nullif(trim(category), ''), 'Uncategorized'), direction, count(*)::bigint, coalesce(sum(amount), 0) from scoped group by 2, direction

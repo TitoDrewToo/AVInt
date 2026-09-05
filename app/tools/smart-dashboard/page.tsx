@@ -36,6 +36,7 @@ import Link from "next/link"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { DashboardAssistant } from "@/components/smart-dashboard/dashboard-assistant"
+import { DashboardPageSwitcher, type DashboardPageSummary } from "@/components/smart-dashboard/dashboard-page-switcher"
 import { isRenderableDashboardWidget } from "@/lib/dashboard-widget-spec"
 
 import {
@@ -101,8 +102,6 @@ type DrilldownState = {
   key: string
   label: string
 }
-
-type DashboardPageSummary = { id: string; name: string; slug: string; kind: "personal" | "business" | "custom"; position: number; layout?: Record<string, unknown> }
 
 const CURRENCY_SCOPED_WIDGET_TYPES = new Set([
   "kpi-income",
@@ -1603,6 +1602,10 @@ export default function SmartDashboardPage() {
     const pages = (surface.pages ?? []) as DashboardPageSummary[]
     const activeAdvancedWidgets = (surface.visuals ?? []) as AdvancedWidget[]
     setDashboardPages(pages)
+    if (surface.activePageSlug && surface.activePageSlug !== activePageSlug) {
+      setActivePageSlug(surface.activePageSlug)
+      return
+    }
     setAdvancedWidgetsList(activeAdvancedWidgets.filter(isRenderableDashboardWidget))
     const page = pages.find((candidate) => candidate.slug === activePageSlug)
     if (page?.layout) {
@@ -2334,21 +2337,7 @@ export default function SmartDashboardPage() {
   const dashboardToolbar = (
     <div className="flex min-w-0 items-center justify-between gap-2">
       <div className="flex min-w-0 flex-1 items-center gap-2 overflow-visible">
-        {dashboardPages.length > 0 && (
-          <div className="flex shrink-0 items-center gap-0.5 rounded-lg border border-border p-0.5" aria-label="Dashboard pages">
-            {dashboardPages.map((page) => (
-              <button
-                key={page.id}
-                type="button"
-                onClick={() => { setActivePageSlug(page.slug); setSelectedWidgetId(null); setIsEditingLayout(false) }}
-                className={`rounded-md px-2.5 py-1 text-xs transition-colors ${activePageSlug === page.slug ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
-                title={`${page.name} dashboard page`}
-              >
-                {page.name}
-              </button>
-            ))}
-          </div>
-        )}
+        {dashboardPages.length > 0 && <DashboardPageSwitcher pages={dashboardPages} activeSlug={activePageSlug} disabled={isDirty} onSelect={(slug) => { setActivePageSlug(slug); setSelectedWidgetId(null); setIsEditingLayout(false) }} onPagesChanged={(pages, slug) => { setDashboardPages(pages); setActivePageSlug(slug); setSelectedWidgetId(null); setIsEditingLayout(false) }} />}
         <button
           type="button"
           onClick={() => void refreshDashboard()}
@@ -2565,6 +2554,8 @@ export default function SmartDashboardPage() {
         <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-4 md:hidden">
           <div className="flex min-w-0 flex-1 items-center gap-2 overflow-visible">
 
+            {dashboardPages.length > 0 && <DashboardPageSwitcher pages={dashboardPages} activeSlug={activePageSlug} disabled={isDirty} onSelect={(slug) => { setActivePageSlug(slug); setSelectedWidgetId(null); setIsEditingLayout(false) }} onPagesChanged={(pages, slug) => { setDashboardPages(pages); setActivePageSlug(slug); setSelectedWidgetId(null); setIsEditingLayout(false) }} />}
+
             {/* Date filter */}
             <div
               className="relative"
@@ -2576,7 +2567,7 @@ export default function SmartDashboardPage() {
                 className="flex h-7 items-center gap-1.5 rounded-lg border border-border px-3 text-xs text-muted-foreground transition-all duration-200 hover:-translate-y-0.5 hover:bg-muted hover:text-foreground"
               >
                 <Calendar className="h-3.5 w-3.5" />
-                {dateFrom && dateTo ? `${dateFrom} – ${dateTo}` : "All time"}
+                <span className="hidden sm:inline">{dateFrom && dateTo ? `${dateFrom} – ${dateTo}` : "All time"}</span>
                 <ChevronDown className={`h-3 w-3 transition-transform ${showDateFilter ? "rotate-180" : ""}`} />
               </button>
               <div className={`absolute left-0 top-9 z-30 origin-top-left rounded-xl border border-border bg-card p-4 shadow-xl transition-all duration-200 ${
@@ -2836,6 +2827,14 @@ export default function SmartDashboardPage() {
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
+                </div>
+              )}
+              {widgets.length === 0 && !dataError && (
+                <div className="mx-auto mt-16 flex max-w-md flex-col items-center rounded-2xl border border-dashed border-primary/30 bg-card/70 px-6 py-8 text-center shadow-sm backdrop-blur-sm">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary"><LayoutGrid className="h-5 w-5" /></div>
+                  <p className="mt-4 font-aldrich text-xs uppercase tracking-wider text-foreground">{dashboardPages.find((page) => page.slug === activePageSlug)?.name ?? "New page"}</p>
+                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground">This page is a fresh view over your existing Smart Storage data. Add standard widgets, or use Explore &amp; build to create a visual for this project or topic.</p>
+                  <button type="button" onClick={() => { setIsEditingLayout(true); setShowWidgetPanel(true) }} className="cw-button-flow mt-4 flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground"><Plus className="h-3.5 w-3.5" />Add widgets</button>
                 </div>
               )}
               <GridLayout

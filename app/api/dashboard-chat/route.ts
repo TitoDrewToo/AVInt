@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => null)
     if (!body || typeof body !== "object") return NextResponse.json({ error: "Invalid request body" }, { status: 400 })
     if (body.action === "save") {
-      const pageSlug = typeof body.pageSlug === "string" && /^[a-z0-9-]{1,80}$/.test(body.pageSlug) ? body.pageSlug : "personal"
+      const pageSlug = typeof body.pageSlug === "string" && /^[a-z0-9-]{1,80}$/.test(body.pageSlug) ? body.pageSlug : undefined
       const saved = await saveDashboardWidget(auth.user.id, body.proposal, true, pageSlug)
       return NextResponse.json({ saved })
     }
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
     const question = typeof body.question === "string" ? body.question.trim().slice(0, 600) : ""
     if (!question) return NextResponse.json({ error: "Question is required" }, { status: 400 })
     const isoDate = /^\d{4}-\d{2}-\d{2}$/
-    const activePage = typeof body.pageSlug === "string" && /^[a-z0-9-]{1,80}$/.test(body.pageSlug) ? body.pageSlug : "personal"
+    const activePage = typeof body.pageSlug === "string" && /^[a-z0-9-]{1,80}$/.test(body.pageSlug) ? body.pageSlug : "first available page"
     const dateFrom = typeof body.dateFrom === "string" && isoDate.test(body.dateFrom) ? body.dateFrom : null
     const dateTo = typeof body.dateTo === "string" && isoDate.test(body.dateTo) ? body.dateTo : null
 

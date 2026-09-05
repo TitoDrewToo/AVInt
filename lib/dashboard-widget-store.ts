@@ -22,7 +22,7 @@ export async function listSavedDashboardWidgets(userId: string, pageSlug?: strin
   }))
 }
 
-export async function saveDashboardWidget(userId: string, input: unknown, plot = true, pageSlug = "personal") {
+export async function saveDashboardWidget(userId: string, input: unknown, plot = true, pageSlug?: string) {
   const validated = validateDashboardWidgetSpec(input)
   if (!validated) throw new TypeError("Widget must use an enabled chart type and bounded title, description, and insight")
   if (!validated.definition) throw new TypeError("A canonical visual definition is required")

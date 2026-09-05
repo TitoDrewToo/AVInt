@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 
 import { serverError } from "@/lib/api-error"
-import { ensureDefaultDashboardPages } from "@/lib/dashboard-pages"
+import { ensureDefaultDashboardPages, loadDashboardPageLayout } from "@/lib/dashboard-pages"
 import { listSavedDashboardWidgets } from "@/lib/dashboard-widget-store"
 import { supabaseAdmin } from "@/lib/mcp-auth"
 import { checkRateLimit } from "@/lib/rate-limit"
@@ -15,10 +15,13 @@ export async function GET(request: NextRequest) {
   const page = request.nextUrl.searchParams.get("page") ?? "personal"
   try {
     const pages = await ensureDefaultDashboardPages(auth.user.id)
-    const selectedPage = pages.find((candidate) => candidate.slug === page)
+    const selectedPage = pages.find((candidate) => candidate.slug === page) ?? pages[0]
     if (!selectedPage) return NextResponse.json({ error: "Dashboard page does not exist" }, { status: 404 })
-    const visuals = await listSavedDashboardWidgets(auth.user.id, page, selectedPage.id)
-    return NextResponse.json({ pages, visuals })
+    const [visuals, layout] = await Promise.all([
+      listSavedDashboardWidgets(auth.user.id, selectedPage.slug, selectedPage.id),
+      loadDashboardPageLayout(auth.user.id, selectedPage.id),
+    ])
+    return NextResponse.json({ pages: pages.map((candidate) => candidate.id === selectedPage.id ? { ...candidate, layout } : candidate), visuals, activePageSlug: selectedPage.slug })
   } catch (error) {
     if (error instanceof TypeError) return NextResponse.json({ error: error.message }, { status: 400 })
     return serverError(error, { route: "dashboard-visuals", stage: "list", userId: auth.user.id })

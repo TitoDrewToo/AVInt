@@ -210,9 +210,17 @@ serve(async (req) => {
       if (pageError || !ownedPage) return new Response(JSON.stringify({ error: "Dashboard page not found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } })
       dashboardPageId = ownedPage.id
     } else {
-      const { data: personalPage, error: pageError } = await supabase.from("dashboard_pages").upsert({ user_id, name: "Personal", slug: "personal", kind: "personal", position: 0 }, { onConflict: "user_id,slug" }).select("id").single()
-      if (pageError || !personalPage) throw new Error(`Dashboard page resolution failed: ${pageError?.message ?? "missing page"}`)
-      dashboardPageId = personalPage.id
+      let { data: firstPage, error: pageError } = await supabase.from("dashboard_pages").select("id").eq("user_id", user_id).order("position").limit(1).maybeSingle()
+      if (!firstPage && !pageError) {
+        const { error: seedError } = await supabase.from("dashboard_pages").upsert([
+          { user_id, name: "Personal", slug: "personal", kind: "personal", position: 0 },
+          { user_id, name: "Business", slug: "business", kind: "business", position: 1 },
+        ], { onConflict: "user_id,slug", ignoreDuplicates: true })
+        if (seedError) pageError = seedError
+        else ({ data: firstPage, error: pageError } = await supabase.from("dashboard_pages").select("id").eq("user_id", user_id).order("position").limit(1).maybeSingle())
+      }
+      if (pageError || !firstPage) throw new Error(`Dashboard page resolution failed: ${pageError?.message ?? "missing page"}`)
+      dashboardPageId = firstPage.id
     }
 
     // ── 1. Fetch user files ─────────────────────────────────────────────────

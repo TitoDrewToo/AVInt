@@ -16,6 +16,7 @@ import { corsPreflight, withCors } from "@/lib/mcp-cors"
 import { createReportDefinition, getReportDefinition, listReportDefinitions, ReportDefinitionConflictError, ReportDefinitionNotFoundError, updateReportDefinition } from "@/lib/report-definition-store"
 import { ReportDefinitionExecutionError, runReportDefinition } from "@/lib/report-definition-engine"
 import { listSavedDashboardWidgets, saveDashboardWidget } from "@/lib/dashboard-widget-store"
+import { createDashboardPage, deleteDashboardPage, ensureDefaultDashboardPages, renameDashboardPage, resolveDashboardPage } from "@/lib/dashboard-pages"
 import { logApiError } from "@/lib/api-error"
 
 export const runtime = "nodejs"
@@ -190,6 +191,60 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
       } catch (error) { return mcpToolError(error, userId, "list_visuals", "Dashboard visuals could not be loaded.") }
     }))
 
+    server.registerTool("smart_dashboard.list_pages", {
+      title: "List Smart Dashboard pages",
+      description: "Read-only. List the signed-in user's ordered dashboard pages and stable slugs. Use this before targeting a visual or changing a page.",
+      inputSchema: z.object({}),
+    }, async () => timedTool("smart_dashboard.list_pages", async () => {
+      const blocked = await toolGuard(userId, entitlement, "profile")
+      if (blocked) return blocked
+      try {
+        const pages = (await ensureDefaultDashboardPages(userId)).map(({ id, name, slug, kind, position }) => ({ id, name, slug, kind, position }))
+        return { content: [{ type: "text" as const, text: JSON.stringify({ pages }, null, 2) }] }
+      } catch (error) { return mcpToolError(error, userId, "list_pages", "Dashboard pages could not be loaded.") }
+    }))
+
+    server.registerTool("smart_dashboard.create_page", {
+      title: "Create a Smart Dashboard page",
+      description: "Create a named dashboard page for a project, topic, client, property, period, or other user-defined view. Returns its stable slug for visual targeting.",
+      inputSchema: z.object({ name: z.string().trim().min(1).max(80) }),
+    }, async ({ name }) => timedTool("smart_dashboard.create_page", async () => {
+      const blocked = await toolGuard(userId, entitlement, "report")
+      if (blocked) return blocked
+      try {
+        const { page } = await createDashboardPage(userId, name)
+        return { content: [{ type: "text" as const, text: JSON.stringify({ page }, null, 2) }] }
+      } catch (error) { return mcpToolError(error, userId, "create_page", "The dashboard page could not be created.") }
+    }))
+
+    server.registerTool("smart_dashboard.update_page", {
+      title: "Rename a Smart Dashboard page",
+      description: "Rename one dashboard page without changing its stable slug or saved visual targets.",
+      inputSchema: z.object({ page_slug: z.string().min(1).max(80), name: z.string().trim().min(1).max(80) }),
+    }, async ({ page_slug, name }) => timedTool("smart_dashboard.update_page", async () => {
+      const blocked = await toolGuard(userId, entitlement, "report")
+      if (blocked) return blocked
+      try {
+        const page = await resolveDashboardPage(userId, page_slug)
+        const result = await renameDashboardPage(userId, page.id, name)
+        return { content: [{ type: "text" as const, text: JSON.stringify({ page: result.page }, null, 2) }] }
+      } catch (error) { return mcpToolError(error, userId, "update_page", "The dashboard page could not be renamed.") }
+    }))
+
+    server.registerTool("smart_dashboard.delete_page", {
+      title: "Delete a Smart Dashboard page",
+      description: "Delete a dashboard page layout. Smart Storage source data is never deleted; saved visuals move to another page as unplotted items. The account's last page cannot be deleted.",
+      inputSchema: z.object({ page_slug: z.string().min(1).max(80) }),
+    }, async ({ page_slug }) => timedTool("smart_dashboard.delete_page", async () => {
+      const blocked = await toolGuard(userId, entitlement, "report")
+      if (blocked) return blocked
+      try {
+        const page = await resolveDashboardPage(userId, page_slug)
+        const result = await deleteDashboardPage(userId, page.id)
+        return { content: [{ type: "text" as const, text: JSON.stringify({ deletedPage: page.slug, fallbackPage: result.fallbackPageSlug, movedVisuals: result.movedVisuals }, null, 2) }] }
+      } catch (error) { return mcpToolError(error, userId, "delete_page", "The dashboard page could not be deleted.") }
+    }))
+
     server.registerTool("smart_dashboard.save_visual", {
       title: "Save a Smart Dashboard visual",
       description: "Save a refreshable visual backed by canonical Smart Storage records or a dataset and optionally plot it on a dashboard page. Inspect smart_storage.virtual_model first. The definition is declarative: source, scope, period, filters, dimension, metric, and limit; SQL and executable expressions are never accepted.",
@@ -199,7 +254,7 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
         description: z.string().max(500).nullable().optional(),
         insight: z.string().max(800).nullable().optional(),
         definition: z.record(z.string(), z.unknown()),
-        page_slug: z.string().min(1).max(80).optional().default("personal"),
+        page_slug: z.string().min(1).max(80).optional(),
         plot: z.boolean().optional().default(true),
       }),
     }, async ({ widget_type, title, description, insight, definition, page_slug, plot }) => timedTool("smart_dashboard.save_visual", async () => {
@@ -238,7 +293,7 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
       "A document-intelligence service that turns a user's files into a permissioned normalized data model, dashboards, structured outputs, and selected accounting exports.",
       "Every tool acts ONLY on the documents belonging to the signed-in AVIntelligence account, matched by the authenticated email. No data is shared across accounts.",
       "Access requires an active Pro or Business plan. Authentication is handled via AVIntelligence's OAuth (WorkOS); this server never receives passwords.",
-      "Tools: smart_storage.ingest (add documents), smart_storage.profile and smart_storage.virtual_model (inspect the data model), smart_storage.report (fixed examples), smart_storage.list_report_definitions and smart_storage.run_report_definition (saved refreshable reports), smart_storage.save_report_definition (create or update a validated declarative report), smart_storage.export (QuickBooks / Xero file), and smart_dashboard.list_visuals / smart_dashboard.save_visual (inspect or save validated dashboard visuals). Read tools never modify data; save tools affect only the signed-in user's reports or dashboard.",
+      "Tools: smart_storage.ingest (add documents), smart_storage.profile and smart_storage.virtual_model (inspect the data model), smart_storage.report (fixed examples), smart_storage.list_report_definitions and smart_storage.run_report_definition (saved refreshable reports), smart_storage.save_report_definition (create or update a validated declarative report), smart_storage.export (QuickBooks / Xero file), smart_dashboard.list_pages / create_page / update_page / delete_page (manage dashboard pages), and smart_dashboard.list_visuals / smart_dashboard.save_visual (inspect or save validated dashboard visuals). Read tools never modify data; save tools affect only the signed-in user's reports or dashboard.",
     ].join(" "),
   })
 }

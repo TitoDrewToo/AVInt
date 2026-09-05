@@ -2360,7 +2360,7 @@ export default function SmartDashboardPage() {
           <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
           {isRefreshing ? "Refreshing…" : "Refresh"}
         </button>
-        <DashboardAssistant />
+        <DashboardAssistant pageSlug={activePageSlug} dateFrom={dateFrom} dateTo={dateTo} onVisualSaved={loadLayout} />
         <div
           className="relative"
           onMouseEnter={!isMobile ? cancelDateFilterClose : undefined}

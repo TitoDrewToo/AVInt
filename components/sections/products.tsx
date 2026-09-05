@@ -185,7 +185,7 @@ function ProductCard({ name, description, status, href, external, disabled, icon
 const products: ProductCardProps[] = [
   {
     name: "Smart Storage",
-    description: "Upload your receipts and invoices. AI organizes them — export-ready for QuickBooks & Xero. Now works inside Claude.",
+    description: "Turn personal and business files into structured, correctable data for reports, visualizations, and AI. Now works inside Claude.",
     href: "/products/smart-storage",
     icon: <StorageIcon className="h-5 w-5" />,
     badges: ["Works in Claude"],

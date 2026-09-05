@@ -136,7 +136,7 @@ export function PricingPreviewSection() {
         <FadeUp>
           <p className="text-center text-sm font-medium uppercase tracking-wider text-primary">Access that scales with your workflow</p>
           <h2 className="mt-4 text-center text-balance text-3xl font-semibold tracking-tight text-foreground md:text-5xl">Start with your data. Go further when you need to.</h2>
-          <p className="mx-auto mt-5 max-w-2xl text-center text-base leading-relaxed text-muted-foreground">Every plan starts with the same path: upload files, create structured records, and see what your data can support. Upgrade when you need more volume or deeper workspace tools.</p>
+          <p className="mx-auto mt-5 max-w-2xl text-center text-base leading-relaxed text-muted-foreground">Every plan starts with the same path: turn personal or business files into structured records, then use them for reports, visualizations, and AI-connected workflows. Upgrade when you need more volume or deeper workspace tools.</p>
         </FadeUp>
 
         <FadeUp delay={0.08}>

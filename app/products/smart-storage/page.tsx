@@ -12,10 +12,10 @@ import { ChevronDown } from "lucide-react"
 
 export const metadata = {
   title: "Smart Storage — Structured Records from Your Documents | AVIntelligence",
-  description: "Turn receipts, invoices, statements, and other documents into searchable records, dashboards, and repeatable outputs. Now available as a Claude connector.",
+  description: "Turn personal and business files into a persistent, correctable data layer for searchable records, reports, visualizations, and AI. Now available as a Claude connector.",
   openGraph: {
     title: "Smart Storage — Structured Records from Your Documents | AVIntelligence",
-    description: "Turn receipts, invoices, statements, and other documents into searchable records, dashboards, and repeatable outputs. Now available as a Claude connector.",
+    description: "Turn personal and business files into a persistent, correctable data layer for searchable records, reports, visualizations, and AI. Now available as a Claude connector.",
     url: "https://www.avintph.com/products/smart-storage",
     siteName: "AVIntelligence",
     type: "website",
@@ -23,7 +23,7 @@ export const metadata = {
   twitter: {
     card: "summary_large_image",
     title: "Smart Storage — Structured Records from Your Documents | AVIntelligence",
-    description: "Turn documents into structured records and useful outputs. Now available as a Claude connector.",
+    description: "Turn personal and business files into structured records and useful outputs. Now available as a Claude connector.",
   },
 }
 
@@ -191,12 +191,12 @@ function IconFileOutput() {
 const supportedFiles = ["Receipts", "Invoices", "Income records", "Contracts", "Statements"]
 
 const capabilities = [
-  { icon: <IconFileSearch />,   title: "Document classification", description: "Automatically identify and categorize document types" },
-  { icon: <IconFileText />,     title: "Field extraction",         description: "Pull key data points from unstructured documents" },
-  { icon: <IconDatabase />,     title: "Structured datasets",      description: "Convert documents into organized, queryable data" },
-  { icon: <IconFileBarChart />, title: "Report generation",        description: "Create summaries and reports from extracted data" },
-  { icon: <IconShield />,       title: "Secure storage",           description: "Keep documents account-isolated and access-controlled" },
-  { icon: <IconFolderOpen />,   title: "Organized retrieval",      description: "Find and access documents quickly when needed" },
+  { icon: <IconFileSearch />,   title: "Consistent ingestion",      description: "Route supported personal and business files through one structured processing path" },
+  { icon: <IconFileText />,     title: "Field extraction",          description: "Pull useful facts from documents, images, and spreadsheets" },
+  { icon: <IconDatabase />,     title: "Reusable data layer",       description: "Normalize extracted facts into organized, queryable records across files" },
+  { icon: <IconFolderOpen />,   title: "Review and correction",     description: "Inspect uncertain values, correct them, and keep the underlying record current" },
+  { icon: <IconFileBarChart />, title: "Reports and visualizations", description: "Build repeatable outputs from the same governed records" },
+  { icon: <IconShield />,       title: "Controlled access",         description: "Keep source files and structured records account-isolated and traceable" },
 ]
 
 const workflowSteps = [
@@ -208,7 +208,7 @@ const workflowSteps = [
 const smartStorageFaq = [
   {
     question: "What does Smart Storage actually do?",
-    answer: `Upload receipts, invoices, payslips, statements, and contracts, and Smart Storage turns them into clean structured records — vendor, date, amount, category — and then into reports you can actually use. No manual data entry, no spreadsheets.`,
+    answer: `Upload personal or business files and Smart Storage turns their contents into a persistent, correctable data layer. The resulting records can be searched, reviewed, and reused for reports, visualizations, exports, and AI-connected workflows without rebuilding the data each time.`,
   },
   {
     question: "What can I upload?",
@@ -236,7 +236,7 @@ const smartStorageFaq = [
   },
   {
     question: "Why use Smart Storage if I can just upload files to Claude directly?",
-    answer: `Because Smart Storage is where your records live — organized, extracted, and always current. Upload a document once and it stays; you never re-upload, re-search, or re-explain your history each session. Claude then works off that structured, up-to-date store on demand. Files dropped into a one-off chat disappear when it closes — Smart Storage is the memory and structure that makes every future question, and every report, instant. Using both is the point: Smart Storage remembers and organizes; Claude acts on it.`,
+    answer: `Because Smart Storage is the persistent data layer behind the conversation. Upload a file once and its records stay organized, inspectable, correctable, and available as your history grows. Claude can then work from that governed, up-to-date evidence instead of starting again with a loose set of chat attachments. Using both is the point: Smart Storage preserves the source and structure; Claude reasons and acts on it.`,
   },
   {
     question: "Do I need to be technical to connect Claude?",
@@ -298,15 +298,15 @@ export default function SmartStorageProductPage() {
               <div className="text-left">
                 <FadeUp>
                   <h1 className="text-balance text-4xl font-semibold leading-[1.1] tracking-tight text-foreground md:text-5xl lg:text-6xl">
-                    Stop organizing documents manually. Upload your files and get structured, usable <span className="text-primary">records in minutes.</span>
+                    Turn personal and business files into structured intelligence <span className="text-primary">you can keep using.</span>
                   </h1>
                 </FadeUp>
                 <FadeUp delay={0.1}>
                   <p className="mt-6 max-w-xl text-lg font-medium leading-relaxed text-foreground/90">
-                    A user-controlled data workspace for turning mixed documents into reusable, inspectable intelligence.
+                    A persistent, correctable data layer for the information that matters to you or your business.
                   </p>
                   <p className="mt-3 max-w-xl text-base text-muted-foreground">
-                    Turn the details inside your files into searchable records and repeatable outputs—ready for the workflows, reports, and tools your team already uses.
+                    Upload files once. Smart Storage turns their contents into searchable records with sources you can inspect and correct—ready for reports, visualizations, deeper analysis, and the AI systems you choose.
                   </p>
                 </FadeUp>
                 <FadeUp delay={0.18} className="mt-10 flex flex-col items-start gap-4 sm:flex-row">
@@ -372,7 +372,7 @@ export default function SmartStorageProductPage() {
                 What Smart Storage does
               </h2>
               <p className="mt-6 text-xl text-foreground md:text-2xl">
-                Smart Storage converts everyday documents into structured datasets that can be used for reporting, tracking, and reference.
+                Smart Storage converts personal and business files into reusable datasets that power reporting, visualizations, deeper analysis, and AI-connected workflows.
               </p>
             </FadeUp>
 

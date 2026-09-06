@@ -1,13 +1,13 @@
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 
-import { beginNormalizationBatch, settleNormalizationRow } from "../supabase/functions/_shared/normalization-batch"
+import { beginNormalizationBatch, NormalizationSettlementError, settleNormalizationRow } from "../supabase/functions/_shared/normalization-batch"
 
 type FileState = {
   id: string
   document_type: string | null
   normalization_batch_id: string | null
-  normalization_expected: number
+  normalization_expected: number | null
   normalization_settled: number
   upload_status: string
 }
@@ -33,11 +33,15 @@ function fakeClient(file: FileState, failures: { update?: string; rpc?: string }
     async rpc(name: string, args: { p_file_id: string; p_batch_id: string; p_completed_rows: number }) {
       assert.equal(name, "avint_settle_document_normalization")
       assert.equal(args.p_file_id, file.id)
-      assert.equal(args.p_batch_id, file.normalization_batch_id)
       if (failures.rpc) return { data: null, error: { message: failures.rpc } }
+      if (args.p_batch_id !== file.normalization_batch_id) return { data: { settled: false, reason: "file_or_batch_not_found" }, error: null }
       file.normalization_settled += args.p_completed_rows
-      if (file.normalization_settled >= file.normalization_expected) file.upload_status = "normalized"
-      return { data: { settled: file.upload_status === "normalized", expected: file.normalization_expected, completed: file.normalization_settled }, error: null }
+      if (file.normalization_batch_id === null) return { data: { settled: false, reason: "batch_not_recorded", expected: file.normalization_expected, settled_rows: file.normalization_settled }, error: null }
+      if (file.normalization_expected === null) return { data: { settled: false, reason: "expected_not_recorded", expected: null, settled_rows: file.normalization_settled }, error: null }
+      if (file.normalization_expected <= 0) return { data: { settled: false, reason: "expected_not_positive", expected: file.normalization_expected, settled_rows: file.normalization_settled }, error: null }
+      if (file.normalization_settled < file.normalization_expected) return { data: { settled: false, reason: "incomplete", expected: file.normalization_expected, settled_rows: file.normalization_settled }, error: null }
+      file.upload_status = "normalized"
+      return { data: { settled: true, expected: file.normalization_expected, settled_rows: file.normalization_settled }, error: null }
     },
   }
 }
@@ -53,11 +57,17 @@ async function main() {
   console.log("before", JSON.stringify(file))
   await beginNormalizationBatch(client, { fileId: file.id, batchId: "batch-1", expectedRows: 3, documentType: "csv_export" })
   assert.deepEqual(file, { id: "fresh-csv", document_type: "csv_export", normalization_batch_id: "batch-1", normalization_expected: 3, normalization_settled: 0, upload_status: "processing" })
-  await settleNormalizationRow(client, file.id, "batch-1")
-  await settleNormalizationRow(client, file.id, "batch-1")
+  const first = await settleNormalizationRow(client, file.id, "batch-1")
+  const second = await settleNormalizationRow(client, file.id, "batch-1")
+  assert.deepEqual([first, second], [
+    { settled: false, reason: "incomplete", expected: 3, settled_rows: 1 },
+    { settled: false, reason: "incomplete", expected: 3, settled_rows: 2 },
+  ])
   assert.equal(file.upload_status, "processing")
-  await settleNormalizationRow(client, file.id, "batch-1")
+  const third = await settleNormalizationRow(client, file.id, "batch-1")
+  assert.deepEqual(third, { settled: true, expected: 3, settled_rows: 3 })
   assert.equal(file.upload_status, "normalized")
+  console.log("settlement sequence", JSON.stringify([first, second, third]))
   console.log("after", JSON.stringify(file))
 
   await assert.rejects(
@@ -72,6 +82,27 @@ async function main() {
     settleNormalizationRow(fakeClient(file, { rpc: "settle denied" }), file.id, "batch-1"),
     /Normalization settlement failed: settle denied/,
   )
+
+  async function refusalReason(refusedFile: FileState, batchId: string | null) {
+    try {
+      await settleNormalizationRow(fakeClient(refusedFile), refusedFile.id, batchId)
+      assert.fail("Settlement refusal should surface as an error")
+    } catch (error) {
+      assert.ok(error instanceof NormalizationSettlementError)
+      return error.reason
+    }
+  }
+
+  const batchless: FileState = { ...file, id: "batchless", normalization_batch_id: null, normalization_expected: 1, normalization_settled: 0, upload_status: "processing" }
+  const missingExpected: FileState = { ...file, id: "missing-expected", normalization_batch_id: "batch-null", normalization_expected: null, normalization_settled: 0, upload_status: "processing" }
+  const unrecorded: FileState = { ...file, id: "unrecorded", normalization_batch_id: "batch-zero", normalization_expected: 0, normalization_settled: 0, upload_status: "processing" }
+  assert.equal(await refusalReason(batchless, null), "batch_not_recorded")
+  assert.equal(await refusalReason(missingExpected, "batch-null"), "expected_not_recorded")
+  const zeroReason = await refusalReason(unrecorded, "batch-zero")
+  assert.equal(zeroReason, "expected_not_positive")
+  assert.equal(await refusalReason(file, "wrong-batch"), "file_or_batch_not_found")
+  assert.equal(unrecorded.upload_status, "processing")
+  console.log("expected zero", JSON.stringify({ reason: zeroReason, upload_status: unrecorded.upload_status, extraction_status: "succeeded" }))
 }
 
 void main()

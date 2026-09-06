@@ -8,7 +8,7 @@ import { persistDerived } from "../_shared/persist-derived.ts"
 import { attemptNumberForSourceKey, ensureExtraction, writeExtraction } from "../_shared/write-extraction.ts"
 import { buildExtractionPayload } from "../_shared/extraction-payload.ts"
 import { loadDerivedRow } from "../_shared/derived-row.ts"
-import { settleNormalizationRow as settleNormalizationBatch } from "../_shared/normalization-batch.ts"
+import { NormalizationSettlementError, settleNormalizationRow as settleNormalizationBatch } from "../_shared/normalization-batch.ts"
 
 const FN = "normalize-document"
 
@@ -499,10 +499,22 @@ serve(async (req) => {
     })
 
   } catch (error: any) {
+    if (error instanceof NormalizationSettlementError) {
+      logError(FN, "settlement_contract", error, { file_id, job_id, reason: error.reason })
+      return new Response(JSON.stringify({
+        error: "Normalization completed, but its batch could not settle.",
+        stage: "settlement",
+        reason: error.reason,
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      })
+    }
     logError(FN, "unhandled", error, { file_id, job_id })
 
     // Mark normalization as failed — does NOT fail the job entirely
     // (Gemini extraction succeeded; normalization is a separate concern)
+    let settlementFailure: NormalizationSettlementError | null = null
     try {
       // When the specific row is known, target by id and bump the retry counter.
       // Early failures (before `fields` resolves) fall back to file_id — those
@@ -533,12 +545,14 @@ serve(async (req) => {
       }
       await settleNormalizationBatch(supabase, file_id, fields?.normalization_batch_id)
     } catch (innerErr: any) {
+      if (innerErr instanceof NormalizationSettlementError) settlementFailure = innerErr
       logError(FN, "failure_state_update", innerErr, { file_id, job_id })
     }
 
     return new Response(JSON.stringify({
       error: error instanceof Error ? error.message : String(error),
       stage: "normalization",
+      ...(settlementFailure ? { settlement_reason: settlementFailure.reason } : {}),
     }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

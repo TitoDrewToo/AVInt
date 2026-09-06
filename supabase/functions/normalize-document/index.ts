@@ -8,6 +8,7 @@ import { persistDerived } from "../_shared/persist-derived.ts"
 import { attemptNumberForSourceKey, ensureExtraction, writeExtraction } from "../_shared/write-extraction.ts"
 import { buildExtractionPayload } from "../_shared/extraction-payload.ts"
 import { loadDerivedRow } from "../_shared/derived-row.ts"
+import { settleNormalizationRow as settleNormalizationBatch } from "../_shared/normalization-batch.ts"
 
 const FN = "normalize-document"
 
@@ -32,16 +33,6 @@ function buildCorsHeaders(req: Request) {
 // ── OpenAI system prompt ──────────────────────────────────────────────────────
 // Version bumped when this prompt changes. Rows stamped with a lower
 const NORMALIZATION_VERSION = 3
-
-async function settleNormalizationBatch(supabase: any, file_id: string, batchId: string | null | undefined) {
-  const { data, error } = await supabase.rpc("avint_settle_document_normalization", {
-    p_file_id: file_id,
-    p_batch_id: batchId ?? null,
-    p_completed_rows: 1,
-  })
-  if (error) throw new Error(`Normalization settlement failed: ${error.message}`)
-  return data
-}
 
 const SYSTEM_PROMPT = `You are a financial document normalization AI.
 

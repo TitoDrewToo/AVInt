@@ -10,6 +10,7 @@ import { persistDerived } from "../_shared/persist-derived.ts"
 import { ensureExtraction, writeExtraction } from "../_shared/write-extraction.ts"
 import { buildExtractionPayload } from "../_shared/extraction-payload.ts"
 import { buildDatasetSheet, replaceSpreadsheetDatasets, type DatasetSheet } from "../_shared/dataset-layer.ts"
+import { beginNormalizationBatch } from "../_shared/normalization-batch.ts"
 
 const FN = "process-document"
 
@@ -1153,41 +1154,35 @@ serve(async (req) => {
       }
     }
 
+    const resolvedDocumentType = isCsv ? "csv_export" : normalizeExtractedDocumentType(extracted, mimeType)
     const extractionPayload = extractedRows.length === 1 ? extractedRows[0] : extractedRows
     const extractionId = await writeExtraction(supabase, {
       id: activeExtractionId,
       userId: file.user_id,
       fileId: file_id,
-      documentType: isCsv ? "csv_export" : normalizeExtractedDocumentType(extracted, mimeType),
+      documentType: resolvedDocumentType,
       provider: extractionProvider,
       model: extractionProvider === "deterministic" ? "sheetjs-header-mapping" : "document-extraction",
       payload: extractionPayload,
       sourceRowCount: extractedRows.length,
       attemptNumber: 1,
     })
+    // Record the complete normalization obligation before persistDerived can
+    // create the first canonical record. Any later failure therefore leaves a
+    // truthful in-progress batch rather than records with no expected count.
+    await beginNormalizationBatch(supabase, {
+      fileId: file_id,
+      batchId: normalizationBatchId,
+      expectedRows: rowsToInsert.length,
+      documentType: resolvedDocumentType,
+    })
+
     const derivationPayload = extractedRows.length === 1
-      ? buildExtractionPayload(extractedRows[0], isCsv ? "csv_export" : normalizeExtractedDocumentType(extracted, mimeType))
-      : extractedRows.map((row) => buildExtractionPayload(row, isCsv ? "csv_export" : normalizeExtractedDocumentType(row, mimeType)))
+      ? buildExtractionPayload(extractedRows[0], resolvedDocumentType)
+      : extractedRows.map((row) => buildExtractionPayload(row, resolvedDocumentType))
     const derived = deriveRecords(derivationPayload, { id: file_id, user_id: file.user_id })
     if (derived.reason) throw new Error(`record derivation failed: ${derived.reason}`)
     await persistDerived(supabase, extractionId, derived)
-
-    // 8. Update files.document_type after rows are safely persisted.
-    // For CSVs use the first row's type; mark as csv_export for clarity.
-    const { error: fileStateError } = await supabase
-      .from("files")
-      .update({
-        document_type: isCsv ? "csv_export" : normalizeExtractedDocumentType(extracted, mimeType),
-        normalization_batch_id: normalizationBatchId,
-        normalization_expected: rowsToInsert.length,
-        normalization_settled: 0,
-        // Extraction is complete, but normalization may still be running for
-        // multi-row inputs. The normalizer advances this to `normalized` only
-        // after the final raw row reaches a terminal state.
-        upload_status: "processing",
-      })
-      .eq("id", file_id)
-    if (fileStateError) throw new Error(`File normalization state update failed: ${fileStateError.message}`)
 
     // Materialize the generalized record contract before normalization. This
     // makes extracted-but-not-yet-normalized rows visible to the model layer,

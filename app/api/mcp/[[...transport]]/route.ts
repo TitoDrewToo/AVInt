@@ -122,18 +122,19 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
 
     server.registerTool("smart_storage.virtual_model", {
       title: "Smart Storage virtual data model",
-      description: "Read-only. Inspect the signed-in user's bounded records, typed attributes, custom-field catalog, source files, lifecycle status, review state, confidence, and provenance. Use this for questions that do not fit the fixed report templates. The response reports when the 40-record bound truncated results; narrow the request before drawing conclusions. Status filters are record lifecycle states: derived, reviewed, or superseded. Never invent fields or values not returned here.",
+      description: "Read-only. Inspect the signed-in user's bounded active records, typed attributes, custom-field catalog, source files, lifecycle status, review state, confidence, and provenance. Excluded records are omitted by default; request includeExcluded only when historical or removed rows are relevant. The response reports when the 40-record bound truncated results. Never invent fields or values not returned here.",
       inputSchema: z.object({
         search: z.string().max(120).optional(),
         status: z.enum(["derived", "reviewed", "superseded"]).optional(),
         documentType: z.string().max(80).optional(),
         fieldKey: z.string().max(120).optional(),
         customOnly: z.boolean().optional().default(false),
+        includeExcluded: z.boolean().optional().default(false),
       }),
-    }, async ({ search, status, documentType, fieldKey, customOnly }) => timedTool("smart_storage.virtual_model", async () => {
+    }, async ({ search, status, documentType, fieldKey, customOnly, includeExcluded }) => timedTool("smart_storage.virtual_model", async () => {
       const blocked = await toolGuard(userId, entitlement, "profile")
       if (blocked) return blocked
-      const model = await readVirtualModel(userId, { search, status, documentType, fieldKey, customOnly })
+      const model = await readVirtualModel(userId, { search, status, documentType, fieldKey, customOnly, includeExcluded })
       return { content: [{ type: "text", text: JSON.stringify({ ...model, bounded: true, maxRecords: 40, truncationGuidance: model.truncated ? "Results are partial. Narrow by status, documentType, fieldKey, or search before drawing conclusions." : null }, null, 2) }] }
     }))
 

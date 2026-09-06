@@ -16,6 +16,7 @@ export type VirtualModelQuery = {
   fieldKey?: string
   customOnly?: boolean
   reviewOnly?: boolean
+  includeExcluded?: boolean
   page?: number
   pageSize?: number
 }
@@ -41,7 +42,7 @@ export async function readVirtualModel(userId: string, query: VirtualModelQuery 
 
   const ownedFiles = files ?? []
   const fileIds = ownedFiles.map((file) => file.id)
-  if (!fileIds.length) return { files: [], records: [], fields: [], catalog: [], datasets: [], datasetColumns: [], page, pageSize, total: 0, hasMore: false, nextPage: null, statusCounts: {}, stats: { activeRecords: 0, excludedRecords: 0, needsReview: 0, userEdited: 0, lineItems: 0 }, truncated: false }
+  if (!fileIds.length) return { files: [], records: [], fields: [], catalog: [], datasets: [], datasetColumns: [], page, pageSize, total: 0, allTotal: 0, hasMore: false, nextPage: null, statusCounts: {}, stats: { activeRecords: 0, excludedRecords: 0, needsReview: 0, userEdited: 0, lineItems: 0 }, truncated: false }
 
   let matchingRecordIds: string[] | null = null
   if (query.fieldKey || query.customOnly) {
@@ -97,6 +98,7 @@ export async function readVirtualModel(userId: string, query: VirtualModelQuery 
   if (matchingRecordIds) recordsQuery = recordsQuery.in("id", matchingRecordIds)
   if (query.status) recordsQuery = recordsQuery.eq("status", query.status)
   if (query.documentType) recordsQuery = recordsQuery.eq("document_type", query.documentType)
+  if (!query.includeExcluded) recordsQuery = recordsQuery.is("excluded_at", null)
   if (query.reviewOnly) recordsQuery = recordsQuery.eq("needs_review", true).is("excluded_at", null)
   const { data: records, error: recordsError, count } = emptyMatch ? { data: [], error: null, count: 0 } : await recordsQuery
   if (recordsError) throw new Error(recordsError.message)
@@ -165,7 +167,9 @@ export async function readVirtualModel(userId: string, query: VirtualModelQuery 
   if (query.reviewOnly) statusQuery = statusQuery.eq("needs_review", true).is("excluded_at", null)
   const { data: statusRows, error: statusError } = emptyMatch ? { data: [], error: null } : await statusQuery
   if (statusError) throw new Error(statusError.message)
-  const { statusCounts, stats } = summarizeDataModelRecords((statusRows ?? []) as DataModelStatRecord[])
+  const statRows = (statusRows ?? []) as DataModelStatRecord[]
+  const { stats } = summarizeDataModelRecords(statRows)
+  const { statusCounts } = summarizeDataModelRecords(query.includeExcluded ? statRows : statRows.filter((row) => row.excluded_at === null))
 
   const total = count ?? 0
   const hasMore = (page + 1) * pageSize < total
@@ -179,6 +183,7 @@ export async function readVirtualModel(userId: string, query: VirtualModelQuery 
     page,
     pageSize,
     total,
+    allTotal: stats.activeRecords + stats.excludedRecords,
     hasMore,
     nextPage: hasMore ? page + 1 : null,
     statusCounts,

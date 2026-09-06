@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
       fieldKey: params.get("field_key")?.slice(0, 120) || undefined,
       customOnly: params.get("custom_only") === "true",
       reviewOnly: params.get("review_only") === "true",
+      includeExcluded: params.get("include_excluded") === "true",
       page: Number.parseInt(params.get("page") ?? "0", 10) || 0,
       pageSize: Number.parseInt(params.get("page_size") ?? "40", 10) || 40,
     })

@@ -3,7 +3,7 @@ import { supabaseAdmin } from "@/lib/mcp-auth"
 const MAX_CONTEXT_ROWS = 120
 
 export async function buildDashboardAIContext(userId: string) {
-  const [{ data: files, error: filesError }, { data: fields, error: fieldsError }] = await Promise.all([
+  const [{ data: files, error: filesError }, { data: fields, error: fieldsError }, { count: activeRecordCount, error: countError }] = await Promise.all([
     supabaseAdmin.from("files").select("id, filename, document_type, upload_status").eq("user_id", userId),
     supabaseAdmin
       .from("records")
@@ -14,9 +14,15 @@ export async function buildDashboardAIContext(userId: string) {
       .order("occurred_on", { ascending: false })
       .order("source_key", { ascending: true })
       .limit(MAX_CONTEXT_ROWS),
+    supabaseAdmin
+      .from("records")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .is("excluded_at", null),
   ])
   if (filesError) throw new Error(filesError.message)
   if (fieldsError) throw new Error(fieldsError.message)
+  if (countError) throw new Error(countError.message)
 
   const readyRows = fields ?? []
   const recordIds = readyRows.map((row) => row.id)
@@ -41,7 +47,7 @@ export async function buildDashboardAIContext(userId: string) {
 
   return {
     sourceCount: files?.length ?? 0,
-    readyRecordCount: readyRows.length,
+    readyRecordCount: activeRecordCount ?? 0,
     attentionCount: (files ?? []).filter((file: any) => ["processing", "pending_scan", "scanning", "approved"].includes(file.upload_status)).length,
     documentTypes: Object.fromEntries(typeCounts),
     currencies: Object.fromEntries(currencyCounts),

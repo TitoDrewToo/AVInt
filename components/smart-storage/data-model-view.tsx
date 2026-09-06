@@ -19,7 +19,7 @@ type Dataset = { id: string; file_id: string; name: string; sheet_name: string |
 type DatasetColumn = { id: string; dataset_id: string; key: string; label: string; data_type: string; role: string | null; distinct_count: number | null; type_confidence: number | null; needs_review: boolean; review_reason: string | null }
 type ModelPayload = {
   files: ModelFile[]; records: ModelRecord[]; fields: ModelField[]; catalog: CatalogField[]
-  datasets: Dataset[]; datasetColumns: DatasetColumn[]; page: number; total: number; hasMore: boolean
+  datasets: Dataset[]; datasetColumns: DatasetColumn[]; page: number; total: number; allTotal: number; hasMore: boolean
   nextPage: number | null; statusCounts: Record<string, number>
   stats: { activeRecords: number; excludedRecords: number; needsReview: number; userEdited: number; lineItems: number }
 }
@@ -50,6 +50,7 @@ export function DataModelView({ files, folders, onManualEntry, onReclassify, onR
   const [query, setQuery] = useState("")
   const [customOnly, setCustomOnly] = useState(false)
   const [reviewOnly, setReviewOnly] = useState(false)
+  const [showExcluded, setShowExcluded] = useState(false)
   const [debouncedQuery, setDebouncedQuery] = useState("")
   const [page, setPage] = useState(0)
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
@@ -72,6 +73,7 @@ export function DataModelView({ files, folders, onManualEntry, onReclassify, onR
       if (debouncedQuery) params.set("search", debouncedQuery)
       if (customOnly) params.set("custom_only", "true")
       if (reviewOnly) params.set("review_only", "true")
+      if (showExcluded) params.set("include_excluded", "true")
       const payload = await fetchModel(token, session.user.id, params)
       if (sequence === loadSequence.current) setModel(payload)
     } catch (loadError) {
@@ -79,7 +81,7 @@ export function DataModelView({ files, folders, onManualEntry, onReclassify, onR
     } finally {
       if (sequence === loadSequence.current) setLoading(false)
     }
-  }, [customOnly, debouncedQuery, page, reviewOnly])
+  }, [customOnly, debouncedQuery, page, reviewOnly, showExcluded])
 
   useEffect(() => {
     void load()
@@ -168,7 +170,7 @@ export function DataModelView({ files, folders, onManualEntry, onReclassify, onR
     </header>
     <div className="grid grid-cols-2 gap-2 border-b border-border p-4 sm:grid-cols-5">
       <Summary label="Sources" value={sourceFiles.length} loading={loading && !model} />
-      <Summary label="Records" value={model?.total} loading={loading && !model} />
+      <Summary label="Active records" value={model?.stats.activeRecords} hint={model && model.stats.excludedRecords > 0 ? `${model.allTotal} total` : undefined} loading={loading && !model} />
       <Summary label="Datasets" value={model?.datasets.length} loading={loading && !model} />
       <Summary label="Needs review" value={model?.stats.needsReview} loading={loading && !model} active={reviewOnly} onClick={() => { setPage(0); setReviewOnly((value) => !value) }} />
       <Summary label="Custom fields" value={(model?.catalog ?? []).filter((field) => field.is_custom).length} loading={loading && !model} />
@@ -176,11 +178,12 @@ export function DataModelView({ files, folders, onManualEntry, onReclassify, onR
     <div className="flex flex-wrap gap-2 border-b border-border p-4">
       <label className="flex min-w-56 flex-1 items-center gap-2 rounded-lg border border-border px-3 py-2"><Search className="h-3.5 w-3.5 text-muted-foreground" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search sources, records, or fields" className="min-w-0 flex-1 bg-transparent text-xs outline-none" /></label>
       <button aria-pressed={reviewOnly} onClick={() => { setPage(0); setReviewOnly((value) => !value) }} className={`rounded-lg border px-3 py-2 text-xs ${reviewOnly ? "border-primary/50 bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>Needs review</button>
+      <button aria-pressed={showExcluded} onClick={() => { setPage(0); setShowExcluded((value) => !value) }} className={`rounded-lg border px-3 py-2 text-xs ${showExcluded ? "border-primary/50 bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>{showExcluded ? "Hide excluded" : `Show excluded${model?.stats.excludedRecords ? ` (${model.stats.excludedRecords})` : ""}`}</button>
       <button aria-pressed={customOnly} onClick={() => { setPage(0); setCustomOnly((value) => !value) }} className={`rounded-lg border px-3 py-2 text-xs ${customOnly ? "border-primary/50 bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>Custom fields</button>
     </div>
     {error && <div className="mx-4 mt-4 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"><AlertCircle className="h-4 w-4" />{error}</div>}
     <main className="min-h-0 flex-1 overflow-auto p-4">
-      {loading && !model ? <DataModelSkeleton /> : model && model.total === 0 && model.datasets.length === 0 ? <div className="flex h-full flex-col items-center justify-center gap-2 text-center"><Database className="h-8 w-8 text-primary/60" /><p className="text-sm font-medium">{reviewOnly || customOnly || debouncedQuery ? "No matching records" : "No records yet"}</p><p className="max-w-md text-xs text-muted-foreground">{reviewOnly || customOnly || debouncedQuery ? "Clear a filter or search to see the rest of your model." : "Upload a source file or create a manual record to form your workspace data model."}</p>{reviewOnly || customOnly || debouncedQuery ? <button onClick={() => { setQuery(""); setDebouncedQuery(""); setReviewOnly(false); setCustomOnly(false); setPage(0) }} className="mt-2 rounded-lg border border-border px-3 py-2 text-xs">Clear filters</button> : onManualEntry && <button onClick={onManualEntry} className="mt-2 rounded-lg bg-primary px-3 py-2 text-xs text-primary-foreground">Add manual record</button>}</div> : view === "map" ? <div className="grid gap-3 xl:grid-cols-3">
+      {loading && !model ? <DataModelSkeleton /> : model && model.total === 0 && model.datasets.length === 0 ? <div className="flex h-full flex-col items-center justify-center gap-2 text-center"><Database className="h-8 w-8 text-primary/60" /><p className="text-sm font-medium">{reviewOnly || customOnly || debouncedQuery ? "No matching records" : model.allTotal > 0 ? "No active records" : "No records yet"}</p><p className="max-w-md text-xs text-muted-foreground">{reviewOnly || customOnly || debouncedQuery ? "Clear a filter or search to see the rest of your model." : model.allTotal > 0 ? "This workspace only contains excluded records. You can include them for historical review." : "Upload a source file or create a manual record to form your workspace data model."}</p>{reviewOnly || customOnly || debouncedQuery ? <button onClick={() => { setQuery(""); setDebouncedQuery(""); setReviewOnly(false); setCustomOnly(false); setPage(0) }} className="mt-2 rounded-lg border border-border px-3 py-2 text-xs">Clear filters</button> : model.allTotal > 0 ? <button onClick={() => { setShowExcluded(true); setPage(0) }} className="mt-2 rounded-lg border border-border px-3 py-2 text-xs">Show excluded records</button> : onManualEntry && <button onClick={onManualEntry} className="mt-2 rounded-lg bg-primary px-3 py-2 text-xs text-primary-foreground">Add manual record</button>}</div> : view === "map" ? <div className="grid gap-3 xl:grid-cols-3">
         <ModelColumn title="Folders & sources" subtitle="Workspace organization">
           <button onClick={() => setSelectedFileId(null)} className={`w-full rounded-lg border p-2 text-left text-xs ${selectedFileId === null ? "border-primary/50 bg-primary/10" : "border-border"}`}>All workspace data</button>
           {sourceGroups.map((group) => <div key={group.id} className="space-y-1"><p className="flex items-center gap-1.5 px-1 pt-2 text-[10px] uppercase tracking-wider text-muted-foreground"><Folder className="h-3 w-3" />{group.name}</p>{group.items.map((file) => <button key={file.id} onClick={() => { setSelectedFileId(file.id); setSelectedRecordId(null); setSelectedDatasetId(null) }} className={`w-full rounded-lg border p-2 text-left ${selectedFileId === file.id ? "border-primary/50 bg-primary/10" : "border-border/70"}`}><p className="truncate text-xs font-medium">{file.filename}</p><p className="mt-1 text-[10px] text-muted-foreground">{file.document_type.replaceAll("_", " ")} · {file.upload_status ?? "unknown"}</p></button>)}</div>)}
@@ -200,7 +203,7 @@ export function DataModelView({ files, folders, onManualEntry, onReclassify, onR
         </ModelColumn>
       </div> : <SchemaView catalog={model?.catalog ?? []} datasets={model?.datasets ?? []} columns={model?.datasetColumns ?? []} query={query} />}
     </main>
-    <footer className="flex items-center justify-between border-t border-border px-4 py-2 text-xs text-muted-foreground"><span>{loading && !model ? "Loading records…" : `Page ${page + 1} · ${model?.total ?? 0} matching records`}</span><div className="flex gap-1"><button disabled={page === 0 || loading} onClick={() => setPage((value) => Math.max(0, value - 1))} className="rounded border border-border p-1 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button><button disabled={!model?.hasMore || loading} onClick={() => setPage((value) => value + 1)} className="rounded border border-border p-1 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button></div></footer>
+    <footer className="flex items-center justify-between border-t border-border px-4 py-2 text-xs text-muted-foreground"><span>{loading && !model ? "Loading records…" : `Page ${page + 1} · ${model?.total ?? 0} matching ${showExcluded ? "records, including excluded" : "active records"}`}</span><div className="flex gap-1"><button disabled={page === 0 || loading} onClick={() => setPage((value) => Math.max(0, value - 1))} className="rounded border border-border p-1 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button><button disabled={!model?.hasMore || loading} onClick={() => setPage((value) => value + 1)} className="rounded border border-border p-1 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button></div></footer>
   </div>
 }
 
@@ -220,8 +223,8 @@ function RecordActions({ file, onOpenSource, onReclassify, onRetry }: { file?: U
   return <div className="flex flex-wrap gap-2 border-t border-border pt-3"><button onClick={() => onOpenSource?.(file)} className="flex items-center gap-1 rounded border border-border px-2 py-1 text-[10px]"><FileText className="h-3 w-3" />Open source</button><button onClick={() => onReclassify?.(file)} className="rounded border border-border px-2 py-1 text-[10px]">Reclassify</button>{file.attention_state && <button onClick={() => onRetry?.(file)} className="rounded border border-border px-2 py-1 text-[10px]">Retry</button>}</div>
 }
 function ViewButton({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) { return <button onClick={onClick} className={`flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs ${active ? "bg-primary/10 text-primary" : "text-muted-foreground"}`}>{icon}{label}</button> }
-function Summary({ label, value, loading = false, active = false, onClick }: { label: string; value?: number; loading?: boolean; active?: boolean; onClick?: () => void }) {
-  const content = <><p className="font-mono text-[10px] uppercase text-muted-foreground">{label}</p>{loading ? <div className="mt-2 h-5 w-12 animate-pulse rounded bg-muted" /> : <p className="mt-1 text-lg font-semibold">{value ?? 0}</p>}</>
+function Summary({ label, value, hint, loading = false, active = false, onClick }: { label: string; value?: number; hint?: string; loading?: boolean; active?: boolean; onClick?: () => void }) {
+  const content = <><p className="font-mono text-[10px] uppercase text-muted-foreground">{label}</p>{loading ? <div className="mt-2 h-5 w-12 animate-pulse rounded bg-muted" /> : <div className="mt-1 flex items-baseline gap-1.5"><p className="text-lg font-semibold">{value ?? 0}</p>{hint && <span className="text-[10px] text-muted-foreground">{hint}</span>}</div>}</>
   return onClick ? <button type="button" aria-pressed={active} onClick={onClick} className={`rounded-lg border p-3 text-left transition-colors ${active ? "border-primary/50 bg-primary/10" : "border-border/70 hover:border-primary/30"}`}>{content}</button> : <div className="rounded-lg border border-border/70 p-3">{content}</div>
 }
 function ModelColumn({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) { return <section className="min-h-80 rounded-xl border border-border bg-card/30"><div className="border-b border-border px-3 py-2"><h3 className="text-xs font-semibold">{title}</h3><p className="text-[10px] text-muted-foreground">{subtitle}</p></div><div className="space-y-2 p-2">{children}</div></section> }

@@ -24,5 +24,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     .eq("user_id", auth.user.id)
     .order("revision_number", { ascending: false })
   if (error) return serverError(error, { route: "data-model/[recordId]/history", stage: "history", userId: auth.user.id })
-  return NextResponse.json({ revisions: data ?? [] })
+  return NextResponse.json({ revisions: (data ?? []).map((revision) => ({
+    ...revision,
+    actor: revision.actor === auth.user.id ? "you" : "system",
+  })) })
 }

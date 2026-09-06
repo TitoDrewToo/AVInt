@@ -39,7 +39,7 @@ import {
   Database,
   PanelRight,
 } from "lucide-react"
-import { Sheet, SheetContent } from "@/components/ui/sheet"
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet"
 import { DateRangeSelector } from "@/components/smart-storage/date-range-selector"
 import { LeftFolderItem } from "@/components/smart-storage/left-folder-item"
 import { StorageItemMenu } from "@/components/smart-storage/storage-item-menu"
@@ -50,7 +50,6 @@ import {
   formatStorageAllowance,
   formatStorageBytes,
   storageQuotaBytes,
-  storageUsagePercent,
 } from "@/lib/storage-quota"
 import { collapseBreadcrumb } from "@/lib/breadcrumb"
 import { trackActivationEvent } from "@/lib/analytics"
@@ -1644,9 +1643,10 @@ export default function SmartStoragePage() {
   const visibleClassificationFolders = Object.entries(CLASSIFICATION_FOLDER_MAP)
     .filter(([, types]) => types.some((t) => detectedTypes.includes(t)))
     .map(([name]) => name)
+  const mappedClassificationTypes = new Set(Object.values(CLASSIFICATION_FOLDER_MAP).flat())
+  const otherClassificationCount = files.filter((file) => file.file_type !== "manual" && (!file.document_type || !mappedClassificationTypes.has(file.document_type))).length
+  if (otherClassificationCount > 0 && !visibleClassificationFolders.includes("Other")) visibleClassificationFolders.push("Other")
   const usedStorageBytes = files.reduce((sum, file) => sum + (file.file_size || 0), 0)
-  const includedStorageBytes = storageQuotaBytes(entitlement)
-  const usedStoragePercent = storageUsagePercent(usedStorageBytes, includedStorageBytes)
   const selectedStorageBytes = useMemo(() => {
     if (selectedFiles.size === 0) return 0
     return files.reduce((sum, file) => selectedFiles.has(file.id) ? sum + (file.file_size || 0) : sum, 0)
@@ -1948,15 +1948,8 @@ export default function SmartStoragePage() {
                 <HardDrive className="h-3.5 w-3.5 text-primary" />
                 <span>Storage</span>
               </div>
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
-                <div
-                  className="h-full rounded-full bg-primary transition-[width] duration-300"
-                  style={{ width: `${usedStoragePercent}%` }}
-                />
-              </div>
-              <p className="mt-2 text-[11px] text-muted-foreground">
-                {formatBytes(usedStorageBytes)} of {formatStorageAllowance(includedStorageBytes)}
-              </p>
+              <p className="mt-2 text-[11px] text-foreground">{loadedFileCount} document{loadedFileCount === 1 ? "" : "s"}</p>
+              <p className="mt-0.5 text-[10px] text-muted-foreground">{formatBytes(usedStorageBytes)} stored</p>
             </div>
             {/* Documents section — user folder tree */}
             <div className="flex-[0.6] overflow-y-auto border-b border-border p-2">
@@ -2041,7 +2034,7 @@ export default function SmartStoragePage() {
                 {visibleClassificationFolders.map((name) => {
                   const count = (CLASSIFICATION_FOLDER_MAP[name] ?? []).reduce(
                     (n, t) => n + files.filter(f => f.document_type === t).length, 0
-                  )
+                  ) + (name === "Other" ? otherClassificationCount : 0)
                   return (
                     <button
                       key={name}
@@ -2542,7 +2535,7 @@ export default function SmartStoragePage() {
                               className="w-full rounded border border-primary bg-background px-1 py-0.5 text-center text-[11px] text-foreground focus:outline-none"
                             />
                           ) : (
-                            <span className="w-full truncate text-center text-[11px] text-foreground leading-tight">{file.filename}</span>
+                            <span title={file.filename} className="line-clamp-2 w-full break-all text-center text-[11px] leading-tight text-foreground">{file.filename}</span>
                           )}
                           {file.upload_status === "quarantined" ? (
                             <span className="w-full truncate text-center text-[10px] text-red-600 leading-tight" title={file.scan_reason ?? "Blocked by security scan"}>
@@ -2891,7 +2884,7 @@ export default function SmartStoragePage() {
               {visibleClassificationFolders.map((name) => {
                 const count = (CLASSIFICATION_FOLDER_MAP[name] ?? []).reduce(
                   (n, t) => n + files.filter(f => f.document_type === t).length, 0
-                )
+                ) + (name === "Other" ? otherClassificationCount : 0)
                 return (
                   <button
                     key={name}
@@ -2913,6 +2906,8 @@ export default function SmartStoragePage() {
 
       <Sheet open={dataModelOpen} onOpenChange={setDataModelOpen}>
         <SheetContent side="top" className="inset-x-0 top-0 h-full w-full max-w-none border-b-0 p-0">
+          <SheetTitle className="sr-only">Smart Storage data model</SheetTitle>
+          <SheetDescription className="sr-only">Inspect records, datasets, fields, revisions, and their source files.</SheetDescription>
           <DataModelView
             files={files}
             folders={folders}

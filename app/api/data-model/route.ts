@@ -24,6 +24,7 @@ export async function GET(request: NextRequest) {
       documentType: params.get("document_type")?.slice(0, 80) || undefined,
       fieldKey: params.get("field_key")?.slice(0, 120) || undefined,
       customOnly: params.get("custom_only") === "true",
+      reviewOnly: params.get("review_only") === "true",
       page: Number.parseInt(params.get("page") ?? "0", 10) || 0,
       pageSize: Number.parseInt(params.get("page_size") ?? "40", 10) || 40,
     })

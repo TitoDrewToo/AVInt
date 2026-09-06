@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/mcp-auth"
+import { summarizeDataModelRecords, type DataModelStatRecord } from "@/lib/data-model-stats"
 
 const DEFAULT_PAGE_SIZE = 40
 const MAX_PAGE_SIZE = 100
@@ -14,6 +15,7 @@ export type VirtualModelQuery = {
   documentType?: string
   fieldKey?: string
   customOnly?: boolean
+  reviewOnly?: boolean
   page?: number
   pageSize?: number
 }
@@ -39,7 +41,7 @@ export async function readVirtualModel(userId: string, query: VirtualModelQuery 
 
   const ownedFiles = files ?? []
   const fileIds = ownedFiles.map((file) => file.id)
-  if (!fileIds.length) return { files: [], records: [], fields: [], catalog: [], datasets: [], datasetColumns: [], page, pageSize, total: 0, hasMore: false, nextPage: null, statusCounts: {}, truncated: false }
+  if (!fileIds.length) return { files: [], records: [], fields: [], catalog: [], datasets: [], datasetColumns: [], page, pageSize, total: 0, hasMore: false, nextPage: null, statusCounts: {}, stats: { activeRecords: 0, excludedRecords: 0, needsReview: 0, userEdited: 0, lineItems: 0 }, truncated: false }
 
   let matchingRecordIds: string[] | null = null
   if (query.fieldKey || query.customOnly) {
@@ -95,6 +97,7 @@ export async function readVirtualModel(userId: string, query: VirtualModelQuery 
   if (matchingRecordIds) recordsQuery = recordsQuery.in("id", matchingRecordIds)
   if (query.status) recordsQuery = recordsQuery.eq("status", query.status)
   if (query.documentType) recordsQuery = recordsQuery.eq("document_type", query.documentType)
+  if (query.reviewOnly) recordsQuery = recordsQuery.eq("needs_review", true).is("excluded_at", null)
   const { data: records, error: recordsError, count } = emptyMatch ? { data: [], error: null, count: 0 } : await recordsQuery
   if (recordsError) throw new Error(recordsError.message)
 
@@ -155,14 +158,14 @@ export async function readVirtualModel(userId: string, query: VirtualModelQuery 
     datasetColumns = data ?? []
   }
 
-  let statusQuery = supabaseAdmin.from("records").select("status").eq("user_id", userId).in("file_id", fileIds)
+  let statusQuery = supabaseAdmin.from("records").select("status, needs_review, excluded_at, has_user_edits, parent_record_id").eq("user_id", userId).in("file_id", fileIds)
   if (matchingRecordIds && matchingRecordIds.length) statusQuery = statusQuery.in("id", matchingRecordIds)
   if (query.status) statusQuery = statusQuery.eq("status", query.status)
   if (query.documentType) statusQuery = statusQuery.eq("document_type", query.documentType)
+  if (query.reviewOnly) statusQuery = statusQuery.eq("needs_review", true).is("excluded_at", null)
   const { data: statusRows, error: statusError } = emptyMatch ? { data: [], error: null } : await statusQuery
   if (statusError) throw new Error(statusError.message)
-  const statusCounts: Record<string, number> = {}
-  for (const row of statusRows ?? []) statusCounts[row.status] = (statusCounts[row.status] ?? 0) + 1
+  const { statusCounts, stats } = summarizeDataModelRecords((statusRows ?? []) as DataModelStatRecord[])
 
   const total = count ?? 0
   const hasMore = (page + 1) * pageSize < total
@@ -179,6 +182,7 @@ export async function readVirtualModel(userId: string, query: VirtualModelQuery 
     hasMore,
     nextPage: hasMore ? page + 1 : null,
     statusCounts,
+    stats,
     truncated: hasMore,
   }
 }

@@ -242,7 +242,11 @@ export function getDisplayedSmartStorageFiles({
       ? files.filter(file => file.file_type === "manual")
       : (() => {
           const types = CLASSIFICATION_FOLDER_MAP[classificationView] ?? []
-          return files.filter(file => types.some(type => file.document_type?.includes(type) || type === file.document_type))
+          const mappedTypes = new Set(Object.values(CLASSIFICATION_FOLDER_MAP).flat())
+          return files.filter(file => file.file_type !== "manual" && (
+            types.some(type => file.document_type?.includes(type) || type === file.document_type)
+            || (classificationView === "Other" && (!file.document_type || !mappedTypes.has(file.document_type)))
+          ))
         })()
     return sortSmartStorageFiles(matched, classificationSort)
   }

@@ -2,33 +2,67 @@ import { supabaseAdmin } from "@/lib/mcp-auth"
 
 const MAX_CONTEXT_ROWS = 120
 
-export async function buildDashboardAIContext(userId: string) {
-  const [{ data: files, error: filesError }, { data: fields, error: fieldsError }, { count: activeRecordCount, error: countError }] = await Promise.all([
-    supabaseAdmin.from("files").select("id, filename, document_type, upload_status").eq("user_id", userId),
-    supabaseAdmin
+type DashboardContextClient = { from: (table: string) => any }
+type DashboardRecordRow = {
+  id: string
+  files: { document_type?: string | null } | Array<{ document_type?: string | null }> | null
+  occurred_on: string | null
+  counterparty_normalized: string | null
+  amount: number | null
+  currency: string | null
+  category: string | null
+}
+
+/**
+ * Counts active top-level records, the ready subset not flagged for review,
+ * and the complementary attention subset flagged with needs_review.
+ */
+export async function countProfileRecords(client: DashboardContextClient, userId: string) {
+  const [{ count: activeRecordCount, error: activeError }, { count: attentionCount, error: attentionError }] = await Promise.all([
+    client
+      .from("records")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .is("parent_record_id", null)
+      .is("excluded_at", null),
+    client
+      .from("records")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .is("parent_record_id", null)
+      .is("excluded_at", null)
+      .eq("needs_review", true),
+  ])
+  if (activeError) throw new Error(activeError.message)
+  if (attentionError) throw new Error(attentionError.message)
+  const active = activeRecordCount ?? 0
+  const attention = attentionCount ?? 0
+  return { activeRecordCount: active, readyRecordCount: Math.max(0, active - attention), attentionCount: attention }
+}
+
+export async function buildDashboardAIContext(userId: string, client: DashboardContextClient = supabaseAdmin) {
+  const [{ data: files, error: filesError }, { data: fields, error: fieldsError }, counts] = await Promise.all([
+    client.from("files").select("id, filename, document_type, upload_status").eq("user_id", userId),
+    client
       .from("records")
       .select("id, file_id, source_key, occurred_on, amount, currency, category, counterparty_normalized, parent_record_id, excluded_at, files!inner(document_type, filename, user_id)")
       .eq("user_id", userId)
       .is("parent_record_id", null)
       .is("excluded_at", null)
+      .eq("needs_review", false)
       .order("occurred_on", { ascending: false })
       .order("source_key", { ascending: true })
       .limit(MAX_CONTEXT_ROWS),
-    supabaseAdmin
-      .from("records")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", userId)
-      .is("excluded_at", null),
+    countProfileRecords(client, userId),
   ])
   if (filesError) throw new Error(filesError.message)
   if (fieldsError) throw new Error(fieldsError.message)
-  if (countError) throw new Error(countError.message)
 
-  const readyRows = fields ?? []
+  const readyRows = (fields ?? []) as DashboardRecordRow[]
   const recordIds = readyRows.map((row) => row.id)
   const { data: attributes, error: attributesError } = recordIds.length === 0
     ? { data: [], error: null }
-    : await supabaseAdmin.from("record_attributes").select("record_id, field_key, value, value_numeric").in("record_id", recordIds)
+    : await client.from("record_attributes").select("record_id, field_key, value, value_numeric").in("record_id", recordIds)
   if (attributesError) throw new Error(attributesError.message)
   const attributeByRecord = new Map<string, Map<string, { value: unknown; value_numeric: unknown }>>()
   for (const attribute of attributes ?? []) {
@@ -47,8 +81,7 @@ export async function buildDashboardAIContext(userId: string) {
 
   return {
     sourceCount: files?.length ?? 0,
-    readyRecordCount: activeRecordCount ?? 0,
-    attentionCount: (files ?? []).filter((file: any) => ["processing", "pending_scan", "scanning", "approved"].includes(file.upload_status)).length,
+    ...counts,
     documentTypes: Object.fromEntries(typeCounts),
     currencies: Object.fromEntries(currencyCounts),
     recentRecords: readyRows.slice(0, 40).map((row) => {

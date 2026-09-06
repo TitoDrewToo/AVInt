@@ -111,7 +111,7 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
 
     server.registerTool("smart_storage.profile", {
       title: "Smart Storage data profile",
-      description: "Read-only. Describe the signed-in user's current normalized data model, available document types, currencies, readiness, and recent records. Use this before suggesting a dashboard visual or other custom output.",
+      description: "Read-only. Describe the signed-in user's normalized data model. activeRecordCount counts active top-level records; readyRecordCount counts that same set excluding records flagged needs_review; attentionCount counts the flagged remainder. Document types, currencies, and recent records describe ready records only. Use this before suggesting a dashboard visual or other custom output.",
       inputSchema: z.object({}),
     }, async () => timedTool("smart_storage.profile", async () => {
       const blocked = await toolGuard(userId, entitlement, "profile")

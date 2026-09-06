@@ -153,14 +153,6 @@ export default function StudioPage() {
               <h2 className="mt-6 text-balance text-3xl font-semibold tracking-tight text-foreground md:text-5xl">Built in the open, shaped by real work.</h2>
             </div>
             <div className="mt-12 grid gap-4 md:grid-cols-2">
-              <Link href="/products/chroma-fairy" className="cw-launcher-card glass-surface group rounded-2xl p-7">
-                <div className="flex items-center justify-between gap-4">
-                  <Palette className="h-6 w-6 text-primary" />
-                  <ArrowUpRight className="h-5 w-5 text-muted-foreground transition-transform group-hover:-translate-y-1 group-hover:translate-x-1" />
-                </div>
-                <h3 className="mt-8 text-xl font-medium text-foreground">Chroma Fairy</h3>
-                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">A living online gallery designed and built end to end.</p>
-              </Link>
               <Link href="/products/smart-storage" className="cw-launcher-card glass-surface group rounded-2xl p-7">
                 <div className="flex items-center justify-between gap-4">
                   <Database className="h-6 w-6 text-primary" />
@@ -168,6 +160,14 @@ export default function StudioPage() {
                 </div>
                 <h3 className="mt-8 text-xl font-medium text-foreground">Smart Storage</h3>
                 <p className="mt-2 text-sm leading-relaxed text-muted-foreground">An ingestion and intelligence system built around real document workflows.</p>
+              </Link>
+              <Link href="/products/chroma-fairy" className="cw-launcher-card glass-surface group rounded-2xl p-7">
+                <div className="flex items-center justify-between gap-4">
+                  <Palette className="h-6 w-6 text-primary" />
+                  <ArrowUpRight className="h-5 w-5 text-muted-foreground transition-transform group-hover:-translate-y-1 group-hover:translate-x-1" />
+                </div>
+                <h3 className="mt-8 text-xl font-medium text-foreground">Chroma Fairy</h3>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">A living online gallery designed and built end to end.</p>
               </Link>
             </div>
           </div>

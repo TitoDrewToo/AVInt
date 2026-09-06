@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { BarChart3, Check, Loader2, Plus, Send, Sparkles, X } from "lucide-react"
+import { Tip } from "@/components/ui/tip"
 
 import { supabase } from "@/lib/supabase"
 
@@ -85,9 +86,9 @@ export function DashboardAssistant({ pageSlug = "personal", dateFrom = "", dateT
               <p className="font-aldrich text-[10px] uppercase tracking-wider text-primary">Dashboard Copilot</p>
               <p className="mt-1 text-xs text-muted-foreground">Analyze your data or build a refreshable visual.</p>
             </div>
-            <button type="button" onClick={() => setOpen(false)} className="cw-button-flow glass-surface-sm flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground" aria-label="Close assistant">
+            <Tip text="Close Dashboard Copilot."><button type="button" onClick={() => setOpen(false)} className="cw-button-flow glass-surface-sm flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground" aria-label="Close assistant">
               <X className="h-3.5 w-3.5" />
-            </button>
+            </button></Tip>
           </div>
           <div className="mb-3 max-h-[min(55vh,420px)] space-y-2 overflow-y-auto">
             {exchanges.length === 0 && <div className="rounded-lg border border-dashed border-border px-3 py-4 text-xs leading-relaxed text-muted-foreground"><p>Try “What changed recently?” or “Show monthly expenses by category.”</p><p className="mt-2 text-[11px]">Copilot previews new visuals first. Nothing is added without your approval.</p></div>}
@@ -122,9 +123,9 @@ export function DashboardAssistant({ pageSlug = "personal", dateFrom = "", dateT
           </div>
           <form onSubmit={(event) => { event.preventDefault(); void ask() }} className="flex items-center gap-2">
             <input value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={600} placeholder="Ask or request a visual…" className="min-w-0 flex-1 rounded-lg border border-border bg-background/60 px-3 py-2 text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/50" />
-            <button type="submit" disabled={loading || !question.trim()} className="cw-button-flow flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground disabled:opacity-50" aria-label="Ask">
+            <Tip text="Send this request to Dashboard Copilot."><button type="submit" disabled={loading || !question.trim()} className="cw-button-flow flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground disabled:opacity-50" aria-label="Ask">
               <Send className="h-3.5 w-3.5" />
-            </button>
+            </button></Tip>
           </form>
         </div>
       )}

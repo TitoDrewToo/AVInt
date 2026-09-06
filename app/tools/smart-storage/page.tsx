@@ -2068,12 +2068,13 @@ export default function SmartStoragePage() {
             {/* Toolbar */}
             <div className="flex h-10 items-center gap-2 border-b border-border bg-card/50 px-4 md:hidden">
               {/* Mobile nav trigger */}
-              <button
+              <Tip text="Open folders and classification views."><button
                 className="flex md:hidden h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
                 onClick={() => setMobileNavOpen(true)}
+                aria-label="Open storage navigation"
               >
                 <Menu className="h-4 w-4" />
-              </button>
+              </button></Tip>
 
               {/* Breadcrumb / classification header */}
               <div className="flex flex-1 items-center gap-1 text-sm overflow-hidden">
@@ -2144,12 +2145,13 @@ export default function SmartStoragePage() {
               {/* Toolbar actions */}
               <div className="flex items-center gap-1">
                 {breadcrumb.length > 1 && (
-                  <button
+                  <Tip text="Go up to the parent folder."><button
                     onClick={() => { const prev = breadcrumb[breadcrumb.length - 2]; navigateBreadcrumb(prev.id, prev.name, breadcrumb.length - 2) }}
                     className="flex h-7 w-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    aria-label="Go to parent folder"
                   >
                     <ArrowLeft className="h-3.5 w-3.5" />
-                  </button>
+                  </button></Tip>
                 )}
                 {!classificationView && !documentVirtualView && (<>
                   <button
@@ -2162,6 +2164,8 @@ export default function SmartStoragePage() {
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild disabled={isUploading}>
                       <button
+                        aria-label="Upload documents"
+                        title="Upload documents or a folder"
                         className="flex h-7 items-center gap-1.5 rounded px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50 disabled:pointer-events-none"
                       >
                         {isUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
@@ -2211,9 +2215,10 @@ export default function SmartStoragePage() {
                 )}
                 {/* View toggle */}
                 <div className="flex items-center rounded border border-border">
-                  <button
+                  <Tip text="Show documents as a detailed list."><button
                     onClick={() => setViewMode("list")}
                     className={`flex h-6 w-6 items-center justify-center rounded-l text-xs transition-colors ${viewMode === "list" ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/50"}`}
+                    aria-label="List view"
                   >
                     <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth={1.5}>
                       <line x1="4" y1="4" x2="14" y2="4"/><line x1="4" y1="8" x2="14" y2="8"/><line x1="4" y1="12" x2="14" y2="12"/>
@@ -2221,16 +2226,17 @@ export default function SmartStoragePage() {
                       <rect x="1" y="7" width="2" height="2" rx="0.5" fill="currentColor" stroke="none"/>
                       <rect x="1" y="11" width="2" height="2" rx="0.5" fill="currentColor" stroke="none"/>
                     </svg>
-                  </button>
-                  <button
+                  </button></Tip>
+                  <Tip text="Show documents as movable icons."><button
                     onClick={() => setViewMode("grid")}
                     className={`flex h-6 w-6 items-center justify-center rounded-r text-xs transition-colors ${viewMode === "grid" ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/50"}`}
+                    aria-label="Grid view"
                   >
                     <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth={1.5}>
                       <rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/>
                       <rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/>
                     </svg>
-                  </button>
+                  </button></Tip>
                 </div>
                 <input ref={fileInputRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.csv,.xlsx,image/*,application/pdf,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" onChange={(e) => e.target.files && handleUpload(e.target.files)} />
                 <input ref={directoryInputRef} type="file" multiple className="hidden" onChange={(e) => e.target.files && handleUpload(e.target.files)} />
@@ -2252,8 +2258,8 @@ export default function SmartStoragePage() {
                     placeholder="Folder name"
                     className="h-6 flex-1 border-0 p-0 text-sm shadow-none focus-visible:ring-0"
                   />
-                  <button onClick={createFolder} className="text-primary hover:text-primary/80"><Check className="h-4 w-4" /></button>
-                  <button onClick={() => setIsCreatingFolder(false)} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
+                  <Tip text="Create this folder."><button onClick={createFolder} className="text-primary hover:text-primary/80" aria-label="Create folder"><Check className="h-4 w-4" /></button></Tip>
+                  <Tip text="Cancel folder creation."><button onClick={() => setIsCreatingFolder(false)} className="text-muted-foreground hover:text-foreground" aria-label="Cancel folder creation"><X className="h-4 w-4" /></button></Tip>
                 </div>
               )}
 
@@ -2300,8 +2306,8 @@ export default function SmartStoragePage() {
                           onKeyDown={(e) => { if (e.key === "Enter") confirmRename(); if (e.key === "Escape") setRenamingId(null) }}
                           className="h-6 flex-1 border-0 p-0 text-sm shadow-none focus-visible:ring-0"
                         />
-                        <button onClick={confirmRename} className="text-primary"><Check className="h-3.5 w-3.5" /></button>
-                        <button onClick={() => setRenamingId(null)} className="text-muted-foreground"><X className="h-3.5 w-3.5" /></button>
+                        <Tip text="Save the new folder name."><button onClick={confirmRename} className="text-primary" aria-label="Save folder name"><Check className="h-3.5 w-3.5" /></button></Tip>
+                        <Tip text="Cancel renaming."><button onClick={() => setRenamingId(null)} className="text-muted-foreground" aria-label="Cancel renaming"><X className="h-3.5 w-3.5" /></button></Tip>
                       </div>
                     ) : (
                       <>

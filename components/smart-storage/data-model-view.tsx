@@ -6,6 +6,7 @@ import { AlertCircle, ChevronLeft, ChevronRight, Database, FileText, Folder, Git
 import type { UploadedFile, VirtualFolder } from "@/lib/smart-storage"
 import { supabase } from "@/lib/supabase"
 import { createSingleFlight } from "@/lib/single-flight"
+import { Tip } from "@/components/ui/tip"
 
 type ModelFile = Pick<UploadedFile, "id" | "filename" | "file_type" | "file_size" | "storage_path" | "folder_id" | "document_type" | "upload_status" | "scan_reason" | "analysis_json" | "analyzed_at" | "source_rows_json" | "created_at">
 type ModelRecord = {
@@ -203,7 +204,7 @@ export function DataModelView({ files, folders, onManualEntry, onReclassify, onR
         </ModelColumn>
       </div> : <SchemaView catalog={model?.catalog ?? []} datasets={model?.datasets ?? []} columns={model?.datasetColumns ?? []} query={query} />}
     </main>
-    <footer className="flex items-center justify-between border-t border-border px-4 py-2 text-xs text-muted-foreground"><span>{loading && !model ? "Loading records…" : `Page ${page + 1} · ${model?.total ?? 0} matching ${showExcluded ? "records, including excluded" : "active records"}`}</span><div className="flex gap-1"><button disabled={page === 0 || loading} onClick={() => setPage((value) => Math.max(0, value - 1))} className="rounded border border-border p-1 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button><button disabled={!model?.hasMore || loading} onClick={() => setPage((value) => value + 1)} className="rounded border border-border p-1 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button></div></footer>
+    <footer className="flex items-center justify-between border-t border-border px-4 py-2 text-xs text-muted-foreground"><span>{loading && !model ? "Loading records…" : `Page ${page + 1} · ${model?.total ?? 0} matching ${showExcluded ? "records, including excluded" : "active records"}`}</span><div className="flex gap-1"><Tip text="Show the previous page of records."><button disabled={page === 0 || loading} onClick={() => setPage((value) => Math.max(0, value - 1))} className="rounded border border-border p-1 disabled:opacity-40" aria-label="Previous records page"><ChevronLeft className="h-4 w-4" /></button></Tip><Tip text="Show the next page of records."><button disabled={!model?.hasMore || loading} onClick={() => setPage((value) => value + 1)} className="rounded border border-border p-1 disabled:opacity-40" aria-label="Next records page"><ChevronRight className="h-4 w-4" /></button></Tip></div></footer>
   </div>
 }
 

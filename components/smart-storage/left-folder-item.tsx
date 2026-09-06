@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react"
 import { ChevronDown, ChevronRight, Folder, FolderOpen, Pencil, X } from "lucide-react"
+import { Tip } from "@/components/ui/tip"
 
 interface LeftFolderItemProps {
   name: string
@@ -51,22 +52,22 @@ export function LeftFolderItem({
         {(onRename || onDelete) && (
           <div className="flex items-center gap-0.5 pr-1 opacity-0 transition-opacity group-hover:opacity-100">
             {onRename && (
-              <button
+              <Tip text={`Rename ${name}.`}><button
                 onClick={(e) => { e.stopPropagation(); onRename() }}
                 className="flex h-5 w-5 items-center justify-center rounded hover:bg-muted-foreground/20"
-                title="Rename"
+                aria-label={`Rename ${name}`}
               >
                 <Pencil className="h-3 w-3" />
-              </button>
+              </button></Tip>
             )}
             {onDelete && (
-              <button
+              <Tip text={`Delete ${name}.`}><button
                 onClick={(e) => { e.stopPropagation(); onDelete() }}
                 className="flex h-5 w-5 items-center justify-center rounded hover:bg-destructive/20 hover:text-destructive"
-                title="Delete"
+                aria-label={`Delete ${name}`}
               >
                 <X className="h-3 w-3" />
-              </button>
+              </button></Tip>
             )}
           </div>
         )}

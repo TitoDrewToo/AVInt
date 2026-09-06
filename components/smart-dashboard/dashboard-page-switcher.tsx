@@ -5,6 +5,7 @@ import { Check, ChevronDown, ChevronUp, LayoutDashboard, Loader2, Pencil, Plus, 
 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Tip } from "@/components/ui/tip"
 import { supabase } from "@/lib/supabase"
 
 export type DashboardPageSummary = { id: string; name: string; slug: string; kind: "personal" | "business" | "custom"; position: number; layout?: Record<string, unknown> }
@@ -110,10 +111,10 @@ export function DashboardPageSwitcher({ pages, activeSlug, onSelect, onPagesChan
           <div className="mt-1 max-h-72 space-y-0.5 overflow-y-auto">
             {pages.map((page, index) => <div key={page.id} className={`group flex items-center gap-1 rounded-lg p-1 ${page.slug === activeSlug ? "bg-primary/10" : "hover:bg-muted/70"}`}>
               <button type="button" onClick={() => { onSelect(page.slug); setOpen(false) }} className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs"><span className={`flex h-4 w-4 items-center justify-center rounded-full border ${page.slug === activeSlug ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}>{page.slug === activeSlug && <Check className="h-2.5 w-2.5" />}</span><span className="truncate font-medium">{page.name}</span></button>
-              <button type="button" onClick={() => void move(page, -1)} disabled={busy || index === 0} className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground disabled:opacity-20" aria-label={`Move ${page.name} earlier`}><ChevronUp className="h-3.5 w-3.5" /></button>
-              <button type="button" onClick={() => void move(page, 1)} disabled={busy || index === pages.length - 1} className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground disabled:opacity-20" aria-label={`Move ${page.name} later`}><ChevronDown className="h-3.5 w-3.5" /></button>
-              <button type="button" onClick={() => startRename(page)} disabled={busy} className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground" aria-label={`Rename ${page.name}`}><Pencil className="h-3.5 w-3.5" /></button>
-              <button type="button" onClick={() => { setDeletePage(page); setError(null) }} disabled={busy || pages.length === 1} className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-20" aria-label={`Delete ${page.name}`}><Trash2 className="h-3.5 w-3.5" /></button>
+              <Tip text={`Move ${page.name} earlier.`}><button type="button" onClick={() => void move(page, -1)} disabled={busy || index === 0} className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground disabled:opacity-20" aria-label={`Move ${page.name} earlier`}><ChevronUp className="h-3.5 w-3.5" /></button></Tip>
+              <Tip text={`Move ${page.name} later.`}><button type="button" onClick={() => void move(page, 1)} disabled={busy || index === pages.length - 1} className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground disabled:opacity-20" aria-label={`Move ${page.name} later`}><ChevronDown className="h-3.5 w-3.5" /></button></Tip>
+              <Tip text={`Rename ${page.name}.`}><button type="button" onClick={() => startRename(page)} disabled={busy} className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground" aria-label={`Rename ${page.name}`}><Pencil className="h-3.5 w-3.5" /></button></Tip>
+              <Tip text={pages.length === 1 ? "A dashboard needs at least one page." : `Delete ${page.name}.`}><button type="button" onClick={() => { setDeletePage(page); setError(null) }} disabled={busy || pages.length === 1} className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-20" aria-label={`Delete ${page.name}`}><Trash2 className="h-3.5 w-3.5" /></button></Tip>
             </div>)}
           </div>
           {error && <p className="mx-1 mt-2 rounded-md border border-destructive/25 bg-destructive/5 px-2 py-1.5 text-[11px] text-destructive">{error}</p>}

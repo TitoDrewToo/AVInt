@@ -1264,6 +1264,8 @@ function DashboardColorPicker({
         <button
           onClick={() => { cancelColorPickerClose(); setShowColorPicker(!showColorPicker) }}
           className="flex items-center gap-1.5 rounded-lg border border-border px-2 py-1 text-xs text-muted-foreground transition-all duration-200 hover:-translate-y-0.5 hover:bg-muted"
+          aria-label={`Choose ${pickerScope} accent color`}
+          aria-expanded={showColorPicker}
         >
           <span className="h-4 w-4 rounded-full border border-white/10" style={{ background: currentAccent }} />
           <ChevronDown className="h-3 w-3" />
@@ -2338,31 +2340,31 @@ export default function SmartDashboardPage() {
     <div className="flex min-w-0 items-center justify-between gap-2">
       <div className="flex min-w-0 flex-1 items-center gap-2 overflow-visible">
         {dashboardPages.length > 0 && <DashboardPageSwitcher pages={dashboardPages} activeSlug={activePageSlug} disabled={isDirty} onSelect={(slug) => { setActivePageSlug(slug); setSelectedWidgetId(null); setIsEditingLayout(false) }} onPagesChanged={(pages, slug) => { setDashboardPages(pages); setActivePageSlug(slug); setSelectedWidgetId(null); setIsEditingLayout(false) }} />}
-        <button
+        <Tip text="Reload the latest normalized Smart Storage data."><button
           type="button"
           onClick={() => void refreshDashboard()}
           disabled={isRefreshing || loading}
           className="flex h-7 items-center gap-1.5 rounded-lg border border-border px-3 text-xs text-muted-foreground transition-all duration-200 hover:-translate-y-0.5 hover:bg-muted hover:text-foreground disabled:cursor-wait disabled:opacity-60"
           aria-label="Refresh dashboard data"
-          title="Refresh dashboard data"
         >
           <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
           {isRefreshing ? "Refreshing…" : "Refresh"}
-        </button>
+        </button></Tip>
         <DashboardAssistant pageSlug={activePageSlug} dateFrom={dateFrom} dateTo={dateTo} onVisualSaved={loadLayout} />
         <div
           className="relative"
           onMouseEnter={!isMobile ? cancelDateFilterClose : undefined}
           onMouseLeave={!isMobile && showDateFilter ? scheduleDateFilterClose : undefined}
         >
-          <button
+          <Tip text="Choose the time period covered by this dashboard."><button
             onClick={() => { cancelDateFilterClose(); setShowDateFilter(!showDateFilter); setShowColorPicker(false) }}
             className="flex h-7 items-center gap-1.5 rounded-lg border border-border px-3 text-xs text-muted-foreground transition-all duration-200 hover:-translate-y-0.5 hover:bg-muted hover:text-foreground"
+            aria-expanded={showDateFilter}
           >
             <Calendar className="h-3.5 w-3.5" />
             {dateFrom && dateTo ? `${dateFrom} - ${dateTo}` : "All time"}
             <ChevronDown className={`h-3 w-3 transition-transform ${showDateFilter ? "rotate-180" : ""}`} />
-          </button>
+          </button></Tip>
           <div className={`absolute left-0 top-9 z-30 origin-top-left rounded-xl border border-border bg-card p-4 shadow-xl transition-all duration-200 ${
             showDateFilter
               ? "pointer-events-auto translate-y-0 scale-100 opacity-100"
@@ -2414,7 +2416,7 @@ export default function SmartDashboardPage() {
               onMouseEnter={cancelAdvancedMenuClose}
               onMouseLeave={showAdvancedMenu ? scheduleAdvancedMenuClose : undefined}
             >
-              <Tip text="Choose the time period the dashboard covers."><button
+              <Tip text="Discover additional patterns and generate suggested visualizations from your current data."><button
                 onClick={() => { cancelAdvancedMenuClose(); setShowAdvancedMenu(!showAdvancedMenu); setShowColorPicker(false); setShowDateFilter(false) }}
                 className={`flex h-7 items-center gap-1.5 rounded-lg border px-3 text-xs transition-all duration-200 hover:-translate-y-0.5 hover:bg-muted hover:text-foreground ${
                   readinessState.kind === "unlock_moment"
@@ -2562,14 +2564,16 @@ export default function SmartDashboardPage() {
               onMouseEnter={!isMobile ? cancelDateFilterClose : undefined}
               onMouseLeave={!isMobile && showDateFilter ? scheduleDateFilterClose : undefined}
             >
-              <button
+              <Tip text="Choose the time period covered by this dashboard."><button
                 onClick={() => { cancelDateFilterClose(); setShowDateFilter(!showDateFilter); setShowColorPicker(false) }}
                 className="flex h-7 items-center gap-1.5 rounded-lg border border-border px-3 text-xs text-muted-foreground transition-all duration-200 hover:-translate-y-0.5 hover:bg-muted hover:text-foreground"
+                aria-label="Choose dashboard date range"
+                aria-expanded={showDateFilter}
               >
                 <Calendar className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">{dateFrom && dateTo ? `${dateFrom} – ${dateTo}` : "All time"}</span>
                 <ChevronDown className={`h-3 w-3 transition-transform ${showDateFilter ? "rotate-180" : ""}`} />
-              </button>
+              </button></Tip>
               <div className={`absolute left-0 top-9 z-30 origin-top-left rounded-xl border border-border bg-card p-4 shadow-xl transition-all duration-200 ${
                 showDateFilter
                   ? "pointer-events-auto translate-y-0 scale-100 opacity-100"
@@ -2785,13 +2789,13 @@ export default function SmartDashboardPage() {
               {dataError && (
                 <div className="mb-3 flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-[11px] leading-relaxed text-destructive">
                   <p className="min-w-0 flex-1">{dataError}</p>
-                  <button
+                  <Tip text="Retry loading dashboard data."><button
                     type="button"
                     onClick={() => { setDataError(null); void loadData(); void loadLayout(); void loadAdvancedWidgets() }}
                     className="shrink-0 rounded px-2 py-1 font-medium transition-colors hover:bg-destructive/10"
                   >
                     Retry
-                  </button>
+                  </button></Tip>
                 </div>
               )}
               {stillProcessingCount > 0 && (
@@ -2806,27 +2810,27 @@ export default function SmartDashboardPage() {
                   <p className="min-w-0 flex-1">
                     {currencyModel.unspecifiedRowCount} rows have unspecified currency. Open the file&apos;s Reclassify Sheet to set currency for them — they&apos;re not included in the totals below.
                   </p>
-                  <button
+                  <Tip text="Dismiss the multiple-currency notice."><button
                     type="button"
                     onClick={() => setCurrencyBannerDismissed(true)}
                     className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded text-amber-800/70 hover:bg-amber-100 hover:text-amber-950 dark:text-amber-100/70 dark:hover:bg-amber-400/10 dark:hover:text-amber-50"
                     aria-label="Dismiss currency notice"
                   >
                     <X className="h-3.5 w-3.5" />
-                  </button>
+                  </button></Tip>
                 </div>
               )}
               {fxError && (
                 <div className="mb-3 flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-[11px] leading-relaxed text-destructive">
                   <p className="min-w-0 flex-1">{fxError}</p>
-                  <button
+                  <Tip text="Dismiss this currency-conversion error."><button
                     type="button"
                     onClick={() => setFxError(null)}
                     className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded text-destructive/70 hover:bg-destructive/10 hover:text-destructive"
                     aria-label="Dismiss FX notice"
                   >
                     <X className="h-3.5 w-3.5" />
-                  </button>
+                  </button></Tip>
                 </div>
               )}
               {widgets.length === 0 && !dataError && (
@@ -3004,24 +3008,25 @@ export default function SmartDashboardPage() {
               <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-xl">
                 <Sparkles className="h-4 w-4 flex-shrink-0 text-primary" />
                 <p className="text-sm text-foreground">{analyticsToast}</p>
-                <button
+                <Tip text="Dismiss this notification."><button
                   onClick={() => setAnalyticsToast(null)}
                   className="ml-1 flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label="Dismiss analytics notification"
                 >
                   <X className="h-3.5 w-3.5" />
-                </button>
+                </button></Tip>
               </div>
             )}
           </div>
 
           {/* PANEL TOGGLE TAB — desktop only */}
-          <button
+          <Tip text={showWidgetPanel ? "Hide the visualizations panel." : "Open the visualizations panel."}><button
             onClick={() => setShowWidgetPanel(v => !v)}
             className="hidden md:flex absolute top-1/2 right-0 z-20 h-20 w-8 -translate-y-1/2 items-center justify-center rounded-l-xl border border-r-0 border-border bg-card/95 text-primary shadow-lg transition-all hover:bg-card hover:text-primary hover:[box-shadow:0_0_26px_-4px_var(--retro-glow-red)]"
-            title={showWidgetPanel ? "Hide panel" : "Show panel"}
+            aria-label={showWidgetPanel ? "Hide visualizations panel" : "Open visualizations panel"}
           >
             <PanelRight className={`h-4 w-4 drop-shadow-[0_0_12px_var(--retro-glow-red)] transition-transform duration-300 ${showWidgetPanel ? "rotate-180" : "rotate-0"}`} />
-          </button>
+          </button></Tip>
 
           {/* VISUALIZATIONS PANEL — desktop absolute overlay */}
           <aside className={`hidden md:flex absolute right-0 top-0 bottom-0 z-10 w-72 flex-col overflow-hidden border-l border-border bg-card/95 backdrop-blur-sm shadow-xl transition-all duration-300 ease-out ${
@@ -3038,6 +3043,7 @@ export default function SmartDashboardPage() {
               <button
                 onClick={() => setStandardOpen(v => !v)}
                 className="flex w-full items-center justify-between px-1 mb-2"
+                aria-expanded={standardOpen}
               >
                 <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Standard</p>
                 <ChevronRight className={`h-3 w-3 text-muted-foreground transition-transform ${standardOpen ? "rotate-90" : ""}`} />
@@ -3071,6 +3077,7 @@ export default function SmartDashboardPage() {
                   <button
                     onClick={() => setAdvancedOpen(v => !v)}
                     className="flex w-full items-center justify-between px-1 mb-2"
+                    aria-expanded={advancedOpen}
                   >
                     <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Advanced</p>
                     <ChevronRight className={`h-3 w-3 text-muted-foreground transition-transform ${advancedOpen ? "rotate-90" : ""}`} />
@@ -3123,22 +3130,22 @@ export default function SmartDashboardPage() {
                               {aw.insight && <p className="text-xs text-muted-foreground mt-0.5 leading-snug line-clamp-2">{aw.insight}</p>}
                             </div>
                             <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
-                              <button
+                              <Tip text={aw.is_starred ? "Remove this visual from favorites." : "Keep this visual at the top of the list."}><button
                                 onClick={() => toggleStarAdvancedWidget(aw)}
                                 disabled={!isEditingLayout}
                                 className={`flex h-5 w-5 items-center justify-center rounded transition-colors hover:text-yellow-400 disabled:cursor-not-allowed disabled:opacity-40 ${aw.is_starred ? "text-yellow-400" : "text-muted-foreground opacity-0 group-hover:opacity-100"}`}
-                                title={aw.is_starred ? "Unpin" : "Pin"}
+                                aria-label={aw.is_starred ? `Unpin ${aw.title}` : `Pin ${aw.title}`}
                               >
                                 <Star className={`h-3 w-3 ${aw.is_starred ? "fill-current" : ""}`} />
-                              </button>
-                              <button
+                              </button></Tip>
+                              <Tip text={plotted ? "This visual is already on the canvas." : "Add this saved visual to the current page."}><button
                                 onClick={() => plotAdvancedWidget(aw)}
                                 disabled={plotted}
                                 className={`flex h-5 w-5 items-center justify-center rounded transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${plotted ? "text-primary" : "text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground"}`}
-                                title={plotted ? "On canvas" : "Add to canvas"}
+                                aria-label={plotted ? `${aw.title} is on the canvas` : `Add ${aw.title} to canvas`}
                               >
                                 {plotted ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
-                              </button>
+                              </button></Tip>
                             </div>
                           </div>
                         )
@@ -3183,6 +3190,7 @@ export default function SmartDashboardPage() {
             <button
               onClick={() => setStandardOpen(v => !v)}
               className="flex w-full items-center justify-between px-1 mb-2"
+              aria-expanded={standardOpen}
             >
               <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Standard</p>
               <ChevronRight className={`h-3 w-3 text-muted-foreground transition-transform ${standardOpen ? "rotate-90" : ""}`} />
@@ -3214,6 +3222,7 @@ export default function SmartDashboardPage() {
                 <button
                   onClick={() => setAdvancedOpen(v => !v)}
                   className="flex w-full items-center justify-between px-1 mb-2"
+                  aria-expanded={advancedOpen}
                 >
                   <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Advanced</p>
                   <ChevronRight className={`h-3 w-3 text-muted-foreground transition-transform ${advancedOpen ? "rotate-90" : ""}`} />
@@ -3263,19 +3272,21 @@ export default function SmartDashboardPage() {
                             {aw.insight && <p className="text-xs text-muted-foreground mt-0.5 leading-snug line-clamp-2">{aw.insight}</p>}
                           </div>
                           <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
-                            <button
+                            <Tip text={aw.is_starred ? "Remove this visual from favorites." : "Keep this visual at the top of the list."}><button
                               onClick={() => toggleStarAdvancedWidget(aw)}
                               className={`flex h-5 w-5 items-center justify-center rounded transition-colors hover:text-yellow-400 ${aw.is_starred ? "text-yellow-400" : "text-muted-foreground"}`}
+                              aria-label={aw.is_starred ? `Unpin ${aw.title}` : `Pin ${aw.title}`}
                             >
                               <Star className={`h-3 w-3 ${aw.is_starred ? "fill-current" : ""}`} />
-                            </button>
-                            <button
+                            </button></Tip>
+                            <Tip text={plotted ? "This visual is already on the canvas." : "Add this saved visual to the current page."}><button
                               onClick={() => { plotAdvancedWidget(aw); setMobileWidgetPanelOpen(false) }}
                               disabled={plotted}
                               className={`flex h-5 w-5 items-center justify-center rounded transition-colors ${plotted ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
+                              aria-label={plotted ? `${aw.title} is on the canvas` : `Add ${aw.title} to canvas`}
                             >
                               {plotted ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
-                            </button>
+                            </button></Tip>
                           </div>
                         </div>
                       )

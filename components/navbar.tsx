@@ -14,6 +14,7 @@ import {
 } from "@/components/marketing-scroll-reset"
 import { SystemStatusIndicator } from "@/components/ui/system-status-indicator"
 import { ProductAssistantPreview } from "@/components/product-assistant-preview"
+import { Tip } from "@/components/ui/tip"
 
 const studioTools = [
   { name: "Smart Storage", href: "/tools/smart-storage" },
@@ -29,7 +30,7 @@ const navFontStyle = {
 function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme()
 
-  return (
+  return <Tip text="Switch between light and dark theme.">
     <button
       onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
       className="cw-button-flow glass-surface-sm flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-all hover:text-foreground hover:[box-shadow:0_0_20px_-4px_var(--retro-glow-red)]"
@@ -38,11 +39,11 @@ function ThemeToggle() {
       <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
       <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
     </button>
-  )
+  </Tip>
 }
 
 function AccountMenuButton({ onClick }: { onClick: () => void }) {
-  return (
+  return <Tip text="Open account settings and subscription details.">
     <button
       onClick={onClick}
       className="cw-button-flow glass-surface-sm flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-all hover:text-foreground hover:[box-shadow:0_0_20px_-4px_var(--retro-glow-red)]"
@@ -50,11 +51,12 @@ function AccountMenuButton({ onClick }: { onClick: () => void }) {
     >
       <User className="h-4 w-4" />
     </button>
-  )
+  </Tip>
 }
 
 export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: ReactNode }) {
   const pathname = usePathname()
+  const isFocusedWorkspace = pathname === "/tools/smart-storage" || pathname === "/tools/smart-dashboard"
   const [accountPanelOpen, setAccountPanelOpen] = useState(false)
   const [toolsOpen, setToolsOpen] = useState(false)
   const [mobileToolsOpen, setMobileToolsOpen] = useState(false)
@@ -144,15 +146,15 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
               <div className="min-w-0 flex-1">{toolSlot}</div>
             ) : null}
             <div className="ml-auto flex shrink-0 items-center gap-6">
-            <Link
+            {!isFocusedWorkspace && <Link
               href="/pricing"
               onClickCapture={(event) => handleMarketingLinkClick("/pricing", event)}
               className="text-sm font-medium text-foreground/75 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]"
               style={navFontStyle}
             >
               Pricing
-            </Link>
-            <div className="relative">
+            </Link>}
+            {!isFocusedWorkspace && <div className="relative">
               <div onMouseEnter={scheduleToolsOpen} onMouseLeave={scheduleToolsClose} onFocus={scheduleToolsOpen} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) scheduleToolsClose() }}>
                 <button
                   type="button"
@@ -176,7 +178,7 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
                   </div>
                 )}
               </div>
-            </div>
+            </div>}
             <ThemeToggle />
 
             <SystemStatusIndicator />
@@ -187,15 +189,15 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
 
           {/* Mobile Right Side */}
           <div className="flex items-center gap-3 md:hidden">
-            <Link
+            {!isFocusedWorkspace && <Link
               href="/pricing"
               onClickCapture={(event) => handleMarketingLinkClick("/pricing", event)}
               className="text-sm font-medium text-foreground/75 transition-all hover:text-primary"
               style={navFontStyle}
             >
               Pricing
-            </Link>
-            <button
+            </Link>}
+            {!isFocusedWorkspace && <button
                 type="button"
                 onClick={() => setMobileToolsOpen((open) => !open)}
                 aria-label={mobileToolsOpen ? "Close tools menu" : "Open tools menu"}
@@ -203,13 +205,13 @@ export function Navbar({ wide = false, toolSlot }: { wide?: boolean; toolSlot?: 
                 className="cw-button-flow glass-surface-sm flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-all hover:text-foreground hover:[box-shadow:0_0_20px_-4px_var(--retro-glow-red)]"
               >
                 {mobileToolsOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
-            </button>
+            </button>}
             <ThemeToggle />
             <SystemStatusIndicator />
             <AccountMenuButton onClick={() => setAccountPanelOpen(true)} />
           </div>
         </nav>
-        {mobileToolsOpen && (
+        {!isFocusedWorkspace && mobileToolsOpen && (
           <div className="glass-surface mx-4 mt-2 rounded-2xl p-3 md:hidden" style={navFontStyle}>
             {toolLinks.map((tool) => (
               <Link key={tool.href} href={tool.href} target="_blank" rel="noopener noreferrer" onClick={() => setMobileToolsOpen(false)} className="block rounded-lg px-3 py-2.5 text-sm text-foreground/80 transition-all hover:text-primary hover:[text-shadow:0_0_16px_var(--retro-glow-red)]">

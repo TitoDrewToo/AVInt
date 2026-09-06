@@ -5,6 +5,10 @@ import { isIngestComplete, isTerminalExtractionFailure, type IngestCompletionSna
 import { PLAN_LIMITS, usageWindowForTier } from "@/supabase/functions/_shared/plan-limits"
 
 export type IngestFile = { name: string; mimeType: string; data: string; source?: { provider: "google_drive"; fileId: string; url?: string; modifiedAt?: string } }
+export type IngestOptions = {
+  waitForNormalization?: boolean
+  onFileCreated?: (fileId: string) => Promise<void>
+}
 const POLL_MS = 1000
 const TIMEOUT_MS = 60_000
 const MAX_FILE_BYTES = 15 * 1024 * 1024   // per-file cap for the synchronous MCP ingest path
@@ -15,10 +19,69 @@ function decode(file: IngestFile) {
   return Buffer.from(match?.[1] ?? file.data, "base64")
 }
 
-export async function ingestFiles(userId: string, entitlement: Entitlement, files: IngestFile[], options: { waitForNormalization?: boolean } = {}) {
-  const results: any[] = []
+async function runPrescan(userId: string, file: { id: string; filename: string }) {
+  const edgeUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/prescan-document`
+  const prescan = await fetch(edgeUrl, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}` }, body: JSON.stringify({ file_id: file.id, user_id: userId }) })
+  const payload = await prescan.json().catch(() => null) as { quarantined?: boolean; reason?: string; message?: string } | null
+  if (!prescan.ok) throw new Error(`prescan-document failed: ${payload?.message ?? payload?.reason ?? prescan.statusText}`)
+  if (payload?.quarantined) {
+    return {
+      file_id: file.id,
+      filename: file.filename,
+      status: "rejected",
+      message: payload.message ?? "The file did not pass the Smart Storage safety scan.",
+      reason: payload.reason ?? "prescan_rejected",
+      ...EMPTY_COUNTS,
+      records: [],
+    }
+  }
+  return null
+}
+
+async function claimDocumentProcessing(userId: string, fileId: string, entitlement: Entitlement) {
   const window = usageWindowForTier(entitlement.tier, new Date(), entitlement.expiresAt)
   const limit = PLAN_LIMITS[entitlement.tier].documents
+  const { data, error } = await supabaseAdmin.rpc("avint_claim_document_processing", {
+    p_user_id: userId,
+    p_file_id: fileId,
+    p_period_start: window.start,
+    p_period_end: window.end,
+    p_limit: limit,
+    p_soft_cap: PLAN_LIMITS[entitlement.tier].softCap,
+  })
+  if (error) throw new Error(error.message)
+  return { claim: data, limit }
+}
+
+export async function resumeIngestFile(userId: string, fileId: string, entitlement: Entitlement) {
+  const { data: file, error } = await supabaseAdmin
+    .from("files")
+    .select("id, user_id, filename, upload_status")
+    .eq("id", fileId)
+    .eq("user_id", userId)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  if (!file) throw new Error("The resumable upload no longer exists.")
+
+  if (file.upload_status === "quarantined") {
+    return { file_id: file.id, filename: file.filename, status: "rejected", ...EMPTY_COUNTS, records: [] }
+  }
+  if (file.upload_status === "done" || file.upload_status === "normalized") {
+    return { file_id: file.id, filename: file.filename, status: "normalized", ...EMPTY_COUNTS, records: [] }
+  }
+  if (file.upload_status === "uploaded" || file.upload_status === "pending_scan") {
+    const { claim, limit } = await claimDocumentProcessing(userId, file.id, entitlement)
+    if (!claim?.[0]?.allowed) {
+      return { file_id: file.id, filename: file.filename, status: "saved_at_cap", message: `You've hit your ${entitlement.tier} document limit (${limit}).`, ...EMPTY_COUNTS, records: [] }
+    }
+    const rejected = await runPrescan(userId, file)
+    if (rejected) return rejected
+  }
+  return { file_id: file.id, filename: file.filename, status: "processing", ...EMPTY_COUNTS, records: [] }
+}
+
+export async function ingestFiles(userId: string, entitlement: Entitlement, files: IngestFile[], options: IngestOptions = {}) {
+  const results: any[] = []
   for (const input of files) {
     const bytes = decode(input)
     if (bytes.length > MAX_FILE_BYTES) {
@@ -35,6 +98,7 @@ export async function ingestFiles(userId: string, entitlement: Entitlement, file
       file = fileRecord
       const { error: jobError } = await supabaseAdmin.from("processing_jobs").insert({ file_id: file.id, status: "uploaded" })
       if (jobError) throw new Error(jobError.message)
+      await options.onFileCreated?.(file.id)
     } catch (metadataError) {
       if (file) await supabaseAdmin.from("files").delete().eq("id", file.id)
       const { error: cleanupError } = await supabaseAdmin.storage.from("documents").remove([storagePath])
@@ -42,28 +106,13 @@ export async function ingestFiles(userId: string, entitlement: Entitlement, file
       throw metadataError
     }
     if (!file) throw new Error("Could not create file record")
-    const { data: claim, error: claimError } = await supabaseAdmin.rpc("avint_claim_document_processing", { p_user_id: userId, p_file_id: file.id, p_period_start: window.start, p_period_end: window.end, p_limit: limit, p_soft_cap: PLAN_LIMITS[entitlement.tier].softCap })
-    if (claimError) throw new Error(claimError.message)
+    const { claim, limit } = await claimDocumentProcessing(userId, file.id, entitlement)
     if (!claim?.[0]?.allowed) {
       results.push({ file_id: file.id, filename: file.filename, status: "saved_at_cap", message: `You've hit your ${entitlement.tier} document limit (${limit}). Upgrade at ${process.env.NEXT_PUBLIC_APP_URL ?? "https://www.avintph.com/pricing"}; your records are saved.`, ...EMPTY_COUNTS, records: [] })
       continue
     }
-    const edgeUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/prescan-document`
-    const prescan = await fetch(edgeUrl, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}` }, body: JSON.stringify({ file_id: file.id, user_id: userId }) })
-    const prescanPayload = await prescan.json().catch(() => null) as { quarantined?: boolean; reason?: string; message?: string } | null
-    if (!prescan.ok) throw new Error(`prescan-document failed: ${prescanPayload?.message ?? prescanPayload?.reason ?? prescan.statusText}`)
-    if (prescanPayload?.quarantined) {
-      results.push({
-        file_id: file.id,
-        filename: file.filename,
-        status: "rejected",
-        message: prescanPayload.message ?? "The file did not pass the Smart Storage safety scan.",
-        reason: prescanPayload.reason ?? "prescan_rejected",
-        ...EMPTY_COUNTS,
-        records: [],
-      })
-      continue
-    }
+    const rejected = await runPrescan(userId, file)
+    if (rejected) { results.push(rejected); continue }
     if (options.waitForNormalization === false) {
       results.push({ file_id: file.id, filename: file.filename, status: "processing", ...EMPTY_COUNTS, fair_use_warning: Boolean(claim?.[0]?.fair_use_warning), records: [] })
       continue

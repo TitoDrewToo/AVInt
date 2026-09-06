@@ -6,7 +6,8 @@ import { computeEntitlement } from "@/lib/entitlement"
 import { entitlementForUser, OAuthAccountRequiredError, resolveOAuthToken, supabaseAdmin, withMcpStage } from "@/lib/mcp-auth"
 import { MCP_CONNECTOR_ENABLED, MCP_OAUTH_ENABLED, MCP_RATE_LIMITS, oauthProtectedResourceUrl, upgradeMessage } from "@/lib/mcp-config"
 import { checkRateLimit, type RateLimitBucket } from "@/lib/rate-limit"
-import { ingestFiles } from "@/lib/smart-storage-ingest"
+import { type IngestFile } from "@/lib/smart-storage-ingest"
+import { getIngestBatchStatus, IngestBatchConflictError, ingestFileBatch } from "@/lib/mcp-ingest-batch"
 import { getExport, getReport } from "@/lib/report-engine"
 import { shapeMcpReportResult } from "@/lib/mcp-report-shaping"
 import { buildDashboardAIContext } from "@/lib/dashboard-ai-context"
@@ -39,7 +40,7 @@ function limitedResult(message: string) {
 }
 
 function mcpToolError(error: unknown, userId: string, stage: string, fallback: string) {
-  if (error instanceof TypeError || error instanceof ReportDefinitionNotFoundError || error instanceof ReportDefinitionConflictError || error instanceof ReportDefinitionExecutionError) {
+  if (error instanceof TypeError || error instanceof IngestBatchConflictError || error instanceof ReportDefinitionNotFoundError || error instanceof ReportDefinitionConflictError || error instanceof ReportDefinitionExecutionError) {
     return featureResult(error.message)
   }
   logApiError(error, { route: "mcp", stage, userId })
@@ -84,13 +85,28 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
   return createMcpHandler((server) => {
     server.registerTool("smart_storage.ingest", {
       title: "Smart Storage ingest",
-      description: "Upload up to 6 financial documents (receipts, invoices, payslips, statements) to the signed-in AVIntelligence user's own Smart Storage, prescan them, and return normalized structured records. Operates only on the authenticated user's account.",
-      inputSchema: z.object({ files: z.array(fileSchema).min(1).max(6) }),
-    }, async ({ files }) => timedTool("smart_storage.ingest", async () => {
+      description: "Queue up to 6 financial documents for the signed-in user's Smart Storage. Provide a new UUID idempotency key and reuse that exact key when retrying the same ordered files. Each file is prescanned independently; the response returns stable IDs immediately while normalization continues.",
+      inputSchema: z.object({ idempotency_key: z.string().uuid(), files: z.array(fileSchema).min(1).max(6) }),
+    }, async ({ idempotency_key, files }) => timedTool("smart_storage.ingest", async () => {
       const blocked = await toolGuard(userId, entitlement, "ingest")
       if (blocked) return blocked
-      const result = await ingestFiles(userId, entitlement, files)
-      return { content: [{ type: "text", text: JSON.stringify({ records: result }, null, 2) }] }
+      try {
+        const batch = await ingestFileBatch(userId, entitlement, idempotency_key, files as IngestFile[])
+        return { content: [{ type: "text", text: JSON.stringify(batch, null, 2) }] }
+      } catch (error) { return mcpToolError(error, userId, "ingest", "The ingest batch could not be queued.") }
+    }))
+
+    server.registerTool("smart_storage.ingest_status", {
+      title: "Smart Storage ingest status",
+      description: "Read-only. Check a resumable ingest batch by the exact idempotency key used to create it. Returns stable file IDs and per-file processing, completion, rejection, or retry status.",
+      inputSchema: z.object({ idempotency_key: z.string().uuid() }),
+    }, async ({ idempotency_key }) => timedTool("smart_storage.ingest_status", async () => {
+      const blocked = await toolGuard(userId, entitlement, "profile")
+      if (blocked) return blocked
+      try {
+        const batch = await getIngestBatchStatus(userId, idempotency_key)
+        return { content: [{ type: "text", text: JSON.stringify(batch, null, 2) }] }
+      } catch (error) { return mcpToolError(error, userId, "ingest_status", "The ingest batch status could not be loaded.") }
     }))
 
     server.registerTool("smart_storage.profile", {
@@ -293,7 +309,7 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
       "A document-intelligence service that turns a user's files into a permissioned normalized data model, dashboards, structured outputs, and selected accounting exports.",
       "Every tool acts ONLY on the documents belonging to the signed-in AVIntelligence account, matched by the authenticated email. No data is shared across accounts.",
       "Access requires an active Pro or Business plan. Authentication is handled via AVIntelligence's OAuth (WorkOS); this server never receives passwords.",
-      "Tools: smart_storage.ingest (add documents), smart_storage.profile and smart_storage.virtual_model (inspect the data model), smart_storage.report (fixed examples), smart_storage.list_report_definitions and smart_storage.run_report_definition (saved refreshable reports), smart_storage.save_report_definition (create or update a validated declarative report), smart_storage.export (QuickBooks / Xero file), smart_dashboard.list_pages / create_page / update_page / delete_page (manage dashboard pages), and smart_dashboard.list_visuals / smart_dashboard.save_visual (inspect or save validated dashboard visuals). Read tools never modify data; save tools affect only the signed-in user's reports or dashboard.",
+      "Tools: smart_storage.ingest and smart_storage.ingest_status (resumable document ingestion), smart_storage.profile and smart_storage.virtual_model (inspect the data model), smart_storage.report (fixed examples), smart_storage.list_report_definitions and smart_storage.run_report_definition (saved refreshable reports), smart_storage.save_report_definition (create or update a validated declarative report), smart_storage.export (QuickBooks / Xero file), smart_dashboard.list_pages / create_page / update_page / delete_page (manage dashboard pages), and smart_dashboard.list_visuals / smart_dashboard.save_visual (inspect or save validated dashboard visuals). Read tools never modify data; save tools affect only the signed-in user's reports or dashboard.",
     ].join(" "),
   })
 }

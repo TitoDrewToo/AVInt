@@ -19,6 +19,11 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 const SUPABASE_ANON_KEY         = Deno.env.get("SUPABASE_ANON_KEY")!
 const ANALYTICS_PROVIDERS       = providerChain("ADVANCED_ANALYTICS", "anthropic", "openai", ["ANALYTICS_PROVIDER"])
 const ANALYTICS_MODEL            = Deno.env.get("ADVANCED_ANALYTICS_MODEL") ?? "claude-sonnet-4-6"
+// Fallback is matched to the primary tier deliberately. A cheap fallback means an
+// Anthropic outage silently degrades output quality instead of failing, and nothing
+// in the result says which model produced it. gpt-5.6-terra is the balanced tier,
+// the closest OpenAI equivalent to Sonnet.
+const ANALYTICS_FALLBACK_MODEL   = Deno.env.get("ADVANCED_ANALYTICS_FALLBACK_MODEL") ?? "gpt-5.6-terra"
 // R&D gate — set this env var to your Supabase user UUID to unlock advanced features
 const RD_USER_ID                = Deno.env.get("RD_USER_ID") ?? ""
 
@@ -75,7 +80,7 @@ async function callAIProvider(provider: AiProvider, prompt: string, systemPrompt
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${OPENAI_API_KEY}` },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: ANALYTICS_FALLBACK_MODEL,
         temperature: 0.3,
         response_format: { type: "json_object" },
         messages: [
@@ -98,6 +103,10 @@ async function callAI(prompt: string, systemPrompt: string): Promise<{ rawText: 
     try {
       const rawText = await callAIProvider(provider, prompt, systemPrompt)
       if (!rawText) throw new Error(`Empty response from ${provider}`)
+      // Log the winner. Without this a silent fallback is indistinguishable from
+      // the primary succeeding, and a wrong primary model ID would quietly undo
+      // a deliberate model upgrade with nothing anywhere to show it.
+      console.info(`advanced analytics served by ${provider} (${provider === "anthropic" ? ANALYTICS_MODEL : ANALYTICS_FALLBACK_MODEL})`)
       return { rawText, provider }
     } catch (error) {
       lastError = error
@@ -145,7 +154,6 @@ serve(async (req) => {
   }
 
   const { user_id, page_id, existing_widget_types, plotted_advanced_types, from_date: p_from = null, to_date: p_to = null } = body
-  const requestedPrompt = typeof body.prompt === "string" ? body.prompt.trim().slice(0, 600) : ""
   if (!user_id) {
     return new Response(JSON.stringify({ error: "user_id required" }), {
       status: 400,
@@ -421,10 +429,7 @@ Dashboard product context:
 - Use concise data storytelling: What stands out, why it matters, and what the user should inspect next.
 - Do not invent causes, forecasts, benchmarks, legal/tax conclusions, or recommendations not supported by this data.
 - Write descriptions and insights in neutral third-person language. Do not speak as a character or use first-person voice.
-
-${requestedPrompt ? `User request (answer this request with exactly one recommendation):
-${requestedPrompt}
-Choose the most faithful supported visual for the request. Do not substitute a generic chart when the requested question cannot be answered from the supplied fields; return no widget rather than pretending.` : "Generate autonomous recommendations that reveal the strongest supported angles in the data."}
+- Generate autonomous recommendations that reveal the strongest supported angles in the data.
 
 Data sufficiency:
 - months_tracked: ${months}
@@ -518,10 +523,10 @@ ${taxTimelineSummary || "no tax timeline data"}`
           (other.chart_family === widget.chart_family && other.title === widget.title),
         ),
       )
-      .slice(0, requestedPrompt ? 1 : 3)
+      .slice(0, 3)
     if (!generatedWidgets.length) {
       return new Response(
-        JSON.stringify({ success: true, count: 0, widgets: [], message: requestedPrompt ? "No supported recommendation could be generated from the available data" : "All upgrade chart types already plotted" }),
+        JSON.stringify({ success: true, count: 0, widgets: [], message: "All upgrade chart types already plotted" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       )
     }

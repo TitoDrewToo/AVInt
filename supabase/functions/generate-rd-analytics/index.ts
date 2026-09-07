@@ -28,6 +28,9 @@ const SUPABASE_URL              = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 const SUPABASE_ANON_KEY         = Deno.env.get("SUPABASE_ANON_KEY")!
 const SONNET_MODEL              = Deno.env.get("RD_ANALYTICS_MODEL") ?? "claude-sonnet-4-6"
+// Fallback matched to the primary tier. A cheap fallback means an Anthropic outage
+// silently degrades output instead of failing, with nothing in the result to show it.
+const RD_FALLBACK_MODEL         = Deno.env.get("RD_ANALYTICS_FALLBACK_MODEL") ?? "gpt-5.6-terra"
 const RD_ANALYTICS_PROVIDERS    = providerChain("RD_ANALYTICS", "anthropic", "openai")
 
 // Thresholds for R&D run eligibility. Kept in lock-step with the client-side
@@ -162,7 +165,7 @@ async function callProvider(provider: AiProvider, systemPrompt: string, userProm
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${OPENAI_API_KEY}` },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: RD_FALLBACK_MODEL,
         temperature: 0.2,
         response_format: { type: "json_object" },
         messages: [
@@ -186,6 +189,9 @@ async function callAI(systemPrompt: string, userPrompt: string): Promise<{ rawTe
     try {
       const rawText = await callProvider(provider, systemPrompt, userPrompt)
       if (!rawText) throw new Error(`Empty response from ${provider}`)
+      // Failures were logged; successes were not, so a silent fallback was
+      // indistinguishable from the primary succeeding. Log the winner.
+      console.info(`rd analytics served by ${provider} (${provider === "anthropic" ? SONNET_MODEL : RD_FALLBACK_MODEL})`)
       return { rawText, provider }
     } catch (error) {
       lastError = error

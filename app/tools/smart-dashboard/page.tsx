@@ -28,7 +28,7 @@ import {
 import {
   TrendingUp, Receipt, Wallet,
   Save, Calendar, ChevronDown, ChevronRight, Lock, Sparkles,
-  LayoutGrid, RefreshCw, X, Check, Plus, Zap, PanelRight, Star, Send
+  LayoutGrid, RefreshCw, X, Check, Plus, Zap, PanelRight, Star
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tip, TooltipProvider } from "@/components/ui/tip"
@@ -1478,7 +1478,6 @@ export default function SmartDashboardPage() {
   const [showDateFilter, setShowDateFilter] = useState(false)
   const [showColorPicker, setShowColorPicker] = useState(false)
   const [showAdvancedMenu, setShowAdvancedMenu] = useState(false)
-  const [advancedAnalyticsPrompt, setAdvancedAnalyticsPrompt] = useState("")
   const [analyticsError, setAnalyticsError] = useState<string | null>(null)
   const [showWidgetPanel, setShowWidgetPanel] = useState(false)
   const [mobileWidgetPanelOpen, setMobileWidgetPanelOpen] = useState(false)
@@ -1886,11 +1885,10 @@ export default function SmartDashboardPage() {
     }
   }
 
-  const runAdvancedAnalytics = async (requestedPrompt = advancedAnalyticsPrompt) => {
+  const runAdvancedAnalytics = async () => {
     if (!session?.user?.id || !isPro || isRunningAnalytics) return
     setIsRunningAnalytics(true)
     setAnalyticsError(null)
-    const prompt = requestedPrompt.trim().slice(0, 600)
     try {
       const { data: { session: cur } } = await supabase.auth.getSession()
       const plottedAdvancedTypes = advancedWidgetsList
@@ -1921,14 +1919,12 @@ export default function SmartDashboardPage() {
           page_id: dashboardPages.find((page) => page.slug === activePageSlug)?.id ?? null,
           from_date: dateFrom || null,
           to_date: dateTo || null,
-          ...(prompt ? { prompt } : {}),
         }),
       })
 
-      // Sonnet R&D path — only when corpus is past the threshold. It remains
-      // autonomous and is skipped for a direct request, which asks for one
-      // recommendation from the standard generator.
-      const rdReq = !prompt && rdEligible
+      // Sonnet R&D path — only when corpus is past the threshold. Failure here
+      // must not block the standard result from reaching the user.
+      const rdReq = rdEligible
         ? fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-rd-analytics`, {
             method: "POST",
             headers: authHeaders,
@@ -1977,7 +1973,6 @@ export default function SmartDashboardPage() {
         const suffix = rdCount > 0 ? ` (${rdCount} deep-insight)` : ""
         setAnalyticsToast(`${total} new visualization${total !== 1 ? "s" : ""} available${suffix}. Check the Advanced section of your Visualizations panel.`)
         setTimeout(() => setAnalyticsToast(null), 7000)
-        if (prompt) setAdvancedAnalyticsPrompt("")
       } else {
         const payload = haikuRes ? await haikuRes.json().catch(() => null) : null
         setAnalyticsError(payload?.error ?? "Advanced Analytics could not generate a recommendation.")
@@ -2482,19 +2477,6 @@ export default function SmartDashboardPage() {
                   : "pointer-events-none -translate-y-1 scale-95 opacity-0"
               }`}>
                 <p className="mb-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Advanced Analytics</p>
-                <form onSubmit={(event) => { event.preventDefault(); void runAdvancedAnalytics() }} className="mb-2 flex items-center gap-1.5">
-                  <input
-                    value={advancedAnalyticsPrompt}
-                    onChange={(event) => setAdvancedAnalyticsPrompt(event.target.value)}
-                    maxLength={600}
-                    placeholder="Request a visual or comparison…"
-                    className="min-w-0 flex-1 rounded-lg border border-border bg-background px-2.5 py-2 text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                    aria-label="Request a visual or comparison"
-                  />
-                  <button type="submit" disabled={isRunningAnalytics || readinessState.kind === "empty" || !advancedAnalyticsPrompt.trim()} className="flex h-8 shrink-0 items-center justify-center rounded-lg bg-primary px-2.5 text-xs font-medium text-primary-foreground disabled:opacity-50">
-                    <Send className="h-3.5 w-3.5" />
-                  </button>
-                </form>
                 {analyticsError && <p className="mb-2 rounded-md border border-destructive/30 bg-destructive/5 px-2.5 py-2 text-[11px] leading-relaxed text-destructive">{analyticsError}</p>}
                 <button
                   onClick={() => void runAdvancedAnalytics()}
@@ -2723,19 +2705,6 @@ export default function SmartDashboardPage() {
                         : "pointer-events-none -translate-y-1 scale-95 opacity-0"
                     }`}>
                       <p className="mb-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Advanced Analytics</p>
-                      <form onSubmit={(event) => { event.preventDefault(); void runAdvancedAnalytics() }} className="mb-2 flex items-center gap-1.5">
-                        <input
-                          value={advancedAnalyticsPrompt}
-                          onChange={(event) => setAdvancedAnalyticsPrompt(event.target.value)}
-                          maxLength={600}
-                          placeholder="Request a visual or comparison…"
-                          className="min-w-0 flex-1 rounded-lg border border-border bg-background px-2.5 py-2 text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                          aria-label="Request a visual or comparison"
-                        />
-                        <button type="submit" disabled={isRunningAnalytics || readinessState.kind === "empty" || !advancedAnalyticsPrompt.trim()} className="flex h-8 shrink-0 items-center justify-center rounded-lg bg-primary px-2.5 text-xs font-medium text-primary-foreground disabled:opacity-50">
-                          <Send className="h-3.5 w-3.5" />
-                        </button>
-                      </form>
                       {analyticsError && <p className="mb-2 rounded-md border border-destructive/30 bg-destructive/5 px-2.5 py-2 text-[11px] leading-relaxed text-destructive">{analyticsError}</p>}
                       <button
                         onClick={() => void runAdvancedAnalytics()}

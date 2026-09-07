@@ -27,7 +27,7 @@ export async function fetchDashboardReadyFields(
 ) {
   let query = supabase
     .from("records")
-    .select("id, file_id, source_key, occurred_on, amount, currency, category, counterparty_normalized, is_recurring, confidence, parent_record_id, excluded_at, files!inner(document_type, filename, user_id)")
+    .select("id, file_id, source_key, occurred_on, amount, currency, category, counterparty_normalized, direction, is_recurring, confidence, parent_record_id, excluded_at, files!inner(document_type, filename, user_id)")
     .eq("user_id", userId)
     .is("parent_record_id", null)
     .is("excluded_at", null)
@@ -75,6 +75,8 @@ export async function fetchDashboardReadyFields(
         file_id: record.file_id,
         document_date: record.occurred_on,
         total_amount: record.amount,
+        direction: record.direction,
+        income_source: fields.get("income_source")?.value ?? null,
         gross_income: numberAttribute(fields.get("gross_income")),
         net_income: numberAttribute(fields.get("net_income")),
         expense_category: record.category,

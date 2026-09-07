@@ -86,13 +86,13 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
   return createMcpHandler((server) => {
     server.registerTool("smart_storage.ingest", {
       title: "Smart Storage ingest",
-      description: "Queue up to 6 financial documents for the signed-in user's Smart Storage. Provide a new UUID idempotency key and reuse that exact key when retrying the same ordered files. Each file is prescanned independently; the response returns stable IDs immediately while normalization continues.",
-      inputSchema: z.object({ idempotency_key: z.string().uuid(), files: z.array(fileSchema).min(1).max(6) }),
-    }, async ({ idempotency_key, files }) => timedTool("smart_storage.ingest", async () => {
+      description: "Queue up to 6 financial documents for the signed-in user's Smart Storage. Duplicate bytes are refused by default before extraction; set allow_duplicate true only when you intentionally want another copy. Provide a new UUID idempotency key and reuse that exact key when retrying the same ordered files. Each file is prescanned independently; the response returns stable IDs immediately while normalization continues.",
+      inputSchema: z.object({ idempotency_key: z.string().uuid(), files: z.array(fileSchema).min(1).max(6), allow_duplicate: z.boolean().optional().default(false) }),
+    }, async ({ idempotency_key, files, allow_duplicate }) => timedTool("smart_storage.ingest", async () => {
       const blocked = await toolGuard(userId, entitlement, "ingest")
       if (blocked) return blocked
       try {
-        const batch = await ingestFileBatch(userId, entitlement, idempotency_key, files as IngestFile[])
+        const batch = await ingestFileBatch(userId, entitlement, idempotency_key, files as IngestFile[], { allowDuplicate: allow_duplicate })
         return { content: [{ type: "text", text: JSON.stringify(batch, null, 2) }] }
       } catch (error) { return mcpToolError(error, userId, "ingest", "The ingest batch could not be queued.") }
     }))

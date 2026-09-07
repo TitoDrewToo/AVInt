@@ -3,10 +3,12 @@ import { supabaseAdmin } from "@/lib/mcp-auth"
 import { type Entitlement } from "@/lib/entitlement"
 import { isIngestComplete, isTerminalExtractionFailure, type IngestCompletionSnapshot } from "@/lib/ingest-completion"
 import { PLAN_LIMITS, usageWindowForTier } from "@/supabase/functions/_shared/plan-limits"
+import { findExistingFileBySha, sha256Hex } from "@/lib/ingest-duplicates"
 
 export type IngestFile = { name: string; mimeType: string; data: string; source?: { provider: "google_drive"; fileId: string; url?: string; modifiedAt?: string } }
 export type IngestOptions = {
   waitForNormalization?: boolean
+  allowDuplicate?: boolean
   onFileCreated?: (fileId: string) => Promise<void>
 }
 const POLL_MS = 1000
@@ -87,6 +89,14 @@ export async function ingestFiles(userId: string, entitlement: Entitlement, file
     if (bytes.length > MAX_FILE_BYTES) {
       results.push({ filename: input.name, status: "rejected", message: `File exceeds the ${MAX_FILE_BYTES / (1024 * 1024)} MB per-file limit.`, ...EMPTY_COUNTS, records: [] })
       continue
+    }
+    const sha256 = await sha256Hex(bytes)
+    if (!options.allowDuplicate) {
+      const existing = await findExistingFileBySha(supabaseAdmin, userId, sha256)
+      if (existing) {
+        results.push({ filename: input.name, status: "duplicate", reason: "duplicate_file", message: `This file is already in your account as ${existing.filename}.`, existing_file: existing, ...EMPTY_COUNTS, records: [] })
+        continue
+      }
     }
     const storagePath = `${userId}/_inbox/${randomUUID()}-${input.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`
     const { error: uploadError } = await supabaseAdmin.storage.from("documents").upload(storagePath, bytes, { contentType: input.mimeType, upsert: false })

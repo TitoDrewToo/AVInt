@@ -81,11 +81,13 @@ async function main() {
   }
   const { buildDashboardAIContext } = await import("../lib/dashboard-ai-context")
   const profile = await buildDashboardAIContext(userId, contextClient)
+  assert.equal(profile.accountId, userId)
   assert.equal(profile.activeRecordCount, 69)
   assert.equal(profile.readyRecordCount, 44)
   assert.equal(profile.attentionCount, 25)
   assert.equal(profile.recentRecords.length, 40)
   assert.deepEqual(profile.documentTypes, { csv_export: 44 })
+  console.log(JSON.stringify({ accountId: profile.accountId, activeRecordCount: profile.activeRecordCount, readyRecordCount: profile.readyRecordCount, attentionCount: profile.attentionCount }, null, 2))
 }
 
 void main()

@@ -1004,6 +1004,25 @@ export default function SmartStoragePage() {
       if (!allowedByQuota.has(file)) {
         return
       }
+      const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer())
+      const sha256 = [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, "0")).join("")
+      const { data: existingFile, error: duplicateLookupError } = await supabase
+        .from("files")
+        .select("id, filename, created_at")
+        .eq("user_id", session.user.id)
+        .eq("sha256", sha256)
+        .neq("upload_status", "quarantined")
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle()
+      if (duplicateLookupError) throw duplicateLookupError
+      if (existingFile) {
+        const override = window.confirm(`This file is already in your account as ${existingFile.filename}. Upload another copy anyway?`)
+        if (!override) {
+          setUploadNotice(`Already in your account: ${existingFile.filename}. No new extraction was started.`)
+          return
+        }
+      }
       const relativePath = file.webkitRelativePath?.split("/").filter(Boolean) ?? []
       const folderSegments = relativePath.slice(0, -1)
       const folderPath = folderSegments.join("/")

@@ -80,6 +80,7 @@ export async function buildDashboardAIContext(userId: string, client: DashboardC
   }
 
   return {
+    accountId: userId,
     sourceCount: files?.length ?? 0,
     ...counts,
     documentTypes: Object.fromEntries(typeCounts),

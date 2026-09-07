@@ -10,9 +10,9 @@ export type IngestBatchDescriptorItem = {
   byte_size: number
 }
 
-export type IngestBatchItemStatus = "pending" | "uploading" | "processing" | "normalized" | "rejected" | "saved_at_cap" | "failed"
+export type IngestBatchItemStatus = "pending" | "uploading" | "processing" | "normalized" | "rejected" | "duplicate" | "saved_at_cap" | "failed"
 
-const TERMINAL_ITEM_STATUSES = new Set<IngestBatchItemStatus>(["normalized", "rejected", "saved_at_cap"])
+const TERMINAL_ITEM_STATUSES = new Set<IngestBatchItemStatus>(["normalized", "rejected", "duplicate", "saved_at_cap"])
 
 export function deriveIngestBatchStatus(items: Array<{ status: IngestBatchItemStatus }>) {
   if (items.length > 0 && items.every((item) => TERMINAL_ITEM_STATUSES.has(item.status))) return "completed" as const
@@ -25,7 +25,7 @@ function decodeData(data: string) {
   return Buffer.from(match?.[1] ?? data, "base64")
 }
 
-export function buildIngestBatchDescriptor(files: IngestFile[]) {
+export function buildIngestBatchDescriptor(files: IngestFile[], allowDuplicate = false) {
   const items: IngestBatchDescriptorItem[] = files.map((file, item_index) => {
     const bytes = decodeData(file.data)
     const input_hash = createHash("sha256")
@@ -40,7 +40,7 @@ export function buildIngestBatchDescriptor(files: IngestFile[]) {
     return { item_index, input_hash, filename: file.name, mime_type: file.mimeType, byte_size: bytes.length }
   })
   const requestHash = createHash("sha256")
-    .update(JSON.stringify(items.map(({ item_index, input_hash }) => ({ item_index, input_hash }))))
+    .update(JSON.stringify({ allowDuplicate, items: items.map(({ item_index, input_hash }) => ({ item_index, input_hash })) }))
     .digest("hex")
   return { requestHash, items }
 }

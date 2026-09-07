@@ -75,6 +75,19 @@ export function selectJournalContext(error: JournalError, group: JournalGroup = 
   const timelineText = timeline.filter((entry) => entry.timestamp >= cutoff(timeWindow, anchor) && entry.timestamp <= anchor + 86400000).map((entry) => entry.text)
   return { text: bounded([...selected.map((section) => section.text), timelineText.length ? "## TIMELINE\n" + timelineText.join("\n") : ""]), timeWindow, topicScope }
 }
+
+// Compatibility surface retained for the original diagnosis test and callers.
+// The adaptive selector is the source of truth; this wrapper requests the
+// historical narrow, all-time section behavior.
+export function extractJournalSection(journal: string, toolKey: string | null | undefined): string {
+  return selectJournalContext(
+    { tool: toolKey },
+    {},
+    journal,
+    false,
+    { timeWindow: "all", topicScope: "narrow" },
+  ).text
+}
 export async function loadSystemJournal() {
   try { return await readFile(path.join(process.cwd(), "docs", "System_Journal.md"), "utf8") }
   catch { return "## GLOBAL\nSystem journal unavailable; use only the supplied error fields." }

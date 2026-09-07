@@ -23,6 +23,8 @@ type BatchItemResult = {
   file_id: string | null
   status: BatchItemStatus
   message?: string
+  reason?: string
+  existing_file?: { id: string; filename: string; created_at: string }
 }
 
 export class IngestBatchConflictError extends Error {
@@ -35,6 +37,7 @@ export class IngestBatchConflictError extends Error {
 function resultStatus(status: unknown): BatchItemStatus {
   if (status === "normalized") return "normalized"
   if (status === "rejected") return "rejected"
+  if (status === "duplicate") return "duplicate"
   if (status === "saved_at_cap") return "saved_at_cap"
   if (status === "failed") return "failed"
   return "processing"
@@ -60,12 +63,13 @@ async function updateClaimedItem(item: ClaimedItem, values: Record<string, unkno
   }
 }
 
-async function processClaimedItem(userId: string, entitlement: Entitlement, input: IngestFile, item: ClaimedItem): Promise<BatchItemResult> {
+async function processClaimedItem(userId: string, entitlement: Entitlement, input: IngestFile, item: ClaimedItem, options: { allowDuplicate?: boolean }): Promise<BatchItemResult> {
   try {
     const result = item.file_id
       ? await resumeIngestFile(userId, item.file_id, entitlement)
       : (await ingestFiles(userId, entitlement, [input], {
           waitForNormalization: false,
+          allowDuplicate: options.allowDuplicate === true,
           onFileCreated: async (fileId) => {
             const { error } = await supabaseAdmin
               .from("ingest_batch_items")
@@ -85,6 +89,8 @@ async function processClaimedItem(userId: string, entitlement: Entitlement, inpu
       file_id: result?.file_id ?? item.file_id,
       status,
       ...(result?.message ? { message: result.message } : {}),
+      ...(result?.reason ? { reason: result.reason } : {}),
+      ...(result?.existing_file ? { existing_file: result.existing_file } : {}),
     }
   } catch (error) {
     logApiError(error, { route: "mcp", stage: "ingest_batch_item", userId, extra: { itemId: item.item_id } })
@@ -99,8 +105,8 @@ async function persistBatchStatus(batchId: string, status: "processing" | "compl
   if (error) throw new Error(error.message)
 }
 
-export async function ingestFileBatch(userId: string, entitlement: Entitlement, idempotencyKey: string, files: IngestFile[]) {
-  const descriptor = buildIngestBatchDescriptor(files)
+export async function ingestFileBatch(userId: string, entitlement: Entitlement, idempotencyKey: string, files: IngestFile[], options: { allowDuplicate?: boolean } = {}) {
+  const descriptor = buildIngestBatchDescriptor(files, options.allowDuplicate === true)
   const { data, error } = await supabaseAdmin.rpc("avint_claim_ingest_batch", {
     p_user_id: userId,
     p_idempotency_key: idempotencyKey,
@@ -115,7 +121,7 @@ export async function ingestFileBatch(userId: string, entitlement: Entitlement, 
   const results = await Promise.all(claimedItems.map(async (item) => {
     const input = files[item.item_index]
     if (!input) throw new Error("The ingest batch item order is invalid.")
-    if (item.claimed) return processClaimedItem(userId, entitlement, input, item)
+    if (item.claimed) return processClaimedItem(userId, entitlement, input, item, options)
     return {
       item_id: item.item_id,
       item_index: item.item_index,

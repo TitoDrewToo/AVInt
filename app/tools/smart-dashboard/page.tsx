@@ -2252,6 +2252,16 @@ export default function SmartDashboardPage() {
     return buildCurrencyModel(convertedRows, safeNum, selectedPrimaryCurrency)
   }, [dashboardRows, fxRatesMap, requiredRateTuples, selectedPrimaryCurrency])
 
+  const mergedRateDetails = useMemo(() => {
+    const details = new Set<string>()
+    for (const tuple of requiredRateTuples) {
+      const entry = fxRatesMap[rateKey(tuple.date, tuple.from, tuple.to)]
+      if (!entry) continue
+      details.add(`${tuple.from} → ${tuple.to}: ${entry.rate} (as of ${entry.actual_rate_date})`)
+    }
+    return [...details].sort()
+  }, [fxRatesMap, requiredRateTuples])
+
   const savedMergedWidget = useMemo(
     () => widgets.find((widget) => widgetSupportsMergedCurrency(widget) && widget.currencyMode === "merged") ?? null,
     [widgets],
@@ -2899,7 +2909,7 @@ export default function SmartDashboardPage() {
                             <button
                               type="button"
                               onClick={(e) => { e.stopPropagation(); void updateWidgetCurrencyMode(widget.id, "split") }}
-                              className={`rounded-md px-2 py-0.5 transition-colors ${widget.currencyMode !== "merged" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+                              className={`rounded-md px-2 py-0.5 transition-colors ${!isMerged ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
                               style={currencyTabStyle}
                             >
                               Stacked
@@ -2908,7 +2918,7 @@ export default function SmartDashboardPage() {
                               type="button"
                               disabled={isPreparingFx}
                               onClick={(e) => { e.stopPropagation(); void updateWidgetCurrencyMode(widget.id, "merged") }}
-                              className={`rounded-md px-2 py-0.5 transition-colors disabled:cursor-wait disabled:opacity-60 ${widget.currencyMode === "merged" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+                              className={`rounded-md px-2 py-0.5 transition-colors disabled:cursor-wait disabled:opacity-60 ${isMerged ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
                               style={currencyTabStyle}
                             >
                               {isPreparingFx ? "..." : "Merged"}
@@ -2919,20 +2929,35 @@ export default function SmartDashboardPage() {
                           <button
                             type="button"
                             disabled={isPreparingFx}
-                            onClick={(e) => { e.stopPropagation(); void updateWidgetCurrencyMode(widget.id, widget.currencyMode === "merged" ? "split" : "merged") }}
+                            onClick={(e) => { e.stopPropagation(); void updateWidgetCurrencyMode(widget.id, isMerged ? "split" : "merged") }}
                             className={`no-drag shrink-0 rounded-lg border px-2 py-1 text-[10px] font-medium uppercase tracking-wider transition-colors disabled:cursor-wait disabled:opacity-60 ${
-                              widget.currencyMode === "merged"
+                              isMerged
                                 ? "border-primary/50 bg-primary/10 text-primary"
                                 : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
                             }`}
                             style={currencyTabStyle}
                             title={`Convert all currencies to ${displayCurrency(selectedPrimaryCurrency)}`}
-                            aria-pressed={widget.currencyMode === "merged"}
+                            aria-pressed={isMerged}
                           >
-                            {isPreparingFx ? "..." : widget.currencyMode === "merged" ? "Merged" : "Merge"}
+                            {isPreparingFx ? "..." : isMerged ? "Merged" : "Merge"}
                           </button>
                         )}
                       </div>
+
+                      {supportsMerged && widget.currencyMode === "merged" && !isPreparingFx && !isMerged && (
+                        <p className="mx-4 mb-1 text-[10px] leading-relaxed text-muted-foreground">
+                          Merged view is unavailable without an in-window FX rate; showing currencies separately.
+                        </p>
+                      )}
+
+                      {isMerged && mergedRateDetails.length > 0 && (
+                        <details className="no-drag mx-4 mb-1 rounded-md border border-border/60 px-2 py-1 text-[10px] text-muted-foreground">
+                          <summary className="cursor-pointer select-none font-medium">FX rates used (rate and date)</summary>
+                          <ul className="mt-1.5 space-y-0.5 leading-relaxed">
+                            {mergedRateDetails.map((detail) => <li key={detail}>{detail}</li>)}
+                          </ul>
+                        </details>
+                      )}
 
                       {/* Widget content */}
                       <div className="flex-1 min-h-0 overflow-hidden px-4 pb-3">

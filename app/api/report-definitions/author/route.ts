@@ -11,7 +11,7 @@ The definition must contain: title, description, source, scope, period, filters,
 Sources: {kind:"records", documentTypes?:string[]} or {kind:"dataset", datasetId, dateField?, currencyField?}.
 Period: {kind:"all"}, {kind:"fixed",from:"YYYY-MM-DD",to:"YYYY-MM-DD"}, or {kind:"rolling",unit:"month"|"year",count:number,offset?:number}.\nPERIOD IS MANDATORY TO DERIVE. If the request names or implies a time span — a year, a quarter, a month, "last month", "this year", "year to date" — you MUST encode it in period as fixed or rolling. Resolve it against the current date supplied in the request.\nA title may only name a period the definition actually scopes. If period is {kind:"all"}, the title must not mention a year, quarter, month or relative span. A report titled for 2026 that computes over all time is a false label and will be rejected.
 Filters use field, operator (eq|neq|contains|gt|gte|lt|lte), value.
-Blocks: kpi items use {label,metric:{aggregation,count|sum|average|min|max,field?}}; share uses title,groupBy,metric,limit; table uses title,columns:[{field,label?}],sort?,limit; stat uses title,metric; narrative and note contain static text.
+Blocks: kpi items use {label,metric:{aggregation,count|count_distinct|sum|average|min|max,field?}}; share uses title,groupBy,metric,limit; table uses title,columns:[{field,label?}],sort?,limit; stat uses title,metric; narrative and note contain static text.
 Use only fields and datasets supplied in the data model. Prefer small reports: one KPI block, one useful share when supported, and one bounded table. Do not combine currencies.`
 
 export async function POST(request: NextRequest) {

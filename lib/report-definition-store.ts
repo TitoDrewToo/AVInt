@@ -6,10 +6,19 @@ export class ReportDefinitionNotFoundError extends Error {}
 export class ReportDefinitionConflictError extends Error {}
 
 function metrics(input: ReportDefinitionInput): ReportMetric[] {
-  return input.blocks.flatMap((block) => block.type === "kpi" ? block.items.map((item) => item.metric) : block.type === "share" || block.type === "stat" ? [block.metric] : [])
+  return input.blocks.flatMap((block) => block.type === "kpi" ? block.items.map((item) => item.metric) : block.type === "share" || block.type === "stat" || block.type === "series" ? [block.metric] : block.type === "comparison" ? block.items.map((item) => item.metric) : [])
 }
 
 async function validateDefinitionAccess(userId: string, input: ReportDefinitionInput) {
+  const logoUrl = input.theme?.client?.logoUrl
+  if (logoUrl) {
+    const parsed = new URL(logoUrl)
+    const match = parsed.pathname.match(/^\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/)
+    if (!match) throw new TypeError("theme.client.logoUrl must be a public Supabase Storage object")
+    const { data: object, error: objectError } = await supabaseAdmin.from("objects").select("owner_id").eq("bucket_id", match[1]).eq("name", decodeURIComponent(match[2])).maybeSingle()
+    if (objectError) throw new Error(objectError.message)
+    if (!object || object.owner_id !== userId) throw new TypeError("theme.client.logoUrl must reference a storage object owned by this account")
+  }
   if (input.scope?.folderId) await resolveReportFolderScope(userId, input.scope.folderId)
   const referenced = referencedDefinitionFields(input)
   if (input.source.kind === "records") {
@@ -24,26 +33,39 @@ async function validateDefinitionAccess(userId: string, input: ReportDefinitionI
     const unknown = referenced.filter((field) => !availableFields.has(field))
     if (unknown.length) throw new TypeError(`Definition references unavailable fields: ${unknown.join(", ")}`)
     const numericCore = new Set(["amount", "amount_base", "confidence"])
-    const invalidMetric = metrics(input).find((metric) => metric.aggregation !== "count" && metric.field && !numericCore.has(metric.field) && !types.get(metric.field)?.has("number"))
+    const invalidMetric = metrics(input).find((metric) => metric.aggregation !== "count" && metric.aggregation !== "count_distinct" && metric.aggregation !== "ratio" && metric.field && !numericCore.has(metric.field) && !types.get(metric.field)?.has("number"))
     if (invalidMetric?.field) throw new TypeError(`${invalidMetric.field} is not a numeric field and cannot use ${invalidMetric.aggregation}`)
     return
   }
-  const { data: dataset, error } = await supabaseAdmin.from("datasets").select("id, file_id").eq("id", input.source.datasetId).eq("user_id", userId).maybeSingle()
-  if (error) throw new Error(error.message)
-  if (!dataset) throw new TypeError("The selected dataset does not exist or is not accessible")
-  if (input.scope?.folderId) {
+  let datasetIds: string[] = []
+  let dataset: { id: string; file_id: string } | null = null
+  if (input.source.datasetId) {
+    const { data, error } = await supabaseAdmin.from("datasets").select("id, file_id").eq("id", input.source.datasetId).eq("user_id", userId).maybeSingle()
+    if (error) throw new Error(error.message)
+    if (!data) throw new TypeError("The selected dataset does not exist or is not accessible")
+    dataset = data; datasetIds = [data.id]
+  } else if (input.source.folderId) {
+    const scope = await resolveReportFolderScope(userId, input.source.folderId)
+    const { data: files, error: filesError } = await supabaseAdmin.from("files").select("id").eq("user_id", userId).in("folder_id", scope?.folderIds ?? [])
+    if (filesError) throw new Error(filesError.message)
+    const { data: folderDatasets, error: datasetError } = await supabaseAdmin.from("datasets").select("id").eq("user_id", userId).in("file_id", (files ?? []).map((file) => file.id))
+    if (datasetError) throw new Error(datasetError.message)
+    datasetIds = (folderDatasets ?? []).map((item) => item.id)
+    if (!datasetIds.length) throw new TypeError("The selected folder contains no datasets")
+  }
+  if (input.scope?.folderId && dataset) {
     const { data: file } = await supabaseAdmin.from("files").select("folder_id").eq("id", dataset.file_id).eq("user_id", userId).maybeSingle()
     const scope = await resolveReportFolderScope(userId, input.scope.folderId)
     if (!file || !scope?.folderIds.includes(file.folder_id)) throw new TypeError("The selected dataset is outside the report folder scope")
   }
-  const { data: columns, error: columnError } = await supabaseAdmin.from("dataset_columns").select("key, data_type").eq("dataset_id", dataset.id).eq("user_id", userId)
+  const { data: columns, error: columnError } = await supabaseAdmin.from("dataset_columns").select("key, data_type, dataset_id").in("dataset_id", datasetIds).eq("user_id", userId)
   if (columnError) throw new Error(columnError.message)
-  const typeByField = new Map((columns ?? []).map((column) => [column.key, column.data_type]))
+  const typeByField = new Map((columns ?? []).filter((column) => !dataset || column.dataset_id === dataset.id).map((column) => [column.key, column.data_type]))
   const unknown = referenced.filter((field) => !typeByField.has(field))
   if (unknown.length) throw new TypeError(`Definition references unavailable dataset fields: ${unknown.join(", ")}`)
   if (input.source.dateField && typeByField.get(input.source.dateField) !== "date") throw new TypeError("source.dateField must reference a date column")
   if (input.source.currencyField && typeByField.get(input.source.currencyField) !== "text") throw new TypeError("source.currencyField must reference a text column")
-  const invalidMetric = metrics(input).find((metric) => metric.aggregation !== "count" && metric.field && typeByField.get(metric.field) !== "number")
+  const invalidMetric = metrics(input).find((metric) => metric.aggregation !== "count" && metric.aggregation !== "count_distinct" && metric.aggregation !== "ratio" && metric.field && typeByField.get(metric.field) !== "number")
   if (invalidMetric?.field) throw new TypeError(`${invalidMetric.field} is not a numeric dataset column and cannot use ${invalidMetric.aggregation}`)
 }
 

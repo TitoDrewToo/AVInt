@@ -16,6 +16,7 @@ import { PLAN_LIMITS, usageWindowForTier } from "@/supabase/functions/_shared/pl
 import { corsPreflight, withCors } from "@/lib/mcp-cors"
 import { createReportDefinition, getReportDefinition, listReportDefinitions, ReportDefinitionConflictError, ReportDefinitionNotFoundError, updateReportDefinition } from "@/lib/report-definition-store"
 import { ReportDefinitionExecutionError, runReportDefinition } from "@/lib/report-definition-engine"
+import { validateReportDefinitionPayload } from "@/lib/report-definitions"
 import { listSavedDashboardWidgets, saveDashboardWidget } from "@/lib/dashboard-widget-store"
 import { createDashboardPage, deleteDashboardPage, ensureDefaultDashboardPages, renameDashboardPage, resolveDashboardPage } from "@/lib/dashboard-pages"
 import { logApiError } from "@/lib/api-error"
@@ -167,13 +168,19 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
     server.registerTool("smart_storage.run_report_definition", {
       title: "Run a saved Smart Storage report",
       description: "Read-only. Resolve an exact owned report slug and recompute it from the current normalized records or dataset. Returns the same guarded ReportDocument used by the AVIntelligence UI and PDF renderer.",
-      inputSchema: z.object({ slug: z.string().min(1).max(80) }),
-    }, async ({ slug }) => timedTool("smart_storage.run_report_definition", async () => {
+      inputSchema: z.object({ slug: z.string().min(1).max(80), period: z.object({ kind: z.enum(["all", "fixed", "rolling"]), from: z.string().optional(), to: z.string().optional(), unit: z.enum(["month", "year"]).optional(), count: z.number().int().optional(), offset: z.number().int().optional() }).optional() }),
+    }, async ({ slug, period }) => timedTool("smart_storage.run_report_definition", async () => {
       const blocked = await toolGuard(userId, entitlement, "report")
       if (blocked) return blocked
       try {
         const definition = await getReportDefinition(userId, slug)
-        const document = await runReportDefinition(userId, definition)
+        let runtimePeriod
+        if (period) {
+          const checked = validateReportDefinitionPayload({ ...definition, period })
+          if (!checked.ok) throw new ReportDefinitionExecutionError(checked.error)
+          runtimePeriod = checked.value.period
+        }
+        const document = await runReportDefinition(userId, definition, new Date(), runtimePeriod)
         return { content: [{ type: "text" as const, text: JSON.stringify({ definition: { slug: definition.slug, version: definition.version }, document }, null, 2) }] }
       } catch (error) { return mcpToolError(error, userId, "run_report_definition", "The saved report could not be run.") }
     }))

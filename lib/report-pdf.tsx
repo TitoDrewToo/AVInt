@@ -54,19 +54,23 @@ function renderSuppressed(block: ReportBlock & { suppressed?: boolean; reason?: 
   return <View style={styles.suppressed}><Text style={styles.suppressedTitle}>{block.type.toUpperCase()} — NOT STATED</Text><Text>{block.reason ?? "Coverage is insufficient for this block."}</Text></View>
 }
 
-function renderBlock(block: ReportBlock & { suppressed?: boolean; reason?: string }, index: number) {
+function renderBlock(block: ReportBlock & { suppressed?: boolean; reason?: string }, index: number, accent = "#A6332B") {
   if (block.suppressed) return <View key={`suppressed-${index}`}>{renderSuppressed(block)}</View>
   switch (block.type) {
     case "kpi":
       return <View key={`kpi-${index}`} style={styles.kpis}>{block.items.map((item) => <View key={item.label} style={styles.kpi}><Text style={styles.kpiLabel}>{item.label}</Text><Text style={styles.kpiValue}>{item.value}</Text>{item.note ? <Text style={styles.kpiNote}>{item.note}</Text> : null}</View>)}</View>
     case "share": {
       const max = Math.max(...block.rows.map((row) => row.value), 1)
-      return <View key={`share-${index}`} style={styles.section}><Text style={styles.sectionTitle}>{block.title}</Text>{block.caption ? <Text style={styles.caption}>{block.caption}</Text> : null}{block.rows.map((row) => <View key={row.label} style={styles.barRow}><Text style={styles.barLabel}>{row.label}</Text><View style={styles.barTrack}><View style={{ ...styles.barFill, width: `${Math.max(0, Math.min(100, row.value / max * 100))}%` }} /></View><Text style={styles.barValue}>{row.value.toFixed(2)}</Text></View>)}</View>
+      return <View key={`share-${index}`} style={styles.section}><Text style={styles.sectionTitle}>{block.title}</Text>{block.caption ? <Text style={styles.caption}>{block.caption}</Text> : null}{block.rows.map((row) => <View key={row.label} style={styles.barRow}><Text style={styles.barLabel}>{row.label}</Text><View style={styles.barTrack}><View style={{ ...styles.barFill, backgroundColor: accent, width: `${Math.max(0, Math.min(100, row.value / max * 100))}%` }} /></View><Text style={styles.barValue}>{row.value.toFixed(2)}</Text></View>)}</View>
     }
     case "table":
       return <View key={`table-${index}`} style={styles.section}><Text style={styles.sectionTitle}>{block.title}</Text><View style={styles.table}><View style={[styles.tableRow, styles.tableHeader]}>{block.columns.map((column) => <Text key={column} style={styles.tableCell}>{column}</Text>)}</View>{block.rows.map((row, rowIndex) => <View key={`row-${rowIndex}`} style={styles.tableRow}>{row.map((value, cellIndex) => <Text key={`${rowIndex}-${cellIndex}`} style={styles.tableCell}>{textValue(value)}</Text>)}</View>)}</View></View>
     case "stat":
       return <View key={`stat-${index}`} style={styles.section}><Text style={styles.sectionTitle}>{block.title}</Text><Text style={styles.stat}>{block.value}</Text>{block.caption ? <Text style={styles.caption}>{block.caption}</Text> : null}</View>
+    case "series":
+      return <View key={`series-${index}`} style={styles.section}><Text style={styles.sectionTitle}>{block.title}</Text><Text style={styles.caption}>{block.bucket} · {block.gaps} gaps</Text>{block.points.map((point) => <View key={point.bucket} style={styles.barRow}><Text style={styles.barLabel}>{point.label ?? point.bucket}</Text><View style={styles.barTrack}><View style={{ ...styles.barFill, backgroundColor: accent, width: point.value === null ? "0%" : `${Math.min(100, Math.max(0, Math.abs(point.value)))}%` }} /></View><Text style={styles.barValue}>{point.value === null ? "—" : point.value.toFixed(2)}</Text></View>)}{block.caption ? <Text style={styles.caption}>{block.caption}</Text> : null}</View>
+    case "comparison":
+      return <View key={`comparison-${index}`} style={styles.section}><Text style={styles.sectionTitle}>{block.title}</Text>{block.items.map((item) => <View key={item.label} style={styles.tableRow}><Text style={styles.tableCell}>{item.label}</Text><Text style={styles.tableCell}>{item.current}</Text><Text style={styles.tableCell}>{item.previous}</Text><Text style={styles.tableCell}>{item.deltaLabel}</Text></View>)}</View>
     case "narrative":
       return <View key={`narrative-${index}`} style={styles.section}><Text style={styles.sectionTitle}>{block.title}</Text><Text>{block.text}</Text></View>
     case "note":
@@ -75,7 +79,8 @@ function renderBlock(block: ReportBlock & { suppressed?: boolean; reason?: strin
 }
 
 export function ReportPdf({ document }: { document: ReportDocument }) {
-  return <PdfDocument><Page size="A4" style={styles.page}><Text style={styles.eyebrow}>AVINTELLIGENCE · SMART STORAGE</Text><View style={styles.rule} /><Text style={styles.title}>{document.title}</Text>{document.subtitle ? <Text style={styles.subtitle}>{document.subtitle} · generated {document.generatedAt}</Text> : null}{document.coverage ? <Text style={styles.coverage}><Text style={styles.coverageStrong}>Coverage. </Text>{document.coverage.statement}</Text> : null}{document.blocks.map(renderBlock)}{document.method ? <Text style={styles.note}>{document.method}</Text> : null}<View style={styles.footer}><Text>AVIntelligence · avintph.com</Text><Text>{document.title}</Text></View></Page></PdfDocument>
+  const accent = document.theme?.accent ?? "#A6332B"
+  return <PdfDocument><Page size="A4" style={styles.page}><Text style={{ ...styles.eyebrow, color: accent }}>{document.theme?.client?.name ? `${document.theme.client.name} · ` : ""}AVINTELLIGENCE · SMART STORAGE</Text><View style={{ ...styles.rule, borderBottomColor: accent }} /><Text style={styles.title}>{document.title}</Text>{document.subtitle ? <Text style={styles.subtitle}>{document.subtitle} · generated {document.generatedAt}</Text> : null}{document.coverage ? <Text style={{ ...styles.coverage, borderLeftColor: accent }}><Text style={styles.coverageStrong}>Coverage. </Text>{document.coverage.statement}</Text> : null}{document.blocks.map((block, index) => renderBlock(block, index, accent))}{document.method ? <Text style={styles.note}>{document.method}</Text> : null}<View style={styles.footer}><Text>{document.theme?.footer ?? "AVIntelligence · avintph.com"}</Text><Text>{document.title}</Text></View></Page></PdfDocument>
 }
 
 export async function renderReportPdf(document: ReportDocument): Promise<Buffer> {

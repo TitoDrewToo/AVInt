@@ -6,16 +6,23 @@ import { runReportDefinition, ReportDefinitionExecutionError } from "@/lib/repor
 import { getReportDefinition, ReportDefinitionNotFoundError } from "@/lib/report-definition-store"
 import { claimReportExport } from "@/lib/report-auth"
 import { renderReportPdf } from "@/lib/report-pdf"
+import { validateReportDefinitionPayload } from "@/lib/report-definitions"
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   const auth = await authorizeReportDefinitionRequest(request)
   if ("error" in auth) return auth.error
   const { slug } = await params
-  const body = await request.json().catch(() => ({})) as { format?: unknown }
+  const body = await request.json().catch(() => ({})) as { format?: unknown; period?: unknown }
   if (body.format !== undefined && body.format !== "json" && body.format !== "pdf") return NextResponse.json({ error: "format must be json or pdf" }, { status: 400 })
   try {
     const definition = await getReportDefinition(auth.user.id, slug)
-    const document = await runReportDefinition(auth.user.id, definition)
+    let period
+    if (body.period !== undefined) {
+      const checked = validateReportDefinitionPayload({ ...definition, period: body.period })
+      if (!checked.ok) return NextResponse.json({ error: checked.error }, { status: 400 })
+      period = checked.value.period
+    }
+    const document = await runReportDefinition(auth.user.id, definition, new Date(), period)
     if (body.format !== "pdf") return NextResponse.json({ definition: { slug: definition.slug, version: definition.version }, document })
     const claim = await claimReportExport(`saved:${slug}`, auth.user.id, auth.ent)
     if ("error" in claim) return claim.error

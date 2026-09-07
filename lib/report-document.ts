@@ -8,6 +8,8 @@ export type ReportBlock =
   | { type: "share"; title: string; caption?: string; rows: { label: string; value: number }[] }
   | { type: "table"; title: string; columns: string[]; rows: (string | number | null)[][] }
   | { type: "stat"; title: string; value: string; caption?: string }
+  | { type: "series"; title: string; bucket: string; points: { bucket: string; label?: string; value: number | null }[]; gaps: number; caption?: string }
+  | { type: "comparison"; title: string; items: { label: string; current: string; previous: string; delta: number | null; deltaLabel: string; direction: "up" | "down" | "flat" | "unavailable" }[] }
   | { type: "narrative"; title: string; text: string }
   | { type: "note"; text: string }
 
@@ -19,6 +21,7 @@ export type ReportDocument = {
   coverage?: { statement: string; complete: boolean }
   blocks: (ReportBlock & { suppressed?: boolean; reason?: string })[]
   method?: string
+  theme?: { accent?: string; density?: "compact" | "comfortable"; client?: { name: string; logoUrl?: string }; footer?: string }
 }
 
 type EngineReportResult =

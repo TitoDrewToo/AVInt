@@ -201,24 +201,46 @@ function assertNoError(error: { message?: string } | null, operation: string) {
 }
 
 export async function replaceSpreadsheetDatasets(client: QueryClient, fileId: string, userId: string, sheets: DatasetSheet[]) {
-  const { error: deleteError } = await client.from("datasets").delete().eq("file_id", fileId)
-  assertNoError(deleteError, "existing datasets delete")
+  // Dataset identity is part of the report contract. Re-derivation must update
+  // the existing natural key instead of deleting it and issuing a new UUID.
   for (const sheet of sheets) {
     const { data: dataset, error: datasetError } = await client
       .from("datasets")
-      .insert({ user_id: userId, file_id: fileId, name: sheet.name, sheet_name: sheet.sheet_name, row_count: sheet.row_count, column_count: sheet.column_count, needs_review: sheet.needs_review })
+      .upsert({ user_id: userId, file_id: fileId, name: sheet.name, sheet_name: sheet.sheet_name, row_count: sheet.row_count, column_count: sheet.column_count, needs_review: sheet.needs_review }, { onConflict: "file_id,sheet_name" })
       .select("id")
       .single()
     assertNoError(datasetError, "dataset insert")
     if (!dataset?.id) throw new Error("dataset insert returned no id")
 
+    const { data: existingColumns, error: existingColumnError } = await client.from("dataset_columns").select("key").eq("dataset_id", dataset.id).eq("user_id", userId)
+    assertNoError(existingColumnError, "existing dataset columns lookup")
+    const currentColumnKeys = new Set(sheet.columns.map((column) => column.key))
+    for (const existing of existingColumns ?? []) {
+      if (!currentColumnKeys.has(existing.key)) {
+        const { error } = await client.from("dataset_columns").delete().eq("dataset_id", dataset.id).eq("user_id", userId).eq("key", existing.key)
+        assertNoError(error, "stale dataset column delete")
+      }
+    }
     if (sheet.columns.length > 0) {
-      const { error } = await client.from("dataset_columns").insert(sheet.columns.map((column) => ({ dataset_id: dataset.id, user_id: userId, ...column })))
-      assertNoError(error, "dataset columns insert")
+      const { error } = await client.from("dataset_columns").upsert(sheet.columns.map((column) => ({ dataset_id: dataset.id, user_id: userId, ...column })), { onConflict: "dataset_id,key" })
+      assertNoError(error, "dataset columns upsert")
+    }
+
+    const { data: existingRows, error: existingRowError } = await client.from("dataset_rows").select("row_index").eq("dataset_id", dataset.id).eq("user_id", userId)
+    assertNoError(existingRowError, "existing dataset rows lookup")
+    const currentRowIndexes = new Set(sheet.rows.map((row) => row.row_index))
+    for (const existing of existingRows ?? []) {
+      if (!currentRowIndexes.has(existing.row_index)) {
+        const { error } = await client.from("dataset_rows").delete().eq("dataset_id", dataset.id).eq("user_id", userId).eq("row_index", existing.row_index)
+        assertNoError(error, "stale dataset row delete")
+      }
     }
     if (sheet.rows.length > 0) {
-      const { error } = await client.from("dataset_rows").insert(sheet.rows.map((row) => ({ dataset_id: dataset.id, user_id: userId, ...row })))
-      assertNoError(error, "dataset rows insert")
+      const { error } = await client.from("dataset_rows").upsert(sheet.rows.map((row) => ({ dataset_id: dataset.id, user_id: userId, ...row })), { onConflict: "dataset_id,row_index" })
+      assertNoError(error, "dataset rows upsert")
     }
   }
+  // A vanished sheet is deliberately retained. Its stable dataset remains a
+  // valid target for an existing saved report instead of being silently
+  // orphaned; a future explicit archive decision can remove it safely.
 }

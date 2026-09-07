@@ -1,13 +1,13 @@
 import { supabaseAdmin } from "@/lib/mcp-auth"
 import { createReportQueryContext } from "@/lib/report-query-context-server"
 import type { ReportBlock, ReportDocument } from "@/lib/report-document"
-import { RECORD_DEFINITION_FIELDS, referencedDefinitionFields, type ReportDefinition, type ReportDefinitionFilter, type ReportMetric } from "@/lib/report-definitions"
+import { RECORD_DEFINITION_FIELDS, referencedDefinitionFields, type ReportDefinition, type ReportDefinitionFilter, type ReportMetric, type ReportDefinitionPeriod } from "@/lib/report-definitions"
 
 const MAX_SOURCE_ROWS = 5_000
 const CORE_FIELDS = new Set<string>([...RECORD_DEFINITION_FIELDS, "filename", "folder_id"])
 
 type ValueRow = Record<string, unknown>
-export type LoadedReportDefinitionSource = { rows: ValueRow[]; availableFields: Set<string>; dateField: string | null; currencyField: string | null; sourceLabel: string }
+export type LoadedReportDefinitionSource = { rows: ValueRow[]; availableFields: Set<string>; dateField: string | null; currencyField: string | null; sourceLabel: string; coverageNote?: string }
 
 export function projectRecordDefinitionRow(row: ValueRow, attributes: ValueRow): ValueRow {
   const file = Array.isArray(row.files) ? row.files[0] : row.files
@@ -40,8 +40,8 @@ export function resolveDefinitionPeriod(definition: ReportDefinition, now = new 
   return { from: "", to: "" }
 }
 
-async function loadRecords(userId: string, definition: ReportDefinition): Promise<LoadedReportDefinitionSource> {
-  const period = resolveDefinitionPeriod(definition)
+async function loadRecords(userId: string, definition: ReportDefinition, periodOverride?: ReportDefinitionPeriod): Promise<LoadedReportDefinitionSource> {
+  const period = expandedPeriod(definition, periodOverride) ?? { from: "", to: "" }
   const context = await createReportQueryContext(userId, { targetFolder: definition.scope?.folderId })
   const fileIds = await context.fileIds(definition.source.kind === "records" ? definition.source.documentTypes ?? [] : [])
   if (!fileIds.length) return { rows: [], availableFields: new Set(CORE_FIELDS), dateField: "occurred_on", currencyField: "currency", sourceLabel: "canonical records" }
@@ -69,32 +69,66 @@ async function loadRecords(userId: string, definition: ReportDefinition): Promis
   return { rows, availableFields, dateField: "occurred_on", currencyField: "currency", sourceLabel: "canonical records" }
 }
 
-async function loadDataset(userId: string, definition: ReportDefinition): Promise<LoadedReportDefinitionSource> {
+async function loadDataset(userId: string, definition: ReportDefinition, periodOverride?: ReportDefinitionPeriod): Promise<LoadedReportDefinitionSource> {
   if (definition.source.kind !== "dataset") throw new ReportDefinitionExecutionError("Dataset source expected")
   const source = definition.source
-  const { data: dataset, error } = await supabaseAdmin.from("datasets").select("id, name, file_id, files!inner(folder_id)").eq("id", source.datasetId).eq("user_id", userId).maybeSingle()
+  const context = source.folderId ? await createReportQueryContext(userId, { targetFolder: source.folderId }) : null
+  const scopedIds = context ? await context.fileIds() : null
+  if (source.folderId && !scopedIds?.length) throw new ReportDefinitionExecutionError("The selected folder contains no files or datasets")
+  let datasetQuery = supabaseAdmin.from("datasets").select("id, name, file_id, sheet_name, files!inner(folder_id)").eq("user_id", userId)
+  if (source.datasetId) datasetQuery = datasetQuery.eq("id", source.datasetId)
+  else datasetQuery = datasetQuery.in("file_id", scopedIds ?? [])
+  const { data: datasets, error } = await datasetQuery
   if (error) throw new Error(error.message)
-  if (!dataset) throw new ReportDefinitionExecutionError("The selected dataset does not exist or is not accessible")
-  if (definition.scope?.folderId) {
-    const context = await createReportQueryContext(userId, { targetFolder: definition.scope.folderId })
-    const scopedIds = await context.fileIds()
-    if (!scopedIds.includes(dataset.file_id)) throw new ReportDefinitionExecutionError("The selected dataset is outside the report folder scope")
+  if (!datasets?.length) throw new ReportDefinitionExecutionError(source.folderId ? "The selected folder has no datasets" : "The selected dataset does not exist or is not accessible")
+  if (definition.scope?.folderId && source.datasetId) {
+    const scopeContext = await createReportQueryContext(userId, { targetFolder: definition.scope.folderId })
+    const scopeIds = await scopeContext.fileIds()
+    if (!scopeIds.includes(datasets[0].file_id)) throw new ReportDefinitionExecutionError("The selected dataset is outside the report folder scope")
   }
-  const { data: columns, error: columnError } = await supabaseAdmin.from("dataset_columns").select("key, data_type").eq("dataset_id", dataset.id).eq("user_id", userId)
-  if (columnError) throw new Error(columnError.message)
-  const availableFields = new Set((columns ?? []).map((column) => column.key))
-  const { data: rows, error: rowError } = await supabaseAdmin.from("dataset_rows").select("data").eq("dataset_id", dataset.id).eq("user_id", userId).order("row_index").limit(MAX_SOURCE_ROWS + 1)
-  if (rowError) throw new Error(rowError.message)
-  if ((rows ?? []).length > MAX_SOURCE_ROWS) throw new ReportDefinitionExecutionError(`The report source exceeds ${MAX_SOURCE_ROWS} dataset rows. Narrow the dataset before running this report.`)
-  let values = (rows ?? []).map((row) => row.data as ValueRow)
-  const period = resolveDefinitionPeriod(definition)
+  const loaded: Array<{ dataset: any; columns: Array<{ key: string; data_type: string }>; rows: ValueRow[] }> = []
+  for (const dataset of datasets) {
+    const { data: columns, error: columnError } = await supabaseAdmin.from("dataset_columns").select("key, data_type").eq("dataset_id", dataset.id).eq("user_id", userId)
+    if (columnError) throw new Error(columnError.message)
+    const { data: rows, error: rowError } = await supabaseAdmin.from("dataset_rows").select("data").eq("dataset_id", dataset.id).eq("user_id", userId).order("row_index").limit(MAX_SOURCE_ROWS + 1)
+    if (rowError) throw new Error(rowError.message)
+    loaded.push({ dataset, columns: columns ?? [], rows: (rows ?? []).map((row) => ({ ...(row.data as ValueRow), __dataset_id: dataset.id, __dataset_name: dataset.name })) })
+  }
+  const signature = (columns: Array<{ key: string; data_type: string }>) => columns.map((column) => `${column.key}:${column.data_type}`).sort().join("|")
+  const baseSignature = signature(loaded[0].columns)
+  const compatible = loaded.filter((item) => signature(item.columns) === baseSignature)
+  const excluded = loaded.filter((item) => signature(item.columns) !== baseSignature)
+  if (!compatible.length) throw new ReportDefinitionExecutionError("No compatible datasets were found in the selected folder")
+  const availableFields = new Set(compatible[0].columns.map((column) => column.key))
+  let values = compatible.flatMap((item) => item.rows)
+  if (values.length > MAX_SOURCE_ROWS) throw new ReportDefinitionExecutionError(`The report source exceeds ${MAX_SOURCE_ROWS} dataset rows. Narrow the folder before running this report.`)
+  const period = expandedPeriod(definition, periodOverride) ?? { from: "", to: "" }
   if ((period.from || period.to) && !source.dateField) throw new ReportDefinitionExecutionError("A dataset report with a period requires source.dateField")
   if (source.dateField && (period.from || period.to)) values = values.filter((row) => overlaps(String(row[source.dateField!] ?? ""), String(row[source.dateField!] ?? ""), period.from, period.to))
-  return { rows: values, availableFields, dateField: source.dateField ?? null, currencyField: source.currencyField ?? null, sourceLabel: `dataset ${dataset.name}` }
+  const coverageNote = source.folderId
+    ? `${compatible.length} compatible dataset(s) unioned without de-duplication${excluded.length ? `; excluded ${excluded.map((item) => `${item.dataset.name} (schema mismatch)`).join(", ")}` : ""}.`
+    : undefined
+  return { rows: values, availableFields, dateField: source.dateField ?? null, currencyField: source.currencyField ?? null, sourceLabel: source.folderId ? `folder dataset union` : `dataset ${compatible[0].dataset.name}`, coverageNote }
 }
 
-export async function loadReportDefinitionSource(userId: string, definition: ReportDefinition): Promise<LoadedReportDefinitionSource> {
-  return definition.source.kind === "records" ? loadRecords(userId, definition) : loadDataset(userId, definition)
+export async function loadReportDefinitionSource(userId: string, definition: ReportDefinition, periodOverride?: ReportDefinitionPeriod): Promise<LoadedReportDefinitionSource> {
+  return definition.source.kind === "records" ? loadRecords(userId, definition, periodOverride) : loadDataset(userId, definition, periodOverride)
+}
+
+function resolvePeriod(period: ReportDefinitionPeriod) {
+  if (period.kind === "fixed") return { from: period.from, to: period.to }
+  if (period.kind === "rolling") return rollingBounds(period.unit, period.count, period.offset ?? 0, new Date())
+  return { from: "", to: "" }
+}
+
+function expandedPeriod(definition: ReportDefinition, periodOverride?: ReportDefinitionPeriod) {
+  const period = periodOverride ?? definition.period
+  const resolved = period.kind === "all" ? null : (period.kind === "fixed" ? { from: period.from, to: period.to } : rollingBounds(period.unit, period.count, period.offset ?? 0, new Date()))
+  if (!resolved || !definition.blocks.some((block) => block.type === "comparison")) return resolved
+  const from = new Date(`${resolved.from}T00:00:00Z`); const to = new Date(`${resolved.to}T00:00:00Z`)
+  const days = Math.round((to.getTime() - from.getTime()) / 86400000) + 1
+  from.setUTCDate(from.getUTCDate() - days)
+  return { from: from.toISOString().slice(0, 10), to: resolved.to }
 }
 
 function overlaps(start: string, end: string, from: string, to: string) {
@@ -115,8 +149,15 @@ function compare(left: unknown, filter: ReportDefinitionFilter) {
   return a <= b
 }
 function numeric(values: unknown[]) { return values.map((value) => typeof value === "number" ? value : Number(value)).filter(Number.isFinite) as number[] }
-function aggregate(rows: ValueRow[], metric: ReportMetric) {
+function aggregate(rows: ValueRow[], metric: ReportMetric): number | null {
+  if (metric.aggregation === "ratio") {
+    const denominator = aggregate(rows, { aggregation: "sum", field: metric.denominator })
+    const numerator = aggregate(rows, { aggregation: "sum", field: metric.numerator })
+    if (denominator === null || denominator === 0 || numerator === null) return null
+    return numerator / denominator
+  }
   if (metric.aggregation === "count") return metric.field ? rows.filter((row) => row[metric.field!] !== null && row[metric.field!] !== undefined && row[metric.field!] !== "").length : rows.length
+  if (metric.aggregation === "count_distinct") return new Set(rows.map((row) => row[metric.field!]).filter((value) => value !== null && value !== undefined && value !== "").map((value) => String(value))).size
   const values = numeric(rows.map((row) => row[metric.field!]))
   if (!values.length) return null
   if (metric.aggregation === "sum") return values.reduce((sum, value) => sum + value, 0)
@@ -128,27 +169,69 @@ function currencies(rows: ValueRow[], currencyField: string | null) {
   if (!currencyField) return [null]
   return [...new Set(rows.map((row) => String(row[currencyField] ?? "UNSPECIFIED").trim().toUpperCase() || "UNSPECIFIED"))]
 }
-function monetary(metric: ReportMetric, source: LoadedReportDefinitionSource) { return Boolean(source.currencyField && metric.field && ["amount", "amount_base"].includes(metric.field)) || Boolean(source.currencyField && metric.field && source.sourceLabel.startsWith("dataset ")) }
+function monetary(metric: ReportMetric, source: LoadedReportDefinitionSource) {
+  return Boolean(source.currencyField && metric.aggregation !== "ratio" && metric.field && ["amount", "amount_base", "total_amount", "gross_income", "net_income", "tax_amount"].includes(metric.field))
+}
 function formatMetric(value: number | null, currency: string | null) { return value === null ? "—" : `${value.toLocaleString("en-US", { maximumFractionDigits: 2 })}${currency ? ` ${currency}` : ""}` }
 function suppressed(type: ReportBlock["type"], reason: string): ReportBlock & { suppressed: true; reason: string } {
   if (type === "kpi") return { type, items: [], suppressed: true, reason }
   if (type === "share") return { type, title: "Not stated", rows: [], suppressed: true, reason }
   if (type === "table") return { type, title: "Not stated", columns: [], rows: [], suppressed: true, reason }
   if (type === "stat") return { type, title: "Not stated", value: "", suppressed: true, reason }
+  if (type === "series") return { type, title: "Not stated", bucket: "day", points: [], gaps: 0, suppressed: true, reason }
+  if (type === "comparison") return { type, title: "Not stated", items: [], suppressed: true, reason }
   if (type === "narrative") return { type, title: "Not stated", text: "", suppressed: true, reason }
   return { type: "note", text: reason, suppressed: true, reason }
 }
 
-export async function runReportDefinition(userId: string, definition: ReportDefinition, now = new Date()): Promise<ReportDocument> {
-  const source = await loadReportDefinitionSource(userId, definition)
-  return compileReportDefinition(definition, source, now)
+export async function runReportDefinition(userId: string, definition: ReportDefinition, now = new Date(), periodOverride?: ReportDefinitionPeriod): Promise<ReportDocument> {
+  const source = await loadReportDefinitionSource(userId, definition, periodOverride)
+  return compileReportDefinition(definition, source, now, periodOverride)
 }
 
-export function compileReportDefinition(definition: ReportDefinition, source: LoadedReportDefinitionSource, now = new Date()): ReportDocument {
+function dateInRange(row: ValueRow, dateField: string | null, from: string, to: string) {
+  if (!dateField) return false
+  const value = String(row[dateField] ?? "")
+  return Boolean(value) && (!from || value >= from) && (!to || value <= to)
+}
+
+function bucketDate(value: string, bucket: "day" | "week" | "month" | "quarter") {
+  const date = new Date(`${value}T00:00:00Z`)
+  if (Number.isNaN(date.getTime())) return null
+  if (bucket === "day") return value
+  if (bucket === "month") return value.slice(0, 7)
+  if (bucket === "quarter") return `${date.getUTCFullYear()}-Q${Math.floor(date.getUTCMonth() / 3) + 1}`
+  const day = date.getUTCDay() || 7
+  date.setUTCDate(date.getUTCDate() - day + 1)
+  return date.toISOString().slice(0, 10)
+}
+
+function buildSeries(rows: ValueRow[], block: Extract<ReportDefinition["blocks"][number], { type: "series" }>, period: { from: string; to: string }, source: LoadedReportDefinitionSource): ReportBlock {
+  const dates = rows.map((row) => String(row[block.timeField] ?? "")).filter(Boolean).sort()
+  const from = period.from || dates[0]
+  const to = period.to || dates.at(-1)
+  if (!from || !to) return { type: "series", title: block.title, bucket: block.bucket, points: [], gaps: 0, caption: "No dates were available." }
+  const points: Array<{ bucket: string; label?: string; value: number | null }> = []
+  const cursor = new Date(`${from}T00:00:00Z`); const end = new Date(`${to}T00:00:00Z`)
+  const increment = () => { if (block.bucket === "day") cursor.setUTCDate(cursor.getUTCDate() + 1); else if (block.bucket === "week") cursor.setUTCDate(cursor.getUTCDate() + 7); else if (block.bucket === "month") cursor.setUTCMonth(cursor.getUTCMonth() + 1); else cursor.setUTCMonth(cursor.getUTCMonth() + 3) }
+  while (cursor <= end) {
+    const key = bucketDate(cursor.toISOString().slice(0, 10), block.bucket)
+    if (!key) break
+    const bucketRows = rows.filter((row) => bucketDate(String(row[block.timeField] ?? ""), block.bucket) === key)
+    points.push({ bucket: key, label: key, value: bucketRows.length ? aggregate(bucketRows, block.metric) : null })
+    increment()
+  }
+  const gaps = points.filter((point) => point.value === null).length
+  const caption = gaps ? `${gaps} bucket${gaps === 1 ? "" : "s"} have no data; values are not interpolated.` : undefined
+  void source
+  return { type: "series", title: block.title, bucket: block.bucket, points, gaps, caption }
+}
+
+export function compileReportDefinition(definition: ReportDefinition, source: LoadedReportDefinitionSource, now = new Date(), periodOverride?: ReportDefinitionPeriod): ReportDocument {
   const unknownFields = referencedDefinitionFields(definition).filter((field) => !source.availableFields.has(field))
   if (unknownFields.length) throw new ReportDefinitionExecutionError(`Definition references unavailable fields: ${unknownFields.join(", ")}`)
-  const rows = source.rows.filter((row) => definition.filters.every((filter) => compare(row[filter.field], filter)))
-  const period = resolveDefinitionPeriod(definition, now)
+  const period = periodOverride ? resolvePeriod(periodOverride) : resolveDefinitionPeriod(definition, now)
+  const rows = source.rows.filter((row) => definition.filters.every((filter) => compare(row[filter.field], filter)) && (!source.dateField || (!period.from && !period.to) || dateInRange(row, source.dateField, period.from, period.to)))
   const dates = source.dateField ? rows.map((row) => String(row[source.dateField!] ?? "")).filter(Boolean).sort() : []
   const displayPeriod = { from: period.from || dates[0] || "All dates", to: period.to || dates.at(-1) || "All dates" }
   const noRows = `No rows matched this definition for ${displayPeriod.from} through ${displayPeriod.to}; this block is not stated as zero.`
@@ -160,6 +243,30 @@ export function compileReportDefinition(definition: ReportDefinition, source: Lo
       const sorted = [...rows]
       if (block.sort) sorted.sort((a, b) => String(a[block.sort!.field] ?? "").localeCompare(String(b[block.sort!.field] ?? "")) * (block.sort!.direction === "asc" ? 1 : -1))
       blocks.push({ type: "table", title: block.title, columns: block.columns.map((column) => column.label ?? column.field.replaceAll("_", " ")), rows: sorted.slice(0, block.limit ?? 100).map((row) => block.columns.map((column) => scalar(row[column.field]))) })
+      continue
+    }
+    if (block.type === "series") {
+      if (!source.availableFields.has(block.timeField)) throw new ReportDefinitionExecutionError(`Series timeField is unavailable: ${block.timeField}`)
+      blocks.push(buildSeries(rows, block, period, source))
+      continue
+    }
+    if (block.type === "comparison") {
+      if (definition.period.kind === "all" && !periodOverride) throw new ReportDefinitionExecutionError("Comparison blocks require a fixed or rolling period")
+      if (!period.from || !period.to || !source.dateField) throw new ReportDefinitionExecutionError("Comparison blocks require a resolvable date period")
+      const currentFrom = new Date(`${period.from}T00:00:00Z`); const currentTo = new Date(`${period.to}T00:00:00Z`)
+      const span = Math.round((currentTo.getTime() - currentFrom.getTime()) / 86400000) + 1
+      const previousTo = new Date(currentFrom); previousTo.setUTCDate(previousTo.getUTCDate() - 1)
+      const previousFrom = new Date(previousTo); previousFrom.setUTCDate(previousFrom.getUTCDate() - span + 1)
+      const previousRows = source.rows.filter((row) => dateInRange(row, source.dateField, previousFrom.toISOString().slice(0, 10), previousTo.toISOString().slice(0, 10)))
+      const previousDates = new Set(previousRows.map((row) => String(row[source.dateField!] ?? "")).filter(Boolean))
+      const currentDates = new Set(rows.map((row) => String(row[source.dateField!] ?? "")).filter(Boolean))
+      const coverageComplete = currentDates.size >= span && previousDates.size >= span
+      blocks.push({ type: "comparison", title: block.title, items: block.items.map((item) => {
+        const current = aggregate(rows, item.metric); const previous = aggregate(previousRows, item.metric)
+        if (!coverageComplete || current === null || previous === null) return { label: item.label, current: formatMetric(current, null), previous: formatMetric(previous, null), delta: null, deltaLabel: "Unavailable: coverage is incomplete", direction: "unavailable" as const }
+        const delta = current - previous
+        return { label: item.label, current: formatMetric(current, null), previous: formatMetric(previous, null), delta, deltaLabel: `${delta >= 0 ? "+" : ""}${delta.toLocaleString("en-US", { maximumFractionDigits: 2 })}${previous !== 0 ? ` (${((delta / previous) * 100).toFixed(1)}%)` : ""}`, direction: delta > 0 ? "up" as const : delta < 0 ? "down" as const : "flat" as const }
+      }) })
       continue
     }
     if (block.type === "share") {
@@ -186,6 +293,7 @@ export function compileReportDefinition(definition: ReportDefinition, source: Lo
     }
     const buckets = monetary(block.metric, source) ? currencies(rows, source.currencyField) : [null]
     if (buckets.length > 1) { blocks.push(suppressed("stat", `Multiple currencies were found (${buckets.join(", ")}). Use a KPI block for separated currency values or filter to one currency.`)); continue }
+    if (block.metric.aggregation === "ratio" && aggregate(rows, block.metric) === null && block.metric.onZero === "suppress") { blocks.push(suppressed("stat", "Ratio suppressed because the denominator is zero or unavailable.")); continue }
     blocks.push({ type: "stat", title: block.title, value: formatMetric(aggregate(rows, block.metric), buckets[0]) })
   }
   return {
@@ -193,8 +301,9 @@ export function compileReportDefinition(definition: ReportDefinition, source: Lo
     subtitle: definition.description ?? `${displayPeriod.from} to ${displayPeriod.to}`,
     period: displayPeriod,
     generatedAt: now.toISOString(),
-    coverage: { statement: rows.length ? `${rows.length} matching rows from ${source.sourceLabel}; excluded and superseded records are omitted.` : noRows, complete: rows.length > 0 },
+    coverage: { statement: rows.length ? `${rows.length} matching rows from ${source.sourceLabel}; excluded and superseded records are omitted. ${source.coverageNote ?? ""}` : noRows, complete: rows.length > 0 },
     blocks,
+    theme: definition.theme ?? undefined,
     method: `Source: Smart Storage ${source.sourceLabel}. Definition ${definition.slug} version ${definition.version}. Currency buckets are never combined without conversion.`,
   }
 }

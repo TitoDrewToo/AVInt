@@ -6,19 +6,21 @@ export const RECORD_DEFINITION_FIELDS = [
 
 export type ReportDefinitionSource =
   | { kind: "records"; documentTypes?: string[] }
-  | { kind: "dataset"; datasetId: string; dateField?: string; currencyField?: string }
+  | { kind: "dataset"; datasetId?: string; folderId?: string; dateField?: string; currencyField?: string }
 export type ReportDefinitionScope = { folderId?: string | null }
 export type ReportDefinitionPeriod =
   | { kind: "all" }
   | { kind: "fixed"; from: string; to: string }
   | { kind: "rolling"; unit: "month" | "year"; count: number; offset?: number }
 export type ReportDefinitionFilter = { field: string; operator: "eq" | "neq" | "contains" | "gt" | "gte" | "lt" | "lte"; value: string | number | boolean | null }
-export type ReportMetric = { aggregation: "count" | "sum" | "average" | "min" | "max"; field?: string }
+export type ReportMetric = { aggregation: "count" | "count_distinct" | "sum" | "average" | "min" | "max" | "ratio"; field?: string; numerator?: string; denominator?: string; onZero?: "suppress" | "null" }
 export type ReportDefinitionBlock =
   | { type: "kpi"; items: Array<{ label: string; metric: ReportMetric }> }
   | { type: "share"; title: string; groupBy: string; metric: ReportMetric; limit?: number }
   | { type: "table"; title: string; columns: Array<{ field: string; label?: string }>; sort?: { field: string; direction: "asc" | "desc" }; limit?: number }
   | { type: "stat"; title: string; metric: ReportMetric }
+  | { type: "series"; title: string; timeField: string; bucket: "day" | "week" | "month" | "quarter"; metric: ReportMetric; splitBy?: string; limit?: number }
+  | { type: "comparison"; title: string; against: "previous_period"; items: Array<{ label: string; metric: ReportMetric }> }
   | { type: "narrative"; title: string; text: string }
   | { type: "note"; text: string }
 export type ReportDefinitionInput = {
@@ -29,7 +31,7 @@ export type ReportDefinitionInput = {
   period: ReportDefinitionPeriod
   filters: ReportDefinitionFilter[]
   blocks: ReportDefinitionBlock[]
-  theme: { accent?: string; density?: "compact" | "comfortable" } | null
+  theme: { accent?: string; density?: "compact" | "comfortable"; client?: { name: string; logoUrl?: string }; footer?: string } | null
 }
 export type ReportDefinition = ReportDefinitionInput & {
   id: string; user_id: string; slug: string; authored_by: "user" | "assistant"; version: number
@@ -41,7 +43,7 @@ const FIELD_PATTERN = /^[a-z][a-z0-9_]{0,199}$/
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 const HEX_COLOR = /^#[0-9a-f]{6}$/i
 const FILTER_OPERATORS = new Set(["eq", "neq", "contains", "gt", "gte", "lt", "lte"])
-const AGGREGATIONS = new Set(["count", "sum", "average", "min", "max"])
+const AGGREGATIONS = new Set(["count", "count_distinct", "sum", "average", "min", "max", "ratio"])
 function isObject(value: unknown): value is Record<string, unknown> { return Boolean(value) && typeof value === "object" && !Array.isArray(value) }
 function text(value: unknown, max: number) { return typeof value === "string" && value.trim() && value.trim().length <= max ? value.trim() : null }
 function validField(value: unknown): value is string { return typeof value === "string" && FIELD_PATTERN.test(value) }
@@ -53,6 +55,11 @@ function realDate(value: unknown): value is string {
 function validateMetric(input: unknown, path: string): { ok: true; value: ReportMetric } | { ok: false; error: string } {
   if (!isObject(input) || !AGGREGATIONS.has(String(input.aggregation))) return { ok: false, error: `${path}.aggregation is unsupported` }
   const aggregation = input.aggregation as ReportMetric["aggregation"]
+  if (aggregation === "ratio") {
+    if (!validField(input.numerator) || !validField(input.denominator) || (input.onZero !== "suppress" && input.onZero !== "null")) return { ok: false, error: `${path} ratio requires numerator, denominator, and onZero` }
+    if (input.field !== undefined) return { ok: false, error: `${path}.field is not allowed for ratio` }
+    return { ok: true, value: { aggregation: "ratio", numerator: input.numerator, denominator: input.denominator, onZero: input.onZero } }
+  }
   if (aggregation !== "count" && !validField(input.field)) return { ok: false, error: `${path}.field is required for ${aggregation}` }
   if (input.field !== undefined && !validField(input.field)) return { ok: false, error: `${path}.field is invalid` }
   return { ok: true, value: { aggregation, ...(input.field ? { field: input.field } : {}) } }
@@ -106,6 +113,28 @@ function validateBlock(input: unknown, index: number): { ok: true; value: Report
     const metric = validateMetric(input.metric, `${path}.metric`)
     return metric.ok ? { ok: true, value: { type: "stat", title, metric: metric.value } } : metric
   }
+  if (input.type === "series") {
+    const title = text(input.title, 120)
+    if (!title || !validField(input.timeField) || !["day", "week", "month", "quarter"].includes(String(input.bucket))) return { ok: false, error: `${path} needs title, timeField, and a valid bucket` }
+    const metric = validateMetric(input.metric, `${path}.metric`)
+    if (!metric.ok) return metric
+    const limit = input.limit === undefined ? 5 : Number(input.limit)
+    if (!Number.isInteger(limit) || limit < 1 || limit > 20) return { ok: false, error: `${path}.limit must be 1–20` }
+    if (input.splitBy !== undefined && !validField(input.splitBy)) return { ok: false, error: `${path}.splitBy is invalid` }
+    return { ok: true, value: { type: "series", title, timeField: input.timeField, bucket: input.bucket as "day" | "week" | "month" | "quarter", metric: metric.value, ...(input.splitBy ? { splitBy: input.splitBy } : {}), limit } }
+  }
+  if (input.type === "comparison") {
+    const title = text(input.title, 120)
+    if (!title || input.against !== "previous_period" || !Array.isArray(input.items) || input.items.length < 1 || input.items.length > 8) return { ok: false, error: `${path} comparison is invalid` }
+    const items: Array<{ label: string; metric: ReportMetric }> = []
+    for (const [itemIndex, item] of input.items.entries()) {
+      if (!isObject(item) || !text(item.label, 80)) return { ok: false, error: `${path}.items[${itemIndex}] is invalid` }
+      const metric = validateMetric(item.metric, `${path}.items[${itemIndex}].metric`)
+      if (!metric.ok) return metric
+      items.push({ label: text(item.label, 80)!, metric: metric.value })
+    }
+    return { ok: true, value: { type: "comparison", title, against: "previous_period", items } }
+  }
   if (input.type === "narrative") {
     const title = text(input.title, 120); const body = text(input.text, 1500)
     return title && body ? { ok: true, value: { type: "narrative", title, text: body } } : { ok: false, error: `${path} needs title and text` }
@@ -140,10 +169,13 @@ export function validateReportDefinitionPayload(input: unknown): { ok: true; val
   if (!isObject(input.source) || (input.source.kind !== "records" && input.source.kind !== "dataset")) return { ok: false, error: "source.kind must be records or dataset" }
   let source: ReportDefinitionSource
   if (input.source.kind === "dataset") {
-    if (typeof input.source.datasetId !== "string" || !/^[0-9a-f-]{36}$/i.test(input.source.datasetId)) return { ok: false, error: "source.datasetId must be a UUID" }
+    const hasDataset = typeof input.source.datasetId === "string" && /^[0-9a-f-]{36}$/i.test(input.source.datasetId)
+    const hasFolder = typeof input.source.folderId === "string" && /^[0-9a-f-]{36}$/i.test(input.source.folderId)
+    if (hasDataset === hasFolder) return { ok: false, error: "dataset source requires exactly one of datasetId or folderId" }
+    if ((input.source.datasetId !== undefined && !hasDataset) || (input.source.folderId !== undefined && !hasFolder)) return { ok: false, error: "source.datasetId/source.folderId must be UUIDs" }
     if (input.source.dateField !== undefined && !validField(input.source.dateField)) return { ok: false, error: "source.dateField is invalid" }
     if (input.source.currencyField !== undefined && !validField(input.source.currencyField)) return { ok: false, error: "source.currencyField is invalid" }
-    source = { kind: "dataset", datasetId: input.source.datasetId, ...(input.source.dateField ? { dateField: input.source.dateField } : {}), ...(input.source.currencyField ? { currencyField: input.source.currencyField } : {}) }
+    source = { kind: "dataset", ...(hasDataset ? { datasetId: input.source.datasetId as string } : { folderId: input.source.folderId as string }), ...(input.source.dateField ? { dateField: input.source.dateField } : {}), ...(input.source.currencyField ? { currencyField: input.source.currencyField } : {}) }
   } else {
     if (input.source.documentTypes !== undefined && (!Array.isArray(input.source.documentTypes) || input.source.documentTypes.length > 20 || input.source.documentTypes.some((value) => !text(value, 80)))) return { ok: false, error: "source.documentTypes is invalid" }
     source = { kind: "records", ...(Array.isArray(input.source.documentTypes) ? { documentTypes: input.source.documentTypes.map(String) } : {}) }
@@ -188,23 +220,33 @@ export function validateReportDefinitionPayload(input: unknown): { ok: true; val
   }
   let theme: ReportDefinitionInput["theme"] = null
   if (input.theme !== undefined && input.theme !== null) {
-    if (!isObject(input.theme) || (input.theme.accent !== undefined && (typeof input.theme.accent !== "string" || !HEX_COLOR.test(input.theme.accent))) || (input.theme.density !== undefined && input.theme.density !== "compact" && input.theme.density !== "comfortable")) return { ok: false, error: "theme is invalid" }
-    theme = { ...(typeof input.theme.accent === "string" ? { accent: input.theme.accent } : {}), ...(input.theme.density ? { density: input.theme.density as "compact" | "comfortable" } : {}) }
+    const themeInput = isObject(input.theme) ? input.theme : {}
+    const client = isObject(themeInput.client) && text(themeInput.client.name, 120) ? { name: text(themeInput.client.name, 120)! } : null
+    if (!isObject(input.theme) || (themeInput.accent !== undefined && (typeof themeInput.accent !== "string" || !HEX_COLOR.test(themeInput.accent))) || (themeInput.density !== undefined && themeInput.density !== "compact" && themeInput.density !== "comfortable") || (themeInput.footer !== undefined && !text(themeInput.footer, 200)) || (themeInput.client !== undefined && !client)) return { ok: false, error: "theme is invalid" }
+    const logoUrl = client && isObject(themeInput.client) && themeInput.client.logoUrl !== undefined ? themeInput.client.logoUrl : undefined
+    if (logoUrl !== undefined && (typeof logoUrl !== "string" || !/^https:\/\/[^/]+\.supabase\.co\/storage\/v1\/object\/public\//.test(logoUrl))) return { ok: false, error: "theme.client.logoUrl must be a Supabase Storage URL" }
+    theme = { ...(typeof themeInput.accent === "string" ? { accent: themeInput.accent } : {}), ...(themeInput.density ? { density: themeInput.density as "compact" | "comfortable" } : {}), ...(client ? { client: { ...client, ...(logoUrl ? { logoUrl } : {}) } } : {}), ...(typeof themeInput.footer === "string" ? { footer: themeInput.footer.trim() } : {}) }
   }
   return { ok: true, value: { title, description: typeof input.description === "string" ? input.description.trim().slice(0, 500) || null : null, source, scope, period, filters, blocks, theme } }
 }
 
 export function referencedDefinitionFields(definition: ReportDefinitionInput): string[] {
   const fields = new Set(definition.filters.map((filter) => filter.field))
+  const addMetricFields = (metric: ReportMetric) => {
+    if (metric.aggregation === "ratio") { fields.add(metric.numerator!); fields.add(metric.denominator!) }
+    else if (metric.field) fields.add(metric.field)
+  }
   if (definition.source.kind === "dataset") {
     if (definition.source.dateField) fields.add(definition.source.dateField)
     if (definition.source.currencyField) fields.add(definition.source.currencyField)
   }
   for (const block of definition.blocks) {
-    if (block.type === "kpi") for (const item of block.items) if (item.metric.field) fields.add(item.metric.field)
-    if (block.type === "share") { fields.add(block.groupBy); if (block.metric.field) fields.add(block.metric.field) }
+    if (block.type === "kpi") for (const item of block.items) addMetricFields(item.metric)
+    if (block.type === "share") { fields.add(block.groupBy); addMetricFields(block.metric) }
     if (block.type === "table") { for (const column of block.columns) fields.add(column.field); if (block.sort) fields.add(block.sort.field) }
-    if (block.type === "stat" && block.metric.field) fields.add(block.metric.field)
+    if (block.type === "stat") addMetricFields(block.metric)
+    if (block.type === "series") { fields.add(block.timeField); if (block.splitBy) fields.add(block.splitBy); addMetricFields(block.metric) }
+    if (block.type === "comparison") for (const item of block.items) addMetricFields(item.metric)
   }
   return [...fields]
 }

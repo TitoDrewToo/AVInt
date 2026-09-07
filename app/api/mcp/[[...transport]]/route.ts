@@ -19,6 +19,7 @@ import { ReportDefinitionExecutionError, runReportDefinition } from "@/lib/repor
 import { listSavedDashboardWidgets, saveDashboardWidget } from "@/lib/dashboard-widget-store"
 import { createDashboardPage, deleteDashboardPage, ensureDefaultDashboardPages, renameDashboardPage, resolveDashboardPage } from "@/lib/dashboard-pages"
 import { logApiError } from "@/lib/api-error"
+import { rejectStatelessSubscriptionRequest, STATELESS_MCP_CAPABILITIES } from "@/lib/mcp-stateless-transport"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -111,7 +112,7 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
 
     server.registerTool("smart_storage.profile", {
       title: "Smart Storage data profile",
-      description: "Read-only. Describe the signed-in user's current normalized data model, available document types, currencies, readiness, and recent records. Use this before suggesting a dashboard visual or other custom output.",
+      description: "Read-only. Describe the signed-in user's normalized data model. activeRecordCount counts active top-level records; readyRecordCount counts that same set excluding records flagged needs_review; attentionCount counts the flagged remainder. Document types, currencies, and recent records describe ready records only. Use this before suggesting a dashboard visual or other custom output.",
       inputSchema: z.object({}),
     }, async () => timedTool("smart_storage.profile", async () => {
       const blocked = await toolGuard(userId, entitlement, "profile")
@@ -305,6 +306,7 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
     }))
   }, {
     serverInfo: { name: "avintelligence-smart-storage", version: "1.0.0" },
+    capabilities: STATELESS_MCP_CAPABILITIES,
     instructions: [
       "AVIntelligence Smart Storage, operated by AVIntelligence (https://www.avintph.com).",
       "A document-intelligence service that turns a user's files into a permissioned normalized data model, dashboards, structured outputs, and selected accounting exports.",
@@ -319,6 +321,11 @@ async function handle(req: NextRequest) {
   if (!MCP_CONNECTOR_ENABLED) return withCors(req, NextResponse.json({ error: "Not found" }, { status: 404 }))
   const requestStartedAt = Date.now()
   console.info(`[mcp-stage] stage=request_received elapsed_ms=0 method=${req.method}`)
+  const unsupportedSubscription = await rejectStatelessSubscriptionRequest(req)
+  if (unsupportedSubscription) {
+    console.info(`[mcp-stage] stage=stateless_subscription_rejected elapsed_ms=${Date.now() - requestStartedAt}`)
+    return withCors(req, unsupportedSubscription)
+  }
   console.info(`[mcp-stage] stage=resolveOAuthToken_start elapsed_ms=${Date.now() - requestStartedAt}`)
   let identity: { userId: string } | null
   try {

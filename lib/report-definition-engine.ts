@@ -9,6 +9,18 @@ const CORE_FIELDS = new Set<string>([...RECORD_DEFINITION_FIELDS, "filename", "f
 type ValueRow = Record<string, unknown>
 export type LoadedReportDefinitionSource = { rows: ValueRow[]; availableFields: Set<string>; dateField: string | null; currencyField: string | null; sourceLabel: string }
 
+export function projectRecordDefinitionRow(row: ValueRow, attributes: ValueRow): ValueRow {
+  const file = Array.isArray(row.files) ? row.files[0] : row.files
+  const linkedFile = file && typeof file === "object" ? file as ValueRow : null
+  return {
+    ...row,
+    ...attributes,
+    filename: linkedFile?.filename ?? null,
+    folder_id: linkedFile?.folder_id ?? null,
+    document_type: row.document_type ?? linkedFile?.document_type ?? null,
+  }
+}
+
 export class ReportDefinitionExecutionError extends Error {}
 
 function rollingBounds(unit: "month" | "year", count: number, offset: number, now: Date) {
@@ -33,7 +45,7 @@ async function loadRecords(userId: string, definition: ReportDefinition): Promis
   const context = await createReportQueryContext(userId, { targetFolder: definition.scope?.folderId })
   const fileIds = await context.fileIds(definition.source.kind === "records" ? definition.source.documentTypes ?? [] : [])
   if (!fileIds.length) return { rows: [], availableFields: new Set(CORE_FIELDS), dateField: "occurred_on", currencyField: "currency", sourceLabel: "canonical records" }
-  const { data, error } = await supabaseAdmin.from("records").select("*, files!inner(filename, folder_id)").eq("user_id", userId).in("file_id", fileIds).is("parent_record_id", null).is("excluded_at", null).limit(MAX_SOURCE_ROWS + 1)
+  const { data, error } = await supabaseAdmin.from("records").select("*, files!inner(filename, folder_id, document_type)").eq("user_id", userId).in("file_id", fileIds).is("parent_record_id", null).is("excluded_at", null).limit(MAX_SOURCE_ROWS + 1)
   if (error) throw new Error(error.message)
   if ((data ?? []).length > MAX_SOURCE_ROWS) throw new ReportDefinitionExecutionError(`The report source exceeds ${MAX_SOURCE_ROWS} records. Narrow its folder or document type before running it.`)
   const recordRows = data ?? []
@@ -52,10 +64,7 @@ async function loadRecords(userId: string, definition: ReportDefinition): Promis
   }
   const availableFields = new Set(CORE_FIELDS)
   for (const attribute of attributeCatalog ?? []) availableFields.add(attribute.field_key)
-  let rows = recordRows.map((row) => {
-    const file = Array.isArray(row.files) ? row.files[0] : row.files
-    return { ...row, ...(attributesByRecord.get(row.id) ?? {}), filename: file?.filename ?? null, folder_id: file?.folder_id ?? null }
-  })
+  let rows = recordRows.map((row) => projectRecordDefinitionRow(row, attributesByRecord.get(row.id) ?? {}))
   if (period.from || period.to) rows = rows.filter((row) => overlaps(String(row.period_start ?? row.occurred_on ?? ""), String(row.period_end ?? row.occurred_on ?? ""), period.from, period.to))
   return { rows, availableFields, dateField: "occurred_on", currencyField: "currency", sourceLabel: "canonical records" }
 }

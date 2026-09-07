@@ -2304,14 +2304,25 @@ export default function SmartDashboardPage() {
           setFxError(error instanceof Error ? error.message : "Failed to prepare FX rates")
         }
       } finally {
-        if (!cancelled) {
-          setFxLoadingWidgetId((current) => current === savedMergedWidget.id ? null : current)
-        }
+        // Clear unconditionally. `cancelled` must suppress stale *results*, but
+        // the loading flag is shared UI state that was set unguarded above — if
+        // the effect is cancelled mid-flight the flag would otherwise stay set
+        // forever, permanently disabling the Merge control. The functional
+        // update only clears when the flag still refers to this widget, so a
+        // newer run that has taken ownership is left alone.
+        setFxLoadingWidgetId((current) => current === savedMergedWidget.id ? null : current)
       }
     }
 
     void prepareSavedMergedRates()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+      // Release the de-dupe key so the next run can retry. Without this an
+      // interrupted preparation is never re-attempted: the signature still
+      // matches, so the guard above returns early and the rates are never
+      // fetched.
+      autoPreparedFxKeyRef.current = null
+    }
   }, [
     fxRatesMap,
     requiredRateSignature,

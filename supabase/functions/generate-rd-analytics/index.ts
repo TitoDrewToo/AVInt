@@ -64,6 +64,8 @@ you perform the data transformation yourself and return a ready-to-render data a
 Generate 1 or 2 widgets. Fewer is strictly better than filler. Every widget must be one of
 these three angles:
 
+Use neutral third-person language in titles, descriptions, and insights. Do not speak as a character or use first-person voice.
+
 1. cross_doc_correlation — reasoning across multiple documents to surface a relationship
    standard aggregations miss. Examples: months where expense share-of-income inverted;
    vendor-to-category drift; recurring-spend envelope vs one-off spike months; merchant

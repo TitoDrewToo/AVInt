@@ -344,6 +344,7 @@ Each widget must:
 - follow visualization-builder discipline: select the chart type that best matches the data question, not the flashiest chart
 - follow insight-synthesis discipline: every insight should contain a supported observation, business meaning, and practical next inspection point
 - follow executive-summary discipline: be concise, decision-oriented, and specific
+- write descriptions and insights in neutral third-person language; never use first-person voice or speak as a character
 - stay inside Smart Dashboard advanced analytics only; do not generate Smart Storage report, tax bundle, PDF/export, or report-route suggestions
 
 Enabled analytics families:

@@ -18,6 +18,7 @@ const SUPABASE_URL              = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 const SUPABASE_ANON_KEY         = Deno.env.get("SUPABASE_ANON_KEY")!
 const ANALYTICS_PROVIDERS       = providerChain("ADVANCED_ANALYTICS", "anthropic", "openai", ["ANALYTICS_PROVIDER"])
+const ANALYTICS_MODEL            = Deno.env.get("ADVANCED_ANALYTICS_MODEL") ?? "claude-sonnet-4-6"
 // R&D gate — set this env var to your Supabase user UUID to unlock advanced features
 const RD_USER_ID                = Deno.env.get("RD_USER_ID") ?? ""
 
@@ -59,7 +60,7 @@ async function callAIProvider(provider: AiProvider, prompt: string, systemPrompt
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
+        model: ANALYTICS_MODEL,
         max_tokens: 1024,
         system: systemPrompt,
         messages: [{ role: "user", content: prompt }],
@@ -144,6 +145,7 @@ serve(async (req) => {
   }
 
   const { user_id, page_id, existing_widget_types, plotted_advanced_types, from_date: p_from = null, to_date: p_to = null } = body
+  const requestedPrompt = typeof body.prompt === "string" ? body.prompt.trim().slice(0, 600) : ""
   if (!user_id) {
     return new Response(JSON.stringify({ error: "user_id required" }), {
       status: 400,
@@ -361,7 +363,7 @@ serve(async (req) => {
       .eq("is_starred", false)
       .neq("widget_type", "rd-insight")
 
-    // ── 6. Build Haiku prompt ────────────────────────────────────────────────
+    // ── 6. Build advanced analytics prompt ───────────────────────────────────
     // Dedup against plotted_advanced_types only — not existing_widget_types.
     // Standard dashboard chart types can still be upgraded with AI insight.
     const alreadyPlotted: string[] = plotted_advanced_types.filter(Boolean)
@@ -418,6 +420,11 @@ Dashboard product context:
 - Choose widgets that answer one clear dashboard question and can be understood from a small widget.
 - Use concise data storytelling: What stands out, why it matters, and what the user should inspect next.
 - Do not invent causes, forecasts, benchmarks, legal/tax conclusions, or recommendations not supported by this data.
+- Write descriptions and insights in neutral third-person language. Do not speak as a character or use first-person voice.
+
+${requestedPrompt ? `User request (answer this request with exactly one recommendation):
+${requestedPrompt}
+Choose the most faithful supported visual for the request. Do not substitute a generic chart when the requested question cannot be answered from the supplied fields; return no widget rather than pretending.` : "Generate autonomous recommendations that reveal the strongest supported angles in the data."}
 
 Data sufficiency:
 - months_tracked: ${months}
@@ -463,8 +470,17 @@ ${monthlyNetSummary || "no monthly net data"}
 Tax timeline:
 ${taxTimelineSummary || "no tax timeline data"}`
 
-    // ── 7. Call Haiku ────────────────────────────────────────────────────────
-    const { rawText } = await callAI(prompt, ADVANCED_SYSTEM_PROMPT)
+    // ── 7. Call the configured advanced analytics provider ──────────────────
+    let rawText: string
+    try {
+      ({ rawText } = await callAI(prompt, ADVANCED_SYSTEM_PROMPT))
+    } catch (error) {
+      console.error("advanced analytics provider unavailable:", error instanceof Error ? error.message : String(error))
+      return new Response(JSON.stringify({ error: "Advanced Analytics provider unavailable. Try again later." }), {
+        status: 503,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      })
+    }
     if (!rawText) throw new Error("Empty response from AI")
 
     let parsed: any
@@ -502,10 +518,10 @@ ${taxTimelineSummary || "no tax timeline data"}`
           (other.chart_family === widget.chart_family && other.title === widget.title),
         ),
       )
-      .slice(0, 3)
+      .slice(0, requestedPrompt ? 1 : 3)
     if (!generatedWidgets.length) {
       return new Response(
-        JSON.stringify({ success: true, count: 0, widgets: [], message: "All upgrade chart types already plotted" }),
+        JSON.stringify({ success: true, count: 0, widgets: [], message: requestedPrompt ? "No supported recommendation could be generated from the available data" : "All upgrade chart types already plotted" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       )
     }

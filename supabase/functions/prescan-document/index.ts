@@ -5,8 +5,8 @@ import { recordAiUsage } from "../_shared/ai-usage.ts"
 import { ensureExtraction } from "../_shared/write-extraction.ts"
 import { analyzePdf } from "../_shared/pdf-prescan.ts"
 
-const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY")!
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY")!
+const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!
@@ -176,7 +176,7 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(binary)
 }
 
-// ── Gemini Safety Pass ───────────────────────────────────────────────────────
+// ── AI Safety Pass ───────────────────────────────────────────────────────────
 const SAFETY_PROMPT = `You are a document classifier for a document-intelligence tool that ingests financial, operational, and employment records.
 
 Classify whether this upload is suitable for ingestion.
@@ -240,49 +240,6 @@ type SmartSecurityResult = {
     clamav?: { status?: string; summary?: string; signature?: string }
     structural?: { status?: string; signals?: string[] }
   }
-}
-
-async function runGeminiSafety(mimeType: string, base64: string): Promise<{ safety: SafetyResult; response: any }> {
-  const res = await fetchWithTimeout(
-    `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{
-          parts: [
-            { inline_data: { mime_type: mimeType, data: base64 } },
-            { text: SAFETY_PROMPT },
-          ],
-        }],
-        generationConfig: {
-          temperature: 0,
-          maxOutputTokens: 512,
-        },
-      }),
-    }
-  )
-  if (!res.ok) {
-    const errBody = (await res.text()).slice(0, 500)
-    throw new Error(`Gemini safety HTTP ${res.status}: ${errBody}`)
-  }
-  const data = await res.json()
-  const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text
-  if (!rawText) {
-    throw new Error(`Gemini safety empty response: ${JSON.stringify(data).slice(0, 500)}`)
-  }
-  // Strip markdown fences, then extract first top-level JSON object (matches process-document shape).
-  const stripped = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim()
-  const objectMatch = stripped.match(/\{[\s\S]*\}/)
-  if (!objectMatch) throw new Error(`Gemini safety no JSON object in: ${stripped.slice(0, 300)}`)
-  const parsed = JSON.parse(objectMatch[0])
-  return { safety: {
-    is_processable: Boolean(parsed.is_processable),
-    doc_category: String(parsed.doc_category ?? "unrelated"),
-    confidence: Number(parsed.confidence ?? 0),
-    abuse_flag: Boolean(parsed.abuse_flag),
-    reason: String(parsed.reason ?? ""),
-  }, response: data }
 }
 
 function parseSafetyJson(provider: string, rawText: string): SafetyResult {
@@ -351,8 +308,38 @@ async function runOpenAISafety(mimeType: string, base64: string): Promise<{ safe
   return { safety: parseSafetyJson("OpenAI", rawText), response: data }
 }
 
+async function runAnthropicSafety(mimeType: string, base64: string): Promise<{ safety: SafetyResult; response: any }> {
+  const source = mimeType === "application/pdf"
+    ? { type: "document", source: { type: "base64", media_type: mimeType, data: base64 } }
+    : mimeType.startsWith("image/")
+      ? { type: "image", source: { type: "base64", media_type: mimeType, data: base64 } }
+      : null
+  if (!source) throw new Error(`Anthropic prescan does not support MIME type ${mimeType}`)
+
+  const res = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 512,
+      temperature: 0,
+      system: SAFETY_PROMPT,
+      messages: [{ role: "user", content: [source] }],
+    }),
+  })
+  if (!res.ok) throw new Error(`Anthropic safety HTTP ${res.status}: ${(await res.text()).slice(0, 500)}`)
+  const data = await res.json()
+  const rawText = data.content?.[0]?.text ?? ""
+  if (!rawText) throw new Error(`Anthropic safety empty response: ${JSON.stringify(data).slice(0, 500)}`)
+  return { safety: parseSafetyJson("Anthropic", rawText), response: data }
+}
+
 async function runSafety(provider: AiProvider, mimeType: string, base64: string): Promise<{ safety: SafetyResult; response: any }> {
-  if (provider === "gemini") return await runGeminiSafety(mimeType, base64)
+  if (provider === "anthropic") return await runAnthropicSafety(mimeType, base64)
   if (provider === "openai") return await runOpenAISafety(mimeType, base64)
   throw new Error(`Unsupported prescan provider: ${provider}`)
 }
@@ -612,7 +599,7 @@ serve(async (req) => {
             workloadClass: "document",
             operation: "prescan_safety",
             provider,
-            model: provider === "gemini" ? "gemini-2.5-flash" : "gpt-4o-mini",
+            model: provider === "anthropic" ? "claude-haiku-4-5-20251001" : "gpt-4o-mini",
             status: "succeeded",
             response: result.response,
             isFallback: providerIndex > 0,
@@ -631,7 +618,7 @@ serve(async (req) => {
             workloadClass: "document",
             operation: "prescan_safety",
             provider,
-            model: provider === "gemini" ? "gemini-2.5-flash" : "gpt-4o-mini",
+            model: provider === "anthropic" ? "claude-haiku-4-5-20251001" : "gpt-4o-mini",
             status: "failed",
             error: e,
             isFallback: providerIndex > 0,

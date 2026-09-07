@@ -14,12 +14,13 @@ import { beginNormalizationBatch } from "../_shared/normalization-batch.ts"
 
 const FN = "process-document"
 
-const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY")!
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY")!
+const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!
 const PROCESS_PROVIDERS = providerChain("PROCESS", "openai", "anthropic")
+const HEADER_MAPPING_PROVIDERS = providerChain("HEADER_MAPPING", "openai", "anthropic")
 
 const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") ?? "https://www.avintph.com,https://avintph.com").split(",").map(s => s.trim())
 function buildCorsHeaders(req: Request) {
@@ -447,55 +448,111 @@ async function mapHeadersForSheet(
     headers,
     sample_rows: sampleRows.slice(0, 3),
   })
+  let lastError: unknown = null
+  let lastProvider: AiProvider = HEADER_MAPPING_PROVIDERS[0] ?? "openai"
+  let lastModel = lastProvider === "anthropic" ? "claude-haiku-4-5-20251001" : "gpt-4o-mini"
 
-  const res = await fetchWithTimeout(
-    `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{
-          parts: [
-            { text: HEADER_MAPPING_PROMPT },
-            { text: "\n\nINPUT:\n" + userInput },
-          ],
-        }],
-        generationConfig: {
-          temperature: 0.1,
-          maxOutputTokens: 2048,
-        },
-      }),
-    },
-    30_000,
-  )
+  for (const [providerIndex, provider] of HEADER_MAPPING_PROVIDERS.entries()) {
+    const startedAt = Date.now()
+    lastProvider = provider
+    lastModel = provider === "anthropic" ? "claude-haiku-4-5-20251001" : "gpt-4o-mini"
+    try {
+      let rawText = ""
+      let response: any
+      let model: string
 
-  if (!res.ok) throw new Error(`Header mapping API error: ${await res.text()}`)
+      if (provider === "openai") {
+        model = "gpt-4o-mini"
+        const res = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${OPENAI_API_KEY}` },
+          body: JSON.stringify({
+            model,
+            temperature: 0.1,
+            response_format: { type: "json_object" },
+            messages: [
+              { role: "system", content: HEADER_MAPPING_PROMPT },
+              { role: "user", content: userInput },
+            ],
+            max_tokens: 2048,
+          }),
+        }, 30_000)
+        if (!res.ok) throw new Error(`OpenAI header mapping API error: ${await res.text()}`)
+        response = await res.json()
+        rawText = response.choices?.[0]?.message?.content ?? ""
+      } else if (provider === "anthropic") {
+        model = "claude-haiku-4-5-20251001"
+        const res = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model,
+            max_tokens: 2048,
+            temperature: 0.1,
+            system: HEADER_MAPPING_PROMPT,
+            messages: [{ role: "user", content: userInput }],
+          }),
+        }, 30_000)
+        if (!res.ok) throw new Error(`Anthropic header mapping API error: ${await res.text()}`)
+        response = await res.json()
+        rawText = response.content?.[0]?.text ?? ""
+      } else {
+        throw new Error(`Unsupported header mapping provider: ${provider}`)
+      }
 
-  const data = await res.json()
-  const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ""
-  if (!rawText) throw new Error("No response from Gemini header mapping")
-
-  const parsed = parseHeaderMappingResponse(rawText)
-  await recordAiUsage(supabase, {
-    userId,
-    fileId,
-    fileType,
-    fileSizeBytes,
-    documentType,
-    extractionId,
-    workloadClass: "spreadsheet",
-    operation: "spreadsheet_header_mapping",
-    provider: "gemini",
-    model: "gemini-2.5-flash",
-    status: "succeeded",
-    response: data,
-    isRetry,
-  })
-  const mappedDocumentType = DOCUMENT_TYPES.has(parsed.document_type) ? parsed.document_type : "general_document"
-  return {
-    mapping: parsed.mapping ?? {},
-    document_type: mappedDocumentType,
+      if (!rawText) throw new Error(`No response from ${provider} header mapping`)
+      const parsed = parseHeaderMappingResponse(rawText)
+      await recordAiUsage(supabase, {
+        userId,
+        fileId,
+        fileType,
+        fileSizeBytes,
+        documentType,
+        extractionId,
+        workloadClass: "spreadsheet",
+        operation: "spreadsheet_header_mapping",
+        provider,
+        model,
+        status: "succeeded",
+        response,
+        isFallback: providerIndex > 0,
+        isRetry,
+        durationMs: Date.now() - startedAt,
+      })
+      const mappedDocumentType = DOCUMENT_TYPES.has(parsed.document_type) ? parsed.document_type : "general_document"
+      return { mapping: parsed.mapping ?? {}, document_type: mappedDocumentType }
+    } catch (error) {
+      lastError = error
+      const model = provider === "anthropic" ? "claude-haiku-4-5-20251001" : "gpt-4o-mini"
+      await recordAiUsage(supabase, {
+        userId,
+        fileId,
+        fileType,
+        fileSizeBytes,
+        documentType,
+        extractionId,
+        workloadClass: "spreadsheet",
+        operation: "spreadsheet_header_mapping",
+        provider,
+        model,
+        status: "failed",
+        error,
+        isFallback: providerIndex > 0,
+        isRetry,
+        durationMs: Date.now() - startedAt,
+      })
+      logError(FN, "header_mapping_provider_failed", error, { provider, sheet: sheetName })
+      if (!isProviderFailure(error)) break
+    }
   }
+
+  const finalError = lastError instanceof Error ? lastError : new Error("All header mapping providers failed")
+  Object.assign(finalError, { provider: lastProvider, model: lastModel })
+  throw finalError
 }
 
 async function extractSpreadsheetRows(
@@ -510,7 +567,7 @@ async function extractSpreadsheetRows(
   documentType: string | null,
   extractionId: string,
   isRetry = false,
-): Promise<{ extractedRows: ExtractedDocumentRow[]; sourceRows: any[] }> {
+): Promise<{ extractedRows: ExtractedDocumentRow[]; sourceRows: any[]; mappingDegraded: boolean; degradedSourceKeys: string[] }> {
   const XLSX = await import("https://esm.sh/xlsx@0.18.5")
   const isCsv = mimeType === "text/csv" || /\.csv$/i.test(filename ?? "")
   // CSV has no cell types, so keep every value as literal text and let the
@@ -524,6 +581,9 @@ async function extractSpreadsheetRows(
   const extractedRows: ExtractedDocumentRow[] = []
   const sourceRows: any[] = []
   const datasetSheets: DatasetSheet[] = []
+  let mappingDegraded = false
+  const degradedSourceKeys: string[] = []
+  const degradedSheets = new Set<string>()
   const explicitCurrencyCounts: Record<string, number> = {}
   let sourceIndex = 0
 
@@ -563,24 +623,20 @@ async function extractSpreadsheetRows(
       mapping = result.mapping
       documentType = result.document_type
     } catch (err: any) {
-      await recordAiUsage(supabase, {
-        userId,
-        fileId,
-        fileType,
-        fileSizeBytes,
-        documentType,
-        extractionId,
-        workloadClass: "spreadsheet",
-        operation: "spreadsheet_header_mapping",
-        provider: "gemini",
-        model: "gemini-2.5-flash",
-        status: "failed",
-        error: err,
-        isRetry,
+      // Provider attempts are recorded inside mapHeadersForSheet. Keep the
+      // degradation signal in operational logs rather than creating a third
+      // usage event for the same failed provider chain.
+      logEvent(FN, "header_mapping_degraded", {
+        file_id: fileId,
+        sheet: sheetName,
+        mapping_method: "fallback",
+        error: err instanceof Error ? err.message : String(err),
       })
       logError(FN, "header_mapping_failed", err, { file_id: fileId, sheet: sheetName })
       mapping = fallbackKeywordMapping(headers)
       mappingMethod = "fallback"
+      mappingDegraded = true
+      degradedSheets.add(sheetName)
     }
 
     logEvent(FN, "header_mapping_result", {
@@ -678,6 +734,15 @@ async function extractSpreadsheetRows(
 
     for (const item of rowsForSheet) {
       item.canonical._explicit_blank_currency = item.explicitBlankCurrency
+      const canonicalIndex = extractedRows.length
+      if (degradedSheets.has(sheetName)) {
+        item.canonical.raw_json_extras = {
+          ...(item.canonical.raw_json_extras ?? {}),
+          mapping_degraded: true,
+          mapping_method: "fallback",
+        }
+        degradedSourceKeys.push(String(canonicalIndex))
+      }
       extractedRows.push(item.canonical)
       sourceRows.push(item.source)
     }
@@ -730,38 +795,39 @@ async function extractSpreadsheetRows(
   if (!userId) throw new Error("Spreadsheet dataset owner is required")
   await replaceSpreadsheetDatasets(supabase, fileId, userId, datasetSheets)
 
-  return { extractedRows, sourceRows }
+  return { extractedRows, sourceRows, mappingDegraded, degradedSourceKeys }
 }
 
-async function callGeminiExtraction(mimeType: string, base64: string): Promise<{ rawText: string; response: any }> {
-  const res = await fetchWithTimeout(
-    `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{
-          parts: [
-            { inline_data: { mime_type: mimeType, data: base64 } },
-            { text: EXTRACTION_PROMPT },
-          ]
-        }],
-        generationConfig: {
-          temperature: 0.1,
-          maxOutputTokens: 8192,
-        }
-      })
+async function callAnthropicExtraction(mimeType: string, base64: string): Promise<{ rawText: string; response: any }> {
+  const source = mimeType === "application/pdf"
+    ? { type: "document", source: { type: "base64", media_type: mimeType, data: base64 } }
+    : mimeType.startsWith("image/")
+      ? { type: "image", source: { type: "base64", media_type: mimeType, data: base64 } }
+      : null
+  if (!source) throw new Error(`Anthropic process does not support MIME type ${mimeType}`)
+
+  const res = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
     },
-    60_000,
-  )
+    body: JSON.stringify({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 8192,
+      temperature: 0.1,
+      messages: [{
+        role: "user",
+        content: [source, { type: "text", text: EXTRACTION_PROMPT }],
+      }],
+    }),
+  }, 60_000)
 
-  if (!res.ok) {
-    throw new Error(`Gemini API error: ${await res.text()}`)
-  }
-
+  if (!res.ok) throw new Error(`Anthropic API error: ${await res.text()}`)
   const data = await res.json()
-  const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text
-  if (!rawText) throw new Error("No response from Gemini")
+  const rawText = data.content?.[0]?.text ?? ""
+  if (!rawText) throw new Error("No response from Anthropic")
   return { rawText, response: data }
 }
 
@@ -824,7 +890,7 @@ async function callExtractionWithFallback(
     const startedAt = Date.now()
     try {
       let result: { rawText: string; response: any }
-      if (provider === "gemini") result = await callGeminiExtraction(mimeType, base64)
+      if (provider === "anthropic") result = await callAnthropicExtraction(mimeType, base64)
       else if (provider === "openai") result = await callOpenAIExtraction(mimeType, base64, bytes)
       else throw new Error(`Unsupported process provider: ${provider}`)
       const rawText = result.rawText
@@ -838,7 +904,7 @@ async function callExtractionWithFallback(
         workloadClass: "document",
         operation: "extraction",
         provider,
-        model: provider === "gemini" ? "gemini-2.5-flash" : "gpt-4o-mini",
+        model: provider === "anthropic" ? "claude-haiku-4-5-20251001" : "gpt-4o-mini",
         status: "succeeded",
         response: result.response,
         isFallback: providerIndex > 0,
@@ -858,7 +924,7 @@ async function callExtractionWithFallback(
         workloadClass: "document",
         operation: "extraction",
         provider,
-        model: provider === "gemini" ? "gemini-2.5-flash" : "gpt-4o-mini",
+        model: provider === "anthropic" ? "claude-haiku-4-5-20251001" : "gpt-4o-mini",
         status: "failed",
         error,
         isFallback: providerIndex > 0,
@@ -1008,7 +1074,9 @@ serve(async (req) => {
     let mimeType = file.file_type || "application/pdf"
     let extractedRows: ExtractedDocumentRow[] = []
     let sourceRows: any[] | null = null
-    let extractionProvider: AiProvider | "deterministic" = "gemini"
+    let extractionProvider: AiProvider | "deterministic" = "openai"
+    let mappingDegraded = false
+    let degradedSourceKeys: string[] = []
     let isCsv = false
     const normalizationBatchId = crypto.randomUUID()
 
@@ -1019,6 +1087,8 @@ serve(async (req) => {
         const spreadsheetResult = await extractSpreadsheetRows(supabase, uint8Array, mimeType, file.filename ?? "", file_id, file.user_id, file.file_type, file.file_size, file.document_type, activeExtractionId, isReprocess)
         extractedRows = asExtractedDocumentRows(spreadsheetResult.extractedRows)
         sourceRows = spreadsheetResult.sourceRows
+        mappingDegraded = spreadsheetResult.mappingDegraded
+        degradedSourceKeys = spreadsheetResult.degradedSourceKeys
         extractionProvider = "deterministic"
         isCsv = true
 
@@ -1182,6 +1252,20 @@ serve(async (req) => {
       : extractedRows.map((row) => buildExtractionPayload(row, resolvedDocumentType))
     const derived = deriveRecords(derivationPayload, { id: file_id, user_id: file.user_id })
     if (derived.reason) throw new Error(`record derivation failed: ${derived.reason}`)
+    if (mappingDegraded) {
+      const degradedKeys = new Set(degradedSourceKeys)
+      derived.records = derived.records.map((record) => {
+        const affected = [...degradedKeys].some((key) => {
+          const sourceKey = extractedRows.length === 1
+            ? record.source_key === "root"
+              ? "0"
+              : record.source_key.replace(/^root\./, "0.")
+            : record.source_key
+          return sourceKey === key || sourceKey.startsWith(`${key}.`)
+        })
+        return affected ? { ...record, needs_review: true } : record
+      })
+    }
     await persistDerived(supabase, extractionId, derived)
 
     // Materialize the generalized record contract before normalization. This

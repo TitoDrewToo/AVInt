@@ -117,6 +117,22 @@ function validateBlock(input: unknown, index: number): { ok: true; value: Report
   return { ok: false, error: `${path}.type is unsupported` }
 }
 
+// A title that names a period is a promise about what the report covers. If the
+// definition does not scope that period, the label overstates the math — the
+// failure CLAUDE.md prohibits, and the more dangerous because the number looks
+// authoritative and is plausible.
+//
+// Deliberately narrow to keep false positives near zero: a four-digit year, an
+// explicit quarter, or a relative-period phrase. Bare month names are NOT
+// matched — "May" is an ordinary English word and would reject legitimate
+// titles. A year is the unambiguous case and the one observed in the wild
+// ("Total expenses by vendor for 2026" saved with period {kind:"all"}).
+const PERIOD_NAMED_IN_TITLE = /\b(?:19|20)\d{2}\b|\bQ[1-4]\b|\b(?:last|this|past|previous)\s+(?:week|month|quarter|year)\b|\bYTD\b|\byear[- ]to[- ]date\b/i
+
+export function titleNamesPeriod(title: string): boolean {
+  return PERIOD_NAMED_IN_TITLE.test(title)
+}
+
 export function validateReportDefinitionPayload(input: unknown): { ok: true; value: ReportDefinitionInput } | { ok: false; error: string } {
   if (!isObject(input)) return { ok: false, error: "Definition must be an object" }
   const title = text(input.title, 120)
@@ -148,6 +164,12 @@ export function validateReportDefinitionPayload(input: unknown): { ok: true; val
       if ((input.period.unit !== "month" && input.period.unit !== "year") || !Number.isInteger(count) || count < 1 || count > 120 || !Number.isInteger(offset) || offset < -120 || offset > 120) return { ok: false, error: "rolling period is invalid" }
       period = { kind: "rolling", unit: input.period.unit, count, offset }
     } else if (input.period.kind !== "all") return { ok: false, error: "period.kind must be all, fixed, or rolling" }
+  }
+  if (period.kind === "all" && titleNamesPeriod(title)) {
+    return {
+      ok: false,
+      error: `title names a period ("${title}") but the definition covers all time — set period to a fixed or rolling range, or remove the period from the title`,
+    }
   }
   const filters: ReportDefinitionFilter[] = []
   if (input.filters !== undefined) {

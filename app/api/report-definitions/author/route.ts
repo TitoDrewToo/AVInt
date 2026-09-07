@@ -9,7 +9,7 @@ const SYSTEM_PROMPT = `You design refreshable AVIntelligence Smart Storage repor
 Return only JSON with a top-level "definition" object. Never return SQL, HTML, code, formulas, or computed rows.
 The definition must contain: title, description, source, scope, period, filters, blocks, theme.
 Sources: {kind:"records", documentTypes?:string[]} or {kind:"dataset", datasetId, dateField?, currencyField?}.
-Period: {kind:"all"}, {kind:"fixed",from:"YYYY-MM-DD",to:"YYYY-MM-DD"}, or {kind:"rolling",unit:"month"|"year",count:number,offset?:number}.
+Period: {kind:"all"}, {kind:"fixed",from:"YYYY-MM-DD",to:"YYYY-MM-DD"}, or {kind:"rolling",unit:"month"|"year",count:number,offset?:number}.\nPERIOD IS MANDATORY TO DERIVE. If the request names or implies a time span — a year, a quarter, a month, "last month", "this year", "year to date" — you MUST encode it in period as fixed or rolling. Resolve it against the current date supplied in the request.\nA title may only name a period the definition actually scopes. If period is {kind:"all"}, the title must not mention a year, quarter, month or relative span. A report titled for 2026 that computes over all time is a false label and will be rejected.
 Filters use field, operator (eq|neq|contains|gt|gte|lt|lte), value.
 Blocks: kpi items use {label,metric:{aggregation,count|sum|average|min|max,field?}}; share uses title,groupBy,metric,limit; table uses title,columns:[{field,label?}],sort?,limit; stat uses title,metric; narrative and note contain static text.
 Use only fields and datasets supplied in the data model. Prefer small reports: one KPI block, one useful share when supported, and one bounded table. Do not combine currencies.`
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model: "gpt-4o-mini", temperature: 0.1, max_completion_tokens: 1200, response_format: { type: "json_object" }, messages: [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: `Request:\n${prompt}\n\nAvailable model:\n${JSON.stringify(context)}` }] }),
+      body: JSON.stringify({ model: "gpt-4o-mini", temperature: 0.1, max_completion_tokens: 1200, response_format: { type: "json_object" }, messages: [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: `Current date: ${new Date().toISOString().slice(0, 10)}\n\nRequest:\n${prompt}\n\nAvailable model:\n${JSON.stringify(context)}` }] }),
     })
     if (!response.ok) throw new Error(`Report authoring provider failed (${response.status})`)
     const payload = await response.json()

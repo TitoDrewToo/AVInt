@@ -37,7 +37,6 @@ export class IngestBatchConflictError extends Error {
 function resultStatus(status: unknown): BatchItemStatus {
   if (status === "normalized") return "normalized"
   if (status === "rejected") return "rejected"
-  if (status === "duplicate") return "duplicate"
   if (status === "saved_at_cap") return "saved_at_cap"
   if (status === "failed") return "failed"
   return "processing"

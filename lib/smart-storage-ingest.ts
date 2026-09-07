@@ -94,7 +94,7 @@ export async function ingestFiles(userId: string, entitlement: Entitlement, file
     if (!options.allowDuplicate) {
       const existing = await findExistingFileBySha(supabaseAdmin, userId, sha256)
       if (existing) {
-        results.push({ filename: input.name, status: "duplicate", reason: "duplicate_file", message: `This file is already in your account as ${existing.filename}.`, existing_file: existing, ...EMPTY_COUNTS, records: [] })
+        results.push({ filename: input.name, status: "rejected", reason: "duplicate_file", message: `This file is already in your account as ${existing.filename}.`, existing_file: existing, ...EMPTY_COUNTS, records: [] })
         continue
       }
     }

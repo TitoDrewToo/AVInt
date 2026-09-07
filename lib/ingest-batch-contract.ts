@@ -10,9 +10,9 @@ export type IngestBatchDescriptorItem = {
   byte_size: number
 }
 
-export type IngestBatchItemStatus = "pending" | "uploading" | "processing" | "normalized" | "rejected" | "duplicate" | "saved_at_cap" | "failed"
+export type IngestBatchItemStatus = "pending" | "uploading" | "processing" | "normalized" | "rejected" | "saved_at_cap" | "failed"
 
-const TERMINAL_ITEM_STATUSES = new Set<IngestBatchItemStatus>(["normalized", "rejected", "duplicate", "saved_at_cap"])
+const TERMINAL_ITEM_STATUSES = new Set<IngestBatchItemStatus>(["normalized", "rejected", "saved_at_cap"])
 
 export function deriveIngestBatchStatus(items: Array<{ status: IngestBatchItemStatus }>) {
   if (items.length > 0 && items.every((item) => TERMINAL_ITEM_STATUSES.has(item.status))) return "completed" as const

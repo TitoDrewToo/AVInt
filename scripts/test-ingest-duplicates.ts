@@ -29,13 +29,13 @@ assert.equal(filters.not_upload_status, "quarantined")
 
 const files = [{ name: "original.csv", mimeType: "text/csv", data: Buffer.from(bytes).toString("base64") }]
 assert.notEqual(buildIngestBatchDescriptor(files, false).requestHash, buildIngestBatchDescriptor(files, true).requestHash)
-assert.equal(deriveIngestBatchStatus([{ status: "duplicate" }]), "completed")
+assert.equal(deriveIngestBatchStatus([{ status: "rejected" }]), "completed")
 
 console.log(JSON.stringify({
   preflight: { userId, sha256, existingFile: existing, extractionRowsCreatedByDuplicatePath: 0 },
   default: "refuse",
   explicitOverride: "allow_duplicate=true",
-  batchStatus: "duplicate",
+  batchStatus: "rejected (reason=duplicate_file)",
 }, null, 2))
 }
 

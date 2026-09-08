@@ -1,6 +1,6 @@
 # Prescan Security and Smart Security Roadmap
 
-**Status:** approved direction, implementation underway; Phase 1 code complete pending deployment cleanup
+**Status:** approved direction, implementation underway; Phase 1 complete
 
 **Updated:** 2026-09-08
 **Authority:** this document supersedes every earlier Smart Security Cloud Run, middleware, Gemma-service, Antigravity, and autonomous-defense plan in this repository.
@@ -65,7 +65,6 @@ Known gaps:
 - rejection presentation is limited to a small Blocked label;
 - no canonical file-scan evidence model exists;
 - the middleware-era `smart_security_events`, `smart_security_decisions`, and `smart_security_blocks` tables do not represent the new prescan product;
-- retired production secrets may remain configured until the Phase 1 deployment is verified and the secrets are explicitly unset;
 - without a selected antivirus engine, the product must not claim comprehensive signature-based malware scanning.
 
 ## Security authority
@@ -91,7 +90,7 @@ Comprehensive antivirus signatures are a separate future decision. Adding a mana
 - [x] Remove the abandoned Smart Security environment variables from active code and repository configuration.
 - [x] Remove `/api/smart-security/health` and the historical in-repo Smart Security scaffold after confirming no remaining imports.
 - [x] Update operational and product documentation so no current-state claim implies Cloud Run, ClamAV, YARA, Gemma, Gemini, or request middleware is live.
-- [ ] Deploy the native prescan bundle, verify it, then unset retired production secrets and mark separate infrastructure retired without deleting it from this code change.
+- [x] Deploy native prescan version 34, verify it is active, and remove the only remaining retired Supabase secret (`SMART_SECURITY_API_KEY`). The separate infrastructure remains retired and was not deleted by this repository change.
 
 Closure:
 

@@ -9,6 +9,7 @@ export type IngestFile = { name: string; mimeType: string; data: string; source?
 export type IngestOptions = {
   waitForNormalization?: boolean
   allowDuplicate?: boolean
+  uploadBatchId?: string
   onFileCreated?: (fileId: string) => Promise<void>
 }
 const POLL_MS = 1000
@@ -107,6 +108,7 @@ export async function resumeIngestFile(userId: string, fileId: string, entitleme
 
 export async function ingestFiles(userId: string, entitlement: Entitlement, files: IngestFile[], options: IngestOptions = {}) {
   const results: any[] = []
+  const uploadBatchId = options.uploadBatchId ?? randomUUID()
   for (const input of files) {
     const bytes = decode(input)
     if (bytes.length > MAX_FILE_BYTES) {
@@ -126,7 +128,7 @@ export async function ingestFiles(userId: string, entitlement: Entitlement, file
     if (uploadError) throw new Error(uploadError.message)
     let file: { id: string; filename: string; storage_path: string } | null = null
     try {
-      const { data: fileRecord, error: fileError } = await supabaseAdmin.from("files").insert({ user_id: userId, filename: input.name, storage_path: storagePath, file_type: input.mimeType, file_size: bytes.length, document_type: "unknown", upload_status: "pending_scan", source_provider: input.source?.provider ?? null, source_file_id: input.source?.fileId ?? null, source_url: input.source?.url ?? null, source_modified_at: input.source?.modifiedAt ?? null }).select("id, filename, storage_path").single()
+      const { data: fileRecord, error: fileError } = await supabaseAdmin.from("files").insert({ user_id: userId, filename: input.name, storage_path: storagePath, file_type: input.mimeType, file_size: bytes.length, document_type: "unknown", upload_status: "pending_scan", upload_batch_id: uploadBatchId, source_provider: input.source?.provider ?? null, source_file_id: input.source?.fileId ?? null, source_url: input.source?.url ?? null, source_modified_at: input.source?.modifiedAt ?? null }).select("id, filename, storage_path").single()
       if (fileError || !fileRecord) throw new Error(fileError?.message ?? "Could not create file record")
       file = fileRecord
       const { error: jobError } = await supabaseAdmin.from("processing_jobs").insert({ file_id: file.id, status: "uploaded" })

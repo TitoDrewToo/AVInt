@@ -129,6 +129,12 @@ async function main() {
   assert.match(claimMigration, /new\.document_type := 'unknown'/)
   assert.match(claimMigration, /revoke execute on function public\.avint_enforce_browser_file_ingress\(\)/i)
 
+  const batchMigration = readFileSync(join(process.cwd(), "supabase/migrations/20260908130000_add_file_upload_batch_identity.sql"), "utf8")
+  assert.match(batchMigration, /add column if not exists upload_batch_id uuid/i)
+  assert.match(batchMigration, /new\.upload_batch_id := coalesce\(new\.upload_batch_id, gen_random_uuid\(\)\)/i)
+  assert.match(batchMigration, /revoke insert, update on table public\.files from public, anon, authenticated/i)
+  assert.match(batchMigration, /folder_id,[\s\S]{0,40}upload_batch_id[\s\S]{0,60}\) on table public\.files to authenticated/i)
+
   const source = readFileSync(join(process.cwd(), "supabase/functions/prescan-document/index.ts"), "utf8")
   assert.match(source, /claimPrescanFile\(supabase, file_id, userId\)/)
   assert.match(source, /eventType: "prescan\.action_intended"/)
@@ -146,7 +152,9 @@ async function main() {
   const browserUpload = readFileSync(join(process.cwd(), "app/tools/smart-storage/page.tsx"), "utf8")
   const serverUpload = readFileSync(join(process.cwd(), "lib/smart-storage-ingest.ts"), "utf8")
   assert.match(browserUpload, /upload_status: "pending_scan"/)
+  assert.match(browserUpload, /upload_batch_id: uploadBatchId/)
   assert.match(serverUpload, /upload_status: "pending_scan"/)
+  assert.match(serverUpload, /upload_batch_id: uploadBatchId/)
   assert.doesNotMatch(`${browserUpload}\n${serverUpload}`, /upload_status:\s*["']uploaded["']/)
 
   console.log("prescan lifecycle contract: passed", JSON.stringify(fixture.state))

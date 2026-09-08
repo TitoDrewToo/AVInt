@@ -70,6 +70,7 @@ async function processClaimedItem(userId: string, entitlement: Entitlement, inpu
       : (await ingestFiles(userId, entitlement, [input], {
           waitForNormalization: false,
           allowDuplicate: options.allowDuplicate === true,
+          uploadBatchId: item.batch_id,
           onFileCreated: async (fileId) => {
             const { error } = await supabaseAdmin
               .from("ingest_batch_items")

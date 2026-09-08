@@ -61,7 +61,7 @@ The old `smart-security/` schemas and policies are historical scaffolding. They 
 
 Known gaps:
 
-- the customer rejection panel has no upload-batch identity, so it cannot yet show accepted-versus-blocked counts for one batch;
+- upload-batch outcome summaries are implemented but not yet deployed;
 - the middleware-era `smart_security_events`, `smart_security_decisions`, and `smart_security_blocks` tables do not represent the new prescan product;
 - without a selected antivirus engine, the product must not claim comprehensive signature-based malware scanning.
 
@@ -210,7 +210,7 @@ Until tamper-evident storage and access history exist, call these investigative 
 
 ## Phase 5: customer rejection experience
 
-**Implementation status:** first increment deployed. Smart Storage now renders an account-persistent, dismissible panel for quarantined, rejected, and retry-required files, with customer-safe reasons and retry guidance. Per-upload batch totals and individual notice controls remain.
+**Implementation status:** the first increment is deployed. The next increment adds persistent batch identity across browser, MCP, and integration uploads and groups open notices with accepted, quarantined, rejected, retry-required, and still-checking totals. It is implemented and awaiting deployment. Individual notice dismissal remains future work; the current close action dismisses the visible notice set.
 
 Add a persistent, closable rejection panel beside the existing ingestion activity presentation in Smart Storage.
 

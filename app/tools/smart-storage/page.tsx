@@ -936,6 +936,7 @@ export default function SmartStoragePage() {
     const resolvedFolderPaths = new Map<string, string | null>()
     const currentParentId = currentFolderId === "root" ? null : currentFolderId
     const uploadList = Array.from(uploadFiles)
+    const uploadBatchId = crypto.randomUUID()
     const allowedByQuota = new Set<File>()
     const quotaBytes = storageQuotaBytes(entitlement)
     let projectedStorageBytes = files.reduce((sum, existing) => sum + (existing.file_size || 0), 0)
@@ -1057,6 +1058,7 @@ export default function SmartStoragePage() {
             document_type: "unknown",
             upload_status: "pending_scan",
             folder_id: targetFolderId,
+            upload_batch_id: uploadBatchId,
           })
           .select().single()
         if (fileError || !fileRecord) throw fileError ?? new Error("File record was not created")

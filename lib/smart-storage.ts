@@ -54,6 +54,7 @@ export interface UploadedFile {
   created_at: string
   storage_path: string
   folder_id: string | null
+  upload_batch_id?: string | null
   upload_status?: string | null
   scan_reason?: string | null
   analysis_json?: unknown

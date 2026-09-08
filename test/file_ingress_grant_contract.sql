@@ -7,7 +7,7 @@ declare
   allowed_update constant text[] := array['filename', 'folder_id', 'analysis_json'];
   allowed_insert constant text[] := array[
     'user_id', 'filename', 'storage_path', 'file_type', 'file_size',
-    'document_type', 'upload_status', 'folder_id'
+    'document_type', 'upload_status', 'folder_id', 'upload_batch_id'
   ];
 begin
   if has_table_privilege('authenticated', 'public.files', 'UPDATE') then

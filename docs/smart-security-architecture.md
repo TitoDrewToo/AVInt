@@ -52,7 +52,8 @@ The old `smart-security/` schemas and policies are historical scaffolding. They 
 - CSV formula / command-cell detection;
 - XLSX container, macro, ActiveX, embedded-object, and external-link checks;
 - SHA-256 calculation and known-quarantined-hash refusal;
-- AI suitability classification for supported PDFs and images;
+- AI suitability classification for PDFs, images, CSV, and XLSX through distinct OpenAI-primary and Anthropic-fallback providers;
+- bounded representative CSV/XLSX previews; raw XLSX containers are never sent to an AI provider;
 - quarantine and approved-file storage moves;
 - `scan_reason`, `scanned_at`, and approved/quarantined file state;
 - the existing handoff into `process-document`.
@@ -60,8 +61,8 @@ The old `smart-security/` schemas and policies are historical scaffolding. They 
 
 Known gaps:
 
-- CSV and XLSX skip AI suitability classification;
 - the `pending_scan` to `scanning` claim is not atomic;
+- transient provider and internal failures still use the legacy quarantine outcome until the additive Phase 3 lifecycle migration lands;
 - rejection presentation is limited to a small Blocked label;
 - no canonical file-scan evidence model exists;
 - the middleware-era `smart_security_events`, `smart_security_decisions`, and `smart_security_blocks` tables do not represent the new prescan product;
@@ -99,6 +100,8 @@ Closure:
 - the application builds without the historical scaffold.
 
 ## Phase 2: prescan-native file defense
+
+**Implementation status:** the CSV/XLSX parser, archive-bound, active-content, preview, strict model-response, and provider-fallback increment is deployed in `prescan-document` version 37. The dedicated retry outcome remains coupled to Phase 3 because it requires the approved additive file lifecycle.
 
 Apply the same prescan boundary to PDF, image, CSV, and XLSX uploads.
 

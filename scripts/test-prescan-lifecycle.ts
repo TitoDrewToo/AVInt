@@ -169,6 +169,12 @@ async function main() {
   assert.match(retentionMigration, /new\.canonical_payload := \(to_jsonb\(new\) - array\['canonical_payload', 'event_hash'\]\)::text/i)
   assert.match(retentionMigration, /pg_advisory_xact_lock/)
 
+  const evidenceGrantMigration = readFileSync(join(process.cwd(), "supabase/migrations/20260908153000_enforce_append_only_security_evidence_grants.sql"), "utf8")
+  assert.match(evidenceGrantMigration, /revoke all on table public\.prescan_security_events from service_role/i)
+  assert.match(evidenceGrantMigration, /grant select, insert on table public\.prescan_security_events to service_role/i)
+  assert.match(evidenceGrantMigration, /revoke all on table public\.prescan_admin_audit_events from service_role/i)
+  assert.match(evidenceGrantMigration, /grant select, insert on table public\.prescan_admin_audit_events to service_role/i)
+
   const source = readFileSync(join(process.cwd(), "supabase/functions/prescan-document/index.ts"), "utf8")
   assert.match(source, /claimPrescanFile\(supabase, file_id, userId\)/)
   assert.match(source, /eventType: "prescan\.action_intended"/)

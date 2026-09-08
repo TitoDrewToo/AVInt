@@ -206,25 +206,34 @@ function bucketDate(value: string, bucket: "day" | "week" | "month" | "quarter")
   return date.toISOString().slice(0, 10)
 }
 
-function buildSeries(rows: ValueRow[], block: Extract<ReportDefinition["blocks"][number], { type: "series" }>, period: { from: string; to: string }, source: LoadedReportDefinitionSource): ReportBlock {
+function buildSeries(rows: ValueRow[], block: Extract<ReportDefinition["blocks"][number], { type: "series" }>, period: { from: string; to: string }): ReportBlock {
   const dates = rows.map((row) => String(row[block.timeField] ?? "")).filter(Boolean).sort()
   const from = period.from || dates[0]
   const to = period.to || dates.at(-1)
   if (!from || !to) return { type: "series", title: block.title, bucket: block.bucket, points: [], gaps: 0, caption: "No dates were available." }
-  const points: Array<{ bucket: string; label?: string; value: number | null }> = []
-  const cursor = new Date(`${from}T00:00:00Z`); const end = new Date(`${to}T00:00:00Z`)
-  const increment = () => { if (block.bucket === "day") cursor.setUTCDate(cursor.getUTCDate() + 1); else if (block.bucket === "week") cursor.setUTCDate(cursor.getUTCDate() + 7); else if (block.bucket === "month") cursor.setUTCMonth(cursor.getUTCMonth() + 1); else cursor.setUTCMonth(cursor.getUTCMonth() + 3) }
-  while (cursor <= end) {
-    const key = bucketDate(cursor.toISOString().slice(0, 10), block.bucket)
-    if (!key) break
-    const bucketRows = rows.filter((row) => bucketDate(String(row[block.timeField] ?? ""), block.bucket) === key)
-    points.push({ bucket: key, label: key, value: bucketRows.length ? aggregate(bucketRows, block.metric) : null })
-    increment()
+  const buildPoints = (seriesRows: ValueRow[]) => {
+    const points: Array<{ bucket: string; label?: string; value: number | null }> = []
+    const cursor = new Date(`${from}T00:00:00Z`); const end = new Date(`${to}T00:00:00Z`)
+    const increment = () => { if (block.bucket === "day") cursor.setUTCDate(cursor.getUTCDate() + 1); else if (block.bucket === "week") cursor.setUTCDate(cursor.getUTCDate() + 7); else if (block.bucket === "month") cursor.setUTCMonth(cursor.getUTCMonth() + 1); else cursor.setUTCMonth(cursor.getUTCMonth() + 3) }
+    while (cursor <= end) {
+      const key = bucketDate(cursor.toISOString().slice(0, 10), block.bucket)
+      if (!key) break
+      const bucketRows = seriesRows.filter((row) => bucketDate(String(row[block.timeField] ?? ""), block.bucket) === key)
+      points.push({ bucket: key, label: key, value: bucketRows.length ? aggregate(bucketRows, block.metric) : null })
+      increment()
+    }
+    return points
   }
+  const points = buildPoints(rows)
   const gaps = points.filter((point) => point.value === null).length
   const caption = gaps ? `${gaps} bucket${gaps === 1 ? "" : "s"} have no data; values are not interpolated.` : undefined
-  void source
-  return { type: "series", title: block.title, bucket: block.bucket, points, gaps, caption }
+  if (!block.splitBy) return { type: "series", title: block.title, bucket: block.bucket, points, gaps, caption }
+  const grouped = new Map<string, ValueRow[]>()
+  for (const row of rows) { const key = String(row[block.splitBy] ?? "Unspecified"); grouped.set(key, [...(grouped.get(key) ?? []), row]) }
+  const ranked = [...grouped.entries()].sort((a, b) => (aggregate(b[1], block.metric) ?? 0) - (aggregate(a[1], block.metric) ?? 0))
+  const selected = ranked.slice(0, block.limit ?? 5).map(([key, seriesRows]) => ({ key, points: buildPoints(seriesRows), gaps: buildPoints(seriesRows).filter((point) => point.value === null).length }))
+  const dropped = Math.max(0, ranked.length - selected.length)
+  return { type: "series", title: block.title, bucket: block.bucket, points, gaps, caption: `${selected.length} series shown${dropped ? `; ${dropped} lower-volume series omitted.` : "."}`, series: selected }
 }
 
 export function compileReportDefinition(definition: ReportDefinition, source: LoadedReportDefinitionSource, now = new Date(), periodOverride?: ReportDefinitionPeriod): ReportDocument {
@@ -247,7 +256,7 @@ export function compileReportDefinition(definition: ReportDefinition, source: Lo
     }
     if (block.type === "series") {
       if (!source.availableFields.has(block.timeField)) throw new ReportDefinitionExecutionError(`Series timeField is unavailable: ${block.timeField}`)
-      blocks.push(buildSeries(rows, block, period, source))
+      blocks.push(buildSeries(rows, block, period))
       continue
     }
     if (block.type === "comparison") {

@@ -1,6 +1,6 @@
 # Prescan Security and Smart Security Roadmap
 
-**Status:** implementation underway; Phases 1–4, the first Phase 5 release, and the read-only Phase 6 console are deployed
+**Status:** Phases 1–7 are deployed; externally anchored checkpoints and legal-process review remain future work
 
 **Updated:** 2026-09-08
 **Authority:** this document supersedes every earlier Smart Security Cloud Run, middleware, Gemma-service, Antigravity, and autonomous-defense plan in this repository.
@@ -205,7 +205,7 @@ Access:
 - customers never read this table directly;
 - account deletion and evidence retention follow an approved retention policy.
 
-Until tamper-evident storage and access history exist, call these investigative records, not legal-grade chain-of-custody evidence.
+Phase 7 adds database-level seals and administrator access history. Those controls make the records tamper-evident inside the operational database; they do not make them legally certified chain-of-custody evidence.
 
 ## Phase 5: customer rejection experience
 
@@ -276,22 +276,43 @@ Use the existing Systems administrator gate and server-authorized APIs. Service 
 
 ## Phase 7: operations and retention
 
-Before commercial rollout, approve:
+**Implementation status:** deployed through migrations `20260908150000_add_security_retention_and_admin_audit` and `20260908153000_enforce_append_only_security_evidence_grants`, `prescan-document` version 40, and web commit `6ede5f2`.
 
-- quarantine-byte retention;
-- evidence-metadata retention;
-- account-deletion behavior;
-- human re-scan and false-positive release procedures;
-- safe deletion procedure;
-- access logging for security evidence;
-- incident export format.
+Operational policy:
 
-Recommended starting policy for review:
+- security-quarantined bytes remain private under `_quarantine` for 30 days;
+- ordinary rejected bytes remain private under `_quarantine` for 24 hours;
+- an administrator can place a reasoned investigation hold that suspends byte deletion;
+- a held object cannot be re-scanned until the hold is released;
+- re-scan returns the same private object to `_inbox` and invokes `prescan-document`; it never releases directly into processing;
+- a daily reconciler repairs missing retention rows, safely claims eligible deletion work, and records intended, completed, failed, and recovered deletion actions;
+- minimized evidence older than 180 days is reported as archive-eligible but is not automatically deleted;
+- account deletion continues to remove account-scoped prescan evidence and file bytes under the approved product privacy behavior;
+- no autonomous account punishment, permanent ban, credential revocation, or billing action exists.
 
-- quarantined bytes retained for 30 days;
-- minimized security metadata retained for 180 days where permitted;
-- account deletion removes file bytes;
-- no autonomous account punishment, permanent ban, credential revocation, or billing action.
+Evidence integrity:
+
+- prescan events are sealed from a canonical JSON payload with SHA-256;
+- new events link to the previous event hash in the same prescan correlation;
+- pre-Phase-7 events are explicitly treated as independently sealed baseline roots;
+- evidence reads, exports, re-scan operations, holds, and retention actions append to a separately sealed administrator audit chain;
+- service-role access is limited to `SELECT` and `INSERT` on both evidence tables; browser roles have no direct access;
+- deleting an operational file cannot null or rewrite an already-sealed event identifier;
+- the administrator export includes both chains and an offline verifier that detects changed fields, changed payloads, duplicate IDs, and broken links.
+
+The current guarantee is **database-sealed, tamper-evident investigative evidence**. It is not yet an externally anchored or legally reviewed custody system. A sufficiently privileged database operator can still alter the database and its local chain, and application audit events do not capture direct Supabase platform access.
+
+## Phase 8: external anchoring and legal-process readiness
+
+This is a separate approval and key-management project, not a hidden completion claim in Phase 7:
+
+- periodically sign the current prescan and administrator-audit chain heads;
+- store signed checkpoints outside the primary Supabase project in immutable or independently controlled storage;
+- verify checkpoint continuity during evidence export;
+- capture direct database, storage, and platform administrator access through provider audit logs;
+- define clock, signing-key rotation, evidence-hold, export, custody-transfer, and incident-handling procedures;
+- approve retention and account-deletion exceptions for investigations;
+- obtain legal review before describing exports as legal chain-of-custody evidence.
 
 ## Verification
 
@@ -319,6 +340,10 @@ Required assertions:
 - every completed action has a durable terminal event;
 - no secrets or raw file content enter evidence metadata;
 - dismissal leaves evidence intact;
+- scheduled byte deletion never runs while an investigation hold exists;
+- a held object cannot be re-scanned or released;
+- every administrator evidence read and state-changing action is appended to the administrator audit trail;
+- sealed exports fail verification when a visible field, canonical payload, event hash, or chain link changes;
 - tenant ownership holds across scan, notice, quarantine, and Systems APIs;
 - authenticated clients cannot author file security/lifecycle columns or insert outside their own `_inbox`;
 - clean business fixtures produce no unexplained rejection;
@@ -347,6 +372,7 @@ No retired Cloud Run component is automatically revived by that decision.
 4. Add the evidence and notification migrations with reviewed grants and RLS.
 5. Add customer rejection notices.
 6. Add `/systems/security` and authenticated server APIs.
-7. Run the fixture and concurrency suite locally.
+7. Add bounded byte retention, investigation holds, re-scan controls, database seals, administrator audit history, and verifiable evidence export.
+8. Run the fixture, concurrency, evidence-integrity, access-control, TypeScript, lint, edge, and production-build checks.
 8. Deploy prescan with `--no-verify-jwt`, then deploy the application UI.
 9. Verify production evidence coverage before changing public security claims.

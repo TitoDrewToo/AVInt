@@ -2,7 +2,7 @@
 
 **Goal:** Give AVIntelligence a repeatable CLI-first workflow for finding user-visible errors, diagnosing root cause, documenting recurring issues, and turning fixes into prevention loops.
 
-**Current posture:** The project already emits structured JSON errors from selected Next.js API routes through `lib/api-error.ts`, structured Supabase Edge Function logs through `supabase/functions/_shared/log.ts`, health status through `/api/health`, Smart Security integrity status through `/api/smart-security/health`, and maintenance jobs for stuck Smart Storage processing. This workflow coordinates those pieces until a dedicated `pnpm ops:*` CLI exists.
+**Current posture:** The project already emits structured JSON errors from selected Next.js API routes through `lib/api-error.ts`, structured Supabase Edge Function logs through `supabase/functions/_shared/log.ts`, health status through `/api/health`, and maintenance jobs for stuck Smart Storage processing. The retired `/api/smart-security/health` scaffold is not an operational source. Prescan security evidence will surface through `/systems/security` after the approved roadmap is implemented.
 
 ## When To Run
 
@@ -69,14 +69,13 @@ Check provider health first so you do not misdiagnose an upstream outage as an a
 
 ```bash
 curl -sS "$NEXT_PUBLIC_APP_URL/api/health"
-curl -sS "$NEXT_PUBLIC_APP_URL/api/smart-security/health"
 ```
 
 Record:
 
 - overall status
 - provider statuses
-- Smart Security status
+- prescan errors and rejection outcomes from Supabase logs; later, `/systems/security`
 - whether the health check itself fails
 
 ### 2. Vercel Runtime Logs
@@ -92,7 +91,7 @@ Search for:
 - JSON log lines with `level:"error"`
 - route names from `lib/api-error.ts`
 - raw `console.error` messages
-- `500`, `Unhandled`, `TypeError`, `ReferenceError`, `Supabase`, `Creem`, `Smart Security`
+- `500`, `Unhandled`, `TypeError`, `ReferenceError`, `Supabase`, `Creem`, `prescan`
 
 Important user-facing routes:
 
@@ -202,7 +201,7 @@ Record:
 Follow this sequence.
 
 1. Define the investigation window.
-2. Check `/api/health` and `/api/smart-security/health`.
+2. Check `/api/health` and prescan function health/errors.
 3. Pull Vercel logs for the window.
 4. Pull Supabase function logs for the window.
 5. Query `processing_jobs` for the window and affected user.
@@ -370,7 +369,7 @@ User impact:
 - Retry result:
 
 Health:
-<paste /api/health and /api/smart-security/health summaries>
+<paste /api/health and prescan-security summaries>
 
 Vercel grouped errors:
 <route, stage, message, count, first seen, last seen>
@@ -410,4 +409,3 @@ Target outputs:
 - `docs/ops/issues/YYYY-MM-DD-<short-slug>.md`
 
 Do not build a dashboard until the CLI workflow has produced useful reports for at least two real incidents or two weekly reviews.
-

@@ -49,10 +49,11 @@ AVIntelligence currently uses:
 4. extension and declared MIME reconciliation
 5. structural checks
 6. duplicate quarantined hash check
-7. Smart Security scan
-8. AI safety pass
-9. approve and move to canonical path
-10. trigger deeper processing
+7. bounded file-type security inspection
+8. AI suitability pass where supported
+9. record the prescan decision
+10. approve and move to canonical path, or quarantine/reject
+11. trigger deeper processing only after approval
 
 ### Reusable Principle
 
@@ -73,56 +74,50 @@ AI checks.
 - domain-specific accept/reject policy
 - downstream processing stages
 
-## 3. Separate Security Service Pattern
+## 3. Integrated Prescan Security Pattern
 
 ### Proven Shape
 
-Smart Security is intentionally separate from AVIntelligence.
-
-It handles:
-
-- file scan decisions
-- request decisioning
-- security event recording
+AVIntelligence keeps upload validation, security inspection, evidence, and the
+approve-or-quarantine decision at the prescan boundary. The abandoned external
+scanner and request middleware are not reusable patterns.
 
 ### Reusable Principle
 
-If security logic is becoming a product capability or a shared defense layer,
-separate it from the main application so it can evolve independently.
+Keep the security decision next to the protected upload state transition so no
+new file reaches expensive extraction without a recorded prescan outcome.
 
 ### What To Standardize
 
-- app identifies itself to the security service
-- signed URLs preferred over broad storage access
-- events and decisions recorded with sanitized metadata
-- observe mode before enforcement mode
+- cheap deterministic validation before model calls
+- protected inbox and quarantine paths
+- sanitized, append-only rejection evidence
+- one approved handoff into downstream processing
 
 ### What To Keep Local
 
-- decision thresholds
-- app-specific protected routes
-- app-specific risk signals
+- accepted file types and structural rules
+- domain suitability policy
+- customer-facing rejection language
 
-## 4. Observe-Then-Enforce Rollout Pattern
+## 4. Evidence-Before-Action Pattern
 
 ### Proven Shape
 
-Both AVIntelligence and Smart Security reflect a staged rollout idea:
-
-- collect decisions first
-- observe real traffic
-- enforce later once confidence is adequate
+Prescan records the intended action before moving or approving a file, then
+records the terminal result.
 
 ### Reusable Principle
 
-Do not enable fail-closed security enforcement without evidence from production
-behavior first, unless the risk profile absolutely requires it.
+Security actions need enough evidence to reconstruct what was checked, why the
+decision was made, and whether the storage action completed.
 
 ### What To Standardize
 
-- mode flag
-- telemetry capture
-- explicit block/rate-limit/challenge outputs
+- correlation identifiers
+- normalized reasons
+- intended and terminal action events
+- incomplete-sequence reconciliation
 
 ### What To Keep Local
 

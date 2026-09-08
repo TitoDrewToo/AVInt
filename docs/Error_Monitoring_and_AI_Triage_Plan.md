@@ -6,7 +6,7 @@
 
 ## 1. What already exists (build on it)
 - **Structured JSON logs** everywhere: `supabase/functions/_shared/log.ts` (`logEvent`/`logError`) + `lib/api-error.ts` (`serverError`) emit single-line JSON with `fn / stage / event / message / stack / fields`. ~91 call sites.
-- Domain event tables: `processed_webhook_events`, `smart_security_events`.
+- Domain event tables: `processed_webhook_events`; the prescan roadmap adds a dedicated `prescan_security_events` evidence trail rather than reusing the retired middleware-era security tables.
 - User-facing errors surface via a global toaster.
 
 **The gap:** logs are ephemeral (console → Supabase log explorer). No durable store, no grouping/dedup, no rich context (which user, which tool/button), no alerting, no AI triage, no monitoring page.

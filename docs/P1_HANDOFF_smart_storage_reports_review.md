@@ -146,7 +146,7 @@ Proposed tests for Claude to prioritize:
 
 - Preserve user and firm tenant isolation at the database and server layers.
 - Do not move sensitive report authorization into client-only checks.
-- Preserve the Smart Security ingestion boundary and its current observe/fail-closed configuration controls.
+- Preserve `prescan-document` as the ingestion security boundary. Do not restore the abandoned Cloud Run scanner, request middleware, or their observe/enforce environment controls; the replacement path is defined in `docs/smart-security-architecture.md`.
 - Preserve audit/provenance data: source file, source row, raw extraction, normalization state, and review state.
 - Do not alter verified tax math, deductible totals, meals treatment, income partitioning, or non-USD exclusion without a separate explicit review.
 - Do not add client-facing pricing changes as part of this P1.

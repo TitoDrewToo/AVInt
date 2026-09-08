@@ -32,7 +32,7 @@ Retain:
 - authentication and service-role boundary;
 - ownership/workspace authorization;
 - magic-byte and MIME validation;
-- Smart Security screening;
+- native prescan security inspection;
 - quarantine behavior;
 - checksum generation;
 - inbox-to-canonical movement.

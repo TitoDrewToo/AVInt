@@ -15,8 +15,7 @@ is to preserve:
 
 This reference set is based only on code and docs that were actually inspected:
 
-- `avint/`
-- `smart-security/`
+- `avint/`, including its native prescan security boundary
 
 The following were intentionally excluded from code-derived conclusions because
 no inspectable local source tree was available in this workspace:

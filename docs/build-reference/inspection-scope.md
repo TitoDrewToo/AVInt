@@ -13,20 +13,10 @@ or unavailable projects.
 Inspected areas included:
 
 - product README and public capability docs
-- request perimeter middleware via `proxy.ts`
 - entitlement and pricing status logic
 - upload prescan and quarantine flow
 - delete-account route
 - pricing structure and plan definitions
-
-### Smart Security
-
-Inspected areas included:
-
-- service README
-- file scan request validation and decisioning
-- request decision engine
-- event recording design
 
 ## Explicit Exclusions
 
@@ -65,7 +55,6 @@ evidence.
 
 This first pass should be read as:
 
-- proven patterns from AVIntelligence
-- proven defensive patterns from Smart Security
+- proven product and defensive patterns from AVIntelligence
 - a structure for future additions when PicklePal and Hooper source becomes
   available

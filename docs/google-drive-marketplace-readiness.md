@@ -10,7 +10,7 @@ Smart Storage now has an `Import from Drive` entry beside the existing upload co
 4. downloads selected supported files server-side;
 5. writes them to the existing Smart Storage landing zone;
 6. preserves `source_provider`, Drive file ID, Drive URL, and Drive modification time;
-7. lets the existing Smart Security prescan, extraction, normalization, reports, and exports continue unchanged.
+7. lets the existing prescan security boundary, extraction, normalization, reports, and exports continue unchanged.
 
 Refresh tokens are encrypted with AES-256-GCM before storage. The connection table is RLS-protected, and API routes derive the AVIntelligence user from the bearer session rather than accepting a browser-supplied user ID.
 

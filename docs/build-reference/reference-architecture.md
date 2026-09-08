@@ -57,9 +57,9 @@ Use for durable reasons behind key implementation choices.
 Examples:
 
 - why entitlement logic was split into a pure client/server-safe module
-- why Smart Security is a separate service
+- why upload security is enforced inside prescan before deeper processing
 - why prescan quarantines before deeper AI processing
-- why observe-mode rollout exists before enforce-mode blocking
+- why rejection evidence is recorded before storage actions
 
 ## Selection Model
 
@@ -85,7 +85,7 @@ docs/build-reference/
   pattern-families.md
   project-notes/
     avintelligence.md
-    smart-security.md
+    prescan-security.md
     picklepal.md
     hooper.md
   standards/

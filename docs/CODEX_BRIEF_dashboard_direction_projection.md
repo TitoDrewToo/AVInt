@@ -220,11 +220,9 @@ Still open from `CODEX_TASK_2026-09-06b`:
 - **Grep `subscriptions_email_unique` / `subscriptions_email_key`.** Both are
   UNIQUE on the same column. If no upsert names either via
   `ON CONFLICT ON CONSTRAINT`, drop `subscriptions_email_unique`.
-- **Disable the dead Cloud Run invocation** — the optional LLM security
-  augmentation only. **Do not touch `prescan-document`'s ingestion prescan**,
-  which stays exactly as is. Note it currently costs up to 60s per upload when
-  the dead service hangs rather than erroring (`fetchWithTimeout(..., 60_000)`);
-  measure before deciding.
+- **Superseded security note:** the entire external Cloud Run integration was
+  later abandoned, not only its optional LLM augmentation. The approved
+  prescan-native replacement is `docs/smart-security-architecture.md`.
 - **Revision history references `category`**, a `records` column the panel does
   not display as a field. Surface it or label the entry's origin.
 - **Cold load ~7s** measured on Smart Storage this session (0 -> 11 documents),

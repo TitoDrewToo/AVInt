@@ -1,570 +1,343 @@
-# Smart Security — Architecture Reference
+# Prescan Security and Smart Security Roadmap
 
-Durable reference for the Smart Security subsystem. Read this before reviewing or extending any `smart-security/` work. Phase-specific implementation specs live in `docs/smart-security-phase-N.md`.
+**Status:** approved direction, implementation pending
 
-## Purpose
+**Updated:** 2026-09-08
+**Authority:** this document supersedes every earlier Smart Security Cloud Run, middleware, Gemma-service, Antigravity, and autonomous-defense plan in this repository.
 
-A defensive security layer built as a separate service from AVIntelligence, with AVIntelligence as its first and (in year 1) only customer. Year 2+ optionally opens the same service to external tenants.
+## Product definition
 
-Design goals:
+Smart Security is AVIntelligence's integrated upload-defense, rejection-evidence, and investigation capability. It is not a separate Cloud Run product or middleware service.
 
-1. Prevent or contain attacks at the boundary — not comment on them afterward.
-2. Produce a durable, cited decision record for every action taken.
-3. Learn continuously from incidents (internal loop) and public frameworks (external loop).
-4. Stay reversible in the autonomous envelope; never delete customer data autonomously.
-5. Be architected from day 0 for multi-tenant extraction, even while running single-tenant.
-
-Non-goals:
-
-- Endpoint security (laptops/servers) — out of category.
-- Network-layer DDoS / edge WAF — outside Smart Security's application-layer mandate. Verified production edge as of 2026-05-10 is Vercel (no Cloudflare in stack); edge WAF (e.g. OWASP managed ruleset via Cloudflare in front of Vercel) is explicitly deferred. See `docs/smart-security-infra-hardening.md` for the accept-gap decision and reopen criteria.
-- Offensive hack-back — legally prohibited and explicitly excluded.
-- General-purpose SIEM — adjacent space; not our focus.
-
-## Existing baseline (as of phase 0 complete)
-
-Smart Security is a deployed Cloud Run service. Two AVIntelligence integration points call into it in observe mode today. **Neither is modified in phases 0-3.** The wire contracts below are frozen at the boundary; Smart Security phase work builds logic *behind* them.
-
-**Deployment state (verified 2026-05-07)**:
-
-- **Service repo**: `github.com/TitoDrewToo/smart-security` (private, TypeScript / Node.js).
-- **Cloud Run service**: `smart-security` in `asia-southeast1`, GCP project `avint-core`, auto-scale 0–20.
-- **Resolved via**: `SMART_SECURITY_URL`.
-- **Real implementations live**:
-  - ClamAV signature scanning (freshclam on container start, real signature DB).
-  - Structural scanners for PDF active content, Office macros/ActiveX, CSV formula injection.
-  - Signed-URL handoff with Supabase origin/bucket validation.
-  - Observe-mode rollout pattern with fail-open/fail-closed env toggle.
-  - `learning_record` foundation in scan response (`system_decision` + `human_label` fields) — feedback loop for future ML training data.
-- **Service identity**: `smart-security-runner@avint-core.iam.gserviceaccount.com` with Artifact Registry Reader + Secret Manager Accessor.
-- **Secrets in Secret Manager** (created 2026-04-23): `SMART_SECURITY_API_KEY`, `SMART_SECURITY_SUPABASE_SERVICE_ROLE_KEY`, `SMART_SECURITY_SUPABASE_URL`.
-
-**Wired endpoints**:
-
-| Layer | Caller in AVI repo | Endpoint on Smart Security service | Response vocabulary | Observe/enforce toggle |
-|---|---|---|---|---|
-| Ingress (file) | `supabase/functions/prescan-document/index.ts:407` | `POST /v1/scan/file` | `clean / suspicious / infected / scan_error` | `SMART_SECURITY_REQUIRED` |
-| Session (request) | `proxy.ts:38` | `POST /v1/decide` | `allow / log_only / rate_limit / block / challenge` | `SMART_SECURITY_MIDDLEWARE_MODE` |
-| Telemetry (events) | not yet wired in AVI | `POST /v1/events` | n/a (write-only) | n/a |
-
-The third endpoint (`/v1/events`) exists on the deployed service for security-relevant activity logging from the protected app (rate-limit hits, suspicious paths, scanner events, abuse signals). AVIntelligence does not yet call it; a future phase wires it.
-
-**`POST /v1/scan/file`** request body (sent by prescan-document):
-
-```json
-{
-  "app_id": "avintelligence",
-  "file_id": "...",
-  "storage_path": "...",
-  "signed_url": "...",
-  "mime_type": "...",
-  "filename": "..."
-}
-```
-
-Response shape consumed by prescan-document:
-
-```json
-{
-  "decision": "clean | suspicious | infected | scan_error",
-  "signals": ["..."],
-  "scanner": { "clamav": { "signature": "..." } }
-}
-```
-
-**`POST /v1/decide`** request body (sent by proxy.ts):
-
-```json
-{
-  "app_id": "avintelligence",
-  "source": "vercel_middleware",
-  "ip": "...",
-  "method": "GET",
-  "path": "...",
-  "user_agent": "...",
-  "accept_language": "...",
-  "country": "...",
-  "metadata": { "host": "...", "referer": "..." }
-}
-```
-
-Response shape consumed by proxy.ts (on the deployed service the response also carries `risk_score`, `reason`, `fingerprint`, `ttl_seconds`, `mode`; AVIntelligence ignores these today, but Smart Security may rely on them for client-side caching in later phases):
-
-```json
-{ "decision": "allow | log_only | rate_limit | block | challenge" }
-```
-
-The `log_only` value is internal to Smart Security and treated as `allow` by `proxy.ts` today. Adding wire vocabulary requires coordinated cross-repo edits.
-
-Headers on both: `Content-Type: application/json`, `x-smart-security-key: <SMART_SECURITY_API_KEY>`.
-
-Protected prefixes already declared in `proxy.ts:7` (the Layer-2 inspection surface):
-
-- `/api/chat`
-- `/api/redeem-gift`
-- `/api/reports`
-- `/api/creem/checkout`, `/api/creem/cancel`
-- `/api/delete-account`, `/api/delete-file`
-- `/api/obligations`
-- `/tools`
-
-Environment variables already declared:
-
-- `SMART_SECURITY_URL` — base URL for the Smart Security service.
-- `SMART_SECURITY_API_KEY` — shared key sent in `x-smart-security-key`.
-- `SMART_SECURITY_REQUIRED` — when `true`, prescan fails closed on scan errors.
-- `SMART_SECURITY_MIDDLEWARE_MODE` — when `enforce`, proxy honors decisions; otherwise decisions are observed via response headers only.
-
-`docs/build-reference/reference-architecture.md:60` establishes the intent: *"Smart Security is a separate service"* with *"observe-mode rollout... before enforce-mode blocking"*. This repository's `smart-security/` directory is the source tree for that separate service.
-
-**What this means for the Smart Security build**:
-
-- The `smart-security/` directory is the source for the separate service; year-1 deploy target is Google Cloud Run.
-- Wire contracts (`/v1/scan/file`, `/v1/decide`) are frozen for phases 0-3. The AVIntelligence side is not modified during these phases. Any future wire change requires coordinated edits to both sides in a single commit.
-- The Smart Security *internal* action vocabulary (the `action` enum in `schemas/decision.schema.json`) is richer than the *external* wire vocabulary. A translation layer at the API handler maps internal decisions to the wire response shape.
-- Phase 1 (evidence spine) adds decision logging *inside the Smart Security service* for every call to both endpoints, without changing the wire.
-
-## Framing principles
-
-| Principle | Meaning |
-|---|---|
-| Internal-first | AVIntelligence is the sole tenant in year 1 (`tenant_id = "avint"`). |
-| Multi-tenant-ready | Every schema carries `tenant_id` from day 0; year-2 extraction is a flag flip, not a migration. |
-| Prevention-first | Defensive action happens at the ingress/session/egress boundary, not after damage. |
-| Evidence-first | No action commits until a decision record persists. |
-| Doctrine-cited | Every classification references at least one public security framework. |
-| Reversible-only (year 1) | No autonomous irreversible actions. Ever. |
-| Deterministic orchestration | The orchestrator is code, not an LLM. LLMs fill roles the orchestrator invokes. |
-| No hack-back | Bounded to containment, deception, and forensic capture. |
-| Wire stability | The boundary API to AVIntelligence is conservative. Internal evolution does not leak as breaking wire changes. |
-
-## Threat model
-
-Primary threats defended against (AI-era-aware — incumbent vendors bolt AI onto pre-2020 detection engines; we design for an AI-saturated threat landscape from day 1):
-
-1. **Malicious document uploads** — malware-laden PDFs, macro-embedded Office files, polyglot files, archive bombs.
-2. **Synthetic / forged documents** — AI-generated invoice forgeries, fabricated receipts, synthetic identity docs designed to pass surface-level checks.
-3. **Prompt injection on agentic workflows** — adversarial text in scanned documents that aims to subvert AVIntelligence's downstream LLM extraction (or Smart Security's own triage agent).
-4. **OCR poisoning / prompt-in-metadata** — visually-obscured instructions in document content or EXIF/PDF metadata.
-5. **AI-generated phishing / abuse content** — coherent, well-targeted phishing payloads at high volume; LLM-authored social-engineering text in document upload flows.
-6. **Account takeover** — credential stuffing, session hijacking, session fixation, impossible-travel patterns.
-7. **Data exfiltration via abnormal egress** — compromised edge functions making outbound calls to unusual destinations.
-8. **Cross-tenant attacks** (Phase 6+ when external tenants exist) — hash reputation reuse, attacker reuse of infrastructure across tenants.
-
-Explicitly out of scope for v1:
-
-- Network-layer DDoS / edge WAF, except for documenting whether an edge layer is actually present before observe-to-enforce promotion.
-- Endpoint compromise on user machines we don't control.
-- Supply-chain attacks on third-party dependencies (tracked separately; not Smart Security's mandate).
-
-## System layers
-
-### Layer 1 — Ingress boundary (wired, observe mode)
-
-AVIntelligence uploads pass through `supabase/functions/prescan-document`, which calls `POST ${SMART_SECURITY_URL}/v1/scan/file` with a signed URL. The Smart Security service is expected to fetch the bytes, run the analyzer pipeline, and return a wire-vocabulary decision.
-
-Wire response values (preserved through all phases):
-
-- `clean` — ingested normally.
-- `suspicious` — prescan rejects in enforce mode; allows with watch in observe mode.
-- `infected` — prescan rejects.
-- `scan_error` — prescan allows in observe mode; rejects when `SMART_SECURITY_REQUIRED=true`.
-
-Smart Security's internal decision (`allow / allow_with_watch / quarantine / reject / ...`) is richer; the API handler translates to the wire response shape. See the translation table in `schemas/decision.schema.json` description and the API handler in `services/api/` (phase 2+).
-
-### Layer 2 — Session boundary (wired, observe mode)
-
-`proxy.ts` calls `POST ${SMART_SECURITY_URL}/v1/decide` for every request whose path matches `PROTECTED_PREFIXES`. The Smart Security service is expected to evaluate the request against rolling per-principal baselines and return a wire decision.
-
-Wire response values:
-
-- `allow` — proxy passes through.
-- `block` — proxy returns 403.
-- `rate_limit` — proxy returns 429.
-- `challenge` — proxy redirects to `/auth/process?action=login&next=<original path>`.
-
-The wiring exists today. Phase 4 introduces the actual anomaly-scoring intelligence behind this endpoint: rolling baselines, behavioral detections, model-assisted classification. Phase-0 Smart Security does not serve intelligent decisions at `/v1/decide` yet; the current service deployment can legitimately return `allow` for everything until phase 4 lands.
-
-### Layer 3 — Egress boundary (not yet wired)
-
-Edge function outbound traffic monitoring. Domain allowlists per function, anomaly scoring on destinations, outbound request logging. Phase 6+; requires new integration points in AVIntelligence that do not yet exist.
-
-## Agent roles
-
-Smart Security runs on **own-model inference** (Gemma 4 family, Apache 2.0). Third-party APIs are gap-fillers used only where a self-hosted equivalent does not yet exist or where an internal-only batch task does not justify the inference cost. The current in-scope model is base Gemma 4 E4B with prompts; fine-tuning is deferred unless scope explicitly reopens.
-
-| Role | Function | Primary model | Gap-filler | Phase introduced |
-|---|---|---|---|---|
-| Triage Agent | Read-only classification of detection events; cites doctrine. | base Gemma 4 E4B + prompts | none | 3 |
-| Responder Agent | Selects action from matrix; writes human-readable justification. | base Gemma 4 E4B + prompts; 26B A4B remains aspirational for complex / enterprise tier | none | 4 |
-| Investigator Agent | Post-incident timeline + review + postmortem. | deferred → deferred → fine-tuned Gemma 4 26B A4B with extended-reasoning prompts | Anthropic API (Sonnet/Opus) on flat-fee internal use only, deprecated when v2.0 ships | 4 |
-| Doctrine Agent | Ingests public frameworks, proposes rule updates. | base Gemma 4 26B A4B (batch) at v2.0 | Gemini batch API for bulk ingestion pre-v2.0 — non-realtime, not customer-facing | 3 |
-| Orchestrator | Routes events, enforces action matrix, holds kill-switch, emits audit trail. | Deterministic TypeScript state machine — not an LLM. | — | 1 |
-| Analyzer | ClamAV + structural scanners (live today); YARA-X + qpdf + pdfid + olevba added in phase 2. | Deterministic binaries; phase 2+ adds an E4B sanity-check on YARA matches before quarantine. | — | 2 |
-
-Every LLM invocation records the exact model and version in the decision record (`actor_model`, `actor_model_version`). This is the regression-detection mechanism when models, prompts, dependencies, or future fine-tunes ship new versions. Pre-v2.0 third-party gap-filler calls record the provider's model id verbatim so the audit trail makes the source unambiguous.
-
-## AI model strategy
-
-Smart Security's current inference path is self-hosted base Gemma 4 E4B served through the internal `smart-security-llm` Cloud Run service. Fine-tuning is deferred indefinitely and is out of current scope. Any future training environment is TBD when that scope reopens; do not pre-commit to Vertex AI, local hardware, or any specific training platform.
-
-### Why own-model
-
-- **License clarity**: Gemma 4 (Apache 2.0) supports clean commercial externalization. Llama-derived models (e.g. Foundation-sec-8B) carry Llama license terms that complicate Phase 3 SaaS launch.
-- **IP ownership**: if training scope reopens later, trained model weights can become a product asset rather than a recurring licensing dependency.
-- **Cost economics at scale**: self-hosted inference cost flattens; per-call API costs scale linearly with usage. Crossover point is reached well below external-tenant volume.
-- **Customization moat**: AVIntelligence's production telemetry (and, later, customer telemetry) is the most valuable training data for this domain. Fine-tuning against that data remains a future option, not current scope.
-- **Avoid third-party dependency for a security capability**: Smart Security's value proposition collapses if its inference path is rate-limited, deprecated, or repriced by a third party.
-
-### Model progression
-
-| Version | Base | Fine-tune | Tier served | Budget envelope | Status |
-|---|---|---|---|---|---|
-| v0.5 | Gemma 4 E4B | none (system prompts only) | Internal proof-of-concept; AVIntelligence dogfood | ~$0 (Cloud Run free tier + GCP $300 credit) | Phase 0.5 |
-| v1.0 | Gemma 4 E4B | deferred — not in current scope | Free / Pro tier (all customers at launch) | TBD if scope reopens | Deferred |
-| v2.0 | Gemma 4 26B A4B (MoE: 26B total / ~4B active per token) | LoRA on accumulated production telemetry + curated public corpus | Enterprise tier (deep reasoning, complex multi-step analysis) | ~$5K–15K when MRR allows | Phase 2 |
-
-### Scope discipline — match the model to the task
-
-User-facing latency must feel *intentional*, not strained. Do not push E4B past its sweet spot.
-
-**E4B sweet spot (v0.5 capabilities)**:
-- File-level triage and verdict
-- Pattern-match confirmation (YARA / structural rule + AI sanity check)
-- Single-document analysis (vendor ID, document type, basic fraud markers)
-- Standard PII detection
-- Per-file finding narratives (one-liner explanations)
-- Threat-intel summarization
-- Simple categorization
-
-**26B A4B domain (v2.0 features, gated until then)**:
-- Cross-document fraud correlation
-- Multi-step attack-chain reasoning
-- Complex contract-anomaly detection
-- Forensic incident reports with timelines
-- IaC vulnerability analysis with attack-path simulation
-- Strategic security recommendations
-- Long-context analysis
-
-Pro/Enterprise UI features that require 26B reasoning ship visible-but-disabled with "Available in v2.0" until the larger model's fine-tune is in production. Async queue UX is acceptable for slow analyses (intentional waits, not frozen pages). Low-confidence E4B cases surface as "needs analyst review" rather than forced guesses.
-
-### Current development track
-
-- **Production validation track**: E4B-powered v0.5 validates the serving, wiring, logging, and doctrine-citation pipeline.
-- **Fine-tuning track**: deferred indefinitely. Reopen only after Phase 0.5 has measured results and there is an explicit scope decision.
-- **R&D track**: future 26B A4B planning remains aspirational and gated on revenue and product need.
-
-## Autonomy boundary
-
-Encoded in `smart-security/policies/action-matrix.yaml`, not in model prompts. The matrix is reviewable in diffs; prompts drift.
-
-**Autonomous envelope, year 1 (all reversible)**:
-
-- Quarantine a file (move bytes to evidence bucket; mark row `status='quarantined'`).
-- Revoke a session / rotate a short-lived token.
-- Rate-limit a principal for ≤1 hour.
-- Block an upload at ingress before it lands in storage.
-- Freeze a storage path (write-block; not a delete).
-
-**Never autonomous, ever**:
-
-- Delete customer data.
-- Cross-tenant action (year-2 policy still forbids).
-- Prolonged lockout (>1h) of a paying principal.
-- Customer-visible communication (notifications, emails, webhooks to third parties).
-
-## Phase plan
-
-| Phase | Scope | Exit signal | Model | Status |
-|---|---|---|---|---|
-| 0 | Foundations: folder skeleton, schemas (internal + wire), seed policies, health endpoint. | Skeleton committed; health endpoint returns real signals. Wire schemas document existing contracts. | n/a | **Complete** |
-| 0.5 | End-to-end model pipeline validation on Google Cloud free tier: stand up `smart-security-llm` Python + HF Transformers Cloud Run service serving base Gemma 4 E4B (vLLM bypass per `smart-security-llm/docs/cloud-run-cuda-workaround.md`); AVIntelligence prescan calls the live LLM via the existing TS service; first prompts-only triage and finding narratives in production. | Base-E4B service answers a real triage call from production with cited doctrine, no out-of-pocket spend. | base Gemma 4 E4B | Pending |
-| 1 | Evidence spine only: Supabase `smart_security_decision_log` table; every `/v1/scan/file`, `/v1/decide`, and `/v1/events` produces a queryable decision record. Fine-tuning is deferred and not in current scope. | Every inbound request produces a persisted decision record. Base-E4B evaluation baseline is measured but not yet used for training. | base Gemma 4 E4B | Deferred — not in current scope |
-| 2 | Analyzer expansion: add YARA-X + qpdf + pdfid + olevba to the existing TS service alongside ClamAV/structural; port current suspicious-PDF markers into real YARA rules; `/v1/scan/file` decisions cite the firing rule. | Quarantine decision references a real YARA / structural rule, not a hand-coded marker. | unchanged | Pending |
-| 3 | Doctrine + Triage Agent: ingest NIST/CISA/OWASP/MITRE/D3FEND; every quarantine cites ≥2 doctrine sources. | First doctrine-cited quarantine decision recorded. | unchanged | Pending |
-| 4 | Responder Agent + session boundary intelligence: quarantine/revoke/rate-limit enforced; `/v1/decide` serves intelligent decisions with rolling baselines. | First reversible enforced action demonstrated with reversal path. | unchanged | Pending |
-| 5 | Internal feedback loop: weekly precision tracking, promotion governance, first observe→enforce promotion. | First rule promoted by formal precision criteria, not judgment. | unchanged | Pending |
-| 6 | v2.0 model + enterprise tier: fine-tune Gemma 4 26B A4B on accumulated telemetry; route enterprise-tier traffic to the larger model; cross-document correlation features unlock. | First enterprise-tier customer served by 26B model with measurably better complex-reasoning outcomes. | fine-tuned Gemma 4 26B A4B | Pending (gated on MRR) |
-| 7 | Egress boundary + cross-tenant threat intel. | Known-bad hash from tenant A blocks tenant B pre-ingest. | unchanged | Pending |
-| 8 | External-API public launch. | Conditional on Year-2 trigger criteria below. | unchanged | Pending |
-
-### Roadmap intent — attack pattern identification and prediction
-
-Smart Security's purpose includes both **classifying** observed events into known attack families (identification) and **anticipating** attack progression from partial signals (prediction). These are stated user goals and must not be lost between phases or compressed into a single phase — the data substrate has to mature before prediction can ride on it.
-
-- **Identification** is the Triage Agent's core function. Phase 0.5 ships the *primitive* — `/infer/triage` returns `{decision, confidence, doctrine_refs[], reasoning}` with cited `attack_id` / `cwe_id` per detection event. Phase 3 adds the real doctrine corpus (NIST/CISA/OWASP/MITRE/D3FEND) plus iterative retrieval (DISPATCH → EVALUATE → REFINE → LOOP). Production-quality identification is Phase 3+.
-- **Prediction** is built across Phase 4 (per-principal behavioral baselines for `/v1/decide`), Phase 4–5 (cross-event sequence correlation — partial attack chains identified before full manifest), and Phase 6+ (cross-tenant signals — IP/fingerprint reputation reuse). Prediction has no Phase 0.5 deliverable.
-- **Substrate dependency**: every triage record persisted via Phase 1's evidence spine carries enough metadata (`session_id`, `principal_id`, `attack_chain_position` if known, `temporal_neighbors`) for Phase 4's sequence detector to correlate without re-extracting features. Schema design in Phase 1 must not paint Phase 4 into a corner — confirm the decision-log schema supports temporal/sequence queries before the table ships.
-
-## Year-2 external launch trigger criteria
-
-All four must be true before opening the external API:
-
-1. ≥12 months of clean observe-and-enforce operating data from AVIntelligence usage.
-2. ≥500 AVIntelligence users protected in real-world operation.
-3. Precision and false-positive rate measured per detection, ready to publish.
-4. SOC2 Type 1 complete, tech E&O + cyber liability policy in place, Delaware C-Corp formed.
-
-If these are not met when the window arrives, Smart Security remains an AVIntelligence feature. That is still a win: zero infrastructure spend to replace, hardened AVI, and unique content-marketing material.
-
-## Two-service deployment topology
-
-Smart Security runs as **two Cloud Run services**, language-matched to task:
+`prescan-document` is the enforcement point:
 
 ```text
-                                ┌────────────────────────────┐
-                                │  AVIntelligence (Vercel)   │
-                                │                            │
-                                │  prescan-document  ──┐     │
-                                │  proxy.ts          ──┤     │
-                                └──────────────────────┼─────┘
-                                                       │
-                                                       │  HTTPS + x-smart-security-key
-                                                       │  (POST /v1/scan/file, /v1/decide, /v1/events)
-                                                       ▼
-                          ┌──────────────────────────────────────────┐
-                          │  Cloud Run: smart-security  (TypeScript) │
-                          │  asia-southeast1, repo: TitoDrewToo      │
-                          │                                          │
-                          │  - ClamAV daemon                         │
-                          │  - Structural scanners                   │
-                          │  - Decision log writer (Phase 1)         │
-                          │  - Triage / Responder gateways           │
-                          │  - Wire translation layer                │
-                          └────────────────────┬─────────────────────┘
-                                               │
-                                               │  internal HTTPS
-                                               │  (POST /infer/triage, /infer/explain)
-                                               ▼
-                          ┌──────────────────────────────────────────┐
-                          │  Cloud Run: smart-security-llm  (Python) │
-                          │  vLLM + base Gemma 4 E4B                 │
-                          │                                          │
-                          │  - Stateless inference                   │
-                          │  - Model artifacts from Cloud Storage    │
-                          │  - GPU when active, scale-to-zero idle   │
-                          └──────────────────────────────────────────┘
+upload
+  -> protected _inbox object
+  -> prescan authentication and ownership check
+  -> deterministic file validation
+  -> file-type security inspection
+  -> optional AI suitability / abuse classification
+  -> durable prescan decision
+  -> approve, quarantine, reject, or hold for retry
+  -> existing process-document flow only when approved
 ```
 
-**Why two services**:
+Nothing in this roadmap changes extraction, normalization, reports, dashboards, or the canonical data layer. `process-document` remains downstream and receives only approved new uploads.
 
-- **Language fit**: TypeScript for HTTP orchestration + scanner integration (Node ecosystem for ClamAV bindings, structural parsers, Supabase clients). Python for vLLM and Hugging Face model loading.
-- **Independent scaling**: scanner traffic is many small requests; inference traffic is fewer, larger requests with different memory / GPU profiles.
-- **Independent deploys**: a YARA rule update ships without re-deploying the LLM; an inference-service dependency update ships without disturbing the scanner.
-- **Compliance scope clarity**: each service has its own audit trail, its own secrets, its own access posture.
-- **Failure isolation**: if the LLM service is degraded, the scanner can still return deterministic decisions (`clean` for unsigned-clean files, fail-open for AI triage with a degraded-mode flag).
+## Retired architecture
 
-Both services share the doctrine + policies + schemas tree from `avint/smart-security/` via release-pinned snapshots — that folder is the source of truth, copied into each service's container at build time.
+The following are abandoned and must not be treated as current dependencies or future requirements:
 
-## Infrastructure choices
+- the standalone `smart-security` Cloud Run scanner;
+- the proposed `smart-security-llm` Cloud Run service;
+- the deleted Next.js request middleware / `proxy.ts` integration;
+- `/v1/scan/file`, `/v1/decide`, and `/v1/events` as AVIntelligence service boundaries;
+- signed-URL handoff from prescan to a standalone scanner;
+- `SMART_SECURITY_URL`, `SMART_SECURITY_API_KEY`, `SMART_SECURITY_REQUIRED`, `SMART_SECURITY_MIDDLEWARE_MODE`, and `SMART_SECURITY_LLM_*`;
+- Gemma, Gemini, or another model as a malware authority;
+- the May 2026 Antigravity, autonomous-defense, two-service, and external Smart Security product plans.
 
-| Concern | Choice | Rationale |
-|---|---|---|
-| Scanner service host (existing) | Google Cloud Run — `smart-security` (TypeScript) in `asia-southeast1` | Already deployed; ClamAV + structural live; auto-scale 0–20. |
-| LLM inference service host (new) | Google Cloud Run — `smart-security-llm` (Python + vLLM) | Separate container; language-appropriate per task; scales to zero. Phase 0.5 stands this up on free tier with base Gemma 4 E4B. |
-| Model training | Deferred indefinitely; future environment TBD | Not in current scope. Do not commit to Vertex AI, local hardware, or any training platform until scope reopens. |
-| Model artifact storage | Google Cloud Storage | Base-model and future artifact handoff to Cloud Run if needed. |
-| Decision log | Cloud SQL Postgres (Smart Security's own DB) | Within the Smart Security boundary; RLS-ready for multi-tenancy from day 1. AVIntelligence's Supabase Postgres remains separate. |
-| Evidence bucket | Cloud Storage bucket per tenant, access-restricted | Within Smart Security's project. Year-2 / enterprise migrates to customer-held CMEK keys. |
-| Doctrine storage | Cloud Storage + Cloud SQL pgvector | Public corpus only; chunk text in Cloud Storage, vector index in pgvector. |
-| Threat-intel + telemetry warehouse | BigQuery | `learning_record` rows from the scanner stream here for analytics and future optional data curation. |
-| Inference fallback (pre-v1.0 only) | Anthropic / Gemini API for Investigator and Doctrine ingestion | Used as gap-fillers, not user-facing. Removed when v1.0 / v2.0 ships. |
-| Repository layout | Two separate GitHub repos: `TitoDrewToo/smart-security` (TS scanner) + new `smart-security-llm` (Python LLM service). The local `avint/smart-security/` folder holds doctrine/policies/schemas as the canonical source for both. | Clean compliance scoping (SOC 2 / ISO 27001 audits scope to repo); architectural discipline; independent deploy cadence; the `avint/smart-security/` doctrine folder is consumed by both repos via release-versioned snapshots in later phases. |
-| Build orchestration | Antigravity Agent Manager (installed; billing TBD) | Native GCP integration for Cloud Run, IAM, Cloud Logging, and service-build workflows. Composes specialized agents (architecture, API contract, detection rules, service build, prompt engineering, validation, compliance/docs). |
-| Status of `avint/smart-security/` folder | Doctrine + policies + schemas + agent SKILL contract, in-repo for year 1 | Source of truth for action matrix, schemas, and operational skill. Consumed by the Cloud Run services via release-pinned snapshots; survives any future repo extraction. |
+The old `smart-security/` schemas and policies are historical scaffolding. They are non-authoritative and should be removed with the stale health route during implementation after dependency checks.
 
-## Commerce model — avintph.com as unified portal
+## Current baseline
 
-Smart Security customer-facing commerce runs through **avintph.com**, the same portal that sells AVIntelligence products. Smart Security is **not** a separate pricing site or customer dashboard. Same brand, same Creem integration, same customer dashboard.
+`supabase/functions/prescan-document/index.ts` already provides:
 
-Why this is the correct shape:
+- authenticated browser and internal calls;
+- file ownership and `_inbox` path validation;
+- file-size and supported-type limits;
+- magic-byte and extension consistency checks;
+- PDF active-content inspection;
+- CSV formula / command-cell detection;
+- XLSX container, macro, ActiveX, embedded-object, and external-link checks;
+- SHA-256 calculation and known-quarantined-hash refusal;
+- AI suitability classification for supported PDFs and images;
+- quarantine and approved-file storage moves;
+- `scan_reason`, `scanned_at`, and approved/quarantined file state;
+- the existing handoff into `process-document`.
 
-- One brand, one purchase flow, one customer dashboard.
-- Natural cross-sell — AVIntelligence customers see Smart Security API tiers in the same /pricing page.
-- Compliance scoping: customer-facing surfaces audited as one. Smart Security backend audited separately for SOC 2 / ISO 27001.
-- Less duplicate work — no second pricing page, no second dashboard, no second support channel.
+Known gaps:
 
-### Customer flow (Pattern B)
+- CSV and XLSX skip AI suitability classification;
+- the abandoned external scanner call still exists and can fail open;
+- the `pending_scan` to `scanning` claim is not atomic;
+- rejection presentation is limited to a small Blocked label;
+- no canonical file-scan evidence model exists;
+- the middleware-era `smart_security_events`, `smart_security_decisions`, and `smart_security_blocks` tables do not represent the new prescan product;
+- the old `/api/smart-security/health` route reports historical scaffold state, not prescan health;
+- without a selected antivirus engine, the product must not claim comprehensive signature-based malware scanning.
 
-1. Customer visits avintph.com → /pricing → sees AVIntelligence products + Smart Security API tiers in the same surface.
-2. Customer purchases a Smart Security tier via Creem (existing checkout flow).
-3. Creem webhook → avintph.com server → calls Smart Security `POST /v1/admin/keys` (new admin endpoint, phase 2) with tenant info.
-4. Smart Security generates an `ssk_xxx` API key, stores it tagged to `tenant_id`, returns the key.
-5. avintph.com customer dashboard displays the key once, shows integration docs, links to the API reference.
-6. Customer integrates: their app calls Smart Security directly with the key.
-7. avintph.com customer dashboard polls Smart Security `GET /v1/admin/usage` for display + billing reconciliation.
+## Security authority
 
-### Two auth paths in Smart Security
+Native prescan is authoritative for the controls it can prove:
 
-- **Customer-facing**: API key in `Authorization` header (or `x-smart-security-key`) for scan / decide / events calls.
-- **Internal admin**: service-to-service auth between avintph.com and Smart Security for provisioning + usage queries.
+- file identity and type;
+- size and container validity;
+- prohibited active content;
+- PDF structural risks;
+- Office macro, ActiveX, embedded-object, and external-link risks;
+- CSV formula injection patterns;
+- known rejected hashes;
+- bounded content suitability and abuse classification.
 
-AVIntelligence's `prescan-document` is itself a customer (tenant `avint-prod`) using a customer-style API key. There is no special path for AVIntelligence — the same API contract serves all tenants, AVIntelligence first.
+AI may classify suitability, detect suspicious content, or explain a rejection. AI never certifies a file as malware-free and never overrides a deterministic security rejection.
 
-### Pricing tiers (held in reserve — Phase 6+ / external launch)
+Comprehensive antivirus signatures are a separate future decision. Adding a managed malware scanner requires privacy, retention, latency, and vendor-review approval. The retired Cloud Run service is not the default answer.
 
-Recorded for continuity. Not active before external launch. Tier mapping aligns with model capability:
+## Phase 1: remove retired integration
 
-| Tier | Price | Model serving the tier | Role | Who it's for |
-|---|---|---|---|---|
-| Watch | $0 | base Gemma 4 E4B + prompts | Sensor network + marketing | Solo operators, indie SaaS |
-| Defend Starter | $29/mo (annual only) | base Gemma 4 E4B + prompts until training scope reopens | Self-serve growth tier | Small teams |
-| Defend | $99/mo | base Gemma 4 E4B + prompts until training scope reopens | Real revenue tier | Funded startups, early SaaS |
-| Defend Pro | $299/mo | fine-tuned Gemma 4 26B A4B (when v2.0 ships) | Enterprise / regulated | SOC 2-requiring customers |
+- Remove the external Smart Security request and response types from `prescan-document`.
+- Remove the abandoned Smart Security environment variables from active code and deployment configuration.
+- Remove `/api/smart-security/health` and the historical in-repo Smart Security scaffold after confirming no remaining imports.
+- Mark the separate Smart Security repositories and infrastructure as retired outside this repository; do not delete external infrastructure from this code change.
+- Update operational and product documentation so no current-state claim implies Cloud Run, ClamAV, YARA, Gemma, Gemini, or request middleware is live.
 
-The customer-facing API contract is identical across tiers; routing happens server-side based on `tenant_id` → tier → model.
+Closure:
 
-## Legal and compliance posture
+- no executable reference remains to the retired endpoints or environment variables;
+- prescan continues through its native checks and provider chain;
+- the application builds without the historical scaffold.
 
-**Compliance is a P1 design objective, not a Phase 3 retrofit.** The system is built so that SOC 2 / ISO 27001 application is an evidence-collection exercise at audit time, not an architecture rewrite.
+## Phase 2: prescan-native file defense
 
-### Architectural controls baked in from Phase 1 build
+Apply the same prescan boundary to PDF, image, CSV, and XLSX uploads.
 
-1. **Comprehensive audit logging** — every action, every scan decision, every policy change logged with timestamp, actor, payload integrity. Cloud Logging + BigQuery archive.
-2. **Data residency clarity** — single region per tenant (`asia-southeast1` today; multi-region option for enterprise), documented in customer-facing pages and audit reports.
-3. **Granular access controls** — RLS in Cloud SQL Postgres, IAM in GCP, principle of least privilege, MFA on admin accounts.
-4. **Encryption** — TLS 1.2+ in transit, AES-256 at rest (default GCP), customer-managed keys (CMEK) wired for enterprise tier.
-5. **Backup + DR** — automated Cloud SQL backups, RPO ≤ 24h, RTO ≤ 4h, quarterly DR drills documented.
-6. **Incident response procedures** — runbook, escalation path, evidence preservation, customer-notification SLAs.
-7. **Change management** — PR review, deployment approvals, automated test gates, post-deployment verification.
-8. **Vendor risk management** — every third-party (Frankfurter, Anthropic gap-filler, Gemini gap-filler, Supabase, Creem) documented with DPA / data-flow analysis.
-9. **Vulnerability management** — automated dependency scans, CVE tracking, patch cadence.
-10. **Personnel security** — background checks, NDAs, access offboarding procedures (when team grows beyond solo).
+### Common checks
 
-### Phased posture
+- authenticate the caller and verify file ownership;
+- require an object under the owning user's `_inbox` path;
+- enforce byte-size limits while reading;
+- compare declared MIME, extension, magic bytes, and actual container type;
+- calculate SHA-256 before expensive work;
+- reject known quarantined hashes for the same user;
+- bound parsing by bytes, rows, columns, sheets, archive entries, nesting depth, memory, and time;
+- reject malformed or ambiguous files rather than guessing.
 
-| Concern | Phase 1 build | Phase 2 mature internal | Phase 3 external launch prep |
-|---|---|---|---|
-| Liability exposure | Internal — AVIntelligence service-quality only | Same as Phase 1 | External tenants require tech E&O + cyber liability |
-| SOC 2 | All controls in place; collecting evidence | 6+ months of operating evidence | Formal Type II audit (~$30K–50K, 3–6 months) |
-| ISO 27001 (optional) | Not started | Optionally begin scoping | Audit (~$40K–60K, longer timeline) for international/enterprise customers |
-| Entity | AVIntelligence PH | Same | Add Delaware C-Corp as contracting entity for US customers |
-| Insurance | Not required | Not required | $1M–$2M tech E&O + cyber liability, ~$3K–$7K/year |
+### PDF and image checks
 
-### Why P1
+- preserve the existing executable PDF-marker rules;
+- continue allowing benign `/OpenAction` and `/AA` view actions unless paired with executable actions;
+- reject embedded files, JavaScript, launch actions, rich media, form submission, and import-data actions;
+- reject malformed or unsupported images before model calls.
 
-- Compliance reputation is a differentiator vs. "secure" claims without certs.
-- Faster enterprise sales when SOC 2 Type II is in hand.
-- Audit-ready architecture is harder to retrofit than to design in.
-- Builds dev-team credibility and inspires customer confidence.
+### CSV and spreadsheet checks
 
-## Doctrine sources (public corpus only)
+- scan CSV with a delimiter-aware parser instead of naive string splitting;
+- inspect the complete bounded CSV for formula / command-cell prefixes;
+- validate XLSX ZIP structure before reading workbook content;
+- reject macros, ActiveX, OLE objects, embedded payloads, external executable links, and archive bombs;
+- allow ordinary XLSX formulas but never execute or evaluate them;
+- cap sheets, rows, columns, representative cells, decompression ratio, and XML depth.
 
-Customer data never enters the doctrine store. Doctrine is read-only public material. Approved sources for phase 3 ingestion:
+### Suitability classification
 
-- NIST CSF 2.0, SP 800-53r5, SP 800-61r3 (incident handling), SP 800-207 (Zero Trust).
-- CISA Known Exploited Vulnerabilities catalog, CISA advisories.
-- OWASP Top 10:2025, ASVS 5.0, OWASP LLM Top 10, OWASP API Security Top 10.
-- MITRE ATT&CK (enterprise + mobile + ICS), MITRE D3FEND.
-- IETF RFCs for TLS, OAuth, OIDC, SCIM.
-- Cloud provider security baselines (AWS, GCP, Azure) — public documentation only.
+- preserve OpenAI to Anthropic fallback for supported documents;
+- construct a bounded CSV preview from headers and representative rows;
+- construct a bounded XLSX preview from sheet names, dimensions, headers, and representative scalar values;
+- never send a raw XLSX container to an AI provider;
+- keep model choice environment-overridable without changing the security contract;
+- record provider, model, duration, fallback status, and result;
+- provider exhaustion blocks processing as `retry_required`, not as malware.
 
-Explicitly excluded: proprietary certification course material (e.g., CCNP, CISSP course content). Internal doctrine may draw on principles taught in those programs, but copied material is prohibited.
+## Phase 3: lifecycle and idempotency
 
-## Continuous improvement
+Make the `pending_scan` to `scanning` claim conditional and atomic. Only the invocation that successfully claims the row may continue.
 
-### Internal loop (incident-driven)
+Per file, guarantee:
 
-Every incident writes to `smart-security/memory/incidents/<id>/`. Weekly, the Investigator Agent runs a batch pass:
+- one active prescan attempt;
+- one durable decision per attempt;
+- one storage move;
+- one rejection notice;
+- at most one `process-document` invocation.
 
-- Bucket incidents by `detection_id`.
-- Compute per-rule precision (TP / (TP + FP)), recall against `false-negatives/`, median time-to-contain, median human-override rate.
-- Propose YAML diffs to `detections/registry.json` and `policies/action-matrix.yaml`.
-- Proposals land as commits for human review; no auto-merge.
+Outcomes:
 
-A detection cannot be promoted from `observe` to `enforce` without:
+- `approved`: all required checks passed;
+- `quarantined`: security risk or prohibited active content;
+- `rejected`: malformed, unsupported, or unsuitable content;
+- `scan_failed`: a transient provider or internal failure; retry is allowed and processing remains blocked.
 
-- ≥4 weeks of operating data at `observe`.
-- Precision ≥ promotion threshold defined per severity tier.
-- A populated test corpus in `detections/corpora/<detection_id>/`.
-- Explicit human commit to `policies/action-matrix.yaml`.
+The new outcomes require an additive file-status migration and updates to status consumers. They do not change extraction or normalization.
 
-### External loop (doctrine ingestion)
+Every current upload entry point must create `pending_scan`. Add a contract test preventing new direct `uploaded` writers. The processor's legacy acceptance of `uploaded` remains transitional debt until old rows are reconciled under a separate approval.
 
-Doctrine Agent runs on schedule against configured source list:
+## Phase 4: canonical rejection evidence
 
-- Fetch → hash → diff against prior snapshot → chunk → embed → index.
-- On diff, the agent opens a commit proposing mapping or rule updates.
-- No auto-merge into `detections/` or `policies/`.
+Create a service-role-only `prescan_security_events` table as the authoritative append-only trail. Do not reuse the generic middleware-era Smart Security tables.
 
-Retrieval at inference time: for each detection, Triage retrieves top-k chunks filtered by `(attack_id, cwe_id, product_context)`. Uncited classifications are rejected by the orchestrator and re-run.
+Each event records:
 
-**Doctrine retrieval pattern (Phase 3+):** retrieval uses an iterative four-phase loop — DISPATCH (broad initial keyword/pattern query against the doctrine corpus filtered by `attack_id` and `cwe_id`), EVALUATE (relevance score 0–1 per chunk; identify gaps), REFINE (extract codebase-and-corpus terminology from high-scoring hits, add to query; exclude confirmed-irrelevant paths), LOOP (max 3 cycles, stop when >=3 high-relevance chunks AND no critical gaps remain). This pattern does not require a vector index on day one — Phase 3 ships with keyword/pattern retrieval over the static seed corpus; vector retrieval is a Phase 5+ optimization, not a Phase 3 prerequisite. Reference: `arabicapp/everything-claude-code:skills/iterative-retrieval/SKILL.md`.
+- event ID and correlation ID;
+- account ID and file ID;
+- filename, size, SHA-256, declared MIME, and detected MIME;
+- prescan stage and event type;
+- outcome, normalized reason code, safe reason, and internal signals;
+- prescan version;
+- AI provider and model only when AI was called;
+- timestamps and duration;
+- intended and completed storage action.
 
-## Build orchestration — Antigravity Agent Manager
+Never store signed URLs, raw file contents, model prompts containing unnecessary content, credentials, or another account's activity.
 
-Smart Security's build is composed via **Antigravity Agent Manager** (installed locally; GCP billing to be confirmed before any deploy work). Antigravity is the *development and deployment orchestration* environment. Training is deferred indefinitely and no training platform is selected.
+Required event sequence:
 
-### Three-layer infrastructure
+```text
+prescan.requested
+prescan.claimed
+prescan.validation_completed
+prescan.suitability_completed (when applicable)
+prescan.action_intended
+prescan.approved | prescan.quarantined | prescan.rejected | prescan.retry_required
+```
 
-| Layer | Role | Cost shape |
-|---|---|---|
-| Antigravity | Dev environment, agent orchestration, code authoring, deploy pipeline | Subscription (TBD pricing) |
-| Training environment | Deferred; future platform TBD if scope reopens | No current cost commitment |
-| Cloud Run + GPU | Production inference serving | $0.50–3.00 / GPU-hour active time; scales to zero |
+Persist `action_intended` before moving or approving the object. The terminal event records the actual result. Systems reporting must flag an intended action without a terminal event for reconciliation.
 
-Cloud Storage is the connective tissue for model artifacts and deployment handoff between layers.
+Access:
 
-### Agent team
+- service role may insert;
+- Systems administrators may read through authenticated server APIs;
+- customers never read this table directly;
+- account deletion and evidence retention follow an approved retention policy.
 
-Specialized agents composed in Antigravity, each with a narrow mandate:
+Until tamper-evident storage and access history exist, call these investigative records, not legal-grade chain-of-custody evidence.
 
-| Agent | Mandate | Activation phase |
-|---|---|---|
-| Architecture Documentation | Inventory existing service AS-IS, design extension points, keep this doc current. | 0.5 |
-| API Contract | Extend existing OpenAPI spec on the TS scanner; design `smart-security-llm` API; surface contract diffs as PR review material. | 0.5 |
-| Code Inventory (one-time) | Capability inventory of the existing TS service (`defender.ts`, `scan.ts`, `scanners/`) so subsequent agents do not duplicate or contradict. | 0.5 |
-| Service Build | Build `smart-security-llm` Python service + integration code in the existing TS service. | 0.5 → 1 |
-| Dataset Curation | Pull public security corpora and gate with provenance + license if future training scope reopens. | Deferred |
-| Detection Rules | Generate YARA / Sigma candidates from threat intel; human review before merge. | 2 |
-| Prompt Engineering | Tune base-E4B prompts; record evaluations against benchmark harness. | 0.5 |
-| Reasoning Specialization | Multi-step reasoning fine-tune for v2.0 (26B A4B). | 6 |
-| Domain Adaptation | Retrain on AVIntelligence + first external customer telemetry as it accumulates. | 6 |
-| Validation / Testing | Precision + FP-rate measurement, sample testing, drift detection. | 1 |
-| Compliance / Docs | SOC 2 evidence trails, security policies, audit log review, customer-facing docs. | 1 |
+## Phase 5: customer rejection experience
 
-### Pre-flight
+Add a persistent, closable rejection panel beside the existing ingestion activity presentation in Smart Storage.
 
-Before any agent deploys or changes cloud infrastructure:
+The panel shows:
 
-1. **GCP billing alerts + per-month spend caps** must be active on `avint-core` to prevent runaway costs.
-2. **Cloud Run GPU quota requested** for inference (default quota is 0).
-3. **Service account roles** scoped per agent — least privilege.
+- batch counts for accepted, quarantined, rejected, and retry-required files;
+- filename, timestamp, status, and short safe reason;
+- an appropriate next action: replace, remove, retry, or contact support;
+- expandable customer-safe detail where helpful.
 
-These are explicit prerequisites for Phase 0.5 to start.
+Customer reason categories:
 
-## What is and isn't in this repository
+- security risk detected;
+- unsupported active content;
+- malformed file;
+- unsupported file type;
+- unsuitable content;
+- security or suitability check could not complete.
 
-**Committed to git**:
-- Policies, detection rules, mappings, doctrine manifest, schemas (internal + wire), SKILL.md, playbooks, service READMEs.
+Do not expose internal rule names, raw signatures, stack traces, storage paths, other-account correlations, or sensitive detector details.
 
-**Not committed**:
-- Doctrine chunk text (too large; lives in Supabase Storage with hashes in `knowledge/manifest.json`).
-- Incident records (runtime; Supabase + Storage).
-- Evidence artifacts (runtime; Supabase Storage).
-- Customer data of any kind.
+Dismissal changes only notification state. It never deletes the file, quarantine result, or evidence. Store dismissal server-side in an owner-scoped rejection-notice record so it follows the account across devices.
 
-## Related files in repo
+## Phase 6: Systems security operations
 
-- `supabase/functions/prescan-document/index.ts:407` — Layer 1 wire call to `/v1/scan/file`. Observe mode in production.
-- `proxy.ts:38` — Layer 2 wire call to `/v1/decide`. Observe mode by default; enforce requires `SMART_SECURITY_MIDDLEWARE_MODE=enforce`.
-- `supabase/functions/_shared/ai-providers.ts` — provider-chain pattern; used today by AVIntelligence's own AI flows. Smart Security's own-model strategy means it does **not** extend this pattern.
-- `app/api/smart-security/health/route.ts` — health endpoint that reads doctrine + schemas from `smart-security/`; doubles as an integrity check on the doctrine snapshot.
-- `smart-security/SKILL.md` — operational contract for agents. Authoritative for the "never do" list and the loop.
-- `smart-security/policies/action-matrix.yaml` — autonomous-action source of truth.
-- `docs/smart-security-phase-0.md` — Phase 0 spec (status: complete).
-- `docs/smart-security-phase-0.5.md` — Phase 0.5 spec (current target — base-Gemma 4 E4B end-to-end on free tier).
-- `docs/build-reference/reference-architecture.md` — establishes Smart Security as a separate service and observe-before-enforce rollout policy.
+Add an internal Security destination at `/systems/security` and a summary card on `/systems`.
 
-## Related external repos
+The first release is read-only.
 
-- `github.com/TitoDrewToo/smart-security` — deployed TypeScript scanner service (Cloud Run, `asia-southeast1`).
-- `smart-security-llm` (Python + vLLM) — to be created in Phase 0.5; serves Gemma 4 model family.
+### Posture
 
-## Versioning
+- last successful prescan;
+- pass, quarantine, rejection, retry, and failure counts;
+- evidence coverage;
+- active prescan version;
+- unresolved quarantine count;
+- incomplete event sequences requiring investigation.
 
-This document tracks architectural decisions. When a decision changes (model assignment, infrastructure host, tier pricing, wire contract, commerce model, compliance posture), update this doc in the same commit as the change and reference the commit SHA in the phase spec that follows.
+### Rejections
 
-### Change log
+Search and filter by time, account, filename, outcome, reason, MIME type, hash, and signal. Selecting an event opens a detail drawer showing:
 
-- **2026-05-07** — Major roadmap update. Reframed agent-role models from third-party to own-model Gemma 4 progression (v0.5 / v1.0 / v2.0). Added two-service deployment topology, build orchestration via Antigravity, unified commerce via avintph.com (Smart Security tiers in the same portal as AVIntelligence products). Elevated compliance to P1. Confirmed deployed-state baseline of `github.com/TitoDrewToo/smart-security`. Phase plan extended to cover model progression and external-tenant gates.
+```text
+upload received
+  -> prescan claimed
+  -> validation
+  -> suitability check
+  -> decision persisted
+  -> storage action
+  -> customer notice
+```
+
+### Quarantine
+
+Show unresolved quarantined files, decision, reason, age, retention state, and re-scan eligibility. Do not provide raw-file preview or download in version one.
+
+### Intelligence
+
+Show repeated hashes, recurring signals, rejection spikes, repeated attempts, error patterns, and false-positive outcomes. Cross-account correlation stays restricted to administrators and never identifies one customer to another.
+
+Use the existing Systems administrator gate and server-authorized APIs. Service credentials and unrestricted evidence queries never reach the browser. Visual redesign of `/systems` is deferred.
+
+## Phase 7: operations and retention
+
+Before commercial rollout, approve:
+
+- quarantine-byte retention;
+- evidence-metadata retention;
+- account-deletion behavior;
+- human re-scan and false-positive release procedures;
+- safe deletion procedure;
+- access logging for security evidence;
+- incident export format.
+
+Recommended starting policy for review:
+
+- quarantined bytes retained for 30 days;
+- minimized security metadata retained for 180 days where permitted;
+- account deletion removes file bytes;
+- no autonomous account punishment, permanent ban, credential revocation, or billing action.
+
+## Verification
+
+Fixture coverage:
+
+- clean receipt and contract PDFs;
+- clean PNG and JPEG;
+- clean CSV;
+- clean XLSX with ordinary formulas;
+- Office active-content fixture;
+- suspicious PDF fixture;
+- malformed and archive-bomb XLSX fixtures;
+- oversized and MIME-mismatched files;
+- CSV formula-injection fixtures;
+- invalid ownership and storage paths;
+- provider timeout and exhaustion;
+- concurrent duplicate prescan calls.
+
+Required assertions:
+
+- every supported file type passes through prescan;
+- clean files reach `process-document` exactly once;
+- quarantined, rejected, and retry-required files never reach processing;
+- transient failures never claim malware was detected;
+- every completed action has a durable terminal event;
+- no secrets or raw file content enter evidence metadata;
+- dismissal leaves evidence intact;
+- tenant ownership holds across scan, notice, quarantine, and Systems APIs;
+- clean business fixtures produce no unexplained rejection;
+- build, TypeScript, lint, edge checks, migration reset, and targeted security tests pass.
+
+## Future malware-engine decision
+
+Native prescan improves document safety but is not equivalent to antivirus signature coverage. If commercial requirements justify a dedicated malware engine, evaluate it as a separate project with these gates:
+
+- customer-file privacy and retention terms;
+- regional processing and data residency;
+- supported file sizes and formats;
+- latency and availability;
+- signed request and response integrity;
+- cost and abuse controls;
+- false-positive corpus results;
+- clear failure behavior.
+
+No retired Cloud Run component is automatically revived by that decision.
+
+## Execution order
+
+1. Remove abandoned code, configuration, health surface, and documentation.
+2. Add prescan-native CSV/XLSX inspection and bounded suitability previews.
+3. Make prescan claiming and terminal actions idempotent.
+4. Add the evidence and notification migrations with reviewed grants and RLS.
+5. Add customer rejection notices.
+6. Add `/systems/security` and authenticated server APIs.
+7. Run the fixture and concurrency suite locally.
+8. Deploy prescan with `--no-verify-jwt`, then deploy the application UI.
+9. Verify production evidence coverage before changing public security claims.

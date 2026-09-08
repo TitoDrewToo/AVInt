@@ -57,7 +57,7 @@ browser/MCP upload
 The main implementation files are:
 
 - `lib/smart-storage-ingest.ts` — server-side ingestion helper used by MCP and shared upload flow.
-- `supabase/functions/prescan-document/index.ts` — authentication, ownership, file validation, hashing, Smart Security, AI safety, quarantine, and chaining to processing.
+- `supabase/functions/prescan-document/index.ts` — authentication, ownership, native file validation, hashing, AI suitability checks, quarantine, and chaining to processing. Its remaining standalone Smart Security call is retired integration scheduled for removal.
 - `supabase/functions/process-document/index.ts` — file download, spreadsheet or AI extraction, `document_fields` insertion, and normalization dispatch.
 - `supabase/functions/normalize-document/index.ts` — normalization, provider fallback, normalization version, retries, and batch settlement.
 - `supabase/functions/reprocess-documents/index.ts` — scheduled/manual normalization retry path.
@@ -102,7 +102,7 @@ Important current limitations:
 - validates PDF/CSV/spreadsheet structure;
 - computes SHA-256;
 - rejects hashes previously quarantined;
-- calls Smart Security;
+- still contains an abandoned external Smart Security call that is scheduled for removal;
 - runs an AI safety pass for applicable non-spreadsheet files;
 - moves approved files from `_inbox` to a canonical user path;
 - records `sha256`, `scanned_at`, `scan_reason`, document type, and approved status;
@@ -295,7 +295,7 @@ These are design candidates, not approved table names.
 - rate limits and usage metering;
 - processed webhook events;
 - error monitoring tables;
-- Smart Security event/decision/block tables;
+- middleware-era Smart Security event/decision/block tables, retained only until the prescan evidence replacement is implemented and migration-reviewed;
 - inquiry tables, subject to current product posture.
 
 ### Deprecation candidates, only after dependency audit

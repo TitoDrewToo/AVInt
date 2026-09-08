@@ -16,7 +16,7 @@
 - **Gotchas:** garbage rows (subtotals, month headers) are filtered symmetrically on `extractedRows` and `source_rows_json`; custom columns preserved in `raw_json.custom_fields`. 30s edge timeout + 8K output-token ceiling was the reason spreadsheet extraction is deterministic-split (commit 003faac).
 
 ## prescan — file safety gate (prescan-document)
-- **Purpose:** reject unsafe/invalid uploads before processing. MIME/extension allowlist → structural parse → AI safety classifier (Gemini/OpenAI) → Smart Security scan (clamav + structural, via `smart-security-runner`).
+- **Purpose:** reject unsafe or invalid uploads before processing. The current boundary is native to `prescan-document`: MIME/extension validation → structural checks → OpenAI/Anthropic suitability classification where supported → approve or quarantine. The abandoned Cloud Run scanner and request middleware are not current dependencies. CSV/XLSX suitability coverage, durable rejection evidence, and `/systems/security` are specified in `docs/smart-security-architecture.md` and are not yet implemented.
 - **Gotchas:** `analyzePdf` blocks PDFs containing `SUSPICIOUS_PDF_MARKERS`. **`/OpenAction` and `/AA` are containers, usually benign** (a `[page /FitH]` view action from many PDF generators). We fixed this to only reject `/OpenAction`/`/AA` when they reference `/JavaScript`/`/JS`/`/Launch` (commit f33868e). If legit PDFs show as "Blocked", check `scan_reason` — a benign OpenAction false-positive is the classic case. Truly-executable markers (`/JavaScript`,`/JS`,`/Launch`,`/EmbeddedFile`,`/RichMedia`,`/SubmitForm`,`/ImportData`) are still hard-blocked.
 
 ## reports — tax bundle & report generator

@@ -49,8 +49,7 @@ After any update, re-upload the changed file to the Claude Project so it picks u
 ## What's NOT in scope for this folder
 
 - Smart Dashboard analytics (separate work; see `docs/smart-dashboard-*.md`)
-- Smart Storage reports (separate; see `docs/smart-security-*.md` and report code paths)
-- Smart Security (separate roadmap)
+- Smart Storage reports and ingestion security (separate; see the report code paths and `docs/smart-security-architecture.md`)
 - Paperclip-2-news / AI After Dark content team (separate project, `paperclip-2-news/`)
 - Engineering / infrastructure (separate)
 

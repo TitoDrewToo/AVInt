@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import { existsSync, readFileSync, readdirSync } from "node:fs"
 import { join } from "node:path"
 
-import { findKnownQuarantinedFile } from "../supabase/functions/_shared/prescan-security"
+import { findKnownQuarantinedFile, parsePrescanSafetyJson } from "../supabase/functions/_shared/prescan-security"
 
 type EqCall = { column: string; value: unknown }
 
@@ -48,6 +48,23 @@ async function main() {
     findKnownQuarantinedFile(failed.client, "user-c", "sha-789"),
     /Known-quarantined-hash lookup failed: query failed/,
   )
+
+  assert.deepEqual(parsePrescanSafetyJson("test", '```json\n{"is_processable":true,"doc_category":"receipt","confidence":0.95,"abuse_flag":false,"reason":""}\n```'), {
+    is_processable: true,
+    doc_category: "receipt",
+    confidence: 0.95,
+    abuse_flag: false,
+    reason: "",
+  })
+  assert.throws(
+    () => parsePrescanSafetyJson("test", '{"is_processable":"true","doc_category":"receipt","confidence":0.95,"abuse_flag":false,"reason":""}'),
+    /failed to parse a valid decision/,
+  )
+  assert.throws(
+    () => parsePrescanSafetyJson("test", '{"is_processable":true,"doc_category":"receipt","confidence":"unknown","abuse_flag":false,"reason":""}'),
+    /failed to parse a valid decision/,
+  )
+  assert.equal(parsePrescanSafetyJson("test", '{"is_processable":true,"doc_category":"operational_data","confidence":0.9,"abuse_flag":false,"reason":""}').doc_category, "operational_data")
 
   const root = process.cwd()
   const prescanSource = readFileSync(join(root, "supabase/functions/prescan-document/index.ts"), "utf8")

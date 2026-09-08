@@ -3,6 +3,48 @@ export type KnownQuarantinedFile = {
   scan_reason: string | null
 }
 
+export type PrescanSafetyResult = {
+  is_processable: boolean
+  doc_category: string
+  confidence: number
+  abuse_flag: boolean
+  reason: string
+}
+
+const DOCUMENT_CATEGORIES = new Set([
+  "receipt", "invoice", "bill", "payslip", "statement", "contract", "tax_form",
+  "medical_bill", "insurance_claim", "insurance_document", "payment_record",
+  "other_financial", "operational_data", "unrelated",
+])
+
+export function parsePrescanSafetyJson(provider: string, rawText: string): PrescanSafetyResult {
+  const stripped = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim()
+  const objectMatch = stripped.match(/\{[\s\S]*\}/)
+  if (!objectMatch) throw new Error(`${provider} safety failed to parse JSON object`)
+
+  let parsed: Record<string, unknown>
+  try {
+    parsed = JSON.parse(objectMatch[0]) as Record<string, unknown>
+  } catch {
+    throw new Error(`${provider} safety failed to parse JSON`)
+  }
+  if (
+    typeof parsed.is_processable !== "boolean" ||
+    typeof parsed.abuse_flag !== "boolean" ||
+    typeof parsed.doc_category !== "string" ||
+    !DOCUMENT_CATEGORIES.has(parsed.doc_category) ||
+    typeof parsed.confidence !== "number" ||
+    !Number.isFinite(parsed.confidence) ||
+    parsed.confidence < 0 ||
+    parsed.confidence > 1 ||
+    typeof parsed.reason !== "string" ||
+    parsed.reason.length > 500
+  ) {
+    throw new Error(`${provider} safety failed to parse a valid decision`)
+  }
+  return parsed as PrescanSafetyResult
+}
+
 type FilesClient = {
   // Supabase's PostgREST builder is PromiseLike rather than a native Promise.
   // Keep this narrow helper independent of generated database types.

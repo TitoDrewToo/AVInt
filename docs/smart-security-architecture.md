@@ -315,7 +315,7 @@ A controlled MCP-ingest proof exercised `prescan-document` version 40 against th
 
 Still requiring an authenticated human-administrator exercise: place and release an investigation hold, start re-scan from the Systems console, and verify the resulting administrator-audit sequence. Timed 24-hour/30-day deletion should be accelerated in staging rather than waiting on production.
 
-The proof also exposed one unresolved metering inconsistency: MCP ingest claims document-processing usage before prescan, so a deterministically quarantined upload currently consumes document quota; browser ingest claims usage only after approval. This is not part of the security boundary and must be resolved as an explicit billing-policy decision. The recommended policy is that rejected or quarantined files do not consume document-processing quota, while abuse controls remain separately enforced.
+The proof also exposed and then closed a metering inconsistency. MCP ingest still reserves document-processing quota before prescan so over-limit uploads cannot incur downstream processing cost, but it now releases that reservation after any rejected, quarantined, or retry-required outcome. Approved processing retains the idempotent reservation. Production verification against the retained quarantine fixture changed usage from one to zero while leaving its file status, zero extraction and record counts, four sealed evidence events, and retention record unchanged. Security-blocked files therefore do not consume document-processing quota; abuse controls remain separate.
 
 ## Phase 8: external anchoring and legal-process readiness
 

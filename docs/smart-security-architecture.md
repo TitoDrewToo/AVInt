@@ -1,6 +1,6 @@
 # Prescan Security and Smart Security Roadmap
 
-**Status:** implementation underway; Phases 1–4 deployed, Phase 5 started
+**Status:** implementation underway; Phases 1–4 and the first Phase 5 release are deployed; Phase 6 is prepared for release
 
 **Updated:** 2026-09-08
 **Authority:** this document supersedes every earlier Smart Security Cloud Run, middleware, Gemma-service, Antigravity, and autonomous-defense plan in this repository.
@@ -61,9 +61,8 @@ The old `smart-security/` schemas and policies are historical scaffolding. They 
 
 Known gaps:
 
-- a runtime termination after a successful claim can leave `scanning` or an intended storage action requiring operational reconciliation;
+- bounded stale-claim reconciliation and the Systems security console are implemented but not yet deployed;
 - the customer rejection panel has no upload-batch identity, so it cannot yet show accepted-versus-blocked counts for one batch;
-- the Systems administrator API and `/systems/security` evidence view are not built;
 - the middleware-era `smart_security_events`, `smart_security_decisions`, and `smart_security_blocks` tables do not represent the new prescan product;
 - without a selected antivirus engine, the product must not claim comprehensive signature-based malware scanning.
 
@@ -166,6 +165,8 @@ The new outcomes require an additive file-status migration and updates to status
 
 Every current upload entry point must create `pending_scan`. Add a contract test preventing new direct `uploaded` writers. The processor's legacy acceptance of `uploaded` remains transitional debt until old rows are reconciled under a separate approval.
 
+Authenticated clients may create physical-file rows only under their own `_inbox` path. Database column grants and an insert trigger force `pending_scan`/`unknown` and prevent clients from authoring hashes, scan results, claim timestamps, normalization counters, or later lifecycle states. After creation, browsers may update only filename, folder placement, and spreadsheet-review metadata; the service role owns security and processing state.
+
 ## Phase 4: canonical rejection evidence
 
 **Implementation status:** deployed through migration `20260908090000_prescan_lifecycle_and_evidence`. `prescan_security_events` is the service-role-only canonical append-only store. Each attempt has a correlation ID and action intent is persisted before a storage move. Missing terminal events remain visible as reconciliation gaps.
@@ -235,6 +236,8 @@ Do not expose internal rule names, raw signatures, stack traces, storage paths, 
 Dismissal changes only notification state. It never deletes the file, quarantine result, or evidence. Store dismissal server-side in an owner-scoped rejection-notice record so it follows the account across devices.
 
 ## Phase 6: Systems security operations
+
+**Implementation status:** the read-only administrator API, `/systems/security` evidence console, Systems overview summary, and bounded stale-prescan reconciliation are implemented and awaiting deployment. The reconciler fails closed: recoverable moved objects are restored to `_inbox`, stale files become `scan_failed`, and no interrupted decision is inferred or passed to processing.
 
 Add an internal Security destination at `/systems/security` and a summary card on `/systems`.
 
@@ -319,6 +322,7 @@ Required assertions:
 - no secrets or raw file content enter evidence metadata;
 - dismissal leaves evidence intact;
 - tenant ownership holds across scan, notice, quarantine, and Systems APIs;
+- authenticated clients cannot author file security/lifecycle columns or insert outside their own `_inbox`;
 - clean business fixtures produce no unexplained rejection;
 - build, TypeScript, lint, edge checks, migration reset, and targeted security tests pass.
 

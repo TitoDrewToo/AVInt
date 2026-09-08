@@ -116,10 +116,10 @@ export function SecurityRejectionPanel({
               </div>
               <p className="mt-1 text-xs leading-relaxed opacity-80">{notice.safe_reason}</p>
               <p className="mt-1 text-[10px] opacity-60">
-                {notice.outcome === "scan_failed" ? "Retry the security check. Processing remains blocked until it passes." : "Replace or remove this file. It was not sent for processing."}
+                {notice.outcome === "scan_failed" && notice.reason_code !== "runtime_storage_missing" ? "Retry the security check. Processing remains blocked until it passes." : "Replace or remove this file. It was not sent for processing."}
               </p>
             </div>
-            {notice.outcome === "scan_failed" && onRetry ? (
+            {notice.outcome === "scan_failed" && notice.reason_code !== "runtime_storage_missing" && onRetry ? (
               <Button type="button" size="sm" variant="outline" className="h-7 shrink-0 border-current/25 bg-transparent px-2 text-[10px]" onClick={() => onRetry(notice.file_id)} title="Retry this file's security check">
                 <RotateCcw className="mr-1 h-3 w-3" aria-hidden="true" /> Retry
               </Button>

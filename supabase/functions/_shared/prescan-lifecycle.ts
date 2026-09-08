@@ -37,7 +37,7 @@ export function terminalEventForOutcome(outcome: PrescanOutcome): PrescanEventTy
 export async function claimPrescanFile(client: any, fileId: string, accountId: string) {
   const { data, error } = await client
     .from("files")
-    .update({ upload_status: "scanning" })
+    .update({ upload_status: "scanning", prescan_claimed_at: new Date().toISOString() })
     .eq("id", fileId)
     .eq("user_id", accountId)
     .in("upload_status", [...CLAIMABLE_PRESCAN_STATUSES])
@@ -67,6 +67,7 @@ export async function recordPrescanEvent(client: any, event: {
   durationMs?: number | null
   storageActionIntended?: "approve" | "quarantine" | "hold" | null
   storageActionCompleted?: "approved" | "quarantined" | "held" | null
+  prescanVersion?: string
 }) {
   const { error } = await client.from("prescan_security_events").insert({
     correlation_id: event.correlationId,
@@ -83,7 +84,7 @@ export async function recordPrescanEvent(client: any, event: {
     reason_code: event.reasonCode ?? null,
     safe_reason: event.safeReason ?? null,
     signals: event.signals ?? {},
-    prescan_version: PRESCAN_VERSION,
+    prescan_version: event.prescanVersion ?? PRESCAN_VERSION,
     ai_provider: event.aiProvider ?? null,
     ai_model: event.aiModel ?? null,
     duration_ms: event.durationMs ?? null,

@@ -10,6 +10,7 @@ import {
   terminalEventForOutcome,
   upsertPrescanNotice,
 } from "../supabase/functions/_shared/prescan-lifecycle"
+import { intendedPrescanTarget, reconcilePrescanStorageState } from "../lib/prescan-reconciliation"
 
 function claimClient(initialStatus: string) {
   let status = initialStatus
@@ -62,6 +63,12 @@ async function main() {
   assert.equal(outcomeForRejection("csv_malformed"), "rejected")
   assert.equal(outcomeForRejection("content_unrelated"), "rejected")
   assert.equal(terminalEventForOutcome("scan_failed"), "prescan.retry_required")
+  assert.equal(intendedPrescanTarget("user-1/_inbox/file.csv", "user-1", "approve"), "user-1/file.csv")
+  assert.equal(intendedPrescanTarget("user-1/_inbox/file.csv", "user-1", "quarantine"), "user-1/_quarantine/file.csv")
+  assert.equal(intendedPrescanTarget("other/_inbox/file.csv", "user-1", "approve"), null)
+  assert.equal(reconcilePrescanStorageState({ intent: "approve", sourceExists: false, targetExists: true }), "restore_then_retry")
+  assert.equal(reconcilePrescanStorageState({ intent: "quarantine", sourceExists: true, targetExists: false }), "hold_for_retry")
+  assert.equal(reconcilePrescanStorageState({ intent: null, sourceExists: true, targetExists: false }), "hold_for_retry")
 
   let inserted: Record<string, unknown> | null = null
   const evidenceClient = {
@@ -113,6 +120,15 @@ async function main() {
   assert.match(migration, /grant select, insert on table public\.prescan_security_events to service_role/i)
   assert.match(migration, /grant select, update \(dismissed_at\) on table public\.prescan_rejection_notices to authenticated/i)
 
+  const claimMigration = readFileSync(join(process.cwd(), "supabase/migrations/20260908103000_prescan_claims_and_file_grants.sql"), "utf8")
+  assert.match(claimMigration, /revoke update on table public\.files from authenticated/i)
+  assert.match(claimMigration, /grant update \(filename, folder_id, analysis_json\) on table public\.files to authenticated/i)
+  assert.match(claimMigration, /revoke insert on table public\.files from authenticated/i)
+  assert.match(claimMigration, /browser uploads must enter the private inbox/i)
+  assert.match(claimMigration, /new\.upload_status := 'pending_scan'/)
+  assert.match(claimMigration, /new\.document_type := 'unknown'/)
+  assert.match(claimMigration, /revoke execute on function public\.avint_enforce_browser_file_ingress\(\)/i)
+
   const source = readFileSync(join(process.cwd(), "supabase/functions/prescan-document/index.ts"), "utf8")
   assert.match(source, /claimPrescanFile\(supabase, file_id, userId\)/)
   assert.match(source, /eventType: "prescan\.action_intended"/)
@@ -120,6 +136,12 @@ async function main() {
   assert.match(source, /EdgeRuntime\.waitUntil\(chain\)/)
   assert.ok(source.indexOf("sha = await sha256Hex(bytes)") < source.indexOf("analyzePdf(bytes)"), "hash must precede structural rejection")
   assert.match(source, /upload_status: outcome,[\s\S]{0,100}sha256: evidence\.sha256/)
+  assert.match(source, /prescan_claimed_at: null/)
+
+  const reconciler = readFileSync(join(process.cwd(), "lib/storage-reconciliation-server.ts"), "utf8")
+  assert.match(reconciler, /\.eq\("upload_status", "scanning"\)/)
+  assert.match(reconciler, /\.lt\("prescan_claimed_at", staleBefore\)/)
+  assert.match(reconciler, /reconciled_after_runtime_termination/)
 
   const browserUpload = readFileSync(join(process.cwd(), "app/tools/smart-storage/page.tsx"), "utf8")
   const serverUpload = readFileSync(join(process.cwd(), "lib/smart-storage-ingest.ts"), "utf8")

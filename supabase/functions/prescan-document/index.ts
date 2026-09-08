@@ -563,6 +563,7 @@ serve(async (req) => {
     const { data: approvedFile, error: approveError } = await supabase.from("files").update({
       storage_path: canonicalPath,
       upload_status: "approved",
+      prescan_claimed_at: null,
       sha256: sha,
       scanned_at: new Date().toISOString(),
       scan_reason: null,
@@ -733,6 +734,7 @@ async function quarantineRow(
   const { data: blockedFile, error: updateError } = await supabase.from("files").update({
     storage_path: quarantinePath,
     upload_status: outcome,
+    prescan_claimed_at: null,
     sha256: evidence.sha256,
     scan_reason: `${code}: ${message}`,
     scanned_at: new Date().toISOString(),
@@ -782,6 +784,7 @@ async function quarantineRow(
 async function holdForRetry(supabase: any, file: any, code: string, message: string, sha256: string | null) {
   const { data, error } = await supabase.from("files").update({
     upload_status: "scan_failed",
+    prescan_claimed_at: null,
     sha256,
     scan_reason: `${code}: ${message}`,
   }).eq("id", file.id).eq("upload_status", "scanning").select("id").maybeSingle()

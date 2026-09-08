@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { Activity, ArrowUpRight, FileWarning, GitCommitHorizontal, Mail, RefreshCw, type LucideIcon } from "lucide-react"
+import { Activity, ArrowUpRight, FileWarning, GitCommitHorizontal, Mail, RefreshCw, ShieldCheck, type LucideIcon } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"
 
@@ -11,6 +11,7 @@ type OverviewData = {
   changelog: { title: string; dateLabel: string; url: string } | null
   errors: { open: number; bySeverity: Record<string, number> }
   inquiries: { unread: number }
+  security?: { unresolved: number; incomplete: number }
 }
 
 function overallLabel(state: OverviewData["status"]["overall"]) {
@@ -52,6 +53,7 @@ export function SystemsOverview() {
       <OverviewCard href="/systems/status" eyebrow="Current status" title={overallLabel(data.status.overall)} detail={`Last successful deploy · ${formatDeploy(data.status.lastDeploy)}`} Icon={Activity} />
       <OverviewCard href="/systems/changelog" eyebrow="Most recent change" title={data.changelog?.title ?? "No conventional changes yet"} detail={data.changelog?.dateLabel ?? "The changelog is ready for the next feat, fix, or perf entry."} Icon={GitCommitHorizontal} />
       <OverviewCard href="/systems/errors" eyebrow="Open error groups" title={`${data.errors.open} open`} detail={severity.length ? severity.map(([name, count]) => `${name} ${count}`).join(" · ") : "No open error groups"} Icon={FileWarning} />
+      <OverviewCard href="/systems/security" eyebrow="Smart Security" title={`${data.security?.unresolved ?? 0} unresolved`} detail={`${data.security?.incomplete ?? 0} incomplete evidence sequences`} Icon={ShieldCheck} />
       <OverviewCard href="/systems/inquiries" eyebrow="Unread inquiries" title={`${data.inquiries.unread} new`} detail="Partner and studio conversations awaiting review" Icon={Mail} />
     </div>
   </section>

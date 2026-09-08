@@ -114,6 +114,29 @@ export async function upsertPrescanNotice(client: any, notice: {
   if (error) throw new Error(`Prescan notice write failed: ${error.message ?? "unknown database error"}`)
 }
 
+export async function upsertPrescanFileRetention(client: any, retention: {
+  accountId: string
+  fileId: string
+  outcome: Extract<PrescanOutcome, "quarantined" | "rejected">
+  reasonCode: string
+  quarantinedAt?: string
+}) {
+  const quarantinedAt = retention.quarantinedAt ?? new Date().toISOString()
+  const retentionMs = retention.outcome === "quarantined" ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000
+  const { error } = await client.from("prescan_file_retention").upsert({
+    account_id: retention.accountId,
+    file_id: retention.fileId,
+    outcome: retention.outcome,
+    reason_code: retention.reasonCode,
+    status: "retained",
+    quarantined_at: quarantinedAt,
+    bytes_expires_at: new Date(new Date(quarantinedAt).getTime() + retentionMs).toISOString(),
+    bytes_deleted_at: null,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "file_id" })
+  if (error) throw new Error(`Prescan retention write failed: ${error.message ?? "unknown database error"}`)
+}
+
 export async function resolvePrescanNotice(client: any, fileId: string, accountId: string) {
   const { error } = await client.from("prescan_rejection_notices").update({
     resolved_at: new Date().toISOString(),

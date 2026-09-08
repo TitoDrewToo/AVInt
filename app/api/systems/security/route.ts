@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 
 import { checkRateLimit } from "@/lib/rate-limit"
 import { supabaseAdmin } from "@/lib/mcp-auth"
+import { recordSecurityAdminAudit } from "@/lib/security-admin-audit"
 import { bearerToken, getSystemAdminUser } from "@/lib/system-admin"
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -17,9 +18,14 @@ export async function GET(request: NextRequest) {
   const correlationId = request.nextUrl.searchParams.get("correlation_id")
   if (correlationId) {
     if (!UUID_PATTERN.test(correlationId)) return NextResponse.json({ error: "Invalid correlation identifier" }, { status: 400 })
+    try {
+      await recordSecurityAdminAudit({ actorUserId: admin.id, action: "security_timeline_viewed", correlationId })
+    } catch {
+      return NextResponse.json({ error: "Security evidence access could not be audited" }, { status: 503 })
+    }
     const { data, error } = await supabaseAdmin
       .from("prescan_security_events")
-      .select("id, correlation_id, account_id, file_id, filename, file_size, sha256, declared_mime, detected_mime, stage, event_type, outcome, reason_code, safe_reason, signals, prescan_version, ai_provider, ai_model, duration_ms, storage_action_intended, storage_action_completed, created_at")
+      .select("id, correlation_id, account_id, file_id, filename, file_size, sha256, declared_mime, detected_mime, stage, event_type, outcome, reason_code, safe_reason, signals, prescan_version, ai_provider, ai_model, duration_ms, storage_action_intended, storage_action_completed, created_at, sealed_at, previous_event_hash, event_hash")
       .eq("correlation_id", correlationId)
       .order("created_at", { ascending: true })
       .limit(20)
@@ -28,10 +34,16 @@ export async function GET(request: NextRequest) {
   }
 
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
-  const [{ data: events, error: eventsError }, { data: blockedFiles, count: unresolvedFileCount, error: filesError }, { count: openNotices, error: noticesError }] = await Promise.all([
+  try {
+    await recordSecurityAdminAudit({ actorUserId: admin.id, action: "security_evidence_listed", metadata: { window_days: 30 } })
+  } catch {
+    return NextResponse.json({ error: "Security evidence access could not be audited" }, { status: 503 })
+  }
+  const evidenceArchiveBefore = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString()
+  const [{ data: events, error: eventsError }, { data: blockedFiles, count: unresolvedFileCount, error: filesError }, { count: openNotices, error: noticesError }, { data: retention, error: retentionError }, { count: archiveEligible, error: archiveError }, { data: adminAudit, error: auditError }] = await Promise.all([
     supabaseAdmin
       .from("prescan_security_events")
-      .select("id, correlation_id, account_id, file_id, filename, file_size, sha256, declared_mime, detected_mime, stage, event_type, outcome, reason_code, safe_reason, signals, prescan_version, ai_provider, ai_model, duration_ms, storage_action_intended, storage_action_completed, created_at")
+      .select("id, correlation_id, account_id, file_id, filename, file_size, sha256, declared_mime, detected_mime, stage, event_type, outcome, reason_code, safe_reason, signals, prescan_version, ai_provider, ai_model, duration_ms, storage_action_intended, storage_action_completed, created_at, sealed_at, previous_event_hash, event_hash")
       .gte("created_at", since)
       .order("created_at", { ascending: false })
       .limit(1000),
@@ -46,8 +58,22 @@ export async function GET(request: NextRequest) {
       .select("id", { count: "exact", head: true })
       .is("dismissed_at", null)
       .is("resolved_at", null),
+    supabaseAdmin
+      .from("prescan_file_retention")
+      .select("file_id, outcome, status, quarantined_at, bytes_expires_at, bytes_deleted_at, evidence_hold_at, evidence_hold_by, evidence_hold_reason, last_rescan_requested_at")
+      .order("quarantined_at", { ascending: false })
+      .limit(250),
+    supabaseAdmin
+      .from("prescan_security_events")
+      .select("id", { count: "exact", head: true })
+      .lt("created_at", evidenceArchiveBefore),
+    supabaseAdmin
+      .from("prescan_admin_audit_events")
+      .select("id, actor_user_id, action, file_id, correlation_id, metadata, created_at, event_hash")
+      .order("created_at", { ascending: false })
+      .limit(100),
   ])
-  if (eventsError || filesError || noticesError) {
+  if (eventsError || filesError || noticesError || retentionError || archiveError || auditError) {
     return NextResponse.json({ error: "Could not load Smart Security evidence" }, { status: 500 })
   }
 
@@ -89,6 +115,7 @@ export async function GET(request: NextRequest) {
       unresolvedFiles: unresolvedFileCount ?? 0,
       lastSuccessfulPrescan: latestApproved?.created_at ?? null,
       activeVersion: activePrescan?.prescan_version ?? null,
+      evidenceArchiveEligible: archiveEligible ?? 0,
     },
     reasons: [...reasons.entries()].map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count),
     repeatedHashes: [...hashes.entries()]
@@ -99,5 +126,7 @@ export async function GET(request: NextRequest) {
     incomplete: incomplete.slice(0, 100),
     decisions: terminal.slice(0, 250),
     unresolved: blockedFiles ?? [],
+    retention: retention ?? [],
+    adminAudit: adminAudit ?? [],
   }, { headers: { "Cache-Control": "no-store" } })
 }

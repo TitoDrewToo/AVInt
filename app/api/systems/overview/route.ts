@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/mcp-auth"
 import { bearerToken, getSystemAdminUser } from "@/lib/system-admin"
+import { recordSecurityAdminAudit } from "@/lib/security-admin-audit"
 import { getLiveChangelog, getStatusOverview } from "@/components/systems/operations-data"
 
 export async function GET(request: NextRequest) {
-  if (!(await getSystemAdminUser(bearerToken(request.headers.get("authorization"))))) {
+  const admin = await getSystemAdminUser(bearerToken(request.headers.get("authorization")))
+  if (!admin) {
     return NextResponse.json({ error: "System administrator access required" }, { status: 403 })
+  }
+  try {
+    await recordSecurityAdminAudit({ actorUserId: admin.id, action: "security_overview_accessed" })
+  } catch {
+    return NextResponse.json({ error: "Systems access could not be audited" }, { status: 503 })
   }
   const [{ data: groups, error: groupsError }, { data: partner, error: partnerError }, { data: studio, error: studioError }, { count: unresolvedSecurity, error: securityError }, { data: securityEvents, error: securityEventsError }, status, changelog] = await Promise.all([
     supabaseAdmin.from("error_groups").select("status, severity"),

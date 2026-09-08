@@ -1,7 +1,8 @@
 import { supabaseAdmin } from "@/lib/mcp-auth"
+import { recordSecurityAdminAudit } from "@/lib/security-admin-audit"
 import { findOrphanedInboxObjects, type InboxObject } from "@/lib/storage-reconciliation"
 import { intendedPrescanTarget, reconcilePrescanStorageState, type PrescanStorageIntent } from "@/lib/prescan-reconciliation"
-import { recordPrescanEvent, upsertPrescanNotice, type PrescanOutcome } from "@/supabase/functions/_shared/prescan-lifecycle"
+import { recordPrescanEvent, upsertPrescanFileRetention, upsertPrescanNotice, type PrescanOutcome } from "@/supabase/functions/_shared/prescan-lifecycle"
 
 const REFERENCE_BATCH_SIZE = 100
 const DEFAULT_LIMIT = 500
@@ -242,4 +243,176 @@ export async function reconcileStalePrescans(options: { dryRun?: boolean; staleM
   }
 
   return { dryRun, stale_before: staleBefore, scanned: files.length, recovered, retry_required: retryRequired, files: results }
+}
+
+type RetentionFile = {
+  storage_path: string
+  upload_status: string
+}
+
+type ExpiredRetentionRow = {
+  file_id: string
+  account_id: string
+  outcome: "quarantined" | "rejected"
+  reason_code: string
+  bytes_expires_at: string
+  evidence_hold_at: string | null
+  files: RetentionFile | RetentionFile[] | null
+}
+
+type BlockedFileForRetention = {
+  id: string
+  user_id: string
+  upload_status: "quarantined" | "rejected"
+  scan_reason: string | null
+  scanned_at: string | null
+  created_at: string
+}
+
+function retentionFile(row: ExpiredRetentionRow) {
+  return Array.isArray(row.files) ? row.files[0] ?? null : row.files
+}
+
+function safeQuarantinePath(path: string, accountId: string) {
+  return new RegExp(`^${accountId}/_quarantine/[^/]+$`).test(path)
+}
+
+export async function enforceSecurityRetention(options: { dryRun?: boolean; limit?: number } = {}) {
+  const dryRun = options.dryRun ?? true
+  const limit = Math.min(Math.max(Math.floor(options.limit ?? 100), 1), 500)
+  const now = new Date().toISOString()
+  const evidenceArchiveBefore = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString()
+
+  // Repair the bounded-retention state if a terminal prescan event succeeded
+  // but its best-effort retention upsert was interrupted.
+  const { data: blockedFiles, error: blockedFilesError } = await supabaseAdmin
+    .from("files")
+    .select("id, user_id, upload_status, scan_reason, scanned_at, created_at")
+    .in("upload_status", ["quarantined", "rejected"])
+    .order("created_at", { ascending: true })
+    .limit(500)
+  if (blockedFilesError) throw new Error(blockedFilesError.message)
+  const blocked = (blockedFiles ?? []) as BlockedFileForRetention[]
+  const blockedIds = blocked.map((file) => file.id)
+  const { data: knownRetention, error: knownRetentionError } = blockedIds.length
+    ? await supabaseAdmin.from("prescan_file_retention").select("file_id").in("file_id", blockedIds)
+    : { data: [], error: null }
+  if (knownRetentionError) throw new Error(knownRetentionError.message)
+  const knownIds = new Set((knownRetention ?? []).map((row) => row.file_id))
+  const missingRetention = blocked.filter((file) => !knownIds.has(file.id))
+  if (!dryRun) {
+    for (const file of missingRetention) {
+      await upsertPrescanFileRetention(supabaseAdmin, {
+        accountId: file.user_id,
+        fileId: file.id,
+        outcome: file.upload_status,
+        reasonCode: file.scan_reason?.split(":", 1)[0] || "historical_block",
+        quarantinedAt: file.scanned_at ?? file.created_at,
+      })
+      await recordSecurityAdminAudit({
+        action: "quarantine_retention_reconciled",
+        fileId: file.id,
+        metadata: { outcome: file.upload_status },
+      })
+    }
+
+    // A terminated retention invocation may leave a deletion claim behind.
+    const staleClaimBefore = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+    const { data: recoveredClaims, error: recoverError } = await supabaseAdmin
+      .from("prescan_file_retention")
+      .update({ status: "retained", updated_at: now })
+      .eq("status", "deleting")
+      .lt("updated_at", staleClaimBefore)
+      .select("file_id")
+    if (recoverError) throw new Error(recoverError.message)
+    for (const claim of recoveredClaims ?? []) {
+      await recordSecurityAdminAudit({ action: "quarantine_deletion_claim_recovered", fileId: claim.file_id })
+    }
+  }
+
+  const [{ data, error }, { count: archiveEligible, error: evidenceError }] = await Promise.all([
+    supabaseAdmin
+      .from("prescan_file_retention")
+      .select("file_id, account_id, outcome, reason_code, bytes_expires_at, evidence_hold_at, files(storage_path, upload_status)")
+      .eq("status", "retained")
+      .is("evidence_hold_at", null)
+      .lte("bytes_expires_at", now)
+      .order("bytes_expires_at", { ascending: true })
+      .limit(limit),
+    supabaseAdmin
+      .from("prescan_security_events")
+      .select("id", { count: "exact", head: true })
+      .lt("created_at", evidenceArchiveBefore),
+  ])
+  if (error) throw new Error(error.message)
+  if (evidenceError) throw new Error(evidenceError.message)
+
+  const rows = (data ?? []) as ExpiredRetentionRow[]
+  const results: Array<Record<string, unknown>> = []
+  let bytesDeleted = 0
+  for (const row of rows) {
+    const file = retentionFile(row)
+    const storagePath = file?.storage_path ?? ""
+    if (!file || file.upload_status !== row.outcome || !safeQuarantinePath(storagePath, row.account_id)) {
+      results.push({ file_id: row.file_id, outcome: row.outcome, action: "manual_review", reason: "invalid_or_missing_quarantine_path" })
+      continue
+    }
+    if (dryRun) {
+      results.push({ file_id: row.file_id, outcome: row.outcome, action: "delete_quarantine_bytes" })
+      continue
+    }
+    const claimedAt = new Date().toISOString()
+    const { data: claim, error: claimError } = await supabaseAdmin.from("prescan_file_retention").update({
+      status: "deleting",
+      updated_at: claimedAt,
+    }).eq("file_id", row.file_id).eq("status", "retained").is("evidence_hold_at", null).select("file_id").maybeSingle()
+    if (claimError) throw new Error(claimError.message)
+    if (!claim) {
+      results.push({ file_id: row.file_id, outcome: row.outcome, action: "skipped", reason: "retention_state_changed" })
+      continue
+    }
+    try {
+      await recordSecurityAdminAudit({
+        action: "quarantine_bytes_delete_intended",
+        fileId: row.file_id,
+        metadata: { outcome: row.outcome, reason_code: row.reason_code, policy: row.outcome === "quarantined" ? "30_days" : "24_hours" },
+      })
+    } catch (auditError) {
+      await supabaseAdmin.from("prescan_file_retention").update({ status: "retained", updated_at: new Date().toISOString() }).eq("file_id", row.file_id).eq("status", "deleting")
+      throw auditError
+    }
+    const { error: removeError } = await supabaseAdmin.storage.from("documents").remove([storagePath])
+    if (removeError) {
+      await recordSecurityAdminAudit({ action: "quarantine_bytes_delete_failed", fileId: row.file_id, metadata: { outcome: row.outcome } })
+      await supabaseAdmin.from("prescan_file_retention").update({ status: "retained", updated_at: new Date().toISOString() }).eq("file_id", row.file_id).eq("status", "deleting")
+      results.push({ file_id: row.file_id, outcome: row.outcome, action: "retry", reason: "storage_delete_failed" })
+      continue
+    }
+    const deletedAt = new Date().toISOString()
+    const { error: stateError } = await supabaseAdmin.from("prescan_file_retention").update({
+      status: "bytes_deleted",
+      bytes_deleted_at: deletedAt,
+      updated_at: deletedAt,
+    }).eq("file_id", row.file_id).eq("status", "deleting")
+    if (stateError) throw new Error(stateError.message)
+    await recordSecurityAdminAudit({
+      action: "quarantine_bytes_deleted",
+      fileId: row.file_id,
+      metadata: { outcome: row.outcome, reason_code: row.reason_code, policy: row.outcome === "quarantined" ? "30_days" : "24_hours" },
+    })
+    bytesDeleted += 1
+    results.push({ file_id: row.file_id, outcome: row.outcome, action: "deleted" })
+  }
+
+  return {
+    dryRun,
+    scanned: rows.length,
+    retention_missing: missingRetention.length,
+    retention_reconciled: dryRun ? 0 : missingRetention.length,
+    bytes_deleted: bytesDeleted,
+    evidence_archive_eligible: archiveEligible ?? 0,
+    evidence_archive_before: evidenceArchiveBefore,
+    evidence_deleted: 0,
+    results,
+  }
 }

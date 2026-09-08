@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { AlertTriangle, CheckCircle2, ChevronRight, Clock3, RefreshCw, Search, ShieldCheck, XCircle } from "lucide-react"
+import { AlertTriangle, CheckCircle2, ChevronRight, Clock3, Download, RefreshCw, Search, ShieldCheck, XCircle } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -29,17 +29,22 @@ type Evidence = {
   duration_ms: number | null
   storage_action_intended: string | null
   storage_action_completed: string | null
+  sealed_at: string
+  previous_event_hash: string | null
+  event_hash: string
   created_at: string
 }
 
 type SecurityData = {
   window: { from: string; eventLimit: number; truncated: boolean }
-  posture: { counts: Record<string, number>; claimed: number; evidenceCoverage: number | null; incompleteSequences: number; openNotices: number; unresolvedFiles: number; lastSuccessfulPrescan: string | null; activeVersion: string | null }
+  posture: { counts: Record<string, number>; claimed: number; evidenceCoverage: number | null; incompleteSequences: number; openNotices: number; unresolvedFiles: number; lastSuccessfulPrescan: string | null; activeVersion: string | null; evidenceArchiveEligible: number }
   reasons: Array<{ reason: string; count: number }>
   repeatedHashes: Array<{ hash: string; attempts: number; accounts: number; lastSeen: string }>
   incomplete: Evidence[]
   decisions: Evidence[]
   unresolved: Array<{ id: string; user_id: string; filename: string; file_type: string; file_size: number | null; upload_status: string; scan_reason: string | null; sha256: string | null; scanned_at: string | null; prescan_claimed_at: string | null }>
+  retention: Array<{ file_id: string; outcome: "quarantined" | "rejected"; status: "retained" | "deleting" | "released_to_rescan" | "bytes_deleted"; quarantined_at: string; bytes_expires_at: string; bytes_deleted_at: string | null; evidence_hold_at: string | null; evidence_hold_by: string | null; evidence_hold_reason: string | null; last_rescan_requested_at: string | null }>
+  adminAudit: Array<{ id: string; actor_user_id: string | null; action: string; file_id: string | null; correlation_id: string | null; metadata: Record<string, unknown>; created_at: string; event_hash: string }>
 }
 
 const formatter = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" })
@@ -57,11 +62,16 @@ export function SecurityOperations() {
   const [outcome, setOutcome] = useState("all")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [actionFileId, setActionFileId] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [exporting, setExporting] = useState(false)
 
-  const authorizedFetch = useCallback(async (url: string) => {
+  const authorizedFetch = useCallback(async (url: string, init: RequestInit = {}) => {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session?.access_token) return null
-    return fetch(url, { headers: { Authorization: `Bearer ${session.access_token}` }, cache: "no-store" })
+    const headers = new Headers(init.headers)
+    headers.set("Authorization", `Bearer ${session.access_token}`)
+    return fetch(url, { ...init, headers, cache: "no-store" })
   }, [])
 
   const load = useCallback(async () => {
@@ -82,6 +92,66 @@ export function SecurityOperations() {
     setTimeline(payload.events)
   }
 
+  async function rescanQuarantined(fileId: string, filename: string) {
+    if (!window.confirm(`Return ${filename} to the protected inbox and run every current prescan check again? This does not bypass any rule.`)) return
+    setActionFileId(fileId)
+    setActionError(null)
+    const response = await authorizedFetch(`/api/systems/security/quarantine/${encodeURIComponent(fileId)}/rescan`, { method: "POST" })
+    if (!response) {
+      setActionError("Administrator session is unavailable.")
+      setActionFileId(null)
+      return
+    }
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null) as { error?: string } | null
+      setActionError(payload?.error ?? "The re-scan could not start.")
+      setActionFileId(null)
+      return
+    }
+    await load()
+    setActionFileId(null)
+  }
+
+  async function setEvidenceHold(fileId: string, filename: string, held: boolean) {
+    const reason = held ? window.prompt(`Why should ${filename} be preserved beyond its normal byte-retention window?`)?.trim() : ""
+    if (held && !reason) return
+    if (!held && !window.confirm(`Release the investigation hold on ${filename}? If its retention window has expired, the bytes become eligible for deletion.`)) return
+    setActionFileId(fileId)
+    setActionError(null)
+    const response = await authorizedFetch(`/api/systems/security/quarantine/${encodeURIComponent(fileId)}/hold`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hold: held, ...(held ? { reason } : {}) }),
+    })
+    if (!response?.ok) {
+      const payload = response ? await response.json().catch(() => null) as { error?: string } | null : null
+      setActionError(payload?.error ?? "The investigation hold could not be updated.")
+      setActionFileId(null)
+      return
+    }
+    await load()
+    setActionFileId(null)
+  }
+
+  async function exportEvidence() {
+    setExporting(true)
+    setActionError(null)
+    const response = await authorizedFetch("/api/systems/security/export")
+    if (!response?.ok) {
+      setActionError("The evidence export could not be created.")
+      setExporting(false)
+      return
+    }
+    const blob = await response.blob()
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement("a")
+    anchor.href = url
+    anchor.download = `avint-prescan-evidence-${new Date().toISOString().slice(0, 10)}.json`
+    anchor.click()
+    window.setTimeout(() => URL.revokeObjectURL(url), 0)
+    setExporting(false)
+  }
+
   useEffect(() => { void load() }, [load])
 
   const filtered = useMemo(() => {
@@ -96,8 +166,10 @@ export function SecurityOperations() {
   if (error || !data) return <div className="glass-surface rounded-3xl p-8"><p className="text-sm text-destructive">{error ?? "Security evidence unavailable."}</p><Button variant="outline" size="sm" onClick={() => void load()} className="mt-5 gap-2"><RefreshCw className="h-4 w-4" />Retry</Button></div>
 
   const counts = data.posture.counts
+  const retentionByFile = new Map(data.retention.map((item) => [item.file_id, item]))
+  const retainedBlockedFiles = data.unresolved.filter((file) => file.upload_status === "quarantined" || file.upload_status === "rejected")
   return <section className="space-y-7">
-    <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-xs font-medium uppercase tracking-[0.2em] text-primary">Internal security operations</p><h2 className="mt-3 text-3xl font-semibold tracking-tight md:text-4xl">Prescan evidence, without the theatre.</h2><p className="mt-3 max-w-3xl text-sm leading-relaxed text-muted-foreground">A read-only 30-day view of upload decisions, interrupted sequences, quarantine state, and repeated hashes. These are investigative records, not legal chain-of-custody evidence.</p></div><Button variant="outline" size="sm" onClick={() => void load()} className="gap-2"><RefreshCw className="h-4 w-4" />Refresh</Button></div>
+    <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-xs font-medium uppercase tracking-[0.2em] text-primary">Internal security operations</p><h2 className="mt-3 text-3xl font-semibold tracking-tight md:text-4xl">Prescan evidence, without the theatre.</h2><p className="mt-3 max-w-3xl text-sm leading-relaxed text-muted-foreground">A 30-day view of upload decisions, interrupted sequences, quarantine state, repeated hashes, and verifiable event seals. External checkpointing and legal review remain required before calling this legal chain-of-custody evidence.</p></div><div className="flex items-center gap-2"><Button variant="outline" size="sm" disabled={exporting} onClick={() => void exportEvidence()} className="gap-2"><Download className="h-4 w-4" />{exporting ? "Exporting…" : "Export evidence"}</Button><Button variant="outline" size="sm" onClick={() => void load()} className="gap-2"><RefreshCw className="h-4 w-4" />Refresh</Button></div></div>
 
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <Metric label="Approved" value={number.format(counts.approved ?? 0)} detail={`Last pass · ${date(data.posture.lastSuccessfulPrescan)}`} tone="good" />
@@ -118,8 +190,19 @@ export function SecurityOperations() {
 
       <div className="space-y-5">
         <Panel title="Decision timeline" detail={selected ? `Correlation ${selected.slice(0, 8)}…` : "Select a decision to inspect its sequence."}>
-          {timeline.length ? <ol className="relative space-y-4 before:absolute before:bottom-2 before:left-[7px] before:top-2 before:w-px before:bg-border">{timeline.map((event) => <li key={event.id} className="relative pl-7"><span className="absolute left-0 top-1.5 h-[15px] w-[15px] rounded-full border-2 border-background bg-primary" /><p className="font-mono text-[10px] uppercase tracking-wide text-primary">{event.event_type.replace("prescan.", "")}</p><p className="mt-1 text-xs text-muted-foreground">{event.safe_reason ?? event.stage} · {date(event.created_at)}</p>{event.ai_provider ? <p className="mt-1 text-[10px] text-muted-foreground/70">{event.ai_provider} · {event.ai_model}</p> : null}</li>)}</ol> : <p className="text-xs text-muted-foreground">No timeline selected.</p>}
+          {timeline.length ? <ol className="relative space-y-4 before:absolute before:bottom-2 before:left-[7px] before:top-2 before:w-px before:bg-border">{timeline.map((event) => <li key={event.id} className="relative pl-7"><span className="absolute left-0 top-1.5 h-[15px] w-[15px] rounded-full border-2 border-background bg-primary" /><p className="font-mono text-[10px] uppercase tracking-wide text-primary">{event.event_type.replace("prescan.", "")}</p><p className="mt-1 text-xs text-muted-foreground">{event.safe_reason ?? event.stage} · {date(event.created_at)}</p>{event.ai_provider ? <p className="mt-1 text-[10px] text-muted-foreground/70">{event.ai_provider} · {event.ai_model}</p> : null}<p className="mt-1 font-mono text-[9px] text-muted-foreground/60" title={event.event_hash}>seal {event.event_hash.slice(0, 12)}…</p></li>)}</ol> : <p className="text-xs text-muted-foreground">No timeline selected.</p>}
         </Panel>
+        <Panel title="Blocked-file retention" detail="Security quarantines retain private bytes for 30 days; ordinary rejections retain them for 24 hours. Investigation holds suspend deletion. Re-scan never bypasses prescan.">
+          {actionError ? <p className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 p-2 text-[11px] text-red-700 dark:text-red-300">{actionError}</p> : null}
+          {retainedBlockedFiles.length ? <div className="divide-y divide-border">{retainedBlockedFiles.slice(0, 8).map((file) => {
+            const retention = retentionByFile.get(file.id)
+            const available = retention?.status === "retained" && !retention.bytes_deleted_at
+            const held = Boolean(retention?.evidence_hold_at)
+            return <div key={file.id} className="py-3 first:pt-0 last:pb-0"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-xs font-medium">{file.filename}</p><p className="mt-1 text-[10px] text-muted-foreground">{retention ? `${retention.outcome} · ${held ? `held since ${date(retention.evidence_hold_at)}` : `${retention.status.replaceAll("_", " ")} · expires ${date(retention.bytes_expires_at)}`}` : "Retention state missing — investigate"}</p>{held && retention?.evidence_hold_reason ? <p className="mt-1 line-clamp-2 text-[10px] text-amber-700 dark:text-amber-300">{retention.evidence_hold_reason}</p> : null}</div>{available ? <div className="flex shrink-0 flex-wrap justify-end gap-1.5">{file.upload_status === "quarantined" && !held ? <Button type="button" variant="outline" size="sm" className="h-7 text-[10px]" disabled={actionFileId === file.id} title="Return the private bytes to the inbox and run all prescan checks" onClick={() => void rescanQuarantined(file.id, file.filename)}>Re-scan</Button> : null}<Button type="button" variant="outline" size="sm" className="h-7 text-[10px]" disabled={actionFileId === file.id} title={held ? "Release the investigation hold" : "Prevent scheduled deletion while this case is investigated"} onClick={() => void setEvidenceHold(file.id, file.filename, !held)}>{actionFileId === file.id ? "Updating…" : held ? "Release hold" : "Hold"}</Button></div> : null}</div></div>
+          })}</div> : <p className="text-xs text-muted-foreground">No rejected or quarantined files currently retain private bytes.</p>}
+        </Panel>
+        <Panel title="Evidence retention" detail="Metadata older than 180 days becomes archive-eligible. It is not deleted until an externally anchored export exists."><p className="font-mono text-2xl font-semibold text-foreground">{number.format(data.posture.evidenceArchiveEligible)}</p><p className="mt-1 text-[10px] text-muted-foreground">archive-eligible evidence rows</p></Panel>
+        <Panel title="Administrator audit" detail="Evidence reads, exports, re-scan actions, and automated byte deletion are append-only and sealed.">{data.adminAudit.length ? <Rows rows={data.adminAudit.slice(0, 8).map((item) => ({ label: item.action.replaceAll("_", " "), detail: item.actor_user_id ? `admin ${item.actor_user_id.slice(0, 8)}… · seal ${item.event_hash.slice(0, 8)}…` : `automated · seal ${item.event_hash.slice(0, 8)}…`, value: date(item.created_at) }))} /> : <p className="text-xs text-muted-foreground">No administrator security access has been recorded yet.</p>}</Panel>
         <Panel title="Repeated hashes" detail="Cross-account counts remain internal; only hash prefixes are displayed.">{data.repeatedHashes.length ? <Rows rows={data.repeatedHashes.slice(0, 8).map((item) => ({ label: `${item.hash.slice(0, 12)}…`, detail: `${item.attempts} attempts · ${item.accounts} account${item.accounts === 1 ? "" : "s"}`, value: date(item.lastSeen) }))} /> : <p className="text-xs text-muted-foreground">No repeated hashes in the current evidence window.</p>}</Panel>
         <Panel title="Top reason codes" detail={`${data.posture.unresolvedFiles} unresolved file states`}>{data.reasons.length ? <Rows rows={data.reasons.slice(0, 8).map((item) => ({ label: reasonLabel(item.reason), detail: "Recorded terminal decisions", value: number.format(item.count) }))} /> : <p className="text-xs text-muted-foreground">No rejection reasons recorded yet.</p>}</Panel>
       </div>

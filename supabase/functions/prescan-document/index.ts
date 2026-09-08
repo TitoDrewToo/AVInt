@@ -13,6 +13,7 @@ import {
   resolvePrescanNotice,
   terminalEventForOutcome,
   type PrescanOutcome,
+  upsertPrescanFileRetention,
   upsertPrescanNotice,
 } from "../_shared/prescan-lifecycle.ts"
 
@@ -778,6 +779,16 @@ async function quarantineRow(
     safeReason: message,
   }).catch((noticeError) => {
     console.error("prescan blocked notice failed:", noticeError instanceof Error ? noticeError.message : String(noticeError))
+  })
+  await upsertPrescanFileRetention(supabase, {
+    accountId: file.user_id,
+    fileId: file.id,
+    outcome,
+    reasonCode: code,
+  }).catch((retentionError) => {
+    // The terminal evidence remains authoritative. Systems flags a blocked
+    // file without retention state so the bounded retention job can repair it.
+    console.error("prescan blocked retention state failed:", retentionError instanceof Error ? retentionError.message : String(retentionError))
   })
 }
 

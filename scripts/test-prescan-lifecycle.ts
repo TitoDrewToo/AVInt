@@ -8,6 +8,7 @@ import {
   recordPrescanEvent,
   resolvePrescanNotice,
   terminalEventForOutcome,
+  upsertPrescanFileRetention,
   upsertPrescanNotice,
 } from "../supabase/functions/_shared/prescan-lifecycle"
 import { intendedPrescanTarget, reconcilePrescanStorageState } from "../lib/prescan-reconciliation"
@@ -113,6 +114,31 @@ async function main() {
   await resolvePrescanNotice(noticeClient, "file-1", "user-1")
   assert.equal(noticeWrites.length, 2)
 
+  let retentionWrite: Record<string, unknown> | null = null
+  let retentionConflict = ""
+  const retentionClient = {
+    from(table: string) {
+      assert.equal(table, "prescan_file_retention")
+      return {
+        async upsert(value: Record<string, unknown>, options: { onConflict: string }) {
+          retentionWrite = value
+          retentionConflict = options.onConflict
+          return { error: null }
+        },
+      }
+    },
+  }
+  await upsertPrescanFileRetention(retentionClient, {
+    accountId: "user-1",
+    fileId: "file-1",
+    outcome: "rejected",
+    reasonCode: "csv_malformed",
+    quarantinedAt: "2026-09-08T00:00:00.000Z",
+  })
+  assert.equal(retentionConflict, "file_id")
+  assert.equal(retentionWrite?.bytes_expires_at, "2026-09-09T00:00:00.000Z")
+  assert.equal(retentionWrite?.status, "retained")
+
   const migration = readFileSync(join(process.cwd(), "supabase/migrations/20260908090000_prescan_lifecycle_and_evidence.sql"), "utf8")
   assert.match(migration, /'rejected'/)
   assert.match(migration, /'scan_failed'/)
@@ -135,6 +161,14 @@ async function main() {
   assert.match(batchMigration, /revoke insert, update on table public\.files from public, anon, authenticated/i)
   assert.match(batchMigration, /folder_id,[\s\S]{0,40}upload_batch_id[\s\S]{0,60}\) on table public\.files to authenticated/i)
 
+  const retentionMigration = readFileSync(join(process.cwd(), "supabase/migrations/20260908150000_add_security_retention_and_admin_audit.sql"), "utf8")
+  assert.match(retentionMigration, /evidence_hold_at timestamptz/)
+  assert.match(retentionMigration, /where status = 'retained' and evidence_hold_at is null/i)
+  assert.match(retentionMigration, /revoke update, delete, truncate on table public\.prescan_security_events from service_role/i)
+  assert.match(retentionMigration, /grant select, insert on table public\.prescan_admin_audit_events to service_role/i)
+  assert.match(retentionMigration, /new\.canonical_payload := \(to_jsonb\(new\) - array\['canonical_payload', 'event_hash'\]\)::text/i)
+  assert.match(retentionMigration, /pg_advisory_xact_lock/)
+
   const source = readFileSync(join(process.cwd(), "supabase/functions/prescan-document/index.ts"), "utf8")
   assert.match(source, /claimPrescanFile\(supabase, file_id, userId\)/)
   assert.match(source, /eventType: "prescan\.action_intended"/)
@@ -148,6 +182,23 @@ async function main() {
   assert.match(reconciler, /\.eq\("upload_status", "scanning"\)/)
   assert.match(reconciler, /\.lt\("prescan_claimed_at", staleBefore\)/)
   assert.match(reconciler, /reconciled_after_runtime_termination/)
+  assert.match(reconciler, /quarantine_retention_reconciled/)
+  assert.match(reconciler, /\.is\("evidence_hold_at", null\)/)
+  assert.match(reconciler, /status: "deleting"/)
+
+  const holdRoute = readFileSync(join(process.cwd(), "app/api/systems/security/quarantine/[fileId]/hold/route.ts"), "utf8")
+  const rescanRoute = readFileSync(join(process.cwd(), "app/api/systems/security/quarantine/[fileId]/rescan/route.ts"), "utf8")
+  const exportRoute = readFileSync(join(process.cwd(), "app/api/systems/security/export/route.ts"), "utf8")
+  for (const route of [holdRoute, rescanRoute, exportRoute]) {
+    assert.match(route, /getSystemAdminUser/)
+    assert.match(route, /checkRateLimit/)
+    assert.match(route, /recordSecurityAdminAudit/)
+  }
+  assert.match(rescanRoute, /Release the investigation hold before requesting a re-scan/)
+  assert.match(rescanRoute, /functions\/v1\/prescan-document/)
+  assert.doesNotMatch(rescanRoute, /process-document/)
+  assert.match(exportRoute, /admin_audit_events/)
+  assert.match(exportRoute, /external signed checkpointing and legal process review are not yet complete/i)
 
   const browserUpload = readFileSync(join(process.cwd(), "app/tools/smart-storage/page.tsx"), "utf8")
   const serverUpload = readFileSync(join(process.cwd(), "lib/smart-storage-ingest.ts"), "utf8")

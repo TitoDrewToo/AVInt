@@ -38,6 +38,7 @@ function resultStatus(status: unknown): BatchItemStatus {
   if (status === "normalized") return "normalized"
   if (status === "rejected") return "rejected"
   if (status === "saved_at_cap") return "saved_at_cap"
+  if (status === "retry_required") return "failed"
   if (status === "failed") return "failed"
   return "processing"
 }
@@ -156,8 +157,10 @@ export async function getIngestBatchStatus(userId: string, idempotencyKey: strin
     const uploadStatus = Array.isArray(row.files) ? row.files[0]?.upload_status : row.files?.upload_status
     const status: BatchItemStatus = uploadStatus === "done" || uploadStatus === "normalized"
       ? "normalized"
-      : uploadStatus === "quarantined"
+      : uploadStatus === "quarantined" || uploadStatus === "rejected"
         ? "rejected"
+        : uploadStatus === "scan_failed"
+          ? "failed"
         : row.status
     if (status !== row.status) {
       stateChanges.push(supabaseAdmin.from("ingest_batch_items").update({ status, lease_expires_at: null }).eq("id", row.id).eq("user_id", userId))

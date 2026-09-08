@@ -6,6 +6,15 @@ import { ensureExtraction } from "../_shared/write-extraction.ts"
 import { analyzePdf } from "../_shared/pdf-prescan.ts"
 import { findKnownQuarantinedFile, parsePrescanSafetyJson, type PrescanSafetyResult } from "../_shared/prescan-security.ts"
 import { buildXlsxPreview, inspectCsv, inspectXlsxArchive } from "../_shared/spreadsheet-prescan.ts"
+import {
+  claimPrescanFile,
+  outcomeForRejection,
+  recordPrescanEvent,
+  resolvePrescanNotice,
+  terminalEventForOutcome,
+  type PrescanOutcome,
+  upsertPrescanNotice,
+} from "../_shared/prescan-lifecycle.ts"
 
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY")!
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!
@@ -315,45 +324,76 @@ serve(async (req) => {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
   // Load + ownership check
-  const { data: file, error: fileError } = await supabase
+  const { data: existingFile, error: fileError } = await supabase
     .from("files").select("*").eq("id", file_id).single()
-  if (fileError || !file) {
+  if (fileError || !existingFile) {
     return new Response(JSON.stringify({ error: "File not found" }), {
       status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
     })
   }
-  if (file.user_id !== userId) {
+  if (existingFile.user_id !== userId) {
     return new Response(JSON.stringify({ error: "Forbidden" }), {
       status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
     })
   }
 
-  // Idempotency: only process rows in pending_scan
-  if (file.upload_status !== "pending_scan") {
-    return new Response(JSON.stringify({ ok: true, skipped: true, current_status: file.upload_status }), {
+  // Atomic claim: one invocation may transition a new or retryable file to
+  // scanning. Every concurrent loser receives no row and must stop here.
+  let file: any
+  try {
+    file = await claimPrescanFile(supabase, file_id, userId)
+  } catch (claimError) {
+    return new Response(JSON.stringify({ error: claimError instanceof Error ? claimError.message : "Prescan claim failed" }), {
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    })
+  }
+  if (!file) {
+    return new Response(JSON.stringify({ ok: true, skipped: true, current_status: existingFile.upload_status }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     })
   }
 
-  // Inbox path check — must live under _inbox/
-  const expectedPrefix = `${userId}/_inbox/`
-  if (!file.storage_path?.startsWith(expectedPrefix)) {
-    await quarantineRow(supabase, file, "invalid_inbox_path", "Upload path is not in the scan inbox.")
-    return new Response(JSON.stringify({ quarantined: true, reason: "invalid_inbox_path" }), {
-      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    })
+  const correlationId = crypto.randomUUID()
+  const prescanStartedAt = Date.now()
+  let extractionId: string | null = null
+  let detectedMime: string | null = null
+  let sha: string | null = null
+  let usedProvider: AiProvider | null = null
+  let usedModel: string | null = null
+  const evidenceBase = {
+    correlationId,
+    accountId: file.user_id,
+    fileId: file.id,
+    filename: file.filename,
+    fileSize: file.file_size,
+    declaredMime: file.file_type,
   }
 
-  const ensuredExtraction = await ensureExtraction(supabase, {
-    userId: file.user_id,
-    fileId: file_id,
-    attemptNumber: 1,
-  })
-  const extractionId = ensuredExtraction.id
-
-  await supabase.from("files").update({ upload_status: "scanning" }).eq("id", file_id)
-
   try {
+    await recordPrescanEvent(supabase, {
+      ...evidenceBase,
+      stage: "request",
+      eventType: "prescan.requested",
+    })
+    await recordPrescanEvent(supabase, {
+      ...evidenceBase,
+      stage: "claim",
+      eventType: "prescan.claimed",
+    })
+
+    // The claimed object must still be in the owning account's protected inbox.
+    const expectedPrefix = `${userId}/_inbox/`
+    if (!file.storage_path?.startsWith(expectedPrefix)) {
+      throw new PrescanReject("invalid_inbox_path", "Upload path is not in the scan inbox.")
+    }
+
+    const ensuredExtraction = await ensureExtraction(supabase, {
+      userId: file.user_id,
+      fileId: file_id,
+      attemptNumber: 1,
+    })
+    extractionId = ensuredExtraction.id
+
     // Download
     const { data: blob, error: dlErr } = await supabase.storage.from("documents").download(file.storage_path)
     if (dlErr || !blob) throw new Error("Download failed")
@@ -364,39 +404,47 @@ serve(async (req) => {
       throw new PrescanReject("size_exceeded", `File exceeds ${MAX_FILE_SIZE / (1024 * 1024)} MB limit.`)
     }
 
+    // Hash before structural parsing so every rejected or retryable object can
+    // participate in same-account repeat detection.
+    sha = await sha256Hex(bytes)
+    const duplicateQuarantine = await findKnownQuarantinedFile(supabase, userId, sha)
+    if (duplicateQuarantine) {
+      throw new PrescanReject("known_quarantined_hash", "This file matches a previously blocked upload in your account.")
+    }
+
     // Tier 1.2 — magic byte
-    const detected = detectMagicMime(bytes)
-    if (!detected || !ALLOWED_MIME_PREFIXES.includes(detected)) {
+    detectedMime = detectMagicMime(bytes)
+    if (!detectedMime || !ALLOWED_MIME_PREFIXES.includes(detectedMime)) {
       throw new PrescanReject("mime_mismatch", "File signature does not match an accepted document type.")
     }
     const extension = String(file.filename ?? "").split(".").pop()?.toLowerCase() ?? ""
-    const allowedExtensions = ALLOWED_EXTENSIONS_BY_MIME[detected] ?? []
+    const allowedExtensions = ALLOWED_EXTENSIONS_BY_MIME[detectedMime] ?? []
     if (!extension || !allowedExtensions.includes(extension)) {
       throw new PrescanReject("extension_mismatch", "File extension does not match the detected document type.")
     }
     // Soft-check declared vs detected (declared MIME can legitimately be more specific)
     const declared = (file.file_type || "").toLowerCase()
     const genericDeclared = declared === "application/octet-stream" || declared === "binary/octet-stream"
-    const csvDeclaredAsExcel = detected === "text/csv" && declared === "application/vnd.ms-excel" && extension === "csv"
-    if (declared && !genericDeclared && !csvDeclaredAsExcel && !declared.startsWith("text/") && declared !== detected &&
-        !(declared.startsWith("image/") && detected.startsWith("image/"))) {
+    const csvDeclaredAsExcel = detectedMime === "text/csv" && declared === "application/vnd.ms-excel" && extension === "csv"
+    if (declared && !genericDeclared && !csvDeclaredAsExcel && !declared.startsWith("text/") && declared !== detectedMime &&
+        !(declared.startsWith("image/") && detectedMime.startsWith("image/"))) {
       throw new PrescanReject("mime_mismatch", "Declared file type does not match the actual file contents.")
     }
 
     // Tier 1.3 — structural parse (PDF only for now; others pass via magic byte)
-    if (detected === "application/pdf") {
+    if (detectedMime === "application/pdf") {
       const pdf = await analyzePdf(bytes)
-      if (!pdf.ok) throw new PrescanReject("pdf_invalid", pdf.reason ?? "Invalid PDF structure.")
+      if (!pdf.ok) throw new PrescanReject(pdf.code ?? "pdf_invalid", pdf.reason ?? "Invalid PDF structure.")
     }
     let spreadsheetPreview: string | null = null
     let spreadsheetRowCount: number | null = null
-    if (detected === "text/csv") {
+    if (detectedMime === "text/csv") {
       const csv = inspectCsv(bytes)
       if (!csv.ok) throw new PrescanReject(csv.code, csv.reason)
       spreadsheetPreview = csv.preview
       spreadsheetRowCount = csv.rowCount
     }
-    if (detected === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") {
+    if (detectedMime === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") {
       const archive = inspectXlsxArchive(bytes)
       if (!archive.ok) throw new PrescanReject(archive.code, archive.reason)
       const XLSX = await import("https://esm.sh/xlsx@0.18.5")
@@ -406,26 +454,30 @@ serve(async (req) => {
       spreadsheetRowCount = workbook.rowCount
     }
 
-    // Tier 1.4 — hash
-    const sha = await sha256Hex(bytes)
-    const duplicateQuarantine = await findKnownQuarantinedFile(supabase, userId, sha)
-    if (duplicateQuarantine) {
-      throw new PrescanReject("known_quarantined_hash", duplicateQuarantine.scan_reason || "This file matches a previously quarantined upload.")
-    }
+    await recordPrescanEvent(supabase, {
+      ...evidenceBase,
+      sha256: sha,
+      detectedMime,
+      stage: "validation",
+      eventType: "prescan.validation_completed",
+      signals: { structural_checks: "passed" },
+    })
 
     // Tier 1.5 — AI suitability and abuse classification. Spreadsheets send
     // only a bounded text preview; the raw XLSX container never leaves prescan.
     let safety: PrescanSafetyResult | null = null
     {
       const safetyInput: SafetyInput = spreadsheetPreview
-        ? { kind: "tabular_preview", mimeType: detected, preview: spreadsheetPreview }
-        : { kind: "binary", mimeType: detected, base64: toBase64(bytes) }
+        ? { kind: "tabular_preview", mimeType: detectedMime, preview: spreadsheetPreview }
+        : { kind: "binary", mimeType: detectedMime, base64: toBase64(bytes) }
       let lastSafetyError: unknown = null
       for (const [providerIndex, provider] of PRESCAN_PROVIDERS.entries()) {
         const startedAt = Date.now()
         try {
           const result = await runSafety(provider, safetyInput)
           safety = result.safety
+          usedProvider = provider
+          usedModel = provider === "anthropic" ? PRESCAN_ANTHROPIC_MODEL : PRESCAN_OPENAI_MODEL
           await recordAiUsage(supabase, {
             userId: file.user_id,
             fileId: file.id,
@@ -469,27 +521,75 @@ serve(async (req) => {
       }
       if (!safety) {
         console.error("All prescan providers failed:", lastSafetyError instanceof Error ? lastSafetyError.message : String(lastSafetyError))
-        throw new PrescanReject("safety_check_failed", "Safety check could not complete. Please try again.")
+        throw new PrescanRetry("safety_check_failed", "Safety check could not complete. Please try again.")
       }
-      if (!safety.is_processable || safety.abuse_flag || safety.confidence < 0.7) {
-        const reason = safety.reason || "Document does not appear to be a financial or operational record."
-        throw new PrescanReject("content_unrelated", reason)
+      await recordPrescanEvent(supabase, {
+        ...evidenceBase,
+        sha256: sha,
+        detectedMime,
+        stage: "suitability",
+        eventType: "prescan.suitability_completed",
+        signals: {
+          processable: safety.is_processable,
+          category: safety.doc_category,
+          abuse_flag: safety.abuse_flag,
+          confidence: safety.confidence,
+        },
+        aiProvider: usedProvider,
+        aiModel: usedModel,
+      })
+      if (safety.abuse_flag) {
+        throw new PrescanReject("abuse_content", "This file cannot be accepted because its content is prohibited.")
+      }
+      if (!safety.is_processable || safety.confidence < 0.7) {
+        throw new PrescanReject("content_unrelated", "This file does not appear to contain supported personal, financial, or operational records.")
       }
     }
 
     // ── Approved path ───────────────────────────────────────────────────────
     const canonicalPath = file.storage_path.replace(`${userId}/_inbox/`, `${userId}/`)
+    await recordPrescanEvent(supabase, {
+      ...evidenceBase,
+      sha256: sha,
+      detectedMime,
+      stage: "storage",
+      eventType: "prescan.action_intended",
+      outcome: "approved",
+      storageActionIntended: "approve",
+    })
     const { error: moveErr } = await supabase.storage.from("documents").move(file.storage_path, canonicalPath)
     if (moveErr) throw new Error(`Move to canonical path failed: ${moveErr.message}`)
 
-    await supabase.from("files").update({
+    const { data: approvedFile, error: approveError } = await supabase.from("files").update({
       storage_path: canonicalPath,
       upload_status: "approved",
       sha256: sha,
       scanned_at: new Date().toISOString(),
       scan_reason: null,
       document_type: safety?.doc_category ?? file.document_type,
-    }).eq("id", file_id)
+    }).eq("id", file_id).eq("upload_status", "scanning").select("id").maybeSingle()
+    if (approveError || !approvedFile) throw new Error(`Approve file state failed: ${approveError?.message ?? "state changed"}`)
+
+    await recordPrescanEvent(supabase, {
+      ...evidenceBase,
+      sha256: sha,
+      detectedMime,
+      stage: "terminal",
+      eventType: "prescan.approved",
+      outcome: "approved",
+      aiProvider: usedProvider,
+      aiModel: usedModel,
+      durationMs: Date.now() - prescanStartedAt,
+      storageActionIntended: "approve",
+      storageActionCompleted: "approved",
+    }).catch((eventError) => {
+      // The durable action-intended event remains visible for reconciliation.
+      // Do not strand an approved file because its terminal evidence insert failed.
+      console.error("prescan approved terminal evidence failed:", eventError instanceof Error ? eventError.message : String(eventError))
+    })
+    await resolvePrescanNotice(supabase, file.id, file.user_id).catch((noticeError) => {
+      console.error("prescan notice resolution failed:", noticeError instanceof Error ? noticeError.message : String(noticeError))
+    })
 
     // Chain into process-document (service role — internal chain allowed)
     const chain = fetch(`${SUPABASE_URL}/functions/v1/process-document`, {
@@ -509,12 +609,73 @@ serve(async (req) => {
     )
   } catch (err: any) {
     const isReject = err instanceof PrescanReject
-    const reason = isReject ? err.code : "internal_error"
-    const message = isReject ? err.message : "Scan failed. Please try again or contact support."
-    await quarantineRow(supabase, file, reason, message)
-    await supabase.from("extractions").delete().eq("id", extractionId)
+    const isRetry = err instanceof PrescanRetry
+    const reason = (isReject || isRetry) ? err.code : "internal_error"
+    const message = (isReject || isRetry) ? err.message : "Scan failed. Please try again or contact support."
+    const outcome: PrescanOutcome = isReject ? outcomeForRejection(reason) : "scan_failed"
+    let responseOutcome = outcome
+    try {
+      if (outcome === "scan_failed") {
+        await recordPrescanEvent(supabase, {
+          ...evidenceBase,
+          sha256: sha,
+          detectedMime,
+          stage: "storage",
+          eventType: "prescan.action_intended",
+          outcome,
+          reasonCode: reason,
+          safeReason: message,
+          storageActionIntended: "hold",
+        })
+        await holdForRetry(supabase, file, reason, message, sha)
+        await recordPrescanEvent(supabase, {
+          ...evidenceBase,
+          sha256: sha,
+          detectedMime,
+          stage: "terminal",
+          eventType: terminalEventForOutcome(outcome),
+          outcome,
+          reasonCode: reason,
+          safeReason: message,
+          aiProvider: usedProvider,
+          aiModel: usedModel,
+          durationMs: Date.now() - prescanStartedAt,
+          storageActionIntended: "hold",
+          storageActionCompleted: "held",
+        })
+        await upsertPrescanNotice(supabase, {
+          accountId: file.user_id,
+          fileId: file.id,
+          outcome,
+          reasonCode: reason,
+          safeReason: message,
+        }).catch((noticeError) => {
+          console.error("prescan retry notice failed:", noticeError instanceof Error ? noticeError.message : String(noticeError))
+        })
+      } else {
+        await quarantineRow(supabase, file, outcome, reason, message, {
+          correlationId,
+          sha256: sha,
+          detectedMime,
+          aiProvider: usedProvider,
+          aiModel: usedModel,
+          startedAt: prescanStartedAt,
+        })
+      }
+    } catch (terminalError) {
+      console.error("prescan terminal action failed:", terminalError instanceof Error ? terminalError.message : String(terminalError))
+      await holdForRetry(supabase, file, "terminal_action_failed", "Security action could not complete. Please try again.", sha).catch(() => undefined)
+      responseOutcome = "scan_failed"
+    }
+    if (extractionId) await supabase.from("extractions").delete().eq("id", extractionId)
     return new Response(
-      JSON.stringify({ quarantined: true, reason, message }),
+      JSON.stringify({
+        quarantined: responseOutcome === "quarantined",
+        rejected: responseOutcome === "rejected",
+        retry_required: responseOutcome === "scan_failed",
+        reason,
+        message,
+      }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     )
   }
@@ -526,20 +687,109 @@ class PrescanReject extends Error {
   }
 }
 
-async function quarantineRow(supabase: any, file: any, code: string, message: string) {
+class PrescanRetry extends Error {
+  constructor(public code: string, message: string) {
+    super(message)
+  }
+}
+
+async function quarantineRow(
+  supabase: any,
+  file: any,
+  outcome: "quarantined" | "rejected",
+  code: string,
+  message: string,
+  evidence: {
+    correlationId: string
+    sha256: string | null
+    detectedMime: string | null
+    aiProvider: AiProvider | null
+    aiModel: string | null
+    startedAt: number
+  },
+) {
   const uid = file.user_id
   const quarantinePath = file.storage_path.startsWith(`${uid}/_inbox/`)
     ? file.storage_path.replace(`${uid}/_inbox/`, `${uid}/_quarantine/`)
     : `${uid}/_quarantine/${file.id}`
-  try {
-    await supabase.storage.from("documents").move(file.storage_path, quarantinePath)
-  } catch (e) {
-    console.error("quarantine move failed:", e)
-  }
-  await supabase.from("files").update({
+  await recordPrescanEvent(supabase, {
+    correlationId: evidence.correlationId,
+    accountId: file.user_id,
+    fileId: file.id,
+    filename: file.filename,
+    fileSize: file.file_size,
+    sha256: evidence.sha256,
+    declaredMime: file.file_type,
+    detectedMime: evidence.detectedMime,
+    stage: "storage",
+    eventType: "prescan.action_intended",
+    outcome,
+    reasonCode: code,
+    safeReason: message,
+    storageActionIntended: "quarantine",
+  })
+  const { error: moveError } = await supabase.storage.from("documents").move(file.storage_path, quarantinePath)
+  if (moveError) throw new Error(`Quarantine move failed: ${moveError.message}`)
+  const { data: blockedFile, error: updateError } = await supabase.from("files").update({
     storage_path: quarantinePath,
-    upload_status: "quarantined",
+    upload_status: outcome,
+    sha256: evidence.sha256,
     scan_reason: `${code}: ${message}`,
     scanned_at: new Date().toISOString(),
-  }).eq("id", file.id)
+  }).eq("id", file.id).eq("upload_status", "scanning").select("id").maybeSingle()
+  if (updateError || !blockedFile) throw new Error(`Blocked file state failed: ${updateError?.message ?? "state changed"}`)
+  const { error: jobError } = await supabase.from("processing_jobs").update({
+    status: "failed",
+    error_message: message,
+    completed_at: new Date().toISOString(),
+  }).eq("file_id", file.id).in("status", ["uploaded", "pending_scan", "scanning", "processing"])
+  if (jobError) console.error("blocked processing job state failed:", jobError.message)
+  await recordPrescanEvent(supabase, {
+    correlationId: evidence.correlationId,
+    accountId: file.user_id,
+    fileId: file.id,
+    filename: file.filename,
+    fileSize: file.file_size,
+    sha256: evidence.sha256,
+    declaredMime: file.file_type,
+    detectedMime: evidence.detectedMime,
+    stage: "terminal",
+    eventType: terminalEventForOutcome(outcome),
+    outcome,
+    reasonCode: code,
+    safeReason: message,
+    aiProvider: evidence.aiProvider,
+    aiModel: evidence.aiModel,
+    durationMs: Date.now() - evidence.startedAt,
+    storageActionIntended: "quarantine",
+    storageActionCompleted: "quarantined",
+  }).catch((eventError) => {
+    // action_intended is durable; leave the missing terminal event visible to
+    // the operations reconciler rather than changing the completed outcome.
+    console.error("prescan blocked terminal evidence failed:", eventError instanceof Error ? eventError.message : String(eventError))
+  })
+  await upsertPrescanNotice(supabase, {
+    accountId: file.user_id,
+    fileId: file.id,
+    outcome,
+    reasonCode: code,
+    safeReason: message,
+  }).catch((noticeError) => {
+    console.error("prescan blocked notice failed:", noticeError instanceof Error ? noticeError.message : String(noticeError))
+  })
+}
+
+async function holdForRetry(supabase: any, file: any, code: string, message: string, sha256: string | null) {
+  const { data, error } = await supabase.from("files").update({
+    upload_status: "scan_failed",
+    sha256,
+    scan_reason: `${code}: ${message}`,
+  }).eq("id", file.id).eq("upload_status", "scanning").select("id").maybeSingle()
+  if (error || !data) throw new Error(`Retry state write failed: ${error?.message ?? "state changed"}`)
+  const { error: jobError } = await supabase.from("processing_jobs").update({
+    status: "failed",
+    error_message: message,
+    completed_at: new Date().toISOString(),
+  }).eq("file_id", file.id).in("status", ["uploaded", "pending_scan", "scanning", "processing"])
+  if (jobError) console.error("retry processing job state failed:", jobError.message)
 }

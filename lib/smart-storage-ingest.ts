@@ -24,15 +24,32 @@ function decode(file: IngestFile) {
 async function runPrescan(userId: string, file: { id: string; filename: string }) {
   const edgeUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/prescan-document`
   const prescan = await fetch(edgeUrl, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}` }, body: JSON.stringify({ file_id: file.id, user_id: userId }) })
-  const payload = await prescan.json().catch(() => null) as { quarantined?: boolean; reason?: string; message?: string } | null
+  const payload = await prescan.json().catch(() => null) as {
+    quarantined?: boolean
+    rejected?: boolean
+    retry_required?: boolean
+    reason?: string
+    message?: string
+  } | null
   if (!prescan.ok) throw new Error(`prescan-document failed: ${payload?.message ?? payload?.reason ?? prescan.statusText}`)
-  if (payload?.quarantined) {
+  if (payload?.quarantined || payload?.rejected) {
     return {
       file_id: file.id,
       filename: file.filename,
       status: "rejected",
       message: payload.message ?? "The file did not pass the Smart Storage safety scan.",
       reason: payload.reason ?? "prescan_rejected",
+      ...EMPTY_COUNTS,
+      records: [],
+    }
+  }
+  if (payload?.retry_required) {
+    return {
+      file_id: file.id,
+      filename: file.filename,
+      status: "retry_required",
+      message: payload.message ?? "The security check could not complete. Retry this upload.",
+      reason: payload.reason ?? "prescan_retry_required",
       ...EMPTY_COUNTS,
       records: [],
     }
@@ -65,16 +82,22 @@ export async function resumeIngestFile(userId: string, fileId: string, entitleme
   if (error) throw new Error(error.message)
   if (!file) throw new Error("The resumable upload no longer exists.")
 
-  if (file.upload_status === "quarantined") {
+  if (file.upload_status === "quarantined" || file.upload_status === "rejected") {
     return { file_id: file.id, filename: file.filename, status: "rejected", ...EMPTY_COUNTS, records: [] }
   }
   if (file.upload_status === "done" || file.upload_status === "normalized") {
     return { file_id: file.id, filename: file.filename, status: "normalized", ...EMPTY_COUNTS, records: [] }
   }
-  if (file.upload_status === "uploaded" || file.upload_status === "pending_scan") {
+  if (["uploaded", "pending_scan", "scan_failed"].includes(file.upload_status)) {
     const { claim, limit } = await claimDocumentProcessing(userId, file.id, entitlement)
     if (!claim?.[0]?.allowed) {
       return { file_id: file.id, filename: file.filename, status: "saved_at_cap", message: `You've hit your ${entitlement.tier} document limit (${limit}).`, ...EMPTY_COUNTS, records: [] }
+    }
+    if (file.upload_status === "scan_failed") {
+      const { error: retryJobError } = await supabaseAdmin
+        .from("processing_jobs")
+        .insert({ file_id: file.id, status: "uploaded" })
+      if (retryJobError) throw new Error(`Could not queue prescan retry: ${retryJobError.message}`)
     }
     const rejected = await runPrescan(userId, file)
     if (rejected) return rejected

@@ -1,6 +1,6 @@
 # Prescan Security and Smart Security Roadmap
 
-**Status:** implementation underway; Phases 1–4 and the first Phase 5 release are deployed; Phase 6 is prepared for release
+**Status:** implementation underway; Phases 1–4, the first Phase 5 release, and the read-only Phase 6 console are deployed
 
 **Updated:** 2026-09-08
 **Authority:** this document supersedes every earlier Smart Security Cloud Run, middleware, Gemma-service, Antigravity, and autonomous-defense plan in this repository.
@@ -61,7 +61,6 @@ The old `smart-security/` schemas and policies are historical scaffolding. They 
 
 Known gaps:
 
-- bounded stale-claim reconciliation and the Systems security console are implemented but not yet deployed;
 - the customer rejection panel has no upload-batch identity, so it cannot yet show accepted-versus-blocked counts for one batch;
 - the middleware-era `smart_security_events`, `smart_security_decisions`, and `smart_security_blocks` tables do not represent the new prescan product;
 - without a selected antivirus engine, the product must not claim comprehensive signature-based malware scanning.
@@ -237,7 +236,7 @@ Dismissal changes only notification state. It never deletes the file, quarantine
 
 ## Phase 6: Systems security operations
 
-**Implementation status:** the read-only administrator API, `/systems/security` evidence console, Systems overview summary, and bounded stale-prescan reconciliation are implemented and awaiting deployment. The reconciler fails closed: recoverable moved objects are restored to `_inbox`, stale files become `scan_failed`, and no interrupted decision is inferred or passed to processing.
+**Implementation status:** deployed with `prescan-document` version 39. The read-only administrator API, `/systems/security` evidence console, Systems overview summary, and bounded stale-prescan reconciliation are live. The reconciler fails closed: recoverable moved objects are restored to `_inbox`, stale files become `scan_failed`, and no interrupted decision is inferred or passed to processing.
 
 Add an internal Security destination at `/systems/security` and a summary card on `/systems`.
 

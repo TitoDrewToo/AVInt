@@ -95,8 +95,7 @@ export function SecurityRejectionPanel({
     void loadNotices()
   }, [loadNotices, refreshKey])
 
-  const dismiss = async () => {
-    const ids = notices.map((notice) => notice.id)
+  const dismiss = async (ids: string[]) => {
     if (ids.length === 0) return
     const dismissedAt = new Date().toISOString()
     const { error } = await supabase
@@ -108,7 +107,8 @@ export function SecurityRejectionPanel({
       console.error("prescan notice dismissal failed:", error.message)
       return
     }
-    setNotices([])
+    const dismissed = new Set(ids)
+    setNotices((current) => current.filter((notice) => !dismissed.has(notice.id)))
   }
 
   const noticeGroups = useMemo(() => {
@@ -151,7 +151,7 @@ export function SecurityRejectionPanel({
             </p>
           </div>
         </div>
-        <button type="button" onClick={() => void dismiss()} className="rounded p-1 opacity-65 transition hover:bg-amber-200/60 hover:opacity-100 dark:hover:bg-amber-900/60" aria-label="Dismiss upload security notices" title="Dismiss these notices">
+        <button type="button" onClick={() => void dismiss(notices.map((notice) => notice.id))} className="rounded p-1 opacity-65 transition hover:bg-amber-200/60 hover:opacity-100 dark:hover:bg-amber-900/60" aria-label="Dismiss all upload security notices" title="Dismiss all notices">
           <X className="h-4 w-4" aria-hidden="true" />
         </button>
       </div>
@@ -176,11 +176,16 @@ export function SecurityRejectionPanel({
                     {notice.outcome === "scan_failed" && notice.reason_code !== "runtime_storage_missing" ? "Retry the security check. Processing remains blocked until it passes." : "Replace or remove this file. It was not sent for processing."}
                   </p>
                 </div>
-                {notice.outcome === "scan_failed" && notice.reason_code !== "runtime_storage_missing" && onRetry ? (
-                  <Button type="button" size="sm" variant="outline" className="h-7 shrink-0 border-current/25 bg-transparent px-2 text-[10px]" onClick={() => onRetry(notice.file_id)} title="Retry this file's security check">
-                    <RotateCcw className="mr-1 h-3 w-3" aria-hidden="true" /> Retry
-                  </Button>
-                ) : null}
+                <div className="flex shrink-0 items-center gap-1">
+                  {notice.outcome === "scan_failed" && notice.reason_code !== "runtime_storage_missing" && onRetry ? (
+                    <Button type="button" size="sm" variant="outline" className="h-7 border-current/25 bg-transparent px-2 text-[10px]" onClick={() => onRetry(notice.file_id)} title="Retry this file's security check">
+                      <RotateCcw className="mr-1 h-3 w-3" aria-hidden="true" /> Retry
+                    </Button>
+                  ) : null}
+                  <button type="button" onClick={() => void dismiss([notice.id])} className="rounded p-1.5 opacity-55 transition hover:bg-amber-200/60 hover:opacity-100 dark:hover:bg-amber-900/60" aria-label={`Dismiss notice for ${filenameFor(notice)}`} title="Dismiss this notice">
+                    <X className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                </div>
               </div>
             ))}
           </div>

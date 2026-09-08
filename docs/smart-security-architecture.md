@@ -209,7 +209,7 @@ Until tamper-evident storage and access history exist, call these investigative 
 
 ## Phase 5: customer rejection experience
 
-**Implementation status:** persistent batch identity is deployed across browser, MCP, and integration uploads. Open notices are grouped with accepted, quarantined, rejected, retry-required, and still-checking totals. Individual notice dismissal remains future work; the current close action dismisses the visible notice set.
+**Implementation status:** persistent batch identity is deployed across browser, MCP, and integration uploads. Open notices are grouped with accepted, quarantined, rejected, retry-required, and still-checking totals. Individual and dismiss-all controls are implemented without modifying evidence or file outcomes.
 
 Add a persistent, closable rejection panel beside the existing ingestion activity presentation in Smart Storage.
 

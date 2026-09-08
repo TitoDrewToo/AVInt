@@ -45,6 +45,7 @@ import { LeftFolderItem } from "@/components/smart-storage/left-folder-item"
 import { StorageItemMenu } from "@/components/smart-storage/storage-item-menu"
 import { GoogleDriveImportModal } from "@/components/smart-storage/google-drive-import-modal"
 import { ProcessingActivityWindow } from "@/components/smart-storage/processing-activity-window"
+import { SecurityRejectionPanel } from "@/components/smart-storage/security-rejection-panel"
 import { useRouter } from "next/navigation"
 import {
   formatStorageAllowance,
@@ -147,7 +148,7 @@ type HoverPreviewState = {
   y: number
 }
 
-type ProcessingBadgeState = "working_slow" | "failed" | "normalization_failed" | "classification_required"
+type ProcessingBadgeState = "working_slow" | "failed" | "normalization_failed" | "classification_required" | "scan_retry_required"
 
 const formatBytes = formatStorageBytes
 
@@ -241,6 +242,7 @@ function isSpreadsheetFile(file: { file_type?: string | null; filename?: string 
 }
 
 function processingBadgeState(file: UploadedFile): ProcessingBadgeState | null {
+  if (file.attention_state === "scan_retry_required") return "scan_retry_required"
   if (file.attention_state === "normalization_failed") return "normalization_failed"
   if (file.attention_state === "classification_required") return "classification_required"
   const job = file.processing_job
@@ -257,6 +259,7 @@ function processingBadgeState(file: UploadedFile): ProcessingBadgeState | null {
 }
 
 function fileDocumentTypeLabel(file: UploadedFile): { label: string; isFailed: boolean } {
+  if (file.attention_state === "scan_retry_required") return { label: "Security check needs retry", isFailed: true }
   if (file.attention_state === "normalization_failed") return { label: "Needs review", isFailed: true }
   if (file.attention_state === "extraction_failed") return { label: "Needs extraction retry", isFailed: true }
   if (file.attention_state === "processing_slow") return { label: "Still processing", isFailed: false }
@@ -271,6 +274,12 @@ function fileDocumentTypeLabel(file: UploadedFile): { label: string; isFailed: b
   if (documentFieldsCount === 0 && file.processing_job?.status === "failed") return { label: "Failed", isFailed: true }
   if (file.document_type === "unknown") return { label: "Processing…", isFailed: false }
   return { label: file.document_type.replace(/_/g, " "), isFailed: false }
+}
+
+function customerSafeScanReason(reason: string | null | undefined, fallback: string) {
+  if (!reason) return fallback
+  const separator = reason.indexOf(": ")
+  return separator >= 0 ? reason.slice(separator + 2) : reason
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
@@ -1071,16 +1080,35 @@ export default function SmartStoragePage() {
           },
           body: JSON.stringify({ file_id: fileRecord.id }),
         })
+        const prescanPayload = await prescanResponse.json().catch(() => null) as {
+          approved?: boolean
+          quarantined?: boolean
+          rejected?: boolean
+          retry_required?: boolean
+          reason?: string
+          message?: string
+        } | null
         if (!prescanResponse.ok) {
-          const detail = await prescanResponse.text().catch(() => "")
-          throw new Error(detail || `Prescan failed (${prescanResponse.status})`)
+          throw new Error(prescanPayload?.message ?? prescanPayload?.reason ?? `Prescan failed (${prescanResponse.status})`)
         }
+
+        const prescanStatus = prescanPayload?.quarantined
+          ? "quarantined"
+          : prescanPayload?.rejected
+            ? "rejected"
+            : prescanPayload?.retry_required
+              ? "scan_failed"
+              : prescanPayload?.approved
+                ? "approved"
+                : fileRecord.upload_status
 
         return {
           ...fileRecord,
+          upload_status: prescanStatus,
+          scan_reason: prescanPayload?.message ?? null,
           document_fields_count: 0,
           processing_job: {
-            status: jobRecord.status,
+            status: prescanPayload?.quarantined || prescanPayload?.rejected || prescanPayload?.retry_required ? "failed" : jobRecord.status,
             created_at: jobRecord.created_at,
             error_message: jobRecord.error_message,
           },
@@ -1150,7 +1178,7 @@ export default function SmartStoragePage() {
       return
     }
     const functionName =
-      file.upload_status === "pending_scan"
+      file.upload_status === "pending_scan" || file.upload_status === "scan_failed"
         ? "prescan-document"
         : file.upload_status === "approved"
         ? "process-document"
@@ -1891,6 +1919,8 @@ export default function SmartStoragePage() {
     if (!badge) return null
     const title = badge === "normalization_failed"
       ? file.normalization_error ?? "Processing needs attention"
+      : badge === "scan_retry_required"
+      ? customerSafeScanReason(file.scan_reason, "The security check could not complete")
       : badge === "classification_required"
       ? "Choose the document type to continue processing"
       : badge === "failed"
@@ -1898,6 +1928,8 @@ export default function SmartStoragePage() {
       : "Processing is taking longer than expected"
     const label = badge === "normalization_failed"
       ? "Processing failed - retry"
+      : badge === "scan_retry_required"
+      ? "Security check failed - retry"
       : badge === "classification_required"
       ? "Needs classification"
       : badge === "failed" ? "Failed - retry" : "Still working..."
@@ -1915,7 +1947,7 @@ export default function SmartStoragePage() {
       <Tip text="Click to retry processing">
         <span
           className={`inline-flex max-w-full items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] leading-none ${
-            badge === "failed" || badge === "normalization_failed"
+            badge === "failed" || badge === "normalization_failed" || badge === "scan_retry_required"
               ? "border-red-200 bg-red-50 text-red-700"
               : "border-amber-200 bg-amber-50 text-amber-700"
           }`}
@@ -1955,6 +1987,14 @@ export default function SmartStoragePage() {
         deletingCount={selectedFiles.size}
         activeJobs={processingJobs}
         receivedCount={processingJobs.length}
+      />
+      <SecurityRejectionPanel
+        accountId={session?.user.id ?? null}
+        refreshKey={files.map((file) => `${file.id}:${file.upload_status}`).join("|")}
+        onRetry={(fileId) => {
+          const file = files.find((candidate) => candidate.id === fileId)
+          if (file) void handleRetryProcessing(file)
+        }}
       />
 
       <main className="flex min-h-0 flex-1 overflow-hidden">
@@ -2562,9 +2602,9 @@ export default function SmartStoragePage() {
                           ) : (
                             <span title={file.filename} className="line-clamp-2 w-full break-all text-center text-[11px] leading-tight text-foreground">{file.filename}</span>
                           )}
-                          {file.upload_status === "quarantined" ? (
-                            <span className="w-full truncate text-center text-[10px] text-red-600 leading-tight" title={file.scan_reason ?? "Blocked by security scan"}>
-                              Blocked
+                          {file.upload_status === "quarantined" || file.upload_status === "rejected" ? (
+                            <span className="w-full truncate text-center text-[10px] text-red-600 leading-tight" title={customerSafeScanReason(file.scan_reason, "Blocked by security scan")}>
+                              {file.upload_status === "quarantined" ? "Quarantined" : "Rejected"}
                             </span>
                           ) : (
                             <span className={`w-full truncate text-center text-[10px] capitalize leading-tight ${
@@ -2652,9 +2692,9 @@ export default function SmartStoragePage() {
                       )}
                     </div>
                     <span className="flex min-w-0 flex-col items-start gap-1">
-                      {file.upload_status === "quarantined" ? (
-                        <span className="max-w-full truncate text-red-600" title={file.scan_reason ?? "Blocked by security scan"}>
-                          Blocked
+                      {file.upload_status === "quarantined" || file.upload_status === "rejected" ? (
+                        <span className="max-w-full truncate text-red-600" title={customerSafeScanReason(file.scan_reason, "Blocked by security scan")}>
+                          {file.upload_status === "quarantined" ? "Quarantined" : "Rejected"}
                         </span>
                       ) : (
                         (() => {

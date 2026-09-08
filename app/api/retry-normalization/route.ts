@@ -26,7 +26,12 @@ export async function POST(req: NextRequest) {
       .maybeSingle()
     if (fileError) throw new Error(fileError.message)
     if (!file || file.user_id !== auth.user.id) return NextResponse.json({ error: "File not found" }, { status: 404 })
-    if (file.upload_status === "quarantined") return NextResponse.json({ error: "Quarantined files cannot be retried here" }, { status: 409 })
+    if (file.upload_status === "quarantined" || file.upload_status === "rejected") {
+      return NextResponse.json({ error: "Blocked files cannot be retried through normalization" }, { status: 409 })
+    }
+    if (file.upload_status === "scan_failed") {
+      return NextResponse.json({ error: "Retry the security check before normalization" }, { status: 409 })
+    }
 
     const { data: extraction, error: extractionError } = await supabaseAdmin
       .from("extractions")

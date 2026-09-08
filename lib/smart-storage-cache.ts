@@ -144,6 +144,8 @@ async function enrichFiles(files: any[]): Promise<UploadedFile[]> {
     const job = latestJobByFileId.get(file.id) ?? null
     const fieldsCount = recordCountByFileId.get(file.id) ?? 0
     const isQuarantined = file.upload_status === "quarantined"
+    const isRejected = file.upload_status === "rejected"
+    const isScanFailed = file.upload_status === "scan_failed"
     const ageMs = job?.created_at ? Date.now() - Date.parse(job.created_at) : 0
     const isActive = ["uploaded", "pending_scan", "scanning", "processing"].includes(job?.status ?? "")
       || ["uploaded", "pending_scan", "scanning", "approved", "processing"].includes(file.upload_status ?? "")
@@ -155,8 +157,9 @@ async function enrichFiles(files: any[]): Promise<UploadedFile[]> {
       hasExtraction: extractionFileIds.has(file.id),
     })
     let attentionState: SmartStorageAttentionState = null
-    if (!isQuarantined) {
-      if (job?.status === "failed" && fieldsCount > 0) attentionState = "normalization_failed"
+    if (!isQuarantined && !isRejected) {
+      if (isScanFailed) attentionState = "scan_retry_required"
+      else if (job?.status === "failed" && fieldsCount > 0) attentionState = "normalization_failed"
       else if (stalled || (job?.status === "failed" && fieldsCount === 0)) attentionState = "extraction_failed"
       else if (isSlow) attentionState = "processing_slow"
       else if (!isActive && (!file.document_type || file.document_type === "unknown")) attentionState = "classification_required"
@@ -164,6 +167,7 @@ async function enrichFiles(files: any[]): Promise<UploadedFile[]> {
 
     let pipelineStage: UploadedFile["pipeline_stage"] = "unknown"
     if (isQuarantined) pipelineStage = "quarantined"
+    else if (isRejected) pipelineStage = "rejected"
     else if (attentionState) pipelineStage = "attention"
     else if (normalizedFileIds.has(file.id)) pipelineStage = "ready"
     else if (["pending_scan", "scanning"].includes(file.upload_status ?? "") || job?.status === "scanning") pipelineStage = "scanning"

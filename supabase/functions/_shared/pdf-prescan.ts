@@ -43,7 +43,7 @@ function hasUnsafeAction(text: string, marker: string): boolean {
 }
 
 // PDF quick parse: confirm not encrypted + extract rough page count from /Count tokens.
-export function analyzePdf(bytes: Uint8Array): { ok: boolean; reason?: string; pages?: number } {
+export function analyzePdf(bytes: Uint8Array): { ok: boolean; code?: string; reason?: string; pages?: number } {
   const head = new TextDecoder("latin1").decode(bytes.slice(0, Math.min(bytes.length, 16384)))
   if (!head.startsWith("%PDF-")) return { ok: false, reason: "Not a valid PDF header" }
   const fullText = new TextDecoder("latin1").decode(bytes)
@@ -51,10 +51,10 @@ export function analyzePdf(bytes: Uint8Array): { ok: boolean; reason?: string; p
 
   const normalizedText = normalizePdfNames(fullText)
   if (SUSPICIOUS_PDF_MARKERS.some((marker) => hasMarker(normalizedText, marker))) {
-    return { ok: false, reason: "PDF contains active or embedded content that is not supported." }
+    return { ok: false, code: "pdf_active_content", reason: "PDF contains active or embedded content that is not supported." }
   }
   if (CONDITIONAL_PDF_ACTION_MARKERS.some((marker) => hasUnsafeAction(normalizedText, marker))) {
-    return { ok: false, reason: "PDF contains active or embedded content that is not supported." }
+    return { ok: false, code: "pdf_active_content", reason: "PDF contains active or embedded content that is not supported." }
   }
 
   const counts = [...fullText.matchAll(/\/Count\s+(\d+)/g)].map((m) => parseInt(m[1], 10)).filter((n) => !Number.isNaN(n))

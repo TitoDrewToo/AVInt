@@ -18,6 +18,7 @@ export type SmartStorageAttentionState =
   | "extraction_failed"
   | "normalization_failed"
   | "processing_slow"
+  | "scan_retry_required"
   | null
 export type DateRangePreset = "this_month" | "last_month" | "this_year" | "prev_year" | "custom"
 export type ClassificationSort = "date-desc" | "date-asc" | "name"
@@ -63,7 +64,7 @@ export interface UploadedFile {
   attention_state?: SmartStorageAttentionState
   normalization_error?: string | null
   normalization_status?: "raw" | "normalized" | "failed" | "excluded" | "manual" | null
-  pipeline_stage?: "uploading" | "scanning" | "extracting" | "normalizing" | "ready" | "attention" | "quarantined" | "unknown"
+  pipeline_stage?: "uploading" | "scanning" | "extracting" | "normalizing" | "ready" | "attention" | "quarantined" | "rejected" | "unknown"
   processing_job?: {
     status: string | null
     created_at: string | null
@@ -178,7 +179,7 @@ export function normalizeDocumentType(raw: string, confidence: number): Document
 }
 
 export function isUnclassifiedDocument(file: Pick<UploadedFile, "document_type" | "attention_state" | "upload_status">): boolean {
-  if (file.upload_status === "quarantined") return false
+  if (file.upload_status === "quarantined" || file.upload_status === "rejected") return false
   return !file.document_type || file.document_type === "unknown" || Boolean(file.attention_state)
 }
 

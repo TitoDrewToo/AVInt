@@ -311,7 +311,7 @@ A controlled MCP-ingest proof exercised `prescan-document` version 40 against th
 - the clean file, canonical record, derived rows, storage bytes, and usage claim were removed after verification; its sealed security evidence remains;
 - an inert CSV formula-injection fixture was quarantined with reason `csv_formula_cell`, produced zero extraction rows and zero canonical records, retained one terminal processing job, created an open customer notice, and created a valid 30-day private-byte retention case;
 - the quarantine evidence contains four valid sealed events with three verified links and no signed URL or raw file content;
-- the quarantined fixture remains intentionally available in `/systems/security` for the authenticated administrator hold/re-scan UI proof.
+- the quarantined fixture remains under its standard bounded-retention lifecycle so scheduled byte deletion can be observed without altering production timestamps.
 
 The authenticated administrator exercise is also complete. The retained fixture accepted a reasoned hold, recorded the hold release, and started a re-scan from `/systems/security`. The unchanged formula-injection fixture was quarantined again for `csv_formula_cell`, retained zero usage, extraction, and record rows, and added a second prescan correlation. Verification covered eight valid prescan events across two correlations and the complete nine-action hold/release/re-scan sequence inside a valid administrator audit chain. Timed 24-hour/30-day deletion should be accelerated in staging rather than waiting on production.
 

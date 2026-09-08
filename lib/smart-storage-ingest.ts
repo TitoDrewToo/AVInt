@@ -73,6 +73,15 @@ async function claimDocumentProcessing(userId: string, fileId: string, entitleme
   return { claim: data, limit }
 }
 
+async function releaseDocumentProcessingClaim(userId: string, fileId: string) {
+  const { error } = await supabaseAdmin
+    .from("document_processing_usage")
+    .delete()
+    .eq("user_id", userId)
+    .eq("file_id", fileId)
+  if (error) throw new Error(`Could not release unused document quota: ${error.message}`)
+}
+
 export async function resumeIngestFile(userId: string, fileId: string, entitlement: Entitlement) {
   const { data: file, error } = await supabaseAdmin
     .from("files")
@@ -84,6 +93,7 @@ export async function resumeIngestFile(userId: string, fileId: string, entitleme
   if (!file) throw new Error("The resumable upload no longer exists.")
 
   if (file.upload_status === "quarantined" || file.upload_status === "rejected") {
+    await releaseDocumentProcessingClaim(userId, file.id)
     return { file_id: file.id, filename: file.filename, status: "rejected", ...EMPTY_COUNTS, records: [] }
   }
   if (file.upload_status === "done" || file.upload_status === "normalized") {
@@ -101,7 +111,10 @@ export async function resumeIngestFile(userId: string, fileId: string, entitleme
       if (retryJobError) throw new Error(`Could not queue prescan retry: ${retryJobError.message}`)
     }
     const rejected = await runPrescan(userId, file)
-    if (rejected) return rejected
+    if (rejected) {
+      await releaseDocumentProcessingClaim(userId, file.id)
+      return rejected
+    }
   }
   return { file_id: file.id, filename: file.filename, status: "processing", ...EMPTY_COUNTS, records: [] }
 }
@@ -147,7 +160,11 @@ export async function ingestFiles(userId: string, entitlement: Entitlement, file
       continue
     }
     const rejected = await runPrescan(userId, file)
-    if (rejected) { results.push(rejected); continue }
+    if (rejected) {
+      await releaseDocumentProcessingClaim(userId, file.id)
+      results.push(rejected)
+      continue
+    }
     if (options.waitForNormalization === false) {
       results.push({ file_id: file.id, filename: file.filename, status: "processing", ...EMPTY_COUNTS, fair_use_warning: Boolean(claim?.[0]?.fair_use_warning), records: [] })
       continue

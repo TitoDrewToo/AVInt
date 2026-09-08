@@ -213,6 +213,12 @@ async function main() {
   assert.match(serverUpload, /upload_status: "pending_scan"/)
   assert.match(serverUpload, /upload_batch_id: uploadBatchId/)
   assert.doesNotMatch(`${browserUpload}\n${serverUpload}`, /upload_status:\s*["']uploaded["']/)
+  assert.match(serverUpload, /from\("document_processing_usage"\)[\s\S]{0,100}\.delete\(\)[\s\S]{0,100}\.eq\("user_id", userId\)[\s\S]{0,100}\.eq\("file_id", fileId\)/)
+  assert.equal((serverUpload.match(/await releaseDocumentProcessingClaim\(userId, file\.id\)/g) ?? []).length, 3)
+  assert.ok(
+    serverUpload.indexOf("await claimDocumentProcessing(userId, file.id, entitlement)") < serverUpload.lastIndexOf("await runPrescan(userId, file)"),
+    "MCP ingest must reserve quota before prescan can approve and launch processing",
+  )
 
   console.log("prescan lifecycle contract: passed", JSON.stringify(fixture.state))
 }

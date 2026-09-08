@@ -1,6 +1,6 @@
 # Prescan Security and Smart Security Roadmap
 
-**Status:** approved direction, implementation underway; Phase 1 complete
+**Status:** implementation underway; Phases 1–4 deployed, Phase 5 started
 
 **Updated:** 2026-09-08
 **Authority:** this document supersedes every earlier Smart Security Cloud Run, middleware, Gemma-service, Antigravity, and autonomous-defense plan in this repository.
@@ -61,10 +61,9 @@ The old `smart-security/` schemas and policies are historical scaffolding. They 
 
 Known gaps:
 
-- the `pending_scan` to `scanning` claim is not atomic;
-- transient provider and internal failures still use the legacy quarantine outcome until the additive Phase 3 lifecycle migration lands;
-- rejection presentation is limited to a small Blocked label;
-- no canonical file-scan evidence model exists;
+- a runtime termination after a successful claim can leave `scanning` or an intended storage action requiring operational reconciliation;
+- the customer rejection panel has no upload-batch identity, so it cannot yet show accepted-versus-blocked counts for one batch;
+- the Systems administrator API and `/systems/security` evidence view are not built;
 - the middleware-era `smart_security_events`, `smart_security_decisions`, and `smart_security_blocks` tables do not represent the new prescan product;
 - without a selected antivirus engine, the product must not claim comprehensive signature-based malware scanning.
 
@@ -144,6 +143,8 @@ Apply the same prescan boundary to PDF, image, CSV, and XLSX uploads.
 
 ## Phase 3: lifecycle and idempotency
 
+**Implementation status:** deployed in `prescan-document` version 38. The conditional update permits only one concurrent claimant. New `rejected` and `scan_failed` states are live; blocked jobs are terminal and both browser and MCP retries understand the new lifecycle.
+
 Make the `pending_scan` to `scanning` claim conditional and atomic. Only the invocation that successfully claims the row may continue.
 
 Per file, guarantee:
@@ -166,6 +167,8 @@ The new outcomes require an additive file-status migration and updates to status
 Every current upload entry point must create `pending_scan`. Add a contract test preventing new direct `uploaded` writers. The processor's legacy acceptance of `uploaded` remains transitional debt until old rows are reconciled under a separate approval.
 
 ## Phase 4: canonical rejection evidence
+
+**Implementation status:** deployed through migration `20260908090000_prescan_lifecycle_and_evidence`. `prescan_security_events` is the service-role-only canonical append-only store. Each attempt has a correlation ID and action intent is persisted before a storage move. Missing terminal events remain visible as reconciliation gaps.
 
 Create a service-role-only `prescan_security_events` table as the authoritative append-only trail. Do not reuse the generic middleware-era Smart Security tables.
 
@@ -206,6 +209,8 @@ Access:
 Until tamper-evident storage and access history exist, call these investigative records, not legal-grade chain-of-custody evidence.
 
 ## Phase 5: customer rejection experience
+
+**Implementation status:** first increment deployed. Smart Storage now renders an account-persistent, dismissible panel for quarantined, rejected, and retry-required files, with customer-safe reasons and retry guidance. Per-upload batch totals and individual notice controls remain.
 
 Add a persistent, closable rejection panel beside the existing ingestion activity presentation in Smart Storage.
 

@@ -11,7 +11,6 @@ export default tseslint.config(
       ".gstack/**",
       "node_modules/**",
       "**/supabase/**",
-      "**/smart-security/**",
       "**/paperclip/**",
       "**/paperclip-2-news/**",
       "**/docs/**",

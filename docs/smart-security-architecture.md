@@ -1,6 +1,6 @@
 # Prescan Security and Smart Security Roadmap
 
-**Status:** approved direction, implementation pending
+**Status:** approved direction, implementation underway; Phase 1 code complete pending deployment cleanup
 
 **Updated:** 2026-09-08
 **Authority:** this document supersedes every earlier Smart Security Cloud Run, middleware, Gemma-service, Antigravity, and autonomous-defense plan in this repository.
@@ -56,16 +56,16 @@ The old `smart-security/` schemas and policies are historical scaffolding. They 
 - quarantine and approved-file storage moves;
 - `scan_reason`, `scanned_at`, and approved/quarantined file state;
 - the existing handoff into `process-document`.
+- no dependency on the retired standalone scanner in application or prescan code.
 
 Known gaps:
 
 - CSV and XLSX skip AI suitability classification;
-- the abandoned external scanner call still exists and can fail open;
 - the `pending_scan` to `scanning` claim is not atomic;
 - rejection presentation is limited to a small Blocked label;
 - no canonical file-scan evidence model exists;
 - the middleware-era `smart_security_events`, `smart_security_decisions`, and `smart_security_blocks` tables do not represent the new prescan product;
-- the old `/api/smart-security/health` route reports historical scaffold state, not prescan health;
+- retired production secrets may remain configured until the Phase 1 deployment is verified and the secrets are explicitly unset;
 - without a selected antivirus engine, the product must not claim comprehensive signature-based malware scanning.
 
 ## Security authority
@@ -87,11 +87,11 @@ Comprehensive antivirus signatures are a separate future decision. Adding a mana
 
 ## Phase 1: remove retired integration
 
-- Remove the external Smart Security request and response types from `prescan-document`.
-- Remove the abandoned Smart Security environment variables from active code and deployment configuration.
-- Remove `/api/smart-security/health` and the historical in-repo Smart Security scaffold after confirming no remaining imports.
-- Mark the separate Smart Security repositories and infrastructure as retired outside this repository; do not delete external infrastructure from this code change.
-- Update operational and product documentation so no current-state claim implies Cloud Run, ClamAV, YARA, Gemma, Gemini, or request middleware is live.
+- [x] Remove the external Smart Security request and response types from `prescan-document`.
+- [x] Remove the abandoned Smart Security environment variables from active code and repository configuration.
+- [x] Remove `/api/smart-security/health` and the historical in-repo Smart Security scaffold after confirming no remaining imports.
+- [x] Update operational and product documentation so no current-state claim implies Cloud Run, ClamAV, YARA, Gemma, Gemini, or request middleware is live.
+- [ ] Deploy the native prescan bundle, verify it, then unset retired production secrets and mark separate infrastructure retired without deleting it from this code change.
 
 Closure:
 

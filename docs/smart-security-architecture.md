@@ -302,6 +302,21 @@ Evidence integrity:
 
 The current guarantee is **database-sealed, tamper-evident investigative evidence**. It is not yet an externally anchored or legally reviewed custody system. A sufficiently privileged database operator can still alter the database and its local chain, and application audit events do not capture direct Supabase platform access.
 
+### Production proof — 2026-09-09
+
+A controlled MCP-ingest proof exercised `prescan-document` version 40 against the owner/test account:
+
+- a clean synthetic CSV completed `pending_scan -> approved -> normalized`, produced one processing job, one canonical record, exact `normalization_expected = normalization_settled = 1`, and a valid six-event sealed prescan chain;
+- its two extraction rows were verified as the intended raw attempt 1 and normalized `root` attempt 2, not duplicate processing;
+- the clean file, canonical record, derived rows, storage bytes, and usage claim were removed after verification; its sealed security evidence remains;
+- an inert CSV formula-injection fixture was quarantined with reason `csv_formula_cell`, produced zero extraction rows and zero canonical records, retained one terminal processing job, created an open customer notice, and created a valid 30-day private-byte retention case;
+- the quarantine evidence contains four valid sealed events with three verified links and no signed URL or raw file content;
+- the quarantined fixture remains intentionally available in `/systems/security` for the authenticated administrator hold/re-scan UI proof.
+
+Still requiring an authenticated human-administrator exercise: place and release an investigation hold, start re-scan from the Systems console, and verify the resulting administrator-audit sequence. Timed 24-hour/30-day deletion should be accelerated in staging rather than waiting on production.
+
+The proof also exposed one unresolved metering inconsistency: MCP ingest claims document-processing usage before prescan, so a deterministically quarantined upload currently consumes document quota; browser ingest claims usage only after approval. This is not part of the security boundary and must be resolved as an explicit billing-policy decision. The recommended policy is that rejected or quarantined files do not consume document-processing quota, while abuse controls remain separately enforced.
+
 ## Phase 8: external anchoring and legal-process readiness
 
 This is a separate approval and key-management project, not a hidden completion claim in Phase 7:

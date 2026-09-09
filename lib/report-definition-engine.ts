@@ -6,6 +6,8 @@ import { getVirtualDatasetDefinition } from "@/lib/virtual-dataset-store"
 import type { VirtualDatasetDefinition } from "@/lib/virtual-dataset-definitions"
 import { getDataMappingProfile } from "@/lib/data-mapping-store"
 import { applyDataMappingProfile } from "@/lib/data-mapping-engine"
+import { getDataRelationship } from "@/lib/data-relationship-store"
+import { applyDataRelationship, DataRelationshipExecutionError } from "@/lib/data-relationship-engine"
 
 const MAX_SOURCE_ROWS = 5_000
 const CORE_FIELDS = new Set<string>([...RECORD_DEFINITION_FIELDS, "filename", "folder_id"])
@@ -149,10 +151,29 @@ export async function loadReportDefinitionSource(userId: string, definition: Rep
     if (!period || !mapped.dateField) return mapped
     return { ...mapped, rows: mapped.rows.filter((row) => overlaps(String(row[mapped.dateField!] ?? ""), String(row[mapped.dateField!] ?? ""), period.from, period.to)) }
   }
-  const virtual = await getVirtualDatasetDefinition(userId, definition.source.slug)
-  const materializedDefinition: ReportDefinition = { ...definition, source: virtual.source, scope: virtual.scope }
-  const loaded = await loadReportDefinitionSource(userId, materializedDefinition, periodOverride)
-  return applyVirtualDatasetDefinition(virtual, loaded)
+  if (definition.source.kind === "virtual_dataset") {
+    const virtual = await getVirtualDatasetDefinition(userId, definition.source.slug)
+    const materializedDefinition: ReportDefinition = { ...definition, source: virtual.source, scope: virtual.scope }
+    const loaded = await loadReportDefinitionSource(userId, materializedDefinition, periodOverride)
+    return applyVirtualDatasetDefinition(virtual, loaded)
+  }
+  const relationship = await getDataRelationship(userId, definition.source.slug, true)
+  const harness = (slug: string): ReportDefinition => ({ ...definition, source: { kind: "virtual_dataset", slug }, scope: null, period: { kind: "all" } })
+  const [left, right] = await Promise.all([
+    loadReportDefinitionSource(userId, harness(relationship.leftVirtualDatasetSlug)),
+    loadReportDefinitionSource(userId, harness(relationship.rightVirtualDatasetSlug)),
+  ])
+  let joined: LoadedReportDefinitionSource
+  try {
+    joined = applyDataRelationship(relationship, left, right).source
+  } catch (error) {
+    if (error instanceof DataRelationshipExecutionError) throw new ReportDefinitionExecutionError(error.message)
+    throw error
+  }
+  const period = expandedPeriod(definition, periodOverride)
+  if (!period) return joined
+  if (!joined.dateField) throw new ReportDefinitionExecutionError("A relationship report with a period requires the relationship to declare dateField")
+  return { ...joined, rows: joined.rows.filter((row) => overlaps(String(row[joined.dateField!] ?? ""), String(row[joined.dateField!] ?? ""), period.from, period.to)) }
 }
 
 export function applyVirtualDatasetDefinition(virtual: VirtualDatasetDefinition, loaded: LoadedReportDefinitionSource): LoadedReportDefinitionSource {
@@ -227,7 +248,11 @@ function currencies(rows: ValueRow[], currencyField: string | null) {
   return [...new Set(rows.map((row) => String(row[currencyField] ?? "UNSPECIFIED").trim().toUpperCase() || "UNSPECIFIED"))]
 }
 function monetary(metric: ReportMetric, source: LoadedReportDefinitionSource) {
-  return Boolean(source.currencyField && metric.aggregation !== "ratio" && metric.field && ["amount", "amount_base", "total_amount", "gross_income", "net_income", "tax_amount"].includes(metric.field))
+  if (!source.currencyField || metric.aggregation === "ratio" || !metric.field) return false
+  const monetaryFields = ["amount", "amount_base", "total_amount", "gross_income", "net_income", "tax_amount"]
+  if (monetaryFields.includes(metric.field)) return true
+  const side = source.currencyField.match(/^(left|right)_/)?.[1]
+  return Boolean(side && monetaryFields.some((field) => metric.field === `${side}_${field}`))
 }
 function formatMetric(value: number | null, currency: string | null) { return value === null ? "—" : `${value.toLocaleString("en-US", { maximumFractionDigits: 2 })}${currency ? ` ${currency}` : ""}` }
 function suppressed(type: ReportBlock["type"], reason: string): ReportBlock & { suppressed: true; reason: string } {

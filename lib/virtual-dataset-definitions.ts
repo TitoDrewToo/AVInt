@@ -33,7 +33,7 @@ export function validateVirtualDatasetDefinitionPayload(input: unknown): { ok: t
   if (!Array.isArray(candidate.fields) || candidate.fields.length < 1 || candidate.fields.length > 100) return { ok: false, error: "fields must contain 1–100 field names" }
   const fields = candidate.fields.map((field) => typeof field === "string" ? field : "")
   if (new Set(fields).size !== fields.length) return { ok: false, error: "fields must be unique" }
-  if (!candidate.source || typeof candidate.source !== "object" || Array.isArray(candidate.source) || (candidate.source as { kind?: unknown }).kind === "virtual_dataset") {
+  if (!candidate.source || typeof candidate.source !== "object" || Array.isArray(candidate.source) || !["records", "dataset", "mapping_profile"].includes(String((candidate.source as { kind?: unknown }).kind))) {
     return { ok: false, error: "A virtual dataset must reference records, datasets, or a mapping profile; nested virtual datasets are not supported" }
   }
   const validated = validateReportDefinitionPayload({
@@ -47,7 +47,7 @@ export function validateVirtualDatasetDefinitionPayload(input: unknown): { ok: t
     theme: null,
   })
   if (!validated.ok) return validated
-  if (validated.value.source.kind === "virtual_dataset") return { ok: false, error: "Nested virtual datasets are not supported" }
+  if (validated.value.source.kind === "virtual_dataset" || validated.value.source.kind === "relationship") return { ok: false, error: "Nested virtual datasets and relationships are not supported" }
   const title = typeof candidate.title === "string" ? candidate.title.trim() : ""
   if (!title || title.length > 120) return { ok: false, error: "title is required and must be at most 120 characters" }
   return {

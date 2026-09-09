@@ -21,7 +21,11 @@ export const VIRTUAL_MODEL_SOURCE_CAPABILITIES = {
     selectors: ["source.slug"],
     combination: "An active profile resolves its owned records or dataset source, then fills missing canonical values with allowlisted coercions. Existing canonical and user-corrected values always win.",
   },
-  limits: { selectedFiles: 100, sourceRows: 5000, mappingRules: 50 },
+  relationship: {
+    selectors: ["source.slug"],
+    combination: "An active, previewed relationship inner-joins two owned virtual datasets by named equality keys. Cardinality is declared and enforced; unmatched/null-key rows are omitted but counted, output is not de-duplicated, and fields are namespaced left_* and right_*.",
+  },
+  limits: { selectedFiles: 100, sourceRows: 5000, mappingRules: 50, relationshipRows: 5000 },
   ownership: "Use only file, folder, dataset, and field identifiers returned for this authenticated account.",
 } as const
 
@@ -58,18 +62,20 @@ export async function readVirtualModel(userId: string, query: VirtualModelQuery 
   const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, query.pageSize ?? DEFAULT_PAGE_SIZE))
   let filesQuery = supabaseAdmin.from("files").select("id, filename, file_type, file_size, storage_path, folder_id, document_type, upload_status, scan_reason, analysis_json, analyzed_at, source_rows_json, created_at").eq("user_id", userId)
   if (query.documentType) filesQuery = filesQuery.eq("document_type", query.documentType)
-  const [{ data: files, error: filesError }, { data: virtualDatasets, error: virtualDatasetError }, { data: mappingProfiles, error: mappingProfileError }] = await Promise.all([
+  const [{ data: files, error: filesError }, { data: virtualDatasets, error: virtualDatasetError }, { data: mappingProfiles, error: mappingProfileError }, { data: relationships, error: relationshipError }] = await Promise.all([
     filesQuery,
     supabaseAdmin.from("virtual_dataset_definitions").select("slug, title, description, source, fields, version, updated_at").eq("user_id", userId).is("archived_at", null).order("updated_at", { ascending: false }).limit(100),
     supabaseAdmin.from("data_mapping_profiles").select("slug, title, description, source, mappings, status, version, previewed_version, preview_summary, updated_at").eq("user_id", userId).is("archived_at", null).order("updated_at", { ascending: false }).limit(100),
+    supabaseAdmin.from("virtual_dataset_relationships").select("slug, title, description, definition, status, version, previewed_version, preview_summary, updated_at").eq("user_id", userId).is("archived_at", null).order("updated_at", { ascending: false }).limit(100),
   ])
   if (filesError) throw new Error(filesError.message)
   if (virtualDatasetError) throw new Error(virtualDatasetError.message)
   if (mappingProfileError) throw new Error(mappingProfileError.message)
+  if (relationshipError) throw new Error(relationshipError.message)
 
   const ownedFiles = files ?? []
   const fileIds = ownedFiles.map((file) => file.id)
-  if (!fileIds.length) return { sourceCapabilities: VIRTUAL_MODEL_SOURCE_CAPABILITIES, virtualDatasets: virtualDatasets ?? [], mappingProfiles: mappingProfiles ?? [], files: [], records: [], fields: [], catalog: [], datasets: [], datasetColumns: [], page, pageSize, total: 0, allTotal: 0, hasMore: false, nextPage: null, statusCounts: {}, stats: { activeRecords: 0, excludedRecords: 0, needsReview: 0, userEdited: 0, lineItems: 0 }, truncated: false }
+  if (!fileIds.length) return { sourceCapabilities: VIRTUAL_MODEL_SOURCE_CAPABILITIES, virtualDatasets: virtualDatasets ?? [], mappingProfiles: mappingProfiles ?? [], relationships: relationships ?? [], files: [], records: [], fields: [], catalog: [], datasets: [], datasetColumns: [], page, pageSize, total: 0, allTotal: 0, hasMore: false, nextPage: null, statusCounts: {}, stats: { activeRecords: 0, excludedRecords: 0, needsReview: 0, userEdited: 0, lineItems: 0 }, truncated: false }
 
   let matchingRecordIds: string[] | null = null
   if (query.fieldKey || query.customOnly) {
@@ -204,6 +210,7 @@ export async function readVirtualModel(userId: string, query: VirtualModelQuery 
     sourceCapabilities: VIRTUAL_MODEL_SOURCE_CAPABILITIES,
     virtualDatasets: virtualDatasets ?? [],
     mappingProfiles: mappingProfiles ?? [],
+    relationships: relationships ?? [],
     files: ownedFiles,
     records: records ?? [],
     fields,

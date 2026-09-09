@@ -24,6 +24,9 @@ import { rejectStatelessSubscriptionRequest, STATELESS_MCP_CAPABILITIES } from "
 import { createVirtualDatasetDefinition, getVirtualDatasetDefinition, listVirtualDatasetDefinitions, updateVirtualDatasetDefinition, VirtualDatasetConflictError, VirtualDatasetNotFoundError } from "@/lib/virtual-dataset-store"
 import { activateDataMappingProfile, createDataMappingProfile, getDataMappingProfile, listDataMappingProfiles, updateDataMappingProfile, DataMappingProfileConflictError, DataMappingProfileNotFoundError } from "@/lib/data-mapping-store"
 import { previewDataMappingProfile } from "@/lib/data-mapping-service"
+import { activateDataRelationship, createDataRelationship, getDataRelationship, listDataRelationships, updateDataRelationship, DataRelationshipConflictError, DataRelationshipNotFoundError } from "@/lib/data-relationship-store"
+import { previewDataRelationship } from "@/lib/data-relationship-service"
+import { DataRelationshipExecutionError } from "@/lib/data-relationship-engine"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -45,7 +48,7 @@ function limitedResult(message: string) {
 }
 
 function mcpToolError(error: unknown, userId: string, stage: string, fallback: string) {
-  if (error instanceof TypeError || error instanceof IngestBatchConflictError || error instanceof ReportDefinitionNotFoundError || error instanceof ReportDefinitionConflictError || error instanceof ReportDefinitionExecutionError || error instanceof VirtualDatasetNotFoundError || error instanceof VirtualDatasetConflictError || error instanceof DataMappingProfileNotFoundError || error instanceof DataMappingProfileConflictError) {
+  if (error instanceof TypeError || error instanceof IngestBatchConflictError || error instanceof ReportDefinitionNotFoundError || error instanceof ReportDefinitionConflictError || error instanceof ReportDefinitionExecutionError || error instanceof VirtualDatasetNotFoundError || error instanceof VirtualDatasetConflictError || error instanceof DataMappingProfileNotFoundError || error instanceof DataMappingProfileConflictError || error instanceof DataRelationshipNotFoundError || error instanceof DataRelationshipConflictError || error instanceof DataRelationshipExecutionError) {
     return featureResult(error.message)
   }
   logApiError(error, { route: "mcp", stage, userId })
@@ -255,6 +258,63 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
       catch (error) { return mcpToolError(error, userId, "activate_mapping_profile", "The mapping profile could not be activated.") }
     }))
 
+    server.registerTool("smart_storage.list_relationships", {
+      title: "List Smart Storage data relationships",
+      description: "Read-only. List owned equality relationships between virtual datasets and whether each exact version is draft, previewed, or active.",
+      inputSchema: z.object({ search: z.string().max(120).optional() }),
+    }, async ({ search }) => timedTool("smart_storage.list_relationships", async () => {
+      const blocked = await toolGuard(userId, entitlement, "report")
+      if (blocked) return blocked
+      try { return { content: [{ type: "text" as const, text: JSON.stringify({ relationships: await listDataRelationships(userId, search) }, null, 2) }] } }
+      catch (error) { return mcpToolError(error, userId, "list_relationships", "Data relationships could not be loaded.") }
+    }))
+
+    server.registerTool("smart_storage.get_relationship", {
+      title: "Inspect a Smart Storage data relationship",
+      description: "Read-only. Return one exact owned relationship, including its virtual dataset slugs, equality keys, declared cardinality, preview evidence, and activation state.",
+      inputSchema: z.object({ slug: z.string().min(1).max(80) }),
+    }, async ({ slug }) => timedTool("smart_storage.get_relationship", async () => {
+      const blocked = await toolGuard(userId, entitlement, "report")
+      if (blocked) return blocked
+      try { return { content: [{ type: "text" as const, text: JSON.stringify({ relationship: await getDataRelationship(userId, slug) }, null, 2) }] } }
+      catch (error) { return mcpToolError(error, userId, "get_relationship", "The data relationship could not be loaded.") }
+    }))
+
+    server.registerTool("smart_storage.save_relationship", {
+      title: "Save a draft Smart Storage data relationship",
+      description: "Create or version an equality-only relationship between two different owned virtual datasets. Declare one_to_one, one_to_many, or many_to_one cardinality and named keys. Saving never activates the relationship; SQL, formulas, expressions, and many-to-many joins are rejected.",
+      inputSchema: z.object({ definition: z.record(z.string(), z.unknown()), slug: z.string().min(1).max(80).optional(), expectedVersion: z.number().int().positive().optional() }),
+    }, async ({ definition, slug, expectedVersion }) => timedTool("smart_storage.save_relationship", async () => {
+      const blocked = await toolGuard(userId, entitlement, "report")
+      if (blocked) return blocked
+      try {
+        const saved = slug ? await updateDataRelationship(userId, slug, definition, expectedVersion ?? 0, "assistant") : await createDataRelationship(userId, definition, "assistant")
+        return { content: [{ type: "text" as const, text: JSON.stringify({ relationship: saved, next: "Preview this exact version before activation." }, null, 2) }] }
+      } catch (error) { return mcpToolError(error, userId, "save_relationship", "The data relationship could not be saved.") }
+    }))
+
+    server.registerTool("smart_storage.preview_relationship", {
+      title: "Preview a Smart Storage data relationship",
+      description: "Evaluate the current bounded virtual datasets before activation. Reports null and unmatched keys, duplicates on each side, match rate, projected rows, cardinality validity, and expansion safety without persisting joined rows.",
+      inputSchema: z.object({ slug: z.string().min(1).max(80) }),
+    }, async ({ slug }) => timedTool("smart_storage.preview_relationship", async () => {
+      const blocked = await toolGuard(userId, entitlement, "report")
+      if (blocked) return blocked
+      try { return { content: [{ type: "text" as const, text: JSON.stringify({ preview: await previewDataRelationship(userId, slug) }, null, 2) }] } }
+      catch (error) { return mcpToolError(error, userId, "preview_relationship", "The data relationship could not be previewed.") }
+    }))
+
+    server.registerTool("smart_storage.activate_relationship", {
+      title: "Activate a previewed Smart Storage data relationship",
+      description: "Activate only the exact previewed version after its current rows satisfy declared cardinality, produce at least one match, and remain within the 5,000-row limit. Runtime changes fail closed if those guarantees later stop holding.",
+      inputSchema: z.object({ slug: z.string().min(1).max(80), expectedVersion: z.number().int().positive() }),
+    }, async ({ slug, expectedVersion }) => timedTool("smart_storage.activate_relationship", async () => {
+      const blocked = await toolGuard(userId, entitlement, "report")
+      if (blocked) return blocked
+      try { return { content: [{ type: "text" as const, text: JSON.stringify({ relationship: await activateDataRelationship(userId, slug, expectedVersion), useAs: { kind: "relationship", slug } }, null, 2) }] } }
+      catch (error) { return mcpToolError(error, userId, "activate_relationship", "The data relationship could not be activated.") }
+    }))
+
     server.registerTool("smart_storage.list_report_definitions", {
       title: "List saved Smart Storage reports",
       description: "Read-only. List the signed-in user's refreshable saved report definitions, optionally matching a report name. Use the returned exact slug with smart_storage.run_report_definition.",
@@ -422,7 +482,7 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
       "A document-intelligence service that turns a user's files into a permissioned normalized data model, dashboards, structured outputs, and selected accounting exports.",
       "Every tool acts ONLY on the documents belonging to the signed-in AVIntelligence account, matched by the authenticated email. No data is shared across accounts.",
       "Access requires an active Pro or Business plan. Authentication is handled via AVIntelligence's OAuth (WorkOS); this server never receives passwords.",
-      "Tools: smart_storage.ingest and smart_storage.ingest_status (resumable document ingestion), smart_storage.profile and smart_storage.virtual_model (inspect the data model), smart_storage.list_virtual_datasets / get_virtual_dataset / save_virtual_dataset (reusable declarative data selections), smart_storage.list_mapping_profiles / get_mapping_profile / save_mapping_profile / preview_mapping_profile / activate_mapping_profile (preview-gated canonical mappings), smart_storage.report (fixed examples), smart_storage.list_report_definitions / run_report_definition / save_report_definition (saved refreshable reports), smart_storage.export (QuickBooks / Xero file), smart_dashboard.list_pages / create_page / update_page / delete_page (manage dashboard pages), and smart_dashboard.list_visuals / smart_dashboard.save_visual (inspect or save validated dashboard visuals). Read tools never modify data; save tools affect only the signed-in user's mappings, virtual datasets, reports, or dashboard.",
+      "Tools include reusable virtual datasets, preview-gated canonical mappings, and preview-gated equality relationships between owned virtual datasets, plus saved reports and dashboard visuals that resolve those sources at run time. Relationship output fields are explicitly namespaced left_* and right_*; unmatched rows are disclosed, cardinality is enforced, and many-to-many joins are not supported. Read tools never modify data; save tools affect only the signed-in user's mappings, virtual datasets, relationships, reports, or dashboard.",
     ].join(" "),
   })
 }

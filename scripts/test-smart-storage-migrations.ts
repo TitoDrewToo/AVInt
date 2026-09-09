@@ -11,6 +11,7 @@ const repair = readFileSync(resolve(migrations, "20260905010000_repair_account_d
 const duplicateSubscriptionConstraint = readFileSync(resolve(migrations, "20260906025347_drop_duplicate_subscriptions_email_constraint.sql"), "utf8")
 const ingestBatches = readFileSync(resolve(migrations, "20260906030000_mcp_ingest_batches.sql"), "utf8")
 const ingestBatchClaimFix = readFileSync(resolve(migrations, "20260906030100_fix_ingest_batch_claim_ambiguity.sql"), "utf8")
+const virtualDatasets = readFileSync(resolve(migrations, "20260909110000_add_virtual_dataset_definitions.sql"), "utf8")
 
 for (const table of ["ai_usage_events", "document_fields", "extractions", "records", "record_attributes", "files", "folders", "gift_codes"]) {
   assert.match(baseline, new RegExp(`CREATE TABLE public\\.${table}\\b`, "i"), `${table} must exist before the forward migrations`)
@@ -58,4 +59,13 @@ assert.match(ingestBatches, /grant execute on function public\.avint_claim_inges
 assert.match(ingestBatchClaimFix, /on conflict on constraint ingest_batch_items_batch_position_unique do nothing/i)
 assert.match(ingestBatchClaimFix, /revoke all on function public\.avint_claim_ingest_batch\(uuid, text, text, jsonb\)[\s\S]*from public, anon, authenticated/i)
 
-console.log("smart-storage migration contracts: baseline, retirement, reports, security, and resumable ingest align")
+for (const column of ["source", "scope", "filters", "fields", "authored_by", "version", "archived_at"]) {
+  assert.match(virtualDatasets, new RegExp(`\\b${column}\\s+`), `virtual_dataset_definitions.${column} must be declared`)
+}
+assert.match(virtualDatasets, /alter table public\.virtual_dataset_definitions enable row level security/i)
+assert.match(virtualDatasets, /using \(\(select auth\.uid\(\)\) = user_id\)/i)
+assert.doesNotMatch(virtualDatasets, /using\s*\(\s*true\s*\)/i)
+assert.match(virtualDatasets, /delete from public\.virtual_dataset_definitions where user_id = p_user_id/i)
+assert.match(virtualDatasets, /revoke all on function public\.delete_user_data\(uuid\) from public, anon, authenticated/i)
+
+console.log("smart-storage migration contracts: baseline, retirement, reports, virtual datasets, security, and resumable ingest align")

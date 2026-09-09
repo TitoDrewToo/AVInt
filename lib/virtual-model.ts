@@ -4,6 +4,23 @@ import { summarizeDataModelRecords, type DataModelStatRecord } from "@/lib/data-
 const DEFAULT_PAGE_SIZE = 40
 const MAX_PAGE_SIZE = 100
 
+export const VIRTUAL_MODEL_SOURCE_CAPABILITIES = {
+  records: {
+    selectors: ["workspace", "scope.folderId", "source.fileIds", "source.documentTypes"],
+    combination: "Folder, selected-file, document-type, filter, and period constraints intersect.",
+  },
+  dataset: {
+    selectors: ["source.datasetId", "source.folderId", "source.fileIds"],
+    combination: "Choose exactly one selector. Folder and selected-file sources union only datasets with identical field keys and data types; incompatible or absent datasets are disclosed and rows are not de-duplicated.",
+  },
+  virtualDataset: {
+    selectors: ["source.slug"],
+    combination: "A saved virtual dataset resolves its current owned source, filters, and projected fields at run time. Nested virtual datasets are not supported.",
+  },
+  limits: { selectedFiles: 100, sourceRows: 5000 },
+  ownership: "Use only file, folder, dataset, and field identifiers returned for this authenticated account.",
+} as const
+
 function escapeLike(value: string) {
   return value.replace(/[\\%_]/g, "\\$&")
 }
@@ -37,12 +54,16 @@ export async function readVirtualModel(userId: string, query: VirtualModelQuery 
   const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, query.pageSize ?? DEFAULT_PAGE_SIZE))
   let filesQuery = supabaseAdmin.from("files").select("id, filename, file_type, file_size, storage_path, folder_id, document_type, upload_status, scan_reason, analysis_json, analyzed_at, source_rows_json, created_at").eq("user_id", userId)
   if (query.documentType) filesQuery = filesQuery.eq("document_type", query.documentType)
-  const { data: files, error: filesError } = await filesQuery
+  const [{ data: files, error: filesError }, { data: virtualDatasets, error: virtualDatasetError }] = await Promise.all([
+    filesQuery,
+    supabaseAdmin.from("virtual_dataset_definitions").select("slug, title, description, source, fields, version, updated_at").eq("user_id", userId).is("archived_at", null).order("updated_at", { ascending: false }).limit(100),
+  ])
   if (filesError) throw new Error(filesError.message)
+  if (virtualDatasetError) throw new Error(virtualDatasetError.message)
 
   const ownedFiles = files ?? []
   const fileIds = ownedFiles.map((file) => file.id)
-  if (!fileIds.length) return { files: [], records: [], fields: [], catalog: [], datasets: [], datasetColumns: [], page, pageSize, total: 0, allTotal: 0, hasMore: false, nextPage: null, statusCounts: {}, stats: { activeRecords: 0, excludedRecords: 0, needsReview: 0, userEdited: 0, lineItems: 0 }, truncated: false }
+  if (!fileIds.length) return { sourceCapabilities: VIRTUAL_MODEL_SOURCE_CAPABILITIES, virtualDatasets: virtualDatasets ?? [], files: [], records: [], fields: [], catalog: [], datasets: [], datasetColumns: [], page, pageSize, total: 0, allTotal: 0, hasMore: false, nextPage: null, statusCounts: {}, stats: { activeRecords: 0, excludedRecords: 0, needsReview: 0, userEdited: 0, lineItems: 0 }, truncated: false }
 
   let matchingRecordIds: string[] | null = null
   if (query.fieldKey || query.customOnly) {
@@ -174,6 +195,8 @@ export async function readVirtualModel(userId: string, query: VirtualModelQuery 
   const total = count ?? 0
   const hasMore = (page + 1) * pageSize < total
   return {
+    sourceCapabilities: VIRTUAL_MODEL_SOURCE_CAPABILITIES,
+    virtualDatasets: virtualDatasets ?? [],
     files: ownedFiles,
     records: records ?? [],
     fields,

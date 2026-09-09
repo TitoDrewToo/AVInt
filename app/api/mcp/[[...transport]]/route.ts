@@ -21,6 +21,7 @@ import { listSavedDashboardWidgets, saveDashboardWidget } from "@/lib/dashboard-
 import { createDashboardPage, deleteDashboardPage, ensureDefaultDashboardPages, renameDashboardPage, resolveDashboardPage } from "@/lib/dashboard-pages"
 import { logApiError } from "@/lib/api-error"
 import { rejectStatelessSubscriptionRequest, STATELESS_MCP_CAPABILITIES } from "@/lib/mcp-stateless-transport"
+import { createVirtualDatasetDefinition, getVirtualDatasetDefinition, listVirtualDatasetDefinitions, updateVirtualDatasetDefinition, VirtualDatasetConflictError, VirtualDatasetNotFoundError } from "@/lib/virtual-dataset-store"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -42,7 +43,7 @@ function limitedResult(message: string) {
 }
 
 function mcpToolError(error: unknown, userId: string, stage: string, fallback: string) {
-  if (error instanceof TypeError || error instanceof IngestBatchConflictError || error instanceof ReportDefinitionNotFoundError || error instanceof ReportDefinitionConflictError || error instanceof ReportDefinitionExecutionError) {
+  if (error instanceof TypeError || error instanceof IngestBatchConflictError || error instanceof ReportDefinitionNotFoundError || error instanceof ReportDefinitionConflictError || error instanceof ReportDefinitionExecutionError || error instanceof VirtualDatasetNotFoundError || error instanceof VirtualDatasetConflictError) {
     return featureResult(error.message)
   }
   logApiError(error, { route: "mcp", stage, userId })
@@ -124,7 +125,7 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
 
     server.registerTool("smart_storage.virtual_model", {
       title: "Smart Storage virtual data model",
-      description: "Read-only. Inspect the signed-in user's bounded active records, typed attributes, custom-field catalog, source files, lifecycle status, review state, confidence, and provenance. Excluded records are omitted by default; request includeExcluded only when historical or removed rows are relevant. The response reports when the 40-record bound truncated results. Never invent fields or values not returned here.",
+      description: "Read-only. Inspect the signed-in user's bounded active records, typed attributes, custom-field catalog, source files, datasets, supported source selectors, lifecycle status, review state, confidence, and provenance. Excluded records are omitted by default; request includeExcluded only when historical or removed rows are relevant. The response reports when the 40-record bound truncated results. Never invent fields, values, or identifiers not returned here.",
       inputSchema: z.object({
         search: z.string().max(120).optional(),
         status: z.enum(["derived", "reviewed", "superseded"]).optional(),
@@ -150,6 +151,49 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
       const report = type === "tax_bundle" ? "tax-bundle" : "business-expense"
       const result = await getReport(userId, entitlement, report, period ?? {})
       return { content: [{ type: "text", text: JSON.stringify(shapeMcpReportResult(result, includeRows), null, 2) }] }
+    }))
+
+    server.registerTool("smart_storage.list_virtual_datasets", {
+      title: "List saved Smart Storage virtual datasets",
+      description: "Read-only. List reusable owned data selections. A virtual dataset stores source scope, filters, and projected fields—not copied rows—and resolves current data whenever a report or visual runs.",
+      inputSchema: z.object({ search: z.string().max(120).optional() }),
+    }, async ({ search }) => timedTool("smart_storage.list_virtual_datasets", async () => {
+      const blocked = await toolGuard(userId, entitlement, "report")
+      if (blocked) return blocked
+      try {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ virtualDatasets: await listVirtualDatasetDefinitions(userId, search) }, null, 2) }] }
+      } catch (error) { return mcpToolError(error, userId, "list_virtual_datasets", "Saved virtual datasets could not be loaded.") }
+    }))
+
+    server.registerTool("smart_storage.get_virtual_dataset", {
+      title: "Inspect a saved Smart Storage virtual dataset",
+      description: "Read-only. Resolve one exact owned virtual-dataset slug and return its declarative source, filters, projected fields, and version. It never returns copied snapshot rows.",
+      inputSchema: z.object({ slug: z.string().min(1).max(80) }),
+    }, async ({ slug }) => timedTool("smart_storage.get_virtual_dataset", async () => {
+      const blocked = await toolGuard(userId, entitlement, "report")
+      if (blocked) return blocked
+      try {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ virtualDataset: await getVirtualDatasetDefinition(userId, slug) }, null, 2) }] }
+      } catch (error) { return mcpToolError(error, userId, "get_virtual_dataset", "The saved virtual dataset could not be loaded.") }
+    }))
+
+    server.registerTool("smart_storage.save_virtual_dataset", {
+      title: "Save a reusable Smart Storage virtual dataset",
+      description: "Create or version a declarative owned data selection for reuse by reports and dashboard visuals. Provide a records or dataset source, optional folder scope and filters, and 1–100 projected field names. Nested virtual datasets, SQL, formulas, and executable expressions are rejected.",
+      inputSchema: z.object({
+        definition: z.record(z.string(), z.unknown()),
+        slug: z.string().min(1).max(80).optional(),
+        expectedVersion: z.number().int().positive().optional(),
+      }),
+    }, async ({ definition, slug, expectedVersion }) => timedTool("smart_storage.save_virtual_dataset", async () => {
+      const blocked = await toolGuard(userId, entitlement, "report")
+      if (blocked) return blocked
+      try {
+        const saved = slug
+          ? await updateVirtualDatasetDefinition(userId, slug, definition, expectedVersion ?? 0, "assistant")
+          : await createVirtualDatasetDefinition(userId, definition, "assistant")
+        return { content: [{ type: "text" as const, text: JSON.stringify({ virtualDataset: saved, useAs: { kind: "virtual_dataset", slug: saved.slug } }, null, 2) }] }
+      } catch (error) { return mcpToolError(error, userId, "save_virtual_dataset", "The virtual dataset could not be saved.") }
     }))
 
     server.registerTool("smart_storage.list_report_definitions", {
@@ -187,7 +231,7 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
 
     server.registerTool("smart_storage.save_report_definition", {
       title: "Save a refreshable Smart Storage report",
-      description: "Create or update a report definition using only the declarative AVIntelligence contract. Never submit SQL, HTML, executable expressions, or computed snapshot rows. Inspect smart_storage.virtual_model first and use only returned fields. To update, provide the exact slug and expectedVersion.",
+      description: "Create or update a report definition using only the declarative AVIntelligence contract. Never submit SQL, HTML, executable expressions, or computed snapshot rows. Inspect smart_storage.virtual_model first and use only returned fields and owned identifiers. Records may target up to 100 source.fileIds; datasets require exactly one datasetId, folderId, or fileIds selector. Folder and file selection are evidence boundaries, and incompatible datasets are disclosed rather than coerced. To update, provide the exact slug and expectedVersion.",
       inputSchema: z.object({
         definition: z.record(z.string(), z.unknown()),
         slug: z.string().min(1).max(80).optional(),
@@ -272,7 +316,7 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
 
     server.registerTool("smart_dashboard.save_visual", {
       title: "Save a Smart Dashboard visual",
-      description: "Save a refreshable visual backed by canonical Smart Storage records or a dataset and optionally plot it on a dashboard page. Inspect smart_storage.virtual_model first. The definition is declarative: source, scope, period, filters, dimension, metric, and limit; SQL and executable expressions are never accepted.",
+      description: "Save a refreshable visual backed by canonical Smart Storage records, source datasets, or a saved virtual dataset and optionally plot it on a dashboard page. Inspect smart_storage.virtual_model first. The shared source contract supports intentional fileIds evidence boundaries as well as folder, dataset, or virtual-dataset targeting. The definition is declarative: source, scope, period, filters, dimension, metric, and limit; SQL and executable expressions are never accepted.",
       inputSchema: z.object({
         widget_type: z.enum(["line-chart", "area-chart", "bar-chart", "pie-chart"]),
         title: z.string().min(1).max(120),
@@ -319,7 +363,7 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
       "A document-intelligence service that turns a user's files into a permissioned normalized data model, dashboards, structured outputs, and selected accounting exports.",
       "Every tool acts ONLY on the documents belonging to the signed-in AVIntelligence account, matched by the authenticated email. No data is shared across accounts.",
       "Access requires an active Pro or Business plan. Authentication is handled via AVIntelligence's OAuth (WorkOS); this server never receives passwords.",
-      "Tools: smart_storage.ingest and smart_storage.ingest_status (resumable document ingestion), smart_storage.profile and smart_storage.virtual_model (inspect the data model), smart_storage.report (fixed examples), smart_storage.list_report_definitions and smart_storage.run_report_definition (saved refreshable reports), smart_storage.save_report_definition (create or update a validated declarative report), smart_storage.export (QuickBooks / Xero file), smart_dashboard.list_pages / create_page / update_page / delete_page (manage dashboard pages), and smart_dashboard.list_visuals / smart_dashboard.save_visual (inspect or save validated dashboard visuals). Read tools never modify data; save tools affect only the signed-in user's reports or dashboard.",
+      "Tools: smart_storage.ingest and smart_storage.ingest_status (resumable document ingestion), smart_storage.profile and smart_storage.virtual_model (inspect the data model), smart_storage.list_virtual_datasets / get_virtual_dataset / save_virtual_dataset (reusable declarative data selections), smart_storage.report (fixed examples), smart_storage.list_report_definitions / run_report_definition / save_report_definition (saved refreshable reports), smart_storage.export (QuickBooks / Xero file), smart_dashboard.list_pages / create_page / update_page / delete_page (manage dashboard pages), and smart_dashboard.list_visuals / smart_dashboard.save_visual (inspect or save validated dashboard visuals). Read tools never modify data; save tools affect only the signed-in user's virtual datasets, reports, or dashboard.",
     ].join(" "),
   })
 }

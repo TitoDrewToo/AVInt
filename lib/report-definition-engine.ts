@@ -2,6 +2,8 @@ import { supabaseAdmin } from "@/lib/mcp-auth"
 import { createReportQueryContext } from "@/lib/report-query-context-server"
 import type { ReportBlock, ReportDocument } from "@/lib/report-document"
 import { RECORD_DEFINITION_FIELDS, referencedDefinitionFields, type ReportDefinition, type ReportDefinitionFilter, type ReportMetric, type ReportDefinitionPeriod } from "@/lib/report-definitions"
+import { getVirtualDatasetDefinition } from "@/lib/virtual-dataset-store"
+import type { VirtualDatasetDefinition } from "@/lib/virtual-dataset-definitions"
 
 const MAX_SOURCE_ROWS = 5_000
 const CORE_FIELDS = new Set<string>([...RECORD_DEFINITION_FIELDS, "filename", "folder_id"])
@@ -43,8 +45,11 @@ export function resolveDefinitionPeriod(definition: ReportDefinition, now = new 
 async function loadRecords(userId: string, definition: ReportDefinition, periodOverride?: ReportDefinitionPeriod): Promise<LoadedReportDefinitionSource> {
   const period = expandedPeriod(definition, periodOverride) ?? { from: "", to: "" }
   const context = await createReportQueryContext(userId, { targetFolder: definition.scope?.folderId })
-  const fileIds = await context.fileIds(definition.source.kind === "records" ? definition.source.documentTypes ?? [] : [])
-  if (!fileIds.length) return { rows: [], availableFields: new Set(CORE_FIELDS), dateField: "occurred_on", currencyField: "currency", sourceLabel: "canonical records" }
+  const scopedFileIds = await context.fileIds(definition.source.kind === "records" ? definition.source.documentTypes ?? [] : [])
+  const selectedFileIds = definition.source.kind === "records" ? definition.source.fileIds : undefined
+  const fileIds = selectedFileIds ? selectedFileIds.filter((id) => scopedFileIds.includes(id)) : scopedFileIds
+  const sourceLabel = selectedFileIds ? `selected canonical records from ${fileIds.length} file(s)` : "canonical records"
+  if (!fileIds.length) return { rows: [], availableFields: new Set(CORE_FIELDS), dateField: "occurred_on", currencyField: "currency", sourceLabel }
   const { data, error } = await supabaseAdmin.from("records").select("*, files!inner(filename, folder_id, document_type)").eq("user_id", userId).in("file_id", fileIds).is("parent_record_id", null).is("excluded_at", null).limit(MAX_SOURCE_ROWS + 1)
   if (error) throw new Error(error.message)
   if ((data ?? []).length > MAX_SOURCE_ROWS) throw new ReportDefinitionExecutionError(`The report source exceeds ${MAX_SOURCE_ROWS} records. Narrow its folder or document type before running it.`)
@@ -66,7 +71,7 @@ async function loadRecords(userId: string, definition: ReportDefinition, periodO
   for (const attribute of attributeCatalog ?? []) availableFields.add(attribute.field_key)
   let rows = recordRows.map((row) => projectRecordDefinitionRow(row, attributesByRecord.get(row.id) ?? {}))
   if (period.from || period.to) rows = rows.filter((row) => overlaps(String(row.period_start ?? row.occurred_on ?? ""), String(row.period_end ?? row.occurred_on ?? ""), period.from, period.to))
-  return { rows, availableFields, dateField: "occurred_on", currencyField: "currency", sourceLabel: "canonical records" }
+  return { rows, availableFields, dateField: "occurred_on", currencyField: "currency", sourceLabel }
 }
 
 async function loadDataset(userId: string, definition: ReportDefinition, periodOverride?: ReportDefinitionPeriod): Promise<LoadedReportDefinitionSource> {
@@ -75,16 +80,25 @@ async function loadDataset(userId: string, definition: ReportDefinition, periodO
   const context = source.folderId ? await createReportQueryContext(userId, { targetFolder: source.folderId }) : null
   const scopedIds = context ? await context.fileIds() : null
   if (source.folderId && !scopedIds?.length) throw new ReportDefinitionExecutionError("The selected folder contains no files or datasets")
-  let datasetQuery = supabaseAdmin.from("datasets").select("id, name, file_id, sheet_name, files!inner(folder_id)").eq("user_id", userId)
+  let selectedFiles: Array<{ id: string; filename: string; folder_id: string | null }> = []
+  if (source.fileIds) {
+    const { data: files, error: filesError } = await supabaseAdmin.from("files").select("id, filename, folder_id").eq("user_id", userId).in("id", source.fileIds)
+    if (filesError) throw new Error(filesError.message)
+    const byId = new Map((files ?? []).map((file) => [file.id, file]))
+    if (byId.size !== source.fileIds.length || source.fileIds.some((id) => !byId.has(id))) throw new ReportDefinitionExecutionError("Selected files do not exist or are not accessible")
+    selectedFiles = source.fileIds.map((id) => byId.get(id)!)
+  }
+  let datasetQuery = supabaseAdmin.from("datasets").select("id, name, file_id, sheet_name, files!inner(folder_id, filename)").eq("user_id", userId).eq("files.user_id", userId)
   if (source.datasetId) datasetQuery = datasetQuery.eq("id", source.datasetId)
-  else datasetQuery = datasetQuery.in("file_id", scopedIds ?? [])
+  else datasetQuery = datasetQuery.in("file_id", source.fileIds ?? scopedIds ?? [])
   const { data: datasets, error } = await datasetQuery
   if (error) throw new Error(error.message)
-  if (!datasets?.length) throw new ReportDefinitionExecutionError(source.folderId ? "The selected folder has no datasets" : "The selected dataset does not exist or is not accessible")
-  if (definition.scope?.folderId && source.datasetId) {
+  if (!datasets?.length) throw new ReportDefinitionExecutionError(source.folderId ? "The selected folder has no datasets" : source.fileIds ? "The selected files contain no datasets" : "The selected dataset does not exist or is not accessible")
+  if (definition.scope?.folderId && (source.datasetId || source.fileIds)) {
     const scopeContext = await createReportQueryContext(userId, { targetFolder: definition.scope.folderId })
     const scopeIds = await scopeContext.fileIds()
-    if (!scopeIds.includes(datasets[0].file_id)) throw new ReportDefinitionExecutionError("The selected dataset is outside the report folder scope")
+    const guardedFileIds = source.fileIds ?? [datasets[0].file_id]
+    if (guardedFileIds.some((id) => !scopeIds.includes(id))) throw new ReportDefinitionExecutionError("A selected dataset is outside the report folder scope")
   }
   const loaded: Array<{ dataset: any; columns: Array<{ key: string; data_type: string }>; rows: ValueRow[] }> = []
   for (const dataset of datasets) {
@@ -92,8 +106,12 @@ async function loadDataset(userId: string, definition: ReportDefinition, periodO
     if (columnError) throw new Error(columnError.message)
     const { data: rows, error: rowError } = await supabaseAdmin.from("dataset_rows").select("data").eq("dataset_id", dataset.id).eq("user_id", userId).order("row_index").limit(MAX_SOURCE_ROWS + 1)
     if (rowError) throw new Error(rowError.message)
-    loaded.push({ dataset, columns: columns ?? [], rows: (rows ?? []).map((row) => ({ ...(row.data as ValueRow), __dataset_id: dataset.id, __dataset_name: dataset.name })) })
+    loaded.push({ dataset, columns: columns ?? [], rows: (rows ?? []).map((row) => ({ ...(row.data as ValueRow), __dataset_id: dataset.id, __dataset_name: dataset.name, __file_id: dataset.file_id })) })
   }
+  if (source.fileIds) {
+    const filePosition = new Map(source.fileIds.map((id, index) => [id, index]))
+    loaded.sort((a, b) => (filePosition.get(a.dataset.file_id) ?? Number.MAX_SAFE_INTEGER) - (filePosition.get(b.dataset.file_id) ?? Number.MAX_SAFE_INTEGER) || String(a.dataset.sheet_name).localeCompare(String(b.dataset.sheet_name)) || String(a.dataset.id).localeCompare(String(b.dataset.id)))
+  } else if (source.folderId) loaded.sort((a, b) => String(a.dataset.id).localeCompare(String(b.dataset.id)))
   const signature = (columns: Array<{ key: string; data_type: string }>) => columns.map((column) => `${column.key}:${column.data_type}`).sort().join("|")
   const baseSignature = signature(loaded[0].columns)
   const compatible = loaded.filter((item) => signature(item.columns) === baseSignature)
@@ -105,14 +123,42 @@ async function loadDataset(userId: string, definition: ReportDefinition, periodO
   const period = expandedPeriod(definition, periodOverride) ?? { from: "", to: "" }
   if ((period.from || period.to) && !source.dateField) throw new ReportDefinitionExecutionError("A dataset report with a period requires source.dateField")
   if (source.dateField && (period.from || period.to)) values = values.filter((row) => overlaps(String(row[source.dateField!] ?? ""), String(row[source.dateField!] ?? ""), period.from, period.to))
-  const coverageNote = source.folderId
-    ? `${compatible.length} compatible dataset(s) unioned without de-duplication${excluded.length ? `; excluded ${excluded.map((item) => `${item.dataset.name} (schema mismatch)`).join(", ")}` : ""}.`
+  const filesWithDatasets = new Set(loaded.map((item) => item.dataset.file_id))
+  const withoutDatasets = selectedFiles.filter((file) => !filesWithDatasets.has(file.id))
+  const unioned = Boolean(source.folderId || source.fileIds)
+  const coverageNote = unioned
+    ? `${compatible.length} compatible dataset(s) unioned without de-duplication${excluded.length ? `; excluded ${excluded.map((item) => `${item.dataset.name} (schema mismatch)`).join(", ")}` : ""}${withoutDatasets.length ? `; excluded ${withoutDatasets.map((file) => `${file.filename} (no dataset)`).join(", ")}` : ""}.`
     : undefined
-  return { rows: values, availableFields, dateField: source.dateField ?? null, currencyField: source.currencyField ?? null, sourceLabel: source.folderId ? `folder dataset union` : `dataset ${compatible[0].dataset.name}`, coverageNote }
+  const sourceLabel = source.folderId ? "folder dataset union" : source.fileIds ? `selected-file dataset union from ${selectedFiles.length} file(s)` : `dataset ${compatible[0].dataset.name}`
+  return { rows: values, availableFields, dateField: source.dateField ?? null, currencyField: source.currencyField ?? null, sourceLabel, coverageNote }
 }
 
 export async function loadReportDefinitionSource(userId: string, definition: ReportDefinition, periodOverride?: ReportDefinitionPeriod): Promise<LoadedReportDefinitionSource> {
-  return definition.source.kind === "records" ? loadRecords(userId, definition, periodOverride) : loadDataset(userId, definition, periodOverride)
+  if (definition.source.kind === "records") return loadRecords(userId, definition, periodOverride)
+  if (definition.source.kind === "dataset") return loadDataset(userId, definition, periodOverride)
+  const virtual = await getVirtualDatasetDefinition(userId, definition.source.slug)
+  const materializedDefinition: ReportDefinition = { ...definition, source: virtual.source, scope: virtual.scope }
+  const loaded = virtual.source.kind === "records"
+    ? await loadRecords(userId, materializedDefinition, periodOverride)
+    : await loadDataset(userId, materializedDefinition, periodOverride)
+  return applyVirtualDatasetDefinition(virtual, loaded)
+}
+
+export function applyVirtualDatasetDefinition(virtual: VirtualDatasetDefinition, loaded: LoadedReportDefinitionSource): LoadedReportDefinitionSource {
+  const projectedFields = new Set(virtual.fields)
+  const rows = loaded.rows
+    .filter((row) => virtual.filters.every((filter) => compare(row[filter.field], filter)))
+    .map((row) => Object.fromEntries(Object.entries(row).filter(([field]) => projectedFields.has(field) || field.startsWith("__"))))
+  const availableFields = new Set([...loaded.availableFields].filter((field) => projectedFields.has(field)))
+  const virtualNote = `Virtual dataset ${virtual.slug} v${virtual.version} projects ${virtual.fields.length} field(s).`
+  return {
+    rows,
+    availableFields,
+    dateField: loaded.dateField && projectedFields.has(loaded.dateField) ? loaded.dateField : null,
+    currencyField: loaded.currencyField && projectedFields.has(loaded.currencyField) ? loaded.currencyField : null,
+    sourceLabel: `virtual dataset ${virtual.title}`,
+    coverageNote: loaded.coverageNote ? `${virtualNote} ${loaded.coverageNote}` : virtualNote,
+  }
 }
 
 function resolvePeriod(period: ReportDefinitionPeriod) {

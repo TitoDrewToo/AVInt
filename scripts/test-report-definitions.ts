@@ -7,6 +7,8 @@ process.env.NEXT_PUBLIC_SUPABASE_URL ||= "http://127.0.0.1:54321"
 process.env.SUPABASE_SERVICE_ROLE_KEY ||= "test-service-role-key"
 const { compileReportDefinition, projectRecordDefinitionRow, resolveDefinitionPeriod } = await import("../lib/report-definition-engine")
 const { slugifyReportTitle, slugWithSuffix, validateReportDefinitionPayload } = await import("../lib/report-definitions")
+const { validateDashboardVisualDefinition } = await import("../lib/dashboard-visual-definition")
+const { VIRTUAL_MODEL_SOURCE_CAPABILITIES } = await import("../lib/virtual-model")
 
 const input = {
   title: "Monthly Ops",
@@ -24,6 +26,31 @@ const input = {
 }
 const validated = validateReportDefinitionPayload(input)
 assert.equal(validated.ok, true)
+const FILE_A = "00000000-0000-4000-8000-000000000001"
+const FILE_B = "00000000-0000-4000-8000-000000000002"
+const selectedRecords = validateReportDefinitionPayload({ ...input, source: { kind: "records", fileIds: [FILE_A, FILE_B] } })
+assert.equal(selectedRecords.ok, true)
+assert.deepEqual(selectedRecords.ok ? selectedRecords.value.source : null, { kind: "records", fileIds: [FILE_A, FILE_B] })
+assert.equal(validateReportDefinitionPayload({ ...input, source: { kind: "records", fileIds: [] } }).ok, false)
+assert.equal(validateReportDefinitionPayload({ ...input, source: { kind: "records", fileIds: [FILE_A, FILE_A] } }).ok, false)
+assert.equal(validateReportDefinitionPayload({ ...input, source: { kind: "records", fileIds: ["not-a-uuid"] } }).ok, false)
+assert.equal(validateReportDefinitionPayload({ ...input, source: { kind: "records", fileIds: Array.from({ length: 101 }, (_, index) => `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`) } }).ok, false)
+const selectedDatasets = validateReportDefinitionPayload({ ...input, source: { kind: "dataset", fileIds: [FILE_A, FILE_B], dateField: "day" } })
+assert.equal(selectedDatasets.ok, true)
+assert.equal(validateReportDefinitionPayload({ ...input, source: { kind: "dataset", datasetId: FILE_A, fileIds: [FILE_B] } }).ok, false)
+assert.equal(validateReportDefinitionPayload({ ...input, source: { kind: "dataset", folderId: FILE_A, fileIds: [FILE_B] } }).ok, false)
+assert.equal(validateReportDefinitionPayload({ ...input, source: { kind: "dataset" } }).ok, false)
+assert.equal(validateDashboardVisualDefinition({
+  renderer: "bar-chart",
+  source: { kind: "records", fileIds: [FILE_A] },
+  scope: null,
+  period: { kind: "all" },
+  filters: [],
+  dimension: { field: "category" },
+  metric: { aggregation: "count" },
+  limit: 12,
+}).ok, true, "dashboard visuals inherit selected-file report sources")
+assert.deepEqual(VIRTUAL_MODEL_SOURCE_CAPABILITIES.dataset.selectors, ["source.datasetId", "source.folderId", "source.fileIds"])
 assert.equal(validateReportDefinitionPayload({ ...input, blocks: [{ type: "table", title: "Unsafe", columns: [{ field: "amount); drop table records" }] }] }).ok, false)
 assert.equal(validateReportDefinitionPayload({ ...input, source: { kind: "dataset", datasetId: "not-a-uuid" } }).ok, false)
 assert.equal(slugifyReportTitle("A"), "a")
@@ -76,7 +103,8 @@ const documentTypeRows = documentTypeReport.blocks[0].type === "share" ? documen
 assert.deepEqual(new Set(documentTypeRows.map((row) => row.label)), new Set(["csv_export", "receipt", "contract"]))
 assert.equal(documentTypeRows.reduce((sum, row) => sum + row.value, 0), 3)
 console.log(JSON.stringify({ coverage: documentTypeReport.coverage, block: documentTypeReport.blocks[0] }, null, 2))
-console.log("report definition tests: 15 passed")
+console.log(JSON.stringify({ selectedFileSources: { records: selectedRecords.ok ? selectedRecords.value.source : null, datasets: selectedDatasets.ok ? selectedDatasets.value.source : null }, dashboardVisualInherited: true }, null, 2))
+console.log("report definition tests: passed")
 }
 
 void main()

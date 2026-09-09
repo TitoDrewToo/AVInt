@@ -5,11 +5,19 @@ import { resolveReportFolderScope } from "@/lib/report-folder-scope-server"
 export class ReportDefinitionNotFoundError extends Error {}
 export class ReportDefinitionConflictError extends Error {}
 
+async function resolveSelectedFiles(userId: string, fileIds: string[]) {
+  const { data, error } = await supabaseAdmin.from("files").select("id, filename, folder_id").eq("user_id", userId).in("id", fileIds)
+  if (error) throw new Error(error.message)
+  const byId = new Map((data ?? []).map((file) => [file.id, file]))
+  if (byId.size !== fileIds.length || fileIds.some((id) => !byId.has(id))) throw new TypeError("Selected files do not exist or are not accessible")
+  return fileIds.map((id) => byId.get(id)!)
+}
+
 function metrics(input: ReportDefinitionInput): ReportMetric[] {
   return input.blocks.flatMap((block) => block.type === "kpi" ? block.items.map((item) => item.metric) : block.type === "share" || block.type === "stat" || block.type === "series" ? [block.metric] : block.type === "comparison" ? block.items.map((item) => item.metric) : [])
 }
 
-async function validateDefinitionAccess(userId: string, input: ReportDefinitionInput) {
+export async function validateDefinitionAccess(userId: string, input: ReportDefinitionInput) {
   const logoUrl = input.theme?.client?.logoUrl
   if (logoUrl) {
     const parsed = new URL(logoUrl)
@@ -21,7 +29,23 @@ async function validateDefinitionAccess(userId: string, input: ReportDefinitionI
   }
   if (input.scope?.folderId) await resolveReportFolderScope(userId, input.scope.folderId)
   const referenced = referencedDefinitionFields(input)
+  if (input.source.kind === "virtual_dataset") {
+    if (input.scope?.folderId) throw new TypeError("Report scope must be defined by the virtual dataset source")
+    const { data, error } = await supabaseAdmin.from("virtual_dataset_definitions").select("source, scope, filters, fields").eq("user_id", userId).eq("slug", input.source.slug).is("archived_at", null).maybeSingle()
+    if (error) throw new Error(error.message)
+    if (!data) throw new TypeError("The selected virtual dataset does not exist or is not accessible")
+    const projectedFields = Array.isArray(data.fields) ? data.fields.filter((field): field is string => typeof field === "string") : []
+    const unknown = referenced.filter((field) => !projectedFields.includes(field))
+    if (unknown.length) throw new TypeError(`Definition references fields outside the virtual dataset projection: ${unknown.join(", ")}`)
+    return validateDefinitionAccess(userId, {
+      ...input,
+      source: data.source,
+      scope: data.scope,
+      filters: [...(Array.isArray(data.filters) ? data.filters : []), ...input.filters],
+    })
+  }
   if (input.source.kind === "records") {
+    if (input.source.fileIds) await resolveSelectedFiles(userId, input.source.fileIds)
     const availableFields = new Set<string>([...RECORD_DEFINITION_FIELDS, "filename", "folder_id"])
     const { data, error } = await supabaseAdmin.from("record_attributes").select("field_key, value_type").eq("user_id", userId)
     if (error) throw new Error(error.message)
@@ -37,30 +61,41 @@ async function validateDefinitionAccess(userId: string, input: ReportDefinitionI
     if (invalidMetric?.field) throw new TypeError(`${invalidMetric.field} is not a numeric field and cannot use ${invalidMetric.aggregation}`)
     return
   }
-  let datasetIds: string[] = []
-  let dataset: { id: string; file_id: string } | null = null
+  let datasets: Array<{ id: string; file_id: string; sheet_name: string | null }> = []
+  let dataset: { id: string; file_id: string; sheet_name: string | null } | null = null
   if (input.source.datasetId) {
-    const { data, error } = await supabaseAdmin.from("datasets").select("id, file_id").eq("id", input.source.datasetId).eq("user_id", userId).maybeSingle()
+    const { data, error } = await supabaseAdmin.from("datasets").select("id, file_id, sheet_name").eq("id", input.source.datasetId).eq("user_id", userId).maybeSingle()
     if (error) throw new Error(error.message)
     if (!data) throw new TypeError("The selected dataset does not exist or is not accessible")
-    dataset = data; datasetIds = [data.id]
+    await resolveSelectedFiles(userId, [data.file_id])
+    dataset = data; datasets = [data]
   } else if (input.source.folderId) {
     const scope = await resolveReportFolderScope(userId, input.source.folderId)
     const { data: files, error: filesError } = await supabaseAdmin.from("files").select("id").eq("user_id", userId).in("folder_id", scope?.folderIds ?? [])
     if (filesError) throw new Error(filesError.message)
-    const { data: folderDatasets, error: datasetError } = await supabaseAdmin.from("datasets").select("id").eq("user_id", userId).in("file_id", (files ?? []).map((file) => file.id))
+    const { data: folderDatasets, error: datasetError } = await supabaseAdmin.from("datasets").select("id, file_id, sheet_name").eq("user_id", userId).in("file_id", (files ?? []).map((file) => file.id))
     if (datasetError) throw new Error(datasetError.message)
-    datasetIds = (folderDatasets ?? []).map((item) => item.id)
-    if (!datasetIds.length) throw new TypeError("The selected folder contains no datasets")
+    datasets = (folderDatasets ?? []).sort((a, b) => a.id.localeCompare(b.id))
+    if (!datasets.length) throw new TypeError("The selected folder contains no datasets")
+  } else if (input.source.fileIds) {
+    const selectedFiles = await resolveSelectedFiles(userId, input.source.fileIds)
+    const { data: selectedDatasets, error: datasetError } = await supabaseAdmin.from("datasets").select("id, file_id, sheet_name").eq("user_id", userId).in("file_id", selectedFiles.map((file) => file.id))
+    if (datasetError) throw new Error(datasetError.message)
+    const position = new Map(input.source.fileIds.map((id, index) => [id, index]))
+    datasets = (selectedDatasets ?? []).sort((a, b) => (position.get(a.file_id) ?? Number.MAX_SAFE_INTEGER) - (position.get(b.file_id) ?? Number.MAX_SAFE_INTEGER) || String(a.sheet_name).localeCompare(String(b.sheet_name)) || a.id.localeCompare(b.id))
+    if (!datasets.length) throw new TypeError("The selected files contain no datasets")
   }
-  if (input.scope?.folderId && dataset) {
-    const { data: file } = await supabaseAdmin.from("files").select("folder_id").eq("id", dataset.file_id).eq("user_id", userId).maybeSingle()
+  if (input.scope?.folderId && (dataset || input.source.fileIds)) {
     const scope = await resolveReportFolderScope(userId, input.scope.folderId)
-    if (!file || !scope?.folderIds.includes(file.folder_id)) throw new TypeError("The selected dataset is outside the report folder scope")
+    const files = dataset
+      ? await resolveSelectedFiles(userId, [dataset.file_id])
+      : await resolveSelectedFiles(userId, input.source.fileIds!)
+    if (files.some((file) => !scope?.folderIds.includes(file.folder_id))) throw new TypeError("A selected dataset is outside the report folder scope")
   }
-  const { data: columns, error: columnError } = await supabaseAdmin.from("dataset_columns").select("key, data_type, dataset_id").in("dataset_id", datasetIds).eq("user_id", userId)
+  const { data: columns, error: columnError } = await supabaseAdmin.from("dataset_columns").select("key, data_type, dataset_id").in("dataset_id", datasets.map((item) => item.id)).eq("user_id", userId)
   if (columnError) throw new Error(columnError.message)
-  const typeByField = new Map((columns ?? []).filter((column) => !dataset || column.dataset_id === dataset.id).map((column) => [column.key, column.data_type]))
+  const baseDatasetId = datasets[0].id
+  const typeByField = new Map((columns ?? []).filter((column) => column.dataset_id === baseDatasetId).map((column) => [column.key, column.data_type]))
   const unknown = referenced.filter((field) => !typeByField.has(field))
   if (unknown.length) throw new TypeError(`Definition references unavailable dataset fields: ${unknown.join(", ")}`)
   if (input.source.dateField && typeByField.get(input.source.dateField) !== "date") throw new TypeError("source.dateField must reference a date column")

@@ -4,9 +4,10 @@ export const RECORD_DEFINITION_FIELDS = [
   "is_recurring", "confidence", "needs_review",
 ] as const
 
-export type ReportDefinitionSource =
-  | { kind: "records"; documentTypes?: string[] }
-  | { kind: "dataset"; datasetId?: string; folderId?: string; dateField?: string; currencyField?: string }
+export type MaterializedReportDefinitionSource =
+  | { kind: "records"; documentTypes?: string[]; fileIds?: string[] }
+  | { kind: "dataset"; datasetId?: string; folderId?: string; fileIds?: string[]; dateField?: string; currencyField?: string }
+export type ReportDefinitionSource = MaterializedReportDefinitionSource | { kind: "virtual_dataset"; slug: string }
 export type ReportDefinitionScope = { folderId?: string | null }
 export type ReportDefinitionPeriod =
   | { kind: "all" }
@@ -40,6 +41,8 @@ export type ReportDefinition = ReportDefinitionInput & {
 export type ReportDefinitionListItem = Pick<ReportDefinition, "slug" | "title" | "description" | "source" | "period" | "authored_by" | "version" | "updated_at">
 
 const FIELD_PATTERN = /^[a-z][a-z0-9_]{0,199}$/
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,78}[a-z0-9])?$/
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 const HEX_COLOR = /^#[0-9a-f]{6}$/i
 const FILTER_OPERATORS = new Set(["eq", "neq", "contains", "gt", "gte", "lt", "lte"])
@@ -47,6 +50,12 @@ const AGGREGATIONS = new Set(["count", "count_distinct", "sum", "average", "min"
 function isObject(value: unknown): value is Record<string, unknown> { return Boolean(value) && typeof value === "object" && !Array.isArray(value) }
 function text(value: unknown, max: number) { return typeof value === "string" && value.trim() && value.trim().length <= max ? value.trim() : null }
 function validField(value: unknown): value is string { return typeof value === "string" && FIELD_PATTERN.test(value) }
+function validatedFileIds(value: unknown): { ok: true; value?: string[] } | { ok: false } {
+  if (value === undefined) return { ok: true }
+  if (!Array.isArray(value) || value.length < 1 || value.length > 100 || value.some((item) => typeof item !== "string" || !UUID_PATTERN.test(item))) return { ok: false }
+  const normalized = value.map((item) => item.toLowerCase())
+  return new Set(normalized).size === normalized.length ? { ok: true, value: normalized } : { ok: false }
+}
 function realDate(value: unknown): value is string {
   if (typeof value !== "string" || !ISO_DATE.test(value)) return false
   const parsed = new Date(`${value}T00:00:00Z`)
@@ -166,19 +175,27 @@ export function validateReportDefinitionPayload(input: unknown): { ok: true; val
   if (!isObject(input)) return { ok: false, error: "Definition must be an object" }
   const title = text(input.title, 120)
   if (!title) return { ok: false, error: "title is required and must be at most 120 characters" }
-  if (!isObject(input.source) || (input.source.kind !== "records" && input.source.kind !== "dataset")) return { ok: false, error: "source.kind must be records or dataset" }
+  if (!isObject(input.source) || !["records", "dataset", "virtual_dataset"].includes(String(input.source.kind))) return { ok: false, error: "source.kind must be records, dataset, or virtual_dataset" }
   let source: ReportDefinitionSource
   if (input.source.kind === "dataset") {
-    const hasDataset = typeof input.source.datasetId === "string" && /^[0-9a-f-]{36}$/i.test(input.source.datasetId)
-    const hasFolder = typeof input.source.folderId === "string" && /^[0-9a-f-]{36}$/i.test(input.source.folderId)
-    if (hasDataset === hasFolder) return { ok: false, error: "dataset source requires exactly one of datasetId or folderId" }
+    const hasDataset = typeof input.source.datasetId === "string" && UUID_PATTERN.test(input.source.datasetId)
+    const hasFolder = typeof input.source.folderId === "string" && UUID_PATTERN.test(input.source.folderId)
+    const fileIds = validatedFileIds(input.source.fileIds)
+    if (!fileIds.ok) return { ok: false, error: "source.fileIds must contain 1–100 unique UUIDs" }
+    const hasFiles = Boolean(fileIds.value)
+    if (Number(hasDataset) + Number(hasFolder) + Number(hasFiles) !== 1) return { ok: false, error: "dataset source requires exactly one of datasetId, folderId, or fileIds" }
     if ((input.source.datasetId !== undefined && !hasDataset) || (input.source.folderId !== undefined && !hasFolder)) return { ok: false, error: "source.datasetId/source.folderId must be UUIDs" }
     if (input.source.dateField !== undefined && !validField(input.source.dateField)) return { ok: false, error: "source.dateField is invalid" }
     if (input.source.currencyField !== undefined && !validField(input.source.currencyField)) return { ok: false, error: "source.currencyField is invalid" }
-    source = { kind: "dataset", ...(hasDataset ? { datasetId: input.source.datasetId as string } : { folderId: input.source.folderId as string }), ...(input.source.dateField ? { dateField: input.source.dateField } : {}), ...(input.source.currencyField ? { currencyField: input.source.currencyField } : {}) }
-  } else {
+    source = { kind: "dataset", ...(hasDataset ? { datasetId: (input.source.datasetId as string).toLowerCase() } : hasFolder ? { folderId: (input.source.folderId as string).toLowerCase() } : { fileIds: fileIds.value! }), ...(input.source.dateField ? { dateField: input.source.dateField } : {}), ...(input.source.currencyField ? { currencyField: input.source.currencyField } : {}) }
+  } else if (input.source.kind === "records") {
     if (input.source.documentTypes !== undefined && (!Array.isArray(input.source.documentTypes) || input.source.documentTypes.length > 20 || input.source.documentTypes.some((value) => !text(value, 80)))) return { ok: false, error: "source.documentTypes is invalid" }
-    source = { kind: "records", ...(Array.isArray(input.source.documentTypes) ? { documentTypes: input.source.documentTypes.map(String) } : {}) }
+    const fileIds = validatedFileIds(input.source.fileIds)
+    if (!fileIds.ok) return { ok: false, error: "source.fileIds must contain 1–100 unique UUIDs" }
+    source = { kind: "records", ...(Array.isArray(input.source.documentTypes) ? { documentTypes: input.source.documentTypes.map(String) } : {}), ...(fileIds.value ? { fileIds: fileIds.value } : {}) }
+  } else {
+    if (typeof input.source.slug !== "string" || !SLUG_PATTERN.test(input.source.slug)) return { ok: false, error: "source.slug must be a valid virtual dataset slug" }
+    source = { kind: "virtual_dataset", slug: input.source.slug }
   }
   let scope: ReportDefinitionScope | null = null
   if (input.scope !== undefined && input.scope !== null) {

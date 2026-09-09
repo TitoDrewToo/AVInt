@@ -39,6 +39,9 @@ const selectedDatasets = validateReportDefinitionPayload({ ...input, source: { k
 assert.equal(selectedDatasets.ok, true)
 assert.equal(validateReportDefinitionPayload({ ...input, source: { kind: "dataset", datasetId: FILE_A, fileIds: [FILE_B] } }).ok, false)
 assert.equal(validateReportDefinitionPayload({ ...input, source: { kind: "dataset", folderId: FILE_A, fileIds: [FILE_B] } }).ok, false)
+const mappedSource = validateReportDefinitionPayload({ ...input, source: { kind: "mapping_profile", slug: "partner-expense-fields" } })
+assert.equal(mappedSource.ok, true)
+assert.equal(validateReportDefinitionPayload({ ...input, source: { kind: "mapping_profile", slug: "Bad Slug" } }).ok, false)
 assert.equal(validateReportDefinitionPayload({ ...input, source: { kind: "dataset" } }).ok, false)
 assert.equal(validateDashboardVisualDefinition({
   renderer: "bar-chart",

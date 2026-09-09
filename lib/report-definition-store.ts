@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/mcp-auth"
 import { RECORD_DEFINITION_FIELDS, referencedDefinitionFields, slugifyReportTitle, slugWithSuffix, validateReportDefinitionPayload, type ReportDefinition, type ReportDefinitionInput, type ReportDefinitionListItem, type ReportMetric } from "@/lib/report-definitions"
 import { resolveReportFolderScope } from "@/lib/report-folder-scope-server"
+import { validateDataMappingProfilePayload } from "@/lib/data-mapping-definitions"
 
 export class ReportDefinitionNotFoundError extends Error {}
 export class ReportDefinitionConflictError extends Error {}
@@ -29,6 +30,32 @@ export async function validateDefinitionAccess(userId: string, input: ReportDefi
   }
   if (input.scope?.folderId) await resolveReportFolderScope(userId, input.scope.folderId)
   const referenced = referencedDefinitionFields(input)
+  if (input.source.kind === "mapping_profile") {
+    if (input.scope?.folderId) throw new TypeError("Report scope must be defined by the mapping profile source")
+    const { data, error } = await supabaseAdmin.from("data_mapping_profiles").select("title, description, source, scope, mappings, status").eq("user_id", userId).eq("slug", input.source.slug).eq("status", "active").is("archived_at", null).maybeSingle()
+    if (error) throw new Error(error.message)
+    if (!data) throw new TypeError("The selected active mapping profile does not exist or is not accessible")
+    const profile = validateDataMappingProfilePayload(data)
+    if (!profile.ok) throw new TypeError("The selected mapping profile is invalid")
+    const mappings = profile.value.mappings
+    const targets = new Set<string>(mappings.map((rule) => rule.targetField))
+    const invalidMappedMetric = metrics(input).find((metric) => {
+      if (metric.aggregation === "count" || metric.aggregation === "count_distinct") return false
+      if (metric.aggregation === "ratio") return [metric.numerator, metric.denominator].some((field) => field && targets.has(field) && field !== "amount")
+      return Boolean(metric.field && targets.has(metric.field) && metric.field !== "amount")
+    })
+    if (invalidMappedMetric) throw new TypeError("Mapped non-numeric fields cannot use numeric aggregation")
+    const remaining = [...new Set([...referenced.filter((field) => !targets.has(field)), ...mappings.map((rule) => rule.sourceField)])]
+    return validateDefinitionAccess(userId, {
+      ...input,
+      source: profile.value.source,
+      scope: profile.value.scope,
+      filters: [],
+      blocks: remaining.length
+        ? [{ type: "table", title: "Mapped source fields", columns: remaining.map((field) => ({ field })), limit: 1 }]
+        : [{ type: "stat", title: "Mapped rows", metric: { aggregation: "count" } }],
+    })
+  }
   if (input.source.kind === "virtual_dataset") {
     if (input.scope?.folderId) throw new TypeError("Report scope must be defined by the virtual dataset source")
     const { data, error } = await supabaseAdmin.from("virtual_dataset_definitions").select("source, scope, filters, fields").eq("user_id", userId).eq("slug", input.source.slug).is("archived_at", null).maybeSingle()

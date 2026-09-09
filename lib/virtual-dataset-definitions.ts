@@ -1,6 +1,6 @@
 import {
   validateReportDefinitionPayload,
-  type MaterializedReportDefinitionSource,
+  type ReusableReportDefinitionSource,
   type ReportDefinitionFilter,
   type ReportDefinitionScope,
 } from "@/lib/report-definitions"
@@ -8,7 +8,7 @@ import {
 export type VirtualDatasetDefinitionInput = {
   title: string
   description: string | null
-  source: MaterializedReportDefinitionSource
+  source: ReusableReportDefinitionSource
   scope: ReportDefinitionScope | null
   filters: ReportDefinitionFilter[]
   fields: string[]
@@ -34,7 +34,7 @@ export function validateVirtualDatasetDefinitionPayload(input: unknown): { ok: t
   const fields = candidate.fields.map((field) => typeof field === "string" ? field : "")
   if (new Set(fields).size !== fields.length) return { ok: false, error: "fields must be unique" }
   if (!candidate.source || typeof candidate.source !== "object" || Array.isArray(candidate.source) || (candidate.source as { kind?: unknown }).kind === "virtual_dataset") {
-    return { ok: false, error: "A virtual dataset must directly reference records or datasets; nested virtual datasets are not supported" }
+    return { ok: false, error: "A virtual dataset must reference records, datasets, or a mapping profile; nested virtual datasets are not supported" }
   }
   const validated = validateReportDefinitionPayload({
     title: "Virtual dataset",

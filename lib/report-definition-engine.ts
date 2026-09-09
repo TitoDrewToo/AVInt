@@ -4,6 +4,8 @@ import type { ReportBlock, ReportDocument } from "@/lib/report-document"
 import { RECORD_DEFINITION_FIELDS, referencedDefinitionFields, type ReportDefinition, type ReportDefinitionFilter, type ReportMetric, type ReportDefinitionPeriod } from "@/lib/report-definitions"
 import { getVirtualDatasetDefinition } from "@/lib/virtual-dataset-store"
 import type { VirtualDatasetDefinition } from "@/lib/virtual-dataset-definitions"
+import { getDataMappingProfile } from "@/lib/data-mapping-store"
+import { applyDataMappingProfile } from "@/lib/data-mapping-engine"
 
 const MAX_SOURCE_ROWS = 5_000
 const CORE_FIELDS = new Set<string>([...RECORD_DEFINITION_FIELDS, "filename", "folder_id"])
@@ -136,11 +138,20 @@ async function loadDataset(userId: string, definition: ReportDefinition, periodO
 export async function loadReportDefinitionSource(userId: string, definition: ReportDefinition, periodOverride?: ReportDefinitionPeriod): Promise<LoadedReportDefinitionSource> {
   if (definition.source.kind === "records") return loadRecords(userId, definition, periodOverride)
   if (definition.source.kind === "dataset") return loadDataset(userId, definition, periodOverride)
+  if (definition.source.kind === "mapping_profile") {
+    const profile = await getDataMappingProfile(userId, definition.source.slug, true)
+    const materializedDefinition: ReportDefinition = { ...definition, source: profile.source, scope: profile.scope, period: { kind: "all" } }
+    const loaded = profile.source.kind === "records"
+      ? await loadRecords(userId, materializedDefinition)
+      : await loadDataset(userId, materializedDefinition)
+    const mapped = applyDataMappingProfile(profile, loaded).source
+    const period = expandedPeriod(definition, periodOverride)
+    if (!period || !mapped.dateField) return mapped
+    return { ...mapped, rows: mapped.rows.filter((row) => overlaps(String(row[mapped.dateField!] ?? ""), String(row[mapped.dateField!] ?? ""), period.from, period.to)) }
+  }
   const virtual = await getVirtualDatasetDefinition(userId, definition.source.slug)
   const materializedDefinition: ReportDefinition = { ...definition, source: virtual.source, scope: virtual.scope }
-  const loaded = virtual.source.kind === "records"
-    ? await loadRecords(userId, materializedDefinition, periodOverride)
-    : await loadDataset(userId, materializedDefinition, periodOverride)
+  const loaded = await loadReportDefinitionSource(userId, materializedDefinition, periodOverride)
   return applyVirtualDatasetDefinition(virtual, loaded)
 }
 

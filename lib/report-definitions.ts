@@ -7,7 +7,9 @@ export const RECORD_DEFINITION_FIELDS = [
 export type MaterializedReportDefinitionSource =
   | { kind: "records"; documentTypes?: string[]; fileIds?: string[] }
   | { kind: "dataset"; datasetId?: string; folderId?: string; fileIds?: string[]; dateField?: string; currencyField?: string }
-export type ReportDefinitionSource = MaterializedReportDefinitionSource | { kind: "virtual_dataset"; slug: string }
+export type MappedReportDefinitionSource = { kind: "mapping_profile"; slug: string }
+export type ReusableReportDefinitionSource = MaterializedReportDefinitionSource | MappedReportDefinitionSource
+export type ReportDefinitionSource = ReusableReportDefinitionSource | { kind: "virtual_dataset"; slug: string }
 export type ReportDefinitionScope = { folderId?: string | null }
 export type ReportDefinitionPeriod =
   | { kind: "all" }
@@ -175,7 +177,7 @@ export function validateReportDefinitionPayload(input: unknown): { ok: true; val
   if (!isObject(input)) return { ok: false, error: "Definition must be an object" }
   const title = text(input.title, 120)
   if (!title) return { ok: false, error: "title is required and must be at most 120 characters" }
-  if (!isObject(input.source) || !["records", "dataset", "virtual_dataset"].includes(String(input.source.kind))) return { ok: false, error: "source.kind must be records, dataset, or virtual_dataset" }
+  if (!isObject(input.source) || !["records", "dataset", "mapping_profile", "virtual_dataset"].includes(String(input.source.kind))) return { ok: false, error: "source.kind must be records, dataset, mapping_profile, or virtual_dataset" }
   let source: ReportDefinitionSource
   if (input.source.kind === "dataset") {
     const hasDataset = typeof input.source.datasetId === "string" && UUID_PATTERN.test(input.source.datasetId)
@@ -193,6 +195,9 @@ export function validateReportDefinitionPayload(input: unknown): { ok: true; val
     const fileIds = validatedFileIds(input.source.fileIds)
     if (!fileIds.ok) return { ok: false, error: "source.fileIds must contain 1–100 unique UUIDs" }
     source = { kind: "records", ...(Array.isArray(input.source.documentTypes) ? { documentTypes: input.source.documentTypes.map(String) } : {}), ...(fileIds.value ? { fileIds: fileIds.value } : {}) }
+  } else if (input.source.kind === "mapping_profile") {
+    if (typeof input.source.slug !== "string" || !SLUG_PATTERN.test(input.source.slug)) return { ok: false, error: "source.slug must be a valid mapping profile slug" }
+    source = { kind: "mapping_profile", slug: input.source.slug }
   } else {
     if (typeof input.source.slug !== "string" || !SLUG_PATTERN.test(input.source.slug)) return { ok: false, error: "source.slug must be a valid virtual dataset slug" }
     source = { kind: "virtual_dataset", slug: input.source.slug }

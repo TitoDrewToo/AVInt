@@ -2974,7 +2974,7 @@ export default function SmartStoragePage() {
       <Sheet open={dataModelOpen} onOpenChange={setDataModelOpen}>
         <SheetContent side="top" className="inset-x-0 top-0 h-full w-full max-w-none border-b-0 p-0">
           <SheetTitle className="sr-only">Smart Storage data model</SheetTitle>
-          <SheetDescription className="sr-only">Inspect records, datasets, fields, revisions, and their source files.</SheetDescription>
+          <SheetDescription className="sr-only">Inspect records, datasets, mapping profiles, fields, revisions, and their source files.</SheetDescription>
           <DataModelView
             files={files}
             folders={folders}

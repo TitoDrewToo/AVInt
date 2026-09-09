@@ -321,6 +321,8 @@ The proof also exposed and then closed a metering inconsistency. MCP ingest stil
 
 ## Phase 8: external anchoring and legal-process readiness
 
+**Status:** deliberately parked while AVIntelligence is pre-revenue. Activate immediately after the first recurring revenue, a funded enterprise compliance requirement, or another approved source covers the billing-enabled Google Cloud KMS and external storage boundary. KMS billing is the current dependency, not an engineering defect or a Phase 1–7 readiness blocker.
+
 This is a separate approval and key-management project, not a hidden completion claim in Phase 7:
 
 - periodically sign the current prescan and administrator-audit chain heads;

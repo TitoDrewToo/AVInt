@@ -2,6 +2,7 @@ import { supabaseAdmin } from "@/lib/mcp-auth"
 import { RECORD_DEFINITION_FIELDS, referencedDefinitionFields, slugifyReportTitle, slugWithSuffix, validateReportDefinitionPayload, type ReportDefinition, type ReportDefinitionInput, type ReportDefinitionListItem, type ReportMetric } from "@/lib/report-definitions"
 import { resolveReportFolderScope } from "@/lib/report-folder-scope-server"
 import { validateDataMappingProfilePayload } from "@/lib/data-mapping-definitions"
+import { relationshipOutputField, validateDataRelationshipDefinitionPayload } from "@/lib/data-relationship-definitions"
 
 export class ReportDefinitionNotFoundError extends Error {}
 export class ReportDefinitionConflictError extends Error {}
@@ -70,6 +71,24 @@ export async function validateDefinitionAccess(userId: string, input: ReportDefi
       scope: data.scope,
       filters: [...(Array.isArray(data.filters) ? data.filters : []), ...input.filters],
     })
+  }
+  if (input.source.kind === "relationship") {
+    if (input.scope?.folderId) throw new TypeError("Report scope must be defined by the relationship's virtual datasets")
+    const { data, error } = await supabaseAdmin.from("virtual_dataset_relationships").select("definition, status").eq("user_id", userId).eq("slug", input.source.slug).eq("status", "active").is("archived_at", null).maybeSingle()
+    if (error) throw new Error(error.message)
+    if (!data) throw new TypeError("The selected active relationship does not exist or is not accessible")
+    const relationship = validateDataRelationshipDefinitionPayload(data.definition)
+    if (!relationship.ok) throw new TypeError("The selected relationship is invalid")
+    const { data: virtuals, error: virtualError } = await supabaseAdmin.from("virtual_dataset_definitions").select("slug, fields").eq("user_id", userId).in("slug", [relationship.value.leftVirtualDatasetSlug, relationship.value.rightVirtualDatasetSlug]).is("archived_at", null)
+    if (virtualError) throw new Error(virtualError.message)
+    const fieldsBySlug = new Map((virtuals ?? []).map((item) => [item.slug, Array.isArray(item.fields) ? item.fields.filter((field): field is string => typeof field === "string") : []]))
+    const leftFields = fieldsBySlug.get(relationship.value.leftVirtualDatasetSlug)
+    const rightFields = fieldsBySlug.get(relationship.value.rightVirtualDatasetSlug)
+    if (!leftFields || !rightFields) throw new TypeError("A relationship virtual dataset no longer exists or is not accessible")
+    const available = new Set([...leftFields.map((field) => relationshipOutputField("left", field)), ...rightFields.map((field) => relationshipOutputField("right", field))])
+    const unknown = referenced.filter((field) => !available.has(field))
+    if (unknown.length) throw new TypeError(`Definition references fields outside the relationship projection: ${unknown.join(", ")}`)
+    return
   }
   if (input.source.kind === "records") {
     if (input.source.fileIds) await resolveSelectedFiles(userId, input.source.fileIds)

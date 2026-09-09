@@ -9,7 +9,7 @@ export type MaterializedReportDefinitionSource =
   | { kind: "dataset"; datasetId?: string; folderId?: string; fileIds?: string[]; dateField?: string; currencyField?: string }
 export type MappedReportDefinitionSource = { kind: "mapping_profile"; slug: string }
 export type ReusableReportDefinitionSource = MaterializedReportDefinitionSource | MappedReportDefinitionSource
-export type ReportDefinitionSource = ReusableReportDefinitionSource | { kind: "virtual_dataset"; slug: string }
+export type ReportDefinitionSource = ReusableReportDefinitionSource | { kind: "virtual_dataset"; slug: string } | { kind: "relationship"; slug: string }
 export type ReportDefinitionScope = { folderId?: string | null }
 export type ReportDefinitionPeriod =
   | { kind: "all" }
@@ -177,7 +177,7 @@ export function validateReportDefinitionPayload(input: unknown): { ok: true; val
   if (!isObject(input)) return { ok: false, error: "Definition must be an object" }
   const title = text(input.title, 120)
   if (!title) return { ok: false, error: "title is required and must be at most 120 characters" }
-  if (!isObject(input.source) || !["records", "dataset", "mapping_profile", "virtual_dataset"].includes(String(input.source.kind))) return { ok: false, error: "source.kind must be records, dataset, mapping_profile, or virtual_dataset" }
+  if (!isObject(input.source) || !["records", "dataset", "mapping_profile", "virtual_dataset", "relationship"].includes(String(input.source.kind))) return { ok: false, error: "source.kind must be records, dataset, mapping_profile, virtual_dataset, or relationship" }
   let source: ReportDefinitionSource
   if (input.source.kind === "dataset") {
     const hasDataset = typeof input.source.datasetId === "string" && UUID_PATTERN.test(input.source.datasetId)
@@ -198,9 +198,12 @@ export function validateReportDefinitionPayload(input: unknown): { ok: true; val
   } else if (input.source.kind === "mapping_profile") {
     if (typeof input.source.slug !== "string" || !SLUG_PATTERN.test(input.source.slug)) return { ok: false, error: "source.slug must be a valid mapping profile slug" }
     source = { kind: "mapping_profile", slug: input.source.slug }
-  } else {
+  } else if (input.source.kind === "virtual_dataset") {
     if (typeof input.source.slug !== "string" || !SLUG_PATTERN.test(input.source.slug)) return { ok: false, error: "source.slug must be a valid virtual dataset slug" }
     source = { kind: "virtual_dataset", slug: input.source.slug }
+  } else {
+    if (typeof input.source.slug !== "string" || !SLUG_PATTERN.test(input.source.slug)) return { ok: false, error: "source.slug must be a valid relationship slug" }
+    source = { kind: "relationship", slug: input.source.slug }
   }
   let scope: ReportDefinitionScope | null = null
   if (input.scope !== undefined && input.scope !== null) {

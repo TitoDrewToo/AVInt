@@ -13,6 +13,7 @@ const ingestBatches = readFileSync(resolve(migrations, "20260906030000_mcp_inges
 const ingestBatchClaimFix = readFileSync(resolve(migrations, "20260906030100_fix_ingest_batch_claim_ambiguity.sql"), "utf8")
 const virtualDatasets = readFileSync(resolve(migrations, "20260909110000_add_virtual_dataset_definitions.sql"), "utf8")
 const mappingProfiles = readFileSync(resolve(migrations, "20260909170000_add_data_mapping_profiles.sql"), "utf8")
+const relationships = readFileSync(resolve(migrations, "20260909200000_add_virtual_dataset_relationships.sql"), "utf8")
 
 for (const table of ["ai_usage_events", "document_fields", "extractions", "records", "record_attributes", "files", "folders", "gift_codes"]) {
   assert.match(baseline, new RegExp(`CREATE TABLE public\\.${table}\\b`, "i"), `${table} must exist before the forward migrations`)
@@ -79,4 +80,15 @@ assert.match(mappingProfiles, /previewed_version = version/i)
 assert.match(mappingProfiles, /delete from public\.data_mapping_profiles where user_id = p_user_id/i)
 assert.match(mappingProfiles, /revoke all on function public\.delete_user_data\(uuid\) from public, anon, authenticated/i)
 
-console.log("smart-storage migration contracts: baseline, retirement, reports, virtual datasets, mapping profiles, security, and resumable ingest align")
+for (const column of ["definition", "status", "previewed_version", "preview_summary", "activated_by", "version", "archived_at"]) {
+  assert.match(relationships, new RegExp(`\\b${column}\\s+`), `virtual_dataset_relationships.${column} must be declared`)
+}
+assert.match(relationships, /alter table public\.virtual_dataset_relationships enable row level security/i)
+assert.match(relationships, /using \(\(select auth\.uid\(\)\) = user_id\)/i)
+assert.doesNotMatch(relationships, /using\s*\(\s*true\s*\)/i)
+assert.match(relationships, /revoke insert, update, delete on public\.virtual_dataset_relationships from anon, authenticated/i)
+assert.match(relationships, /previewed_version = version/i)
+assert.match(relationships, /delete from public\.virtual_dataset_relationships where user_id = p_user_id/i)
+assert.match(relationships, /revoke all on function public\.delete_user_data\(uuid\) from public, anon, authenticated/i)
+
+console.log("smart-storage migration contracts: baseline, retirement, reports, virtual datasets, mapping profiles, relationships, security, and resumable ingest align")

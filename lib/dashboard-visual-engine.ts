@@ -43,12 +43,20 @@ function dimensionValue(value: unknown, grain?: "day" | "month" | "year") {
   return label.slice(0, 10)
 }
 
+function metricUsesCurrency(metric: ReportMetric, source: LoadedReportDefinitionSource) {
+  if (!source.currencyField || !metric.field || metric.aggregation === "count" || metric.aggregation === "count_distinct" || metric.aggregation === "ratio") return false
+  const monetaryFields = ["amount", "amount_base", "total_amount", "gross_income", "net_income", "tax_amount"]
+  if (monetaryFields.includes(metric.field)) return true
+  const side = source.currencyField.match(/^(left|right)_/)?.[1]
+  return Boolean(side && monetaryFields.some((field) => metric.field === `${side}_${field}`))
+}
+
 export function compileDashboardVisual(definition: DashboardVisualDefinition, source: LoadedReportDefinitionSource): ResolvedDashboardVisual {
   const fakeDefinition = { filters: definition.filters, source: definition.source, blocks: [{ type: "share", title: "Visual", groupBy: definition.dimension.field, metric: definition.metric }] } as unknown as ReportDefinition
   const unknown = referencedDefinitionFields(fakeDefinition).filter((field) => !source.availableFields.has(field))
   if (unknown.length) throw new TypeError(`Visual references unavailable fields: ${unknown.join(", ")}`)
   const rows = source.rows.filter((row) => definition.filters.every((filter) => compare(row[filter.field], filter)))
-  const splitCurrency = Boolean(source.currencyField && definition.metric.aggregation !== "count")
+  const splitCurrency = metricUsesCurrency(definition.metric, source)
   const groups = new Map<string, { label: string; currency?: string; rows: Row[] }>()
   for (const row of rows) {
     const label = dimensionValue(row[definition.dimension.field], definition.dimension.grain)
@@ -63,7 +71,7 @@ export function compileDashboardVisual(definition: DashboardVisualDefinition, so
     .slice(0, definition.limit)
   return {
     source: "definition", definition, data, x_key: "label", data_key: "value",
-    coverage: { rowCount: rows.length, complete: rows.length > 0, statement: rows.length ? `${rows.length} current rows; excluded and superseded records are omitted. Currency values remain separated.` : "No current rows match this visual definition." },
+    coverage: { rowCount: rows.length, complete: rows.length > 0, statement: rows.length ? `${rows.length} current rows; excluded and superseded records are omitted. Currency values remain separated. ${source.coverageNote ?? ""}`.trim() : `No current rows match this visual definition. ${source.coverageNote ?? ""}`.trim() },
   }
 }
 

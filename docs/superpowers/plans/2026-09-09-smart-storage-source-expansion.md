@@ -205,21 +205,23 @@ Resolve a mapped fixture and show that existing canonical and user-corrected val
 - Modify: `lib/report-definition-engine.ts`
 - Test: `scripts/test-data-relationships.ts`
 
-- [ ] **Step 1: Approve the relationship contract**
+- [x] **Step 1: Approve the relationship contract**
 
 Allow equality relationships only between named fields of owned virtual datasets. Require declared `one_to_one`, `one_to_many`, or `many_to_one` cardinality. Prohibit `many_to_many` in the first release.
 
-- [ ] **Step 2: Validate cardinality and estimate expansion**
+- [x] **Step 2: Validate cardinality and estimate expansion**
 
 Before saving, report unmatched keys, duplicate keys on the required-unique side, null keys, and projected output rows. Refuse a violated cardinality or output beyond the source-row cap.
 
-- [ ] **Step 3: Preserve provenance**
+- [x] **Step 3: Preserve provenance**
 
 Every joined row retains both source dataset/file identities. Coverage states match rate, unmatched rows, excluded sources, and relationship version.
 
-- [ ] **Step 4: Prove that missing data is not converted into zero**
+- [x] **Step 4: Prove that missing data is not converted into zero**
 
 Run fixtures with unmatched and incomplete periods. Comparisons must become unavailable where the joined evidence does not cover both windows.
+
+Implementation decision: relationships use an inner, type-preserving scalar equality join. Output fields are namespaced `left_*` and `right_*`; both sides' `__file_id` and `__dataset_id` provenance are retained. Unmatched and null-key rows are omitted from output but counted in coverage, with bounded key samples returned only to the authenticated preview caller and never persisted. Activation requires a successful preview of the exact version, valid declared cardinality, at least one matched row, and no more than 5,000 projected rows. Runtime re-checks the same invariants and fails closed if source data later violates them.
 
 ## Closure criteria
 

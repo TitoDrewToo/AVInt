@@ -8,7 +8,7 @@ import { readVirtualModel } from "@/lib/virtual-model"
 const SYSTEM_PROMPT = `You design refreshable AVIntelligence Smart Storage reports.
 Return only JSON with a top-level "definition" object. Never return SQL, HTML, code, formulas, or computed rows.
 The definition must contain: title, description, source, scope, period, filters, blocks, theme.
-Sources: {kind:"records", documentTypes?:string[]} or {kind:"dataset", datasetId, dateField?, currencyField?}.
+Sources: {kind:"records", documentTypes?:string[], fileIds?:string[]}; {kind:"dataset", exactly one of datasetId|folderId|fileIds, dateField?, currencyField?}; {kind:"mapping_profile",slug}; or {kind:"virtual_dataset",slug}.
 Period: {kind:"all"}, {kind:"fixed",from:"YYYY-MM-DD",to:"YYYY-MM-DD"}, or {kind:"rolling",unit:"month"|"year",count:number,offset?:number}.\nPERIOD IS MANDATORY TO DERIVE. If the request names or implies a time span — a year, a quarter, a month, "last month", "this year", "year to date" — you MUST encode it in period as fixed or rolling. Resolve it against the current date supplied in the request.\nA title may only name a period the definition actually scopes. If period is {kind:"all"}, the title must not mention a year, quarter, month or relative span. A report titled for 2026 that computes over all time is a false label and will be rejected.
 Filters use field, operator (eq|neq|contains|gt|gte|lt|lte), value.
 Blocks: kpi items use {label,metric:{aggregation,count|count_distinct|sum|average|min|max,field?}}; share uses title,groupBy,metric,limit; table uses title,columns:[{field,label?}],sort?,limit; stat uses title,metric; narrative and note contain static text.
@@ -26,6 +26,8 @@ export async function POST(request: NextRequest) {
       recordFields: ["occurred_on", "amount", "currency", "direction", "counterparty", "category", "document_type", "record_type", "is_recurring", "confidence", "needs_review", ...model.catalog.map((field) => field.field_key)],
       documentTypes: [...new Set(model.files.map((file) => file.document_type).filter(Boolean))],
       datasets: model.datasets.map((dataset) => ({ ...dataset, columns: model.datasetColumns.filter((column) => column.dataset_id === dataset.id).map((column) => ({ key: column.key, label: column.label, data_type: column.data_type, needs_review: column.needs_review })) })),
+      mappingProfiles: model.mappingProfiles.filter((profile) => profile.status === "active").slice(0, 20).map((profile) => ({ slug: profile.slug, title: profile.title, mappings: profile.mappings })),
+      virtualDatasets: model.virtualDatasets.slice(0, 20).map((dataset) => ({ slug: dataset.slug, title: dataset.title, fields: dataset.fields })),
     }
     const apiKey = process.env.OPENAI_API_KEY
     if (!apiKey) {

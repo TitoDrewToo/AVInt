@@ -22,6 +22,8 @@ import { createDashboardPage, deleteDashboardPage, ensureDefaultDashboardPages, 
 import { logApiError } from "@/lib/api-error"
 import { rejectStatelessSubscriptionRequest, STATELESS_MCP_CAPABILITIES } from "@/lib/mcp-stateless-transport"
 import { createVirtualDatasetDefinition, getVirtualDatasetDefinition, listVirtualDatasetDefinitions, updateVirtualDatasetDefinition, VirtualDatasetConflictError, VirtualDatasetNotFoundError } from "@/lib/virtual-dataset-store"
+import { activateDataMappingProfile, createDataMappingProfile, getDataMappingProfile, listDataMappingProfiles, updateDataMappingProfile, DataMappingProfileConflictError, DataMappingProfileNotFoundError } from "@/lib/data-mapping-store"
+import { previewDataMappingProfile } from "@/lib/data-mapping-service"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -43,7 +45,7 @@ function limitedResult(message: string) {
 }
 
 function mcpToolError(error: unknown, userId: string, stage: string, fallback: string) {
-  if (error instanceof TypeError || error instanceof IngestBatchConflictError || error instanceof ReportDefinitionNotFoundError || error instanceof ReportDefinitionConflictError || error instanceof ReportDefinitionExecutionError || error instanceof VirtualDatasetNotFoundError || error instanceof VirtualDatasetConflictError) {
+  if (error instanceof TypeError || error instanceof IngestBatchConflictError || error instanceof ReportDefinitionNotFoundError || error instanceof ReportDefinitionConflictError || error instanceof ReportDefinitionExecutionError || error instanceof VirtualDatasetNotFoundError || error instanceof VirtualDatasetConflictError || error instanceof DataMappingProfileNotFoundError || error instanceof DataMappingProfileConflictError) {
     return featureResult(error.message)
   }
   logApiError(error, { route: "mcp", stage, userId })
@@ -196,6 +198,63 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
       } catch (error) { return mcpToolError(error, userId, "save_virtual_dataset", "The virtual dataset could not be saved.") }
     }))
 
+    server.registerTool("smart_storage.list_mapping_profiles", {
+      title: "List Smart Storage mapping profiles",
+      description: "Read-only. List owned declarative field mappings and whether each version is draft, previewed, or active.",
+      inputSchema: z.object({ search: z.string().max(120).optional() }),
+    }, async ({ search }) => timedTool("smart_storage.list_mapping_profiles", async () => {
+      const blocked = await toolGuard(userId, entitlement, "report")
+      if (blocked) return blocked
+      try { return { content: [{ type: "text" as const, text: JSON.stringify({ mappingProfiles: await listDataMappingProfiles(userId, search) }, null, 2) }] } }
+      catch (error) { return mcpToolError(error, userId, "list_mapping_profiles", "Mapping profiles could not be loaded.") }
+    }))
+
+    server.registerTool("smart_storage.get_mapping_profile", {
+      title: "Inspect a Smart Storage mapping profile",
+      description: "Read-only. Return one exact owned profile, including its source, allowlisted mappings, preview state, and activation state.",
+      inputSchema: z.object({ slug: z.string().min(1).max(80) }),
+    }, async ({ slug }) => timedTool("smart_storage.get_mapping_profile", async () => {
+      const blocked = await toolGuard(userId, entitlement, "report")
+      if (blocked) return blocked
+      try { return { content: [{ type: "text" as const, text: JSON.stringify({ mappingProfile: await getDataMappingProfile(userId, slug) }, null, 2) }] } }
+      catch (error) { return mcpToolError(error, userId, "get_mapping_profile", "The mapping profile could not be loaded.") }
+    }))
+
+    server.registerTool("smart_storage.save_mapping_profile", {
+      title: "Save a draft Smart Storage mapping profile",
+      description: "Create or version a draft mapping from named owned source fields to safe canonical fields. Only allowlisted coercions are accepted. Saving never activates a profile or rewrites source records.",
+      inputSchema: z.object({ definition: z.record(z.string(), z.unknown()), slug: z.string().min(1).max(80).optional(), expectedVersion: z.number().int().positive().optional() }),
+    }, async ({ definition, slug, expectedVersion }) => timedTool("smart_storage.save_mapping_profile", async () => {
+      const blocked = await toolGuard(userId, entitlement, "report")
+      if (blocked) return blocked
+      try {
+        const saved = slug ? await updateDataMappingProfile(userId, slug, definition, expectedVersion ?? 0, "assistant") : await createDataMappingProfile(userId, definition, "assistant")
+        return { content: [{ type: "text" as const, text: JSON.stringify({ mappingProfile: saved, next: "Preview this exact version before activation." }, null, 2) }] }
+      } catch (error) { return mcpToolError(error, userId, "save_mapping_profile", "The mapping profile could not be saved.") }
+    }))
+
+    server.registerTool("smart_storage.preview_mapping_profile", {
+      title: "Preview a Smart Storage mapping profile",
+      description: "Analyze one exact owned draft against its bounded current source. Returns sample before/after values plus applied, preserved, conflict, and type-failure counts. Samples are not persisted; only redacted counts mark the version as previewed.",
+      inputSchema: z.object({ slug: z.string().min(1).max(80) }),
+    }, async ({ slug }) => timedTool("smart_storage.preview_mapping_profile", async () => {
+      const blocked = await toolGuard(userId, entitlement, "report")
+      if (blocked) return blocked
+      try { return { content: [{ type: "text" as const, text: JSON.stringify({ preview: await previewDataMappingProfile(userId, slug) }, null, 2) }] } }
+      catch (error) { return mcpToolError(error, userId, "preview_mapping_profile", "The mapping profile could not be previewed.") }
+    }))
+
+    server.registerTool("smart_storage.activate_mapping_profile", {
+      title: "Activate a previewed Smart Storage mapping profile",
+      description: "Explicitly activate the exact version most recently previewed. Activation enables runtime mapping for reports, dashboards, and virtual datasets; it never rewrites canonical records and never overrides existing canonical or user-corrected values.",
+      inputSchema: z.object({ slug: z.string().min(1).max(80), expectedVersion: z.number().int().positive() }),
+    }, async ({ slug, expectedVersion }) => timedTool("smart_storage.activate_mapping_profile", async () => {
+      const blocked = await toolGuard(userId, entitlement, "report")
+      if (blocked) return blocked
+      try { return { content: [{ type: "text" as const, text: JSON.stringify({ mappingProfile: await activateDataMappingProfile(userId, slug, expectedVersion), useAs: { kind: "mapping_profile", slug } }, null, 2) }] } }
+      catch (error) { return mcpToolError(error, userId, "activate_mapping_profile", "The mapping profile could not be activated.") }
+    }))
+
     server.registerTool("smart_storage.list_report_definitions", {
       title: "List saved Smart Storage reports",
       description: "Read-only. List the signed-in user's refreshable saved report definitions, optionally matching a report name. Use the returned exact slug with smart_storage.run_report_definition.",
@@ -231,7 +290,7 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
 
     server.registerTool("smart_storage.save_report_definition", {
       title: "Save a refreshable Smart Storage report",
-      description: "Create or update a report definition using only the declarative AVIntelligence contract. Never submit SQL, HTML, executable expressions, or computed snapshot rows. Inspect smart_storage.virtual_model first and use only returned fields and owned identifiers. Records may target up to 100 source.fileIds; datasets require exactly one datasetId, folderId, or fileIds selector. Folder and file selection are evidence boundaries, and incompatible datasets are disclosed rather than coerced. To update, provide the exact slug and expectedVersion.",
+      description: "Create or update a report definition using only the declarative AVIntelligence contract. Never submit SQL, HTML, executable expressions, or computed snapshot rows. Inspect smart_storage.virtual_model first and use only returned fields and owned identifiers. Records may target up to 100 source.fileIds; datasets require exactly one datasetId, folderId, or fileIds selector; active mapping profiles and virtual datasets resolve by owned slug. Folder and file selection are evidence boundaries, and incompatible datasets are disclosed rather than coerced. To update, provide the exact slug and expectedVersion.",
       inputSchema: z.object({
         definition: z.record(z.string(), z.unknown()),
         slug: z.string().min(1).max(80).optional(),
@@ -316,7 +375,7 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
 
     server.registerTool("smart_dashboard.save_visual", {
       title: "Save a Smart Dashboard visual",
-      description: "Save a refreshable visual backed by canonical Smart Storage records, source datasets, or a saved virtual dataset and optionally plot it on a dashboard page. Inspect smart_storage.virtual_model first. The shared source contract supports intentional fileIds evidence boundaries as well as folder, dataset, or virtual-dataset targeting. The definition is declarative: source, scope, period, filters, dimension, metric, and limit; SQL and executable expressions are never accepted.",
+      description: "Save a refreshable visual backed by canonical Smart Storage records, source datasets, an active mapping profile, or a saved virtual dataset and optionally plot it on a dashboard page. Inspect smart_storage.virtual_model first. The shared source contract supports intentional fileIds evidence boundaries as well as folder, dataset, mapping-profile, or virtual-dataset targeting. The definition is declarative: source, scope, period, filters, dimension, metric, and limit; SQL and executable expressions are never accepted.",
       inputSchema: z.object({
         widget_type: z.enum(["line-chart", "area-chart", "bar-chart", "pie-chart"]),
         title: z.string().min(1).max(120),
@@ -363,7 +422,7 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
       "A document-intelligence service that turns a user's files into a permissioned normalized data model, dashboards, structured outputs, and selected accounting exports.",
       "Every tool acts ONLY on the documents belonging to the signed-in AVIntelligence account, matched by the authenticated email. No data is shared across accounts.",
       "Access requires an active Pro or Business plan. Authentication is handled via AVIntelligence's OAuth (WorkOS); this server never receives passwords.",
-      "Tools: smart_storage.ingest and smart_storage.ingest_status (resumable document ingestion), smart_storage.profile and smart_storage.virtual_model (inspect the data model), smart_storage.list_virtual_datasets / get_virtual_dataset / save_virtual_dataset (reusable declarative data selections), smart_storage.report (fixed examples), smart_storage.list_report_definitions / run_report_definition / save_report_definition (saved refreshable reports), smart_storage.export (QuickBooks / Xero file), smart_dashboard.list_pages / create_page / update_page / delete_page (manage dashboard pages), and smart_dashboard.list_visuals / smart_dashboard.save_visual (inspect or save validated dashboard visuals). Read tools never modify data; save tools affect only the signed-in user's virtual datasets, reports, or dashboard.",
+      "Tools: smart_storage.ingest and smart_storage.ingest_status (resumable document ingestion), smart_storage.profile and smart_storage.virtual_model (inspect the data model), smart_storage.list_virtual_datasets / get_virtual_dataset / save_virtual_dataset (reusable declarative data selections), smart_storage.list_mapping_profiles / get_mapping_profile / save_mapping_profile / preview_mapping_profile / activate_mapping_profile (preview-gated canonical mappings), smart_storage.report (fixed examples), smart_storage.list_report_definitions / run_report_definition / save_report_definition (saved refreshable reports), smart_storage.export (QuickBooks / Xero file), smart_dashboard.list_pages / create_page / update_page / delete_page (manage dashboard pages), and smart_dashboard.list_visuals / smart_dashboard.save_visual (inspect or save validated dashboard visuals). Read tools never modify data; save tools affect only the signed-in user's mappings, virtual datasets, reports, or dashboard.",
     ].join(" "),
   })
 }

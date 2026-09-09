@@ -169,29 +169,31 @@ Save one virtual dataset, add a compatible source file, rerun its report, and sh
 
 ### Task 6: Add reusable mapping profiles (separate schema approval)
 
+**Implemented direction (9 Sep):** Mapping profiles are a post-ingestion source layer. They bind an owned records/dataset source to validated field mappings, require preview of the exact version before activation, and resolve at report/dashboard runtime. They do not rewrite extraction, normalization, canonical records, or source evidence. Existing canonical values and user corrections remain authoritative.
+
 **Files:**
 - Create after approval: `supabase/migrations/<timestamp>_add_data_mapping_profiles.sql`
 - Create: `lib/data-mapping-definitions.ts`
 - Create: `lib/data-mapping-store.ts`
 - Modify: `lib/virtual-model.ts`
-- Modify: ingestion derivation adapters only after preview approval
+- Modify: shared report/dashboard source resolution after preview approval
 - Test: `scripts/test-data-mapping-definitions.ts`
 
-- [ ] **Step 1: Approve a declarative mapping contract**
+- [x] **Step 1: Approve a declarative mapping contract**
 
 Map owned source field keys to known canonical keys with optional safe coercions from an allowlist. Prohibit expressions, network calls, scripts, and cross-user references.
 
-- [ ] **Step 2: Build preview before activation**
+- [x] **Step 2: Build preview before activation**
 
 Preview affected files, sample before/after values, conflicts, null creation, and type failures. Activation requires an explicit version and records the actor.
 
-- [ ] **Step 3: Expose mappings in the Data Model and MCP discovery**
+- [x] **Step 3: Expose mappings in the Data Model and MCP discovery**
 
 Show mapped, unmapped, conflicting, and deprecated source fields. Agents may propose mappings, but activation remains an explicit account action.
 
-- [ ] **Step 4: Prove correction survival**
+- [x] **Step 4: Prove correction survival**
 
-Re-derive a mapped fixture and show that user correction overlays remain authoritative over derived mapped values.
+Resolve a mapped fixture and show that existing canonical and user-corrected values remain authoritative over mapped values. Invalid coercions fail closed and appear in preview/coverage rather than rewriting the source.
 
 ### Task 7: Add constrained relationships (separate schema approval)
 

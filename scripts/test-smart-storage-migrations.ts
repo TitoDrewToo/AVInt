@@ -12,6 +12,7 @@ const duplicateSubscriptionConstraint = readFileSync(resolve(migrations, "202609
 const ingestBatches = readFileSync(resolve(migrations, "20260906030000_mcp_ingest_batches.sql"), "utf8")
 const ingestBatchClaimFix = readFileSync(resolve(migrations, "20260906030100_fix_ingest_batch_claim_ambiguity.sql"), "utf8")
 const virtualDatasets = readFileSync(resolve(migrations, "20260909110000_add_virtual_dataset_definitions.sql"), "utf8")
+const mappingProfiles = readFileSync(resolve(migrations, "20260909170000_add_data_mapping_profiles.sql"), "utf8")
 
 for (const table of ["ai_usage_events", "document_fields", "extractions", "records", "record_attributes", "files", "folders", "gift_codes"]) {
   assert.match(baseline, new RegExp(`CREATE TABLE public\\.${table}\\b`, "i"), `${table} must exist before the forward migrations`)
@@ -68,4 +69,14 @@ assert.doesNotMatch(virtualDatasets, /using\s*\(\s*true\s*\)/i)
 assert.match(virtualDatasets, /delete from public\.virtual_dataset_definitions where user_id = p_user_id/i)
 assert.match(virtualDatasets, /revoke all on function public\.delete_user_data\(uuid\) from public, anon, authenticated/i)
 
-console.log("smart-storage migration contracts: baseline, retirement, reports, virtual datasets, security, and resumable ingest align")
+for (const column of ["source", "scope", "mappings", "status", "previewed_version", "preview_summary", "activated_by", "version", "archived_at"]) {
+  assert.match(mappingProfiles, new RegExp(`\\b${column}\\s+`), `data_mapping_profiles.${column} must be declared`)
+}
+assert.match(mappingProfiles, /alter table public\.data_mapping_profiles enable row level security/i)
+assert.match(mappingProfiles, /using \(\(select auth\.uid\(\)\) = user_id\)/i)
+assert.doesNotMatch(mappingProfiles, /using\s*\(\s*true\s*\)/i)
+assert.match(mappingProfiles, /previewed_version = version/i)
+assert.match(mappingProfiles, /delete from public\.data_mapping_profiles where user_id = p_user_id/i)
+assert.match(mappingProfiles, /revoke all on function public\.delete_user_data\(uuid\) from public, anon, authenticated/i)
+
+console.log("smart-storage migration contracts: baseline, retirement, reports, virtual datasets, mapping profiles, security, and resumable ingest align")

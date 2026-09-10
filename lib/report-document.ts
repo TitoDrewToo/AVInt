@@ -21,6 +21,12 @@ export type ReportDocument = {
   coverage?: { statement: string; complete: boolean }
   blocks: (ReportBlock & { suppressed?: boolean; reason?: string })[]
   method?: string
+  focusedModel?: {
+    sourceLabel: string
+    fields: string[]
+    dependencies: Array<{ kind: "file" | "dataset" | "mapping_profile" | "virtual_dataset" | "relationship"; id: string; version?: number | string }>
+    dependencyKey: string
+  }
   theme?: { accent?: string; density?: "compact" | "comfortable"; client?: { name: string; logoUrl?: string }; footer?: string }
 }
 

@@ -1,7 +1,7 @@
 import { supabaseAdmin } from "@/lib/mcp-auth"
 import { RECORD_DEFINITION_FIELDS, referencedDefinitionFields, slugifyReportTitle, slugWithSuffix, validateReportDefinitionPayload, type ReportDefinition, type ReportDefinitionInput, type ReportDefinitionListItem, type ReportMetric } from "@/lib/report-definitions"
 import { resolveReportFolderScope } from "@/lib/report-folder-scope-server"
-import { validateDataMappingProfilePayload } from "@/lib/data-mapping-definitions"
+import { dataMappingRuleSourceFields, dataMappingTargetType, isReconciliationMappingRule, validateDataMappingProfilePayload } from "@/lib/data-mapping-definitions"
 import { relationshipOutputField, validateDataRelationshipDefinitionPayload } from "@/lib/data-relationship-definitions"
 
 export class ReportDefinitionNotFoundError extends Error {}
@@ -40,13 +40,15 @@ export async function validateDefinitionAccess(userId: string, input: ReportDefi
     if (!profile.ok) throw new TypeError("The selected mapping profile is invalid")
     const mappings = profile.value.mappings
     const targets = new Set<string>(mappings.map((rule) => rule.targetField))
+    const targetTypes = new Map(mappings.map((rule) => [rule.targetField, dataMappingTargetType(rule)]))
     const invalidMappedMetric = metrics(input).find((metric) => {
       if (metric.aggregation === "count" || metric.aggregation === "count_distinct") return false
-      if (metric.aggregation === "ratio") return [metric.numerator, metric.denominator].some((field) => field && targets.has(field) && field !== "amount")
-      return Boolean(metric.field && targets.has(metric.field) && metric.field !== "amount")
+      if (metric.aggregation === "ratio") return [metric.numerator, metric.denominator].some((field) => field && targets.has(field) && targetTypes.get(field) !== "number")
+      return Boolean(metric.field && targets.has(metric.field) && targetTypes.get(metric.field) !== "number")
     })
     if (invalidMappedMetric) throw new TypeError("Mapped non-numeric fields cannot use numeric aggregation")
-    const remaining = [...new Set([...referenced.filter((field) => !targets.has(field)), ...mappings.map((rule) => rule.sourceField)])]
+    const reconciliation = mappings.every(isReconciliationMappingRule)
+    const remaining = [...new Set([...referenced.filter((field) => !targets.has(field)), ...(reconciliation ? [] : mappings.flatMap(dataMappingRuleSourceFields))])]
     return validateDefinitionAccess(userId, {
       ...input,
       source: profile.value.source,
@@ -110,22 +112,27 @@ export async function validateDefinitionAccess(userId: string, input: ReportDefi
   let datasets: Array<{ id: string; file_id: string; sheet_name: string | null }> = []
   let dataset: { id: string; file_id: string; sheet_name: string | null } | null = null
   if (input.source.datasetId) {
-    const { data, error } = await supabaseAdmin.from("datasets").select("id, file_id, sheet_name").eq("id", input.source.datasetId).eq("user_id", userId).maybeSingle()
+    const { data, error } = await supabaseAdmin.from("datasets").select("id, file_id, sheet_name").eq("id", input.source.datasetId).eq("user_id", userId).is("archived_at", null).maybeSingle()
     if (error) throw new Error(error.message)
-    if (!data) throw new TypeError("The selected dataset does not exist or is not accessible")
+    if (!data) {
+      const { data: archived, error: archivedError } = await supabaseAdmin.from("datasets").select("id").eq("id", input.source.datasetId).eq("user_id", userId).not("archived_at", "is", null).maybeSingle()
+      if (archivedError) throw new Error(archivedError.message)
+      if (archived) throw new TypeError("The selected dataset is no longer present in the current source file")
+      throw new TypeError("The selected dataset does not exist or is not accessible")
+    }
     await resolveSelectedFiles(userId, [data.file_id])
     dataset = data; datasets = [data]
   } else if (input.source.folderId) {
     const scope = await resolveReportFolderScope(userId, input.source.folderId)
     const { data: files, error: filesError } = await supabaseAdmin.from("files").select("id").eq("user_id", userId).in("folder_id", scope?.folderIds ?? [])
     if (filesError) throw new Error(filesError.message)
-    const { data: folderDatasets, error: datasetError } = await supabaseAdmin.from("datasets").select("id, file_id, sheet_name").eq("user_id", userId).in("file_id", (files ?? []).map((file) => file.id))
+    const { data: folderDatasets, error: datasetError } = await supabaseAdmin.from("datasets").select("id, file_id, sheet_name").eq("user_id", userId).in("file_id", (files ?? []).map((file) => file.id)).is("archived_at", null)
     if (datasetError) throw new Error(datasetError.message)
     datasets = (folderDatasets ?? []).sort((a, b) => a.id.localeCompare(b.id))
     if (!datasets.length) throw new TypeError("The selected folder contains no datasets")
   } else if (input.source.fileIds) {
     const selectedFiles = await resolveSelectedFiles(userId, input.source.fileIds)
-    const { data: selectedDatasets, error: datasetError } = await supabaseAdmin.from("datasets").select("id, file_id, sheet_name").eq("user_id", userId).in("file_id", selectedFiles.map((file) => file.id))
+    const { data: selectedDatasets, error: datasetError } = await supabaseAdmin.from("datasets").select("id, file_id, sheet_name").eq("user_id", userId).in("file_id", selectedFiles.map((file) => file.id)).is("archived_at", null)
     if (datasetError) throw new Error(datasetError.message)
     const position = new Map(input.source.fileIds.map((id, index) => [id, index]))
     datasets = (selectedDatasets ?? []).sort((a, b) => (position.get(a.file_id) ?? Number.MAX_SAFE_INTEGER) - (position.get(b.file_id) ?? Number.MAX_SAFE_INTEGER) || String(a.sheet_name).localeCompare(String(b.sheet_name)) || a.id.localeCompare(b.id))

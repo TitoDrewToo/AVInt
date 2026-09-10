@@ -19,13 +19,13 @@ export const VIRTUAL_MODEL_SOURCE_CAPABILITIES = {
   },
   mappingProfile: {
     selectors: ["source.slug"],
-    combination: "An active profile resolves its owned records or dataset source, then fills missing canonical values with allowlisted coercions. Existing canonical and user-corrected values always win.",
+    combination: "An active profile either fills missing canonical values or reconciles heterogeneous owned datasets into declared custom typed targets. Reconciliation evaluates ordered aliases before compatibility, applies explicit missing/conflict policies, ignores unrelated columns, and never overwrites canonical or user-corrected values.",
   },
   relationship: {
     selectors: ["source.slug"],
     combination: "An active, previewed relationship inner-joins two owned virtual datasets by named equality keys. Cardinality is declared and enforced; unmatched/null-key rows are omitted but counted, output is not de-duplicated, and fields are namespaced left_* and right_*.",
   },
-  limits: { selectedFiles: 100, sourceRows: 5000, mappingRules: 50, relationshipRows: 5000 },
+  limits: { selectedFiles: 100, sourceRows: 5000, mappingRules: 50, aliasesPerTarget: 10, relationshipRows: 5000 },
   ownership: "Use only file, folder, dataset, and field identifiers returned for this authenticated account.",
 } as const
 
@@ -175,9 +175,10 @@ export async function readVirtualModel(userId: string, query: VirtualModelQuery 
 
   const { data: datasetRows, error: datasetsError } = await supabaseAdmin
     .from("datasets")
-    .select("id, file_id, name, sheet_name, row_count, column_count, needs_review, created_at, updated_at")
+    .select("id, file_id, name, sheet_name, row_count, column_count, needs_review, archived_at, created_at, updated_at")
     .eq("user_id", userId)
     .in("file_id", fileIds)
+    .is("archived_at", null)
     .order("updated_at", { ascending: false })
   if (datasetsError) throw new Error(datasetsError.message)
   const datasetIds = (datasetRows ?? []).map((dataset) => dataset.id)

@@ -5,7 +5,8 @@ import { RECORD_DEFINITION_FIELDS, referencedDefinitionFields, type ReportDefini
 import { getVirtualDatasetDefinition } from "@/lib/virtual-dataset-store"
 import type { VirtualDatasetDefinition } from "@/lib/virtual-dataset-definitions"
 import { getDataMappingProfile } from "@/lib/data-mapping-store"
-import { applyDataMappingProfile } from "@/lib/data-mapping-engine"
+import { applyDataMappingProfile, type MappingDatasetSchema } from "@/lib/data-mapping-engine"
+import { isReconciliationMappingRule, type DataMappingProfile } from "@/lib/data-mapping-definitions"
 import { getDataRelationship } from "@/lib/data-relationship-store"
 import { applyDataRelationship, DataRelationshipExecutionError } from "@/lib/data-relationship-engine"
 
@@ -13,7 +14,64 @@ const MAX_SOURCE_ROWS = 5_000
 const CORE_FIELDS = new Set<string>([...RECORD_DEFINITION_FIELDS, "filename", "folder_id"])
 
 type ValueRow = Record<string, unknown>
-export type LoadedReportDefinitionSource = { rows: ValueRow[]; availableFields: Set<string>; dateField: string | null; currencyField: string | null; sourceLabel: string; coverageNote?: string }
+export type LoadedDatasetCandidate = {
+  dataset: { id: string; name: string; file_id: string; sheet_name: string | null; updated_at?: string }
+  columns: Array<{ key: string; data_type: string }>
+  rows: ValueRow[]
+}
+export type FocusedModelDependency = { kind: "file" | "dataset" | "mapping_profile" | "virtual_dataset" | "relationship"; id: string; version?: number | string }
+export type LoadedReportDefinitionSource = {
+  rows: ValueRow[]
+  availableFields: Set<string>
+  fieldTypes?: Map<string, string>
+  datasetSchemas?: MappingDatasetSchema[]
+  dependencies?: FocusedModelDependency[]
+  dateField: string | null
+  currencyField: string | null
+  sourceLabel: string
+  coverageNote?: string
+}
+
+function mergeDependencies(...groups: Array<FocusedModelDependency[] | undefined>) {
+  const seen = new Set<string>()
+  return groups.flatMap((group) => group ?? []).filter((dependency) => {
+    const key = `${dependency.kind}:${dependency.id}:${dependency.version ?? ""}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+export function focusedModelMetadata(source: LoadedReportDefinitionSource, fields: string[]) {
+  const dependencies = [...(source.dependencies ?? [])].sort((a, b) => `${a.kind}:${a.id}:${a.version ?? ""}`.localeCompare(`${b.kind}:${b.id}:${b.version ?? ""}`))
+  return {
+    sourceLabel: source.sourceLabel,
+    fields: [...new Set(fields)].sort(),
+    dependencies,
+    dependencyKey: dependencies.map((dependency) => `${dependency.kind}:${dependency.id}@${dependency.version ?? "current"}`).join("|"),
+  }
+}
+
+export function combineDatasetCandidates(loaded: LoadedDatasetCandidate[], compatibility: "exact" | "reconcile") {
+  if (!loaded.length) return { compatible: [], excluded: [], rows: [], availableFields: new Set<string>(), fieldTypes: new Map<string, string>(), datasetSchemas: [] as MappingDatasetSchema[] }
+  const signature = (columns: Array<{ key: string; data_type: string }>) => columns.map((column) => `${column.key}:${column.data_type}`).sort().join("|")
+  const baseSignature = signature(loaded[0].columns)
+  const compatible = compatibility === "reconcile" ? loaded : loaded.filter((item) => signature(item.columns) === baseSignature)
+  const excluded = compatibility === "reconcile" ? [] : loaded.filter((item) => signature(item.columns) !== baseSignature)
+  const availableFields = new Set(compatibility === "reconcile" ? compatible.flatMap((item) => item.columns.map((column) => column.key)) : compatible[0]?.columns.map((column) => column.key) ?? [])
+  const fieldTypes = new Map<string, string>()
+  for (const item of compatible) for (const column of item.columns) {
+    const current = fieldTypes.get(column.key)
+    if (!current) fieldTypes.set(column.key, column.data_type)
+    else if (current !== column.data_type) fieldTypes.set(column.key, "mixed")
+  }
+  const datasetSchemas: MappingDatasetSchema[] = compatible.map((item) => ({
+    datasetId: item.dataset.id,
+    datasetName: `${item.dataset.name}${item.dataset.sheet_name ? ` · ${item.dataset.sheet_name}` : ""}`,
+    fields: item.columns.map((column) => ({ key: column.key, dataType: column.data_type })),
+  }))
+  return { compatible, excluded, rows: compatible.flatMap((item) => item.rows), availableFields, fieldTypes, datasetSchemas }
+}
 
 export function projectRecordDefinitionRow(row: ValueRow, attributes: ValueRow): ValueRow {
   const file = Array.isArray(row.files) ? row.files[0] : row.files
@@ -53,7 +111,7 @@ async function loadRecords(userId: string, definition: ReportDefinition, periodO
   const selectedFileIds = definition.source.kind === "records" ? definition.source.fileIds : undefined
   const fileIds = selectedFileIds ? selectedFileIds.filter((id) => scopedFileIds.includes(id)) : scopedFileIds
   const sourceLabel = selectedFileIds ? `selected canonical records from ${fileIds.length} file(s)` : "canonical records"
-  if (!fileIds.length) return { rows: [], availableFields: new Set(CORE_FIELDS), dateField: "occurred_on", currencyField: "currency", sourceLabel }
+  if (!fileIds.length) return { rows: [], availableFields: new Set(CORE_FIELDS), dateField: "occurred_on", currencyField: "currency", sourceLabel, dependencies: [] }
   const { data, error } = await supabaseAdmin.from("records").select("*, files!inner(filename, folder_id, document_type)").eq("user_id", userId).in("file_id", fileIds).is("parent_record_id", null).is("excluded_at", null).limit(MAX_SOURCE_ROWS + 1)
   if (error) throw new Error(error.message)
   if ((data ?? []).length > MAX_SOURCE_ROWS) throw new ReportDefinitionExecutionError(`The report source exceeds ${MAX_SOURCE_ROWS} records. Narrow its folder or document type before running it.`)
@@ -75,10 +133,19 @@ async function loadRecords(userId: string, definition: ReportDefinition, periodO
   for (const attribute of attributeCatalog ?? []) availableFields.add(attribute.field_key)
   let rows = recordRows.map((row) => projectRecordDefinitionRow(row, attributesByRecord.get(row.id) ?? {}))
   if (period.from || period.to) rows = rows.filter((row) => overlaps(String(row.period_start ?? row.occurred_on ?? ""), String(row.period_end ?? row.occurred_on ?? ""), period.from, period.to))
-  return { rows, availableFields, dateField: "occurred_on", currencyField: "currency", sourceLabel }
+  const fieldTypes = new Map<string, string>([
+    ["occurred_on", "date"], ["period_start", "date"], ["period_end", "date"], ["amount", "number"],
+    ["amount_base", "number"], ["confidence", "number"], ["is_recurring", "boolean"],
+  ])
+  const fileVersions = new Map<string, string>()
+  for (const row of recordRows) {
+    const updatedAt = typeof row.updated_at === "string" ? row.updated_at : ""
+    if (updatedAt > (fileVersions.get(row.file_id) ?? "")) fileVersions.set(row.file_id, updatedAt)
+  }
+  return { rows, availableFields, fieldTypes, dateField: "occurred_on", currencyField: "currency", sourceLabel, dependencies: fileIds.map((id) => ({ kind: "file" as const, id, version: fileVersions.get(id) })) }
 }
 
-async function loadDataset(userId: string, definition: ReportDefinition, periodOverride?: ReportDefinitionPeriod): Promise<LoadedReportDefinitionSource> {
+async function loadDataset(userId: string, definition: ReportDefinition, periodOverride?: ReportDefinitionPeriod, compatibility: "exact" | "reconcile" = "exact"): Promise<LoadedReportDefinitionSource> {
   if (definition.source.kind !== "dataset") throw new ReportDefinitionExecutionError("Dataset source expected")
   const source = definition.source
   const context = source.folderId ? await createReportQueryContext(userId, { targetFolder: source.folderId }) : null
@@ -92,37 +159,41 @@ async function loadDataset(userId: string, definition: ReportDefinition, periodO
     if (byId.size !== source.fileIds.length || source.fileIds.some((id) => !byId.has(id))) throw new ReportDefinitionExecutionError("Selected files do not exist or are not accessible")
     selectedFiles = source.fileIds.map((id) => byId.get(id)!)
   }
-  let datasetQuery = supabaseAdmin.from("datasets").select("id, name, file_id, sheet_name, files!inner(folder_id, filename)").eq("user_id", userId).eq("files.user_id", userId)
+  let datasetQuery = supabaseAdmin.from("datasets").select("id, name, file_id, sheet_name, updated_at, files!inner(folder_id, filename)").eq("user_id", userId).eq("files.user_id", userId).is("archived_at", null)
   if (source.datasetId) datasetQuery = datasetQuery.eq("id", source.datasetId)
   else datasetQuery = datasetQuery.in("file_id", source.fileIds ?? scopedIds ?? [])
   const { data: datasets, error } = await datasetQuery
   if (error) throw new Error(error.message)
-  if (!datasets?.length) throw new ReportDefinitionExecutionError(source.folderId ? "The selected folder has no datasets" : source.fileIds ? "The selected files contain no datasets" : "The selected dataset does not exist or is not accessible")
+  if (!datasets?.length) {
+    if (source.datasetId) {
+      const { data: archived, error: archivedError } = await supabaseAdmin.from("datasets").select("id").eq("id", source.datasetId).eq("user_id", userId).not("archived_at", "is", null).maybeSingle()
+      if (archivedError) throw new Error(archivedError.message)
+      if (archived) throw new ReportDefinitionExecutionError("The selected dataset is no longer present in the current source file")
+    }
+    throw new ReportDefinitionExecutionError(source.folderId ? "The selected folder has no datasets" : source.fileIds ? "The selected files contain no datasets" : "The selected dataset does not exist or is not accessible")
+  }
   if (definition.scope?.folderId && (source.datasetId || source.fileIds)) {
     const scopeContext = await createReportQueryContext(userId, { targetFolder: definition.scope.folderId })
     const scopeIds = await scopeContext.fileIds()
     const guardedFileIds = source.fileIds ?? [datasets[0].file_id]
     if (guardedFileIds.some((id) => !scopeIds.includes(id))) throw new ReportDefinitionExecutionError("A selected dataset is outside the report folder scope")
   }
-  const loaded: Array<{ dataset: any; columns: Array<{ key: string; data_type: string }>; rows: ValueRow[] }> = []
+  const loaded: LoadedDatasetCandidate[] = []
   for (const dataset of datasets) {
     const { data: columns, error: columnError } = await supabaseAdmin.from("dataset_columns").select("key, data_type").eq("dataset_id", dataset.id).eq("user_id", userId)
     if (columnError) throw new Error(columnError.message)
-    const { data: rows, error: rowError } = await supabaseAdmin.from("dataset_rows").select("data").eq("dataset_id", dataset.id).eq("user_id", userId).order("row_index").limit(MAX_SOURCE_ROWS + 1)
+    const { data: rows, error: rowError } = await supabaseAdmin.from("dataset_rows").select("row_index, data").eq("dataset_id", dataset.id).eq("user_id", userId).order("row_index").limit(MAX_SOURCE_ROWS + 1)
     if (rowError) throw new Error(rowError.message)
-    loaded.push({ dataset, columns: columns ?? [], rows: (rows ?? []).map((row) => ({ ...(row.data as ValueRow), __dataset_id: dataset.id, __dataset_name: dataset.name, __file_id: dataset.file_id })) })
+    loaded.push({ dataset, columns: columns ?? [], rows: (rows ?? []).map((row) => ({ ...(row.data as ValueRow), __dataset_id: dataset.id, __dataset_name: dataset.name, __sheet_name: dataset.sheet_name, __file_id: dataset.file_id, __row_index: row.row_index })) })
   }
   if (source.fileIds) {
     const filePosition = new Map(source.fileIds.map((id, index) => [id, index]))
     loaded.sort((a, b) => (filePosition.get(a.dataset.file_id) ?? Number.MAX_SAFE_INTEGER) - (filePosition.get(b.dataset.file_id) ?? Number.MAX_SAFE_INTEGER) || String(a.dataset.sheet_name).localeCompare(String(b.dataset.sheet_name)) || String(a.dataset.id).localeCompare(String(b.dataset.id)))
   } else if (source.folderId) loaded.sort((a, b) => String(a.dataset.id).localeCompare(String(b.dataset.id)))
-  const signature = (columns: Array<{ key: string; data_type: string }>) => columns.map((column) => `${column.key}:${column.data_type}`).sort().join("|")
-  const baseSignature = signature(loaded[0].columns)
-  const compatible = loaded.filter((item) => signature(item.columns) === baseSignature)
-  const excluded = loaded.filter((item) => signature(item.columns) !== baseSignature)
+  const combined = combineDatasetCandidates(loaded, compatibility)
+  const { compatible, excluded, availableFields, fieldTypes, datasetSchemas } = combined
   if (!compatible.length) throw new ReportDefinitionExecutionError("No compatible datasets were found in the selected folder")
-  const availableFields = new Set(compatible[0].columns.map((column) => column.key))
-  let values = compatible.flatMap((item) => item.rows)
+  let values = combined.rows
   if (values.length > MAX_SOURCE_ROWS) throw new ReportDefinitionExecutionError(`The report source exceeds ${MAX_SOURCE_ROWS} dataset rows. Narrow the folder before running this report.`)
   const period = expandedPeriod(definition, periodOverride) ?? { from: "", to: "" }
   if ((period.from || period.to) && !source.dateField) throw new ReportDefinitionExecutionError("A dataset report with a period requires source.dateField")
@@ -131,10 +202,30 @@ async function loadDataset(userId: string, definition: ReportDefinition, periodO
   const withoutDatasets = selectedFiles.filter((file) => !filesWithDatasets.has(file.id))
   const unioned = Boolean(source.folderId || source.fileIds)
   const coverageNote = unioned
-    ? `${compatible.length} compatible dataset(s) unioned without de-duplication${excluded.length ? `; excluded ${excluded.map((item) => `${item.dataset.name} (schema mismatch)`).join(", ")}` : ""}${withoutDatasets.length ? `; excluded ${withoutDatasets.map((file) => `${file.filename} (no dataset)`).join(", ")}` : ""}.`
+    ? `${compatible.length} ${compatibility === "reconcile" ? "candidate" : "compatible"} dataset(s) unioned without de-duplication${excluded.length ? `; excluded ${excluded.map((item) => `${item.dataset.name} (schema mismatch)`).join(", ")}` : ""}${withoutDatasets.length ? `; excluded ${withoutDatasets.map((file) => `${file.filename} (no dataset)`).join(", ")}` : ""}.`
     : undefined
-  const sourceLabel = source.folderId ? "folder dataset union" : source.fileIds ? `selected-file dataset union from ${selectedFiles.length} file(s)` : `dataset ${compatible[0].dataset.name}`
-  return { rows: values, availableFields, dateField: source.dateField ?? null, currencyField: source.currencyField ?? null, sourceLabel, coverageNote }
+  const sourceLabel = compatibility === "reconcile"
+    ? (source.folderId ? "heterogeneous folder datasets" : source.fileIds ? `heterogeneous selected-file datasets from ${selectedFiles.length} file(s)` : `dataset ${compatible[0].dataset.name}`)
+    : (source.folderId ? "folder dataset union" : source.fileIds ? `selected-file dataset union from ${selectedFiles.length} file(s)` : `dataset ${compatible[0].dataset.name}`)
+  return {
+    rows: values, availableFields, fieldTypes, datasetSchemas,
+    dateField: source.dateField ?? null, currencyField: source.currencyField ?? null, sourceLabel, coverageNote,
+    dependencies: mergeDependencies(
+      compatible.map((item) => ({ kind: "dataset" as const, id: item.dataset.id, version: item.dataset.updated_at })),
+      compatible.map((item) => ({ kind: "file" as const, id: item.dataset.file_id })),
+    ),
+  }
+}
+
+export async function loadDataMappingProfileSource(userId: string, profile: Pick<DataMappingProfile, "source" | "scope" | "mappings">): Promise<LoadedReportDefinitionSource> {
+  const harness: ReportDefinition = {
+    id: "mapping-source", user_id: userId, slug: "mapping-source", authored_by: "user", version: 1,
+    archived_at: null, created_at: "", updated_at: "", title: "Mapping source", description: null,
+    source: profile.source, scope: profile.scope, period: { kind: "all" }, filters: [],
+    blocks: [{ type: "note", text: "Mapping source" }], theme: null,
+  }
+  if (profile.source.kind === "records") return loadRecords(userId, harness)
+  return loadDataset(userId, harness, undefined, profile.mappings.every(isReconciliationMappingRule) ? "reconcile" : "exact")
 }
 
 export async function loadReportDefinitionSource(userId: string, definition: ReportDefinition, periodOverride?: ReportDefinitionPeriod): Promise<LoadedReportDefinitionSource> {
@@ -142,11 +233,11 @@ export async function loadReportDefinitionSource(userId: string, definition: Rep
   if (definition.source.kind === "dataset") return loadDataset(userId, definition, periodOverride)
   if (definition.source.kind === "mapping_profile") {
     const profile = await getDataMappingProfile(userId, definition.source.slug, true)
-    const materializedDefinition: ReportDefinition = { ...definition, source: profile.source, scope: profile.scope, period: { kind: "all" } }
-    const loaded = profile.source.kind === "records"
-      ? await loadRecords(userId, materializedDefinition)
-      : await loadDataset(userId, materializedDefinition)
-    const mapped = applyDataMappingProfile(profile, loaded).source
+    const loaded = await loadDataMappingProfileSource(userId, profile)
+    const mappedResult = applyDataMappingProfile(profile, loaded)
+    if (profile.mappings.every(isReconciliationMappingRule) && mappedResult.preview.activationReady !== true) throw new ReportDefinitionExecutionError("The active reconciliation profile no longer satisfies its required-field and conflict contract; preview and activate a corrected version")
+    const mapped = mappedResult.source
+    mapped.dependencies = mergeDependencies(mapped.dependencies, [{ kind: "mapping_profile", id: profile.slug, version: profile.version }])
     const period = expandedPeriod(definition, periodOverride)
     if (!period || !mapped.dateField) return mapped
     return { ...mapped, rows: mapped.rows.filter((row) => overlaps(String(row[mapped.dateField!] ?? ""), String(row[mapped.dateField!] ?? ""), period.from, period.to)) }
@@ -155,7 +246,9 @@ export async function loadReportDefinitionSource(userId: string, definition: Rep
     const virtual = await getVirtualDatasetDefinition(userId, definition.source.slug)
     const materializedDefinition: ReportDefinition = { ...definition, source: virtual.source, scope: virtual.scope }
     const loaded = await loadReportDefinitionSource(userId, materializedDefinition, periodOverride)
-    return applyVirtualDatasetDefinition(virtual, loaded)
+    const projected = applyVirtualDatasetDefinition(virtual, loaded)
+    projected.dependencies = mergeDependencies(projected.dependencies, [{ kind: "virtual_dataset", id: virtual.slug, version: virtual.version }])
+    return projected
   }
   const relationship = await getDataRelationship(userId, definition.source.slug, true)
   const harness = (slug: string): ReportDefinition => ({ ...definition, source: { kind: "virtual_dataset", slug }, scope: null, period: { kind: "all" } })
@@ -170,6 +263,7 @@ export async function loadReportDefinitionSource(userId: string, definition: Rep
     if (error instanceof DataRelationshipExecutionError) throw new ReportDefinitionExecutionError(error.message)
     throw error
   }
+  joined.dependencies = mergeDependencies(left.dependencies, right.dependencies, [{ kind: "relationship", id: relationship.slug, version: relationship.version }])
   const period = expandedPeriod(definition, periodOverride)
   if (!period) return joined
   if (!joined.dateField) throw new ReportDefinitionExecutionError("A relationship report with a period requires the relationship to declare dateField")
@@ -186,6 +280,8 @@ export function applyVirtualDatasetDefinition(virtual: VirtualDatasetDefinition,
   return {
     rows,
     availableFields,
+    fieldTypes: loaded.fieldTypes ? new Map([...loaded.fieldTypes].filter(([field]) => projectedFields.has(field))) : undefined,
+    dependencies: loaded.dependencies,
     dateField: loaded.dateField && projectedFields.has(loaded.dateField) ? loaded.dateField : null,
     currencyField: loaded.currencyField && projectedFields.has(loaded.currencyField) ? loaded.currencyField : null,
     sourceLabel: `virtual dataset ${virtual.title}`,
@@ -321,6 +417,12 @@ function buildSeries(rows: ValueRow[], block: Extract<ReportDefinition["blocks"]
 export function compileReportDefinition(definition: ReportDefinition, source: LoadedReportDefinitionSource, now = new Date(), periodOverride?: ReportDefinitionPeriod): ReportDocument {
   const unknownFields = referencedDefinitionFields(definition).filter((field) => !source.availableFields.has(field))
   if (unknownFields.length) throw new ReportDefinitionExecutionError(`Definition references unavailable fields: ${unknownFields.join(", ")}`)
+  const numericMetricFields = definition.blocks.flatMap((block) => {
+    const blockMetrics = block.type === "kpi" || block.type === "comparison" ? block.items.map((item) => item.metric) : block.type === "share" || block.type === "stat" || block.type === "series" ? [block.metric] : []
+    return blockMetrics.flatMap((metric) => metric.aggregation === "count" || metric.aggregation === "count_distinct" ? [] : metric.aggregation === "ratio" ? [metric.numerator, metric.denominator] : metric.field ? [metric.field] : [])
+  })
+  const invalidNumericField = numericMetricFields.filter((field): field is string => Boolean(field)).find((field) => source.fieldTypes?.has(field) && source.fieldTypes.get(field) !== "number")
+  if (invalidNumericField) throw new ReportDefinitionExecutionError(`${invalidNumericField} is not a numeric field and cannot use numeric aggregation`)
   const period = periodOverride ? resolvePeriod(periodOverride) : resolveDefinitionPeriod(definition, now)
   const rows = source.rows.filter((row) => definition.filters.every((filter) => compare(row[filter.field], filter)) && (!source.dateField || (!period.from && !period.to) || dateInRange(row, source.dateField, period.from, period.to)))
   const dates = source.dateField ? rows.map((row) => String(row[source.dateField!] ?? "")).filter(Boolean).sort() : []
@@ -394,6 +496,7 @@ export function compileReportDefinition(definition: ReportDefinition, source: Lo
     generatedAt: now.toISOString(),
     coverage: { statement: rows.length ? `${rows.length} matching rows from ${source.sourceLabel}; excluded and superseded records are omitted. ${source.coverageNote ?? ""}` : noRows, complete: rows.length > 0 },
     blocks,
+    focusedModel: focusedModelMetadata(source, referencedDefinitionFields(definition)),
     theme: definition.theme ?? undefined,
     method: `Source: Smart Storage ${source.sourceLabel}. Definition ${definition.slug} version ${definition.version}. Currency buckets are never combined without conversion.`,
   }

@@ -93,8 +93,12 @@ export function applyDataRelationship(definition: DataRelationshipDefinition, le
     ...[...left.availableFields].map((field) => relationshipOutputField("left", field)),
     ...[...right.availableFields].map((field) => relationshipOutputField("right", field)),
   ])
+  const fieldTypes = new Map<string, string>([
+    ...[...(left.fieldTypes ?? new Map<string, string>())].map(([field, type]) => [relationshipOutputField("left", field), type] as [string, string]),
+    ...[...(right.fieldTypes ?? new Map<string, string>())].map(([field, type]) => [relationshipOutputField("right", field), type] as [string, string]),
+  ])
   const dateField = definition.dateField ? relationshipOutputField(definition.dateField.side, definition.dateField.field) : null
   const currencyField = definition.currencyField ? relationshipOutputField(definition.currencyField.side, definition.currencyField.field) : null
   const coverageNote = `Relationship ${definition.slug} v${definition.version} matched ${leftMatchedRows}/${leftNonNullRows} left rows (${(preview.matchRate * 100).toFixed(1)}%); omitted ${preview.leftUnmatchedRows} unmatched left, ${preview.rightUnmatchedRows} unmatched right, ${preview.leftNullKeys + preview.rightNullKeys} null-key row(s); produced ${projectedRows} inner-join row(s) without de-duplication. ${left.coverageNote ?? ""} ${right.coverageNote ?? ""}`.trim()
-  return { source: { rows, availableFields, dateField, currencyField, sourceLabel: `relationship ${definition.title}`, coverageNote }, preview, samples }
+  return { source: { rows, availableFields, fieldTypes, dateField, currencyField, sourceLabel: `relationship ${definition.title}`, coverageNote }, preview, samples }
 }

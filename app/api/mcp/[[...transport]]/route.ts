@@ -130,7 +130,7 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
 
     server.registerTool("smart_storage.virtual_model", {
       title: "Smart Storage virtual data model",
-      description: "Read-only. Inspect the signed-in user's bounded active records, typed attributes, custom-field catalog, source files, datasets, supported source selectors, lifecycle status, review state, confidence, and provenance. Excluded records are omitted by default; request includeExcluded only when historical or removed rows are relevant. The response reports when the 40-record bound truncated results. Never invent fields, values, or identifiers not returned here.",
+      description: "Read-only. Inspect the signed-in user's bounded active records, typed attributes, custom-field catalog, source files, datasets, saved virtual datasets, mapping profiles, relationships, supported source selectors, lifecycle status, review state, confidence, and provenance. Excluded records are omitted by default; request includeExcluded only when historical or removed rows are relevant. The response reports when the 40-record bound truncated results. Never invent fields, values, or identifiers not returned here.",
       inputSchema: z.object({
         search: z.string().max(120).optional(),
         status: z.enum(["derived", "reviewed", "superseded"]).optional(),
@@ -203,7 +203,7 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
 
     server.registerTool("smart_storage.list_mapping_profiles", {
       title: "List Smart Storage mapping profiles",
-      description: "Read-only. List owned declarative field mappings and whether each version is draft, previewed, or active.",
+      description: "Read-only. List owned declarative field mappings and reconciliation contracts, including whether each exact version is draft, previewed, or active.",
       inputSchema: z.object({ search: z.string().max(120).optional() }),
     }, async ({ search }) => timedTool("smart_storage.list_mapping_profiles", async () => {
       const blocked = await toolGuard(userId, entitlement, "report")
@@ -214,7 +214,7 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
 
     server.registerTool("smart_storage.get_mapping_profile", {
       title: "Inspect a Smart Storage mapping profile",
-      description: "Read-only. Return one exact owned profile, including its source, allowlisted mappings, preview state, and activation state.",
+      description: "Read-only. Return one exact owned profile, including its source, canonical mappings or custom typed reconciliation targets, missing/conflict policy, preview evidence, and activation state.",
       inputSchema: z.object({ slug: z.string().min(1).max(80) }),
     }, async ({ slug }) => timedTool("smart_storage.get_mapping_profile", async () => {
       const blocked = await toolGuard(userId, entitlement, "report")
@@ -225,7 +225,7 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
 
     server.registerTool("smart_storage.save_mapping_profile", {
       title: "Save a draft Smart Storage mapping profile",
-      description: "Create or version a draft mapping from named owned source fields to safe canonical fields. Only allowlisted coercions are accepted. Saving never activates a profile or rewrites source records.",
+      description: "Create or version a draft mapping profile. Legacy rules map one source field to a safe canonical field. Reconciliation rules declare a custom typed target, 1–10 ordered source candidates, required state, missing policy (null, exclude_row, exclude_dataset, reject), conflict policy, and optional time or currency role. Only allowlisted coercions are accepted. Rules cannot mix modes, execute expressions, activate themselves, or rewrite source records.",
       inputSchema: z.object({ definition: z.record(z.string(), z.unknown()), slug: z.string().min(1).max(80).optional(), expectedVersion: z.number().int().positive().optional() }),
     }, async ({ definition, slug, expectedVersion }) => timedTool("smart_storage.save_mapping_profile", async () => {
       const blocked = await toolGuard(userId, entitlement, "report")
@@ -238,7 +238,7 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
 
     server.registerTool("smart_storage.preview_mapping_profile", {
       title: "Preview a Smart Storage mapping profile",
-      description: "Analyze one exact owned draft against its bounded current source. Returns sample before/after values plus applied, preserved, conflict, and type-failure counts. Samples are not persisted; only redacted counts mark the version as previewed.",
+      description: "Analyze one exact owned draft against its bounded current source. Reconciliation previews load heterogeneous datasets before applying aliases and return included/excluded dataset outcomes, missing coverage, output rows, conflicts, type failures, and bounded samples. Samples are not persisted; only redacted counts and statuses mark the version as previewed.",
       inputSchema: z.object({ slug: z.string().min(1).max(80) }),
     }, async ({ slug }) => timedTool("smart_storage.preview_mapping_profile", async () => {
       const blocked = await toolGuard(userId, entitlement, "report")
@@ -249,7 +249,7 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
 
     server.registerTool("smart_storage.activate_mapping_profile", {
       title: "Activate a previewed Smart Storage mapping profile",
-      description: "Explicitly activate the exact version most recently previewed. Activation enables runtime mapping for reports, dashboards, and virtual datasets; it never rewrites canonical records and never overrides existing canonical or user-corrected values.",
+      description: "Explicitly activate the exact version most recently previewed. Reconciliation activation fails while required fields or default-reject conflicts remain unresolved. Activation enables runtime mapping for reports, dashboards, and virtual datasets; it never rewrites canonical records and never overrides existing canonical or user-corrected values.",
       inputSchema: z.object({ slug: z.string().min(1).max(80), expectedVersion: z.number().int().positive() }),
     }, async ({ slug, expectedVersion }) => timedTool("smart_storage.activate_mapping_profile", async () => {
       const blocked = await toolGuard(userId, entitlement, "report")

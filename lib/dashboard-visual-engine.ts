@@ -1,4 +1,4 @@
-import { loadReportDefinitionSource, type LoadedReportDefinitionSource } from "@/lib/report-definition-engine"
+import { focusedModelMetadata, loadReportDefinitionSource, type LoadedReportDefinitionSource } from "@/lib/report-definition-engine"
 import { referencedDefinitionFields, type ReportDefinition, type ReportDefinitionFilter, type ReportMetric } from "@/lib/report-definitions"
 import { validateDashboardVisualDefinition, type DashboardVisualDefinition } from "@/lib/dashboard-visual-definition"
 
@@ -10,6 +10,7 @@ export type ResolvedDashboardVisual = {
   x_key: "label"
   data_key: "value"
   coverage: { rowCount: number; complete: boolean; statement: string }
+  focusedModel: ReturnType<typeof focusedModelMetadata>
 }
 
 function compare(left: unknown, filter: ReportDefinitionFilter) {
@@ -25,10 +26,16 @@ function compare(left: unknown, filter: ReportDefinitionFilter) {
   return a <= b
 }
 
-function aggregate(rows: Row[], metric: ReportMetric) {
+function aggregate(rows: Row[], metric: ReportMetric): number | null {
   if (metric.aggregation === "count") return metric.field ? rows.filter((row) => row[metric.field!] != null && row[metric.field!] !== "").length : rows.length
+  if (metric.aggregation === "count_distinct") return new Set(rows.map((row) => row[metric.field!]).filter((value) => value !== null && value !== undefined && value !== "").map(String)).size
+  if (metric.aggregation === "ratio") {
+    const numerator = aggregate(rows, { aggregation: "sum", field: metric.numerator })
+    const denominator = aggregate(rows, { aggregation: "sum", field: metric.denominator })
+    return numerator === null || denominator === null || denominator === 0 ? null : numerator / denominator
+  }
   const values = rows.map((row) => typeof row[metric.field!] === "number" ? row[metric.field!] as number : Number(row[metric.field!])).filter(Number.isFinite)
-  if (!values.length) return 0
+  if (!values.length) return null
   if (metric.aggregation === "sum") return values.reduce((sum, value) => sum + value, 0)
   if (metric.aggregation === "average") return values.reduce((sum, value) => sum + value, 0) / values.length
   if (metric.aggregation === "min") return Math.min(...values)
@@ -55,6 +62,11 @@ export function compileDashboardVisual(definition: DashboardVisualDefinition, so
   const fakeDefinition = { filters: definition.filters, source: definition.source, blocks: [{ type: "share", title: "Visual", groupBy: definition.dimension.field, metric: definition.metric }] } as unknown as ReportDefinition
   const unknown = referencedDefinitionFields(fakeDefinition).filter((field) => !source.availableFields.has(field))
   if (unknown.length) throw new TypeError(`Visual references unavailable fields: ${unknown.join(", ")}`)
+  const metricFields = definition.metric.aggregation === "count" || definition.metric.aggregation === "count_distinct"
+    ? []
+    : definition.metric.aggregation === "ratio" ? [definition.metric.numerator, definition.metric.denominator] : definition.metric.field ? [definition.metric.field] : []
+  const invalidNumericField = metricFields.filter((field): field is string => Boolean(field)).find((field) => source.fieldTypes?.has(field) && source.fieldTypes.get(field) !== "number")
+  if (invalidNumericField) throw new TypeError(`${invalidNumericField} is not a numeric field and cannot use numeric aggregation`)
   const rows = source.rows.filter((row) => definition.filters.every((filter) => compare(row[filter.field], filter)))
   const splitCurrency = metricUsesCurrency(definition.metric, source)
   const groups = new Map<string, { label: string; currency?: string; rows: Row[] }>()
@@ -67,11 +79,13 @@ export function compileDashboardVisual(definition: DashboardVisualDefinition, so
   }
   const chronological = Boolean(definition.dimension.grain)
   const data = [...groups.values()].map((group) => ({ label: group.label, value: aggregate(group.rows, definition.metric), ...(group.currency ? { currency: group.currency } : {}) }))
+    .filter((item): item is { label: string; value: number; currency?: string } => item.value !== null)
     .sort((a, b) => chronological ? a.label.localeCompare(b.label) : b.value - a.value || a.label.localeCompare(b.label))
     .slice(0, definition.limit)
   return {
     source: "definition", definition, data, x_key: "label", data_key: "value",
     coverage: { rowCount: rows.length, complete: rows.length > 0, statement: rows.length ? `${rows.length} current rows; excluded and superseded records are omitted. Currency values remain separated. ${source.coverageNote ?? ""}`.trim() : `No current rows match this visual definition. ${source.coverageNote ?? ""}`.trim() },
+    focusedModel: focusedModelMetadata(source, referencedDefinitionFields(fakeDefinition)),
   }
 }
 

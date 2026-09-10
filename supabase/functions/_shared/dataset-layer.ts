@@ -200,13 +200,25 @@ function assertNoError(error: { message?: string } | null, operation: string) {
   if (error) throw new Error(`${operation} failed: ${error.message ?? String(error)}`)
 }
 
+export function vanishedDatasetIds(priorDatasets: Array<{ id: string; sheet_name: string | null }>, sheets: Array<{ sheet_name: string | null }>) {
+  const currentSheetNames = new Set(sheets.map((sheet) => sheet.sheet_name ?? null))
+  return priorDatasets.filter((dataset) => !currentSheetNames.has(dataset.sheet_name ?? null)).map((dataset) => dataset.id)
+}
+
 export async function replaceSpreadsheetDatasets(client: QueryClient, fileId: string, userId: string, sheets: DatasetSheet[]) {
   // Dataset identity is part of the report contract. Re-derivation must update
   // the existing natural key instead of deleting it and issuing a new UUID.
+  const { data: priorDatasets, error: priorDatasetError } = await client
+    .from("datasets")
+    .select("id, sheet_name")
+    .eq("file_id", fileId)
+    .eq("user_id", userId)
+    .is("archived_at", null)
+  assertNoError(priorDatasetError, "existing datasets lookup")
   for (const sheet of sheets) {
     const { data: dataset, error: datasetError } = await client
       .from("datasets")
-      .upsert({ user_id: userId, file_id: fileId, name: sheet.name, sheet_name: sheet.sheet_name, row_count: sheet.row_count, column_count: sheet.column_count, needs_review: sheet.needs_review }, { onConflict: "file_id,sheet_name" })
+      .upsert({ user_id: userId, file_id: fileId, name: sheet.name, sheet_name: sheet.sheet_name, row_count: sheet.row_count, column_count: sheet.column_count, needs_review: sheet.needs_review, archived_at: null }, { onConflict: "file_id,sheet_name" })
       .select("id")
       .single()
     assertNoError(datasetError, "dataset insert")
@@ -240,7 +252,13 @@ export async function replaceSpreadsheetDatasets(client: QueryClient, fileId: st
       assertNoError(error, "dataset rows upsert")
     }
   }
-  // A vanished sheet is deliberately retained. Its stable dataset remains a
-  // valid target for an existing saved report instead of being silently
-  // orphaned; a future explicit archive decision can remove it safely.
+  for (const priorId of vanishedDatasetIds(priorDatasets ?? [], sheets)) {
+    const { error } = await client
+      .from("datasets")
+      .update({ archived_at: new Date().toISOString() })
+      .eq("id", priorId)
+      .eq("user_id", userId)
+      .is("archived_at", null)
+    assertNoError(error, "vanished dataset archive")
+  }
 }

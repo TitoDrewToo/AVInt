@@ -14,6 +14,7 @@ const ingestBatchClaimFix = readFileSync(resolve(migrations, "20260906030100_fix
 const virtualDatasets = readFileSync(resolve(migrations, "20260909110000_add_virtual_dataset_definitions.sql"), "utf8")
 const mappingProfiles = readFileSync(resolve(migrations, "20260909170000_add_data_mapping_profiles.sql"), "utf8")
 const relationships = readFileSync(resolve(migrations, "20260909200000_add_virtual_dataset_relationships.sql"), "utf8")
+const datasetLifecycle = readFileSync(resolve(migrations, "20260910120000_add_dataset_current_lifecycle.sql"), "utf8")
 
 for (const table of ["ai_usage_events", "document_fields", "extractions", "records", "record_attributes", "files", "folders", "gift_codes"]) {
   assert.match(baseline, new RegExp(`CREATE TABLE public\\.${table}\\b`, "i"), `${table} must exist before the forward migrations`)
@@ -91,4 +92,7 @@ assert.match(relationships, /previewed_version = version/i)
 assert.match(relationships, /delete from public\.virtual_dataset_relationships where user_id = p_user_id/i)
 assert.match(relationships, /revoke all on function public\.delete_user_data\(uuid\) from public, anon, authenticated/i)
 
-console.log("smart-storage migration contracts: baseline, retirement, reports, virtual datasets, mapping profiles, relationships, security, and resumable ingest align")
+assert.match(datasetLifecycle, /alter table public\.datasets[\s\S]*add column if not exists archived_at timestamptz/i)
+assert.match(datasetLifecycle, /where archived_at is null/i)
+
+console.log("smart-storage migration contracts: baseline, retirement, reports, virtual datasets, mapping profiles, relationships, dataset lifecycle, security, and resumable ingest align")

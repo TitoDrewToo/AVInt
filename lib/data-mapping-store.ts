@@ -2,6 +2,8 @@ import { supabaseAdmin } from "@/lib/mcp-auth"
 import { slugifyReportTitle, slugWithSuffix, type ReportDefinitionInput } from "@/lib/report-definitions"
 import { validateDefinitionAccess } from "@/lib/report-definition-store"
 import {
+  dataMappingRuleSourceFields,
+  isReconciliationMappingRule,
   validateDataMappingProfilePayload,
   type DataMappingPreviewSummary,
   type DataMappingProfile,
@@ -13,6 +15,7 @@ export class DataMappingProfileNotFoundError extends Error {}
 export class DataMappingProfileConflictError extends Error {}
 
 async function validateAccess(userId: string, input: DataMappingProfileInput) {
+  const reconciliation = input.mappings.every(isReconciliationMappingRule)
   const definition: ReportDefinitionInput = {
     title: "Data mapping access check",
     description: input.description,
@@ -20,14 +23,16 @@ async function validateAccess(userId: string, input: DataMappingProfileInput) {
     scope: input.scope,
     period: { kind: "all" },
     filters: [],
-    blocks: [{ type: "table", title: "Source fields", columns: input.mappings.map((rule) => ({ field: rule.sourceField })), limit: 1 }],
+    blocks: reconciliation
+      ? [{ type: "stat", title: "Source rows", metric: { aggregation: "count" } }]
+      : [{ type: "table", title: "Source fields", columns: [...new Set(input.mappings.flatMap(dataMappingRuleSourceFields))].map((field) => ({ field })), limit: 1 }],
     theme: null,
   }
   await validateDefinitionAccess(userId, definition)
 }
 
 export async function listDataMappingProfiles(userId: string, search?: string): Promise<DataMappingProfileListItem[]> {
-  let query = supabaseAdmin.from("data_mapping_profiles").select("slug, title, description, source, mappings, status, authored_by, version, previewed_version, updated_at").eq("user_id", userId).is("archived_at", null).order("updated_at", { ascending: false }).limit(100)
+  let query = supabaseAdmin.from("data_mapping_profiles").select("slug, title, description, source, mappings, status, authored_by, version, previewed_version, preview_summary, updated_at").eq("user_id", userId).is("archived_at", null).order("updated_at", { ascending: false }).limit(100)
   if (search?.trim()) query = query.ilike("title", `%${search.trim().replace(/[\\%_]/g, "\\$&")}%`)
   const { data, error } = await query
   if (error) throw new Error(error.message)
@@ -83,6 +88,7 @@ export async function activateDataMappingProfile(userId: string, slug: string, e
   const current = await getDataMappingProfile(userId, slug)
   if (!Number.isInteger(expectedVersion) || expectedVersion < 1 || current.version !== expectedVersion) throw new DataMappingProfileConflictError(`Mapping profile changed since version ${expectedVersion}`)
   if (current.previewed_version !== expectedVersion || !current.preview_summary) throw new DataMappingProfileConflictError("Preview this exact mapping profile version before activation")
+  if (current.preview_summary.mode === "reconciliation" && current.preview_summary.activationReady !== true) throw new DataMappingProfileConflictError("The reconciliation preview contains unresolved required fields or conflicts")
   if (current.preview_summary.sourceMatches < 1) throw new DataMappingProfileConflictError("The preview found no source values to map")
   const activatedAt = new Date().toISOString()
   const nextVersion = expectedVersion + 1

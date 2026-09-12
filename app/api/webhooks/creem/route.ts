@@ -2,17 +2,12 @@ import { NextRequest, NextResponse } from "next/server"
 import crypto from "crypto"
 import { createClient } from "@supabase/supabase-js"
 
-import { logApiError, serverError } from "@/lib/api-error"
+import { serverError } from "@/lib/api-error"
 import { CREEM_PRODUCTS } from "@/lib/creem-products"
+import { buildCreemEffect } from "@/lib/creem-effect"
 
 // Creem is the active payment provider. Some subscription/gift_codes columns
 // retain legacy lemonsqueezy_* names for schema compatibility only.
-
-function redactEmail(email: string) {
-  const [local, domain] = email.split("@")
-  if (!local || !domain) return "(none)"
-  return `${local.slice(0, 2)}***@${domain}`
-}
 
 // Product IDs come from env vars so test→prod is a config change, not a deploy
 function getProductMap(): Record<string, { status: string; plan: string; isGiftCode?: boolean }> {
@@ -30,10 +25,6 @@ function getProductMap(): Record<string, { status: string; plan: string; isGiftC
 
 function firmSeatProductId() {
   return process.env.CREEM_FIRM_SEAT_PRODUCT_ID ?? ""
-}
-
-function metadataValue(obj: any, key: string) {
-  return obj?.metadata?.[key] ?? obj?.order?.metadata?.[key] ?? obj?.checkout?.metadata?.[key]
 }
 
 // Generates a human-readable gift code: AVINT-XXXX-XXXX-XXXX.
@@ -88,279 +79,34 @@ function verifySignature(payload: string, secret: string, signature: string): bo
 }
 
 export async function POST(req: NextRequest) {
-  const supabaseAdmin = getSupabaseAdmin()
   const rawBody = await req.text()
-  const signature = req.headers.get("creem-signature") ?? ""
-  const secret = process.env.CREEM_WEBHOOK_SECRET ?? ""
-
-  if (!verifySignature(rawBody, secret, signature)) {
-    console.error("Creem webhook signature verification failed")
+  if (!verifySignature(rawBody, process.env.CREEM_WEBHOOK_SECRET ?? "", req.headers.get("creem-signature") ?? "")) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 })
   }
-
   let payload: any
-  try {
-    payload = JSON.parse(rawBody)
-  } catch {
+  try { payload = JSON.parse(rawBody) } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
   }
-
-  const eventType: string = payload?.eventType ?? ""
-  const obj = payload?.object
-  const eventId: string = typeof payload?.id === "string" ? payload.id : ""
-
-  console.log("Creem webhook received:", eventType, "id:", eventId || "(none)")
-
-  if (!obj) {
-    return NextResponse.json({ error: "No object in payload" }, { status: 400 })
+  const eventId = typeof payload?.id === "string" ? payload.id.trim() : ""
+  const eventType = typeof payload?.eventType === "string" ? payload.eventType.trim() : ""
+  if (!eventId || !eventType || !payload?.object) {
+    return NextResponse.json({ error: "Missing event identity or object" }, { status: 400 })
   }
-
-  // Idempotency guard. Creem retries on any non-2xx; without dedup we'd
-  // re-run increment_user_counter and re-insert gift codes on every retry.
-  // Insert-before-side-effects means a retry of a partially-processed event
-  // short-circuits here (acceptable — each branch is largely idempotent, and
-  // the alternative of double-counting subscribers is worse). Missing event
-  // ids are rejected because replay protection depends on the dedup ledger.
-  if (eventId) {
-    const { error: dedupErr } = await supabaseAdmin
-      .from("processed_webhook_events")
-      .insert({ provider: "creem", event_id: eventId, event_type: eventType })
-    if (dedupErr) {
-      if ((dedupErr as { code?: string }).code === "23505") {
-        console.log("Creem webhook duplicate ignored:", eventId)
-        return NextResponse.json({ received: true, duplicate: true })
-      }
-      return serverError(dedupErr, { route: "webhooks/creem", stage: "dedup_insert" })
-    }
-  } else {
-    console.warn("Creem webhook missing top-level id; rejecting")
-    return NextResponse.json({ error: "Missing event id" }, { status: 400 })
-  }
-
-  // ─── Helpers ──────────────────────────────────────────────────────────────
-
-  // Resolve user_id from email via indexed RPC.
-  // Prior implementation used auth.admin.listUsers() which capped at ~50 and
-  // silently missed anyone past page 1.
-  const resolveUserId = async (email: string): Promise<string | null> => {
-    if (!email) return null
-    const { data, error } = await supabaseAdmin.rpc("get_user_id_by_email", { p_email: email })
-    if (error) {
-      logApiError(error, { route: "webhooks/creem", stage: "resolve_user_id", extra: { email } })
-      return null
-    }
-    return typeof data === "string" ? data : null
-  }
-
-  // Upsert into subscriptions table.
-  // Concurrency model: Creem delivers webhooks via retries; the user_id branch
-  // relies on the partial unique index subscriptions_user_id_unique
-  // (migration 20260421_subscriptions_user_id_unique.sql) so a racing
-  // duplicate insert resolves via ON CONFLICT rather than creating a second
-  // row. The email branch keeps check-then-write because pre-signup rows
-  // have user_id = NULL and the partial index excludes them.
-  const upsertSubscription = async (fields: Record<string, unknown>, userId: string | null) => {
-    const email = fields.email as string
-    if (userId) {
-      await supabaseAdmin
-        .from("subscriptions")
-        .upsert(
-          { ...fields, user_id: userId, updated_at: new Date().toISOString() },
-          { onConflict: "user_id" },
-        )
-    } else {
-      const { data: existing } = await supabaseAdmin
-        .from("subscriptions")
-        .select("id")
-        .eq("email", email)
-        .single()
-
-      if (existing) {
-        await supabaseAdmin.from("subscriptions").update({ ...fields, updated_at: new Date().toISOString() }).eq("email", email)
-      } else {
-        await supabaseAdmin.from("subscriptions").insert({ ...fields, updated_at: new Date().toISOString() })
-      }
-    }
-  }
-
   try {
-
-    // ── checkout.completed ────────────────────────────────────────────────────
-    // Fires for both one-time (day pass) and subscription first payments
-    if (eventType === "checkout.completed") {
-      const email: string = obj.customer?.email ?? ""
-      const productId: string = obj.product?.id ?? ""
-      const orderId: string = obj.order?.id ?? ""
-      const subscriptionId: string = obj.subscription?.id ?? ""
-      const periodEnd: string | null = obj.subscription?.current_period_end_date ?? null
-      const customerId: string = obj.customer?.id ?? ""
-      const productName: string = obj.product?.name ?? ""
-
-      console.log("checkout.completed — email:", redactEmail(email), "product:", productId)
-
-      if (productId === firmSeatProductId()) {
-        const firmId = metadataValue(obj, "firm_id")
-        const unitsRaw = metadataValue(obj, "units") ?? obj.order?.quantity ?? obj.quantity
-        const units = Number(unitsRaw)
-        const amountRaw = obj.order?.amount ?? obj.amount ?? null
-        const amountCents = Number.isSafeInteger(Number(amountRaw)) ? Number(amountRaw) : null
-        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(firmId)) || !Number.isSafeInteger(units) || units < 1 || units > 10000) {
-          console.warn("Invalid firm seat checkout metadata", { eventId, productId })
-          return NextResponse.json({ received: true })
-        }
-        const { data: seatResult, error: seatError } = await supabaseAdmin.rpc("record_firm_seat_purchase", {
-          p_firm_id: firmId,
-          p_event_id: eventId,
-          p_order_id: orderId,
-          p_product_id: productId,
-          p_units: units,
-          p_amount_cents: amountCents,
-        })
-        if (seatError || !seatResult?.ok) {
-          // The ledger row is inserted before branch side effects for global
-          // webhook replay protection. If the atomic seat RPC fails, remove
-          // this marker so Creem's retry can safely credit the seats.
-          await supabaseAdmin.from("processed_webhook_events").delete().eq("provider", "creem").eq("event_id", eventId)
-          throw new Error(seatError?.message ?? "Firm seat purchase could not be recorded")
-        }
-        console.log("Firm seats recorded", { firmId, units, duplicate: seatResult.duplicate === true })
-        return NextResponse.json({ received: true })
-      }
-
-      const mapping = getProductMap()[productId]
-      if (!mapping) {
-        console.warn("Unknown product ID:", productId)
-        return NextResponse.json({ received: true })
-      }
-
-      const { status, plan } = mapping
-
-      // Day pass: set 24h expiry
-      let resolvedPeriodEnd = periodEnd
-      if (plan === "day_pass" && !resolvedPeriodEnd) {
-        const expires = new Date()
-        expires.setHours(expires.getHours() + 24)
-        resolvedPeriodEnd = expires.toISOString()
-      }
-
-      const userId = await resolveUserId(email)
-
-      if (mapping.isGiftCode) {
-        // Gift code purchase — store generated license key in gift_codes table
-        // Creem puts the license key at obj.license_key?.key or obj.license_key
-        const licenseKey: string =
-          obj.license_key?.key ??
-          obj.license_key ??
-          generateGiftCode() // fallback: generate our own if Creem doesn't include it
-
-        const { error: giftError } = await supabaseAdmin.from("gift_codes").insert({
-          code:               licenseKey.trim().toUpperCase(),
-          status:             "pending",
-          plan:               "monthly",
-          purchased_by_email: email,
-          lemonsqueezy_order_id: orderId, // reusing column for Creem order ID
-        })
-        if (giftError) console.error("Gift code insert error:", giftError.message)
-        else console.log("Gift code stored for:", redactEmail(email))
-      } else {
-        await upsertSubscription({
-          email,
-          product_name:                    productName,
-          variant_id:                      productId,
-          lemonsqueezy_customer_id:        customerId,
-          lemonsqueezy_subscription_id:    subscriptionId,
-          lemonsqueezy_order_id:           orderId,
-          status,
-          plan,
-          current_period_end:              resolvedPeriodEnd,
-        }, userId)
-        // Only count direct subscribers here — gift code purchases are counted on redemption
-        try { await supabaseAdmin.rpc("increment_user_counter") } catch (e) { console.warn("rpc error:", e) }
-      }
-      console.log("checkout.completed processed for:", redactEmail(email))
+    const effect = buildCreemEffect(eventType, payload.object, {
+      products: getProductMap(), firmProductId: firmSeatProductId(), giftCode: generateGiftCode,
+    })
+    // No writes or entitlement effects outside this atomic database transaction.
+    // A lost HTTP response is safe: a committed event is deduplicated on retry.
+    const { data, error } = await getSupabaseAdmin().rpc("avint_apply_creem_event", {
+      p_event_id: eventId, p_event_type: eventType, p_effect: effect,
+    })
+    if (error || data?.ok !== true) {
+      // PostgreSQL details can contain customer values; log only its code/stage.
+      return serverError(new Error(`Atomic payment effect failed (${error?.code ?? "invalid_result"})`), { route: "webhooks/creem", stage: "apply_event" })
     }
-
-    // ── subscription.active / subscription.paid ───────────────────────────────
-    // Fires when a subscription is created (active) or a recurring payment succeeds (paid)
-    if (["subscription.active", "subscription.paid"].includes(eventType)) {
-      const email: string = obj.customer?.email ?? ""
-      const productId: string = obj.product?.id ?? ""
-      const subscriptionId: string = obj.id ?? ""
-      const periodEnd: string | null = obj.current_period_end_date ?? null
-      const customerId: string = obj.customer?.id ?? ""
-      const productName: string = obj.product?.name ?? ""
-
-      console.log(eventType, "— email:", redactEmail(email), "product:", productId)
-
-      const mapping = getProductMap()[productId]
-      if (!mapping) {
-        console.warn("Unknown product ID:", productId)
-        return NextResponse.json({ received: true })
-      }
-
-      const userId = await resolveUserId(email)
-
-      await upsertSubscription({
-        email,
-        product_name:                    productName,
-        variant_id:                      productId,
-        lemonsqueezy_customer_id:        customerId,
-        lemonsqueezy_subscription_id:    subscriptionId,
-        lemonsqueezy_order_id:           "",
-        status:                          mapping.status,
-        plan:                            mapping.plan,
-        current_period_end:              periodEnd,
-      }, userId)
-
-      if (eventType === "subscription.active") {
-        try { await supabaseAdmin.rpc("increment_user_counter") } catch (e) { console.warn("rpc error:", e) }
-      }
-      console.log(eventType, "processed for:", redactEmail(email))
-    }
-
-    // ── subscription.canceled / subscription.expired ──────────────────────────
-    if (["subscription.canceled", "subscription.expired"].includes(eventType)) {
-      const subscriptionId: string = obj.id ?? ""
-      console.log(eventType, "— sub:", subscriptionId)
-
-      await supabaseAdmin
-        .from("subscriptions")
-        .update({ status: "cancelled", updated_at: new Date().toISOString() })
-        .eq("lemonsqueezy_subscription_id", subscriptionId)
-
-      console.log(eventType, "processed for sub:", subscriptionId)
-    }
-
-    // ── refund.created ────────────────────────────────────────────────────────
-    if (eventType === "refund.created") {
-      const orderId: string = typeof obj.order === "string" ? obj.order : (obj.order?.id ?? "")
-      console.log("refund.created — order:", orderId)
-
-      await supabaseAdmin
-        .from("subscriptions")
-        .update({ status: "free", plan: null, current_period_end: null, updated_at: new Date().toISOString() })
-        .eq("lemonsqueezy_order_id", orderId)
-
-      console.log("refund.created processed for order:", orderId)
-    }
-
-    // ── Retroactively link user_id if not yet linked ──────────────────────────
-    const emailForLink: string =
-      obj.customer?.email ?? obj.email ?? ""
-    if (emailForLink) {
-      const userId = await resolveUserId(emailForLink)
-      if (userId) {
-        await supabaseAdmin
-          .from("subscriptions")
-          .update({ user_id: userId })
-          .eq("email", emailForLink)
-          .is("user_id", null)
-      }
-    }
-
-    return NextResponse.json({ received: true })
-
-  } catch (err) {
-    return serverError(err, { route: "webhooks/creem", stage: "unhandled" })
+    return NextResponse.json({ received: true, duplicate: data.duplicate === true || data.duplicate_effect === true })
+  } catch (error) {
+    return serverError(error, { route: "webhooks/creem", stage: "build_effect" })
   }
 }

@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/mcp-auth"
+import { readComplete } from "@/lib/complete-read"
 import { resolveReportFolderScope } from "@/lib/report-folder-scope-server"
 
 export type ReportQueryContext = {
@@ -24,12 +25,11 @@ export async function createReportQueryContext(
     dateTo: filters.dateTo ?? "",
     targetFolder,
     fileIds: async (documentTypes = []) => {
-      let query = supabaseAdmin.from("files").select("id").eq("user_id", userId)
+      let query = supabaseAdmin.from("files").select("id", { count: "exact" }).eq("user_id", userId).order("id")
       if (documentTypes.length > 0) query = query.in("document_type", documentTypes)
       if (scopedFolderIds) query = query.in("folder_id", scopedFolderIds)
-      const { data, error } = await query
-      if (error) throw new Error(error.message)
-      return (data ?? []).map((row) => row.id)
+      const data = await readComplete((from, to) => query.range(from, to))
+      return data.map((row) => row.id)
     },
   }
 }

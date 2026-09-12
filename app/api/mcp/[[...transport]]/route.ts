@@ -8,6 +8,7 @@ import { MCP_CONNECTOR_ENABLED, MCP_OAUTH_ENABLED, MCP_RATE_LIMITS, oauthProtect
 import { checkRateLimit, type RateLimitBucket } from "@/lib/rate-limit"
 import { type IngestFile } from "@/lib/smart-storage-ingest"
 import { getIngestBatchStatus, IngestBatchConflictError, ingestFileBatch } from "@/lib/mcp-ingest-batch"
+import { recordCollaborationAudit, resolveCollaborationAccess } from "@/lib/collaboration-access"
 import { getExport, getReport } from "@/lib/report-engine"
 import { shapeMcpReportResult } from "@/lib/mcp-report-shaping"
 import { buildDashboardAIContext } from "@/lib/dashboard-ai-context"
@@ -94,12 +95,27 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
     server.registerTool("smart_storage.ingest", {
       title: "Smart Storage ingest",
       description: "Queue up to 6 financial documents for the signed-in user's Smart Storage. Duplicate bytes are refused by default before extraction; set allow_duplicate true only when you intentionally want another copy. Provide a new UUID idempotency key and reuse that exact key when retrying the same ordered files. Each file is prescanned independently; the response returns stable IDs immediately while normalization continues.",
-      inputSchema: z.object({ idempotency_key: z.string().uuid(), files: z.array(fileSchema).min(1).max(6), allow_duplicate: z.boolean().optional().default(false) }),
-    }, async ({ idempotency_key, files, allow_duplicate }) => timedTool("smart_storage.ingest", async () => {
+      inputSchema: z.object({ idempotency_key: z.string().uuid(), files: z.array(fileSchema).min(1).max(6), allow_duplicate: z.boolean().optional().default(false), workflow_id: z.string().uuid().optional(), destination_folder_id: z.string().uuid().optional() }),
+    }, async ({ idempotency_key, files, allow_duplicate, workflow_id, destination_folder_id }) => timedTool("smart_storage.ingest", async () => {
       const blocked = await toolGuard(userId, entitlement, "ingest")
       if (blocked) return blocked
       try {
-        const batch = await ingestFileBatch(userId, entitlement, idempotency_key, files as IngestFile[], { allowDuplicate: allow_duplicate })
+        let ownerUserId = userId
+        let ownerEntitlement = entitlement
+        let delegatedAccess: Awaited<ReturnType<typeof resolveCollaborationAccess>> | null = null
+        if (workflow_id) {
+          const access = await resolveCollaborationAccess({ actorUserId: userId, workflowId: workflow_id, action: "submit", destinationFolderId: destination_folder_id })
+          if (!access.workflow || !access.decision.allowed || access.decision.owner.kind !== "personal") {
+            if (access.workflow) await recordCollaborationAudit({ actorUserId: userId, workflow: access.workflow, action: "submit", outcome: "denied", decision: access.decision })
+            return featureResult("This workflow does not allow delegated submission from your account.")
+          }
+          ownerUserId = access.decision.owner.userId
+          delegatedAccess = access
+          ownerEntitlement = await entitlementForUser(ownerUserId)
+          await recordCollaborationAudit({ actorUserId: userId, workflow: access.workflow, action: "submit", outcome: "allowed", decision: access.decision, metadata: { file_count: files.length } })
+        }
+        const batch = await ingestFileBatch(ownerUserId, ownerEntitlement, idempotency_key, files as IngestFile[], { allowDuplicate: allow_duplicate, folderId: workflow_id ? destination_folder_id : undefined, actorUserId: userId, workflowId: workflow_id })
+        if (delegatedAccess?.workflow) await recordCollaborationAudit({ actorUserId: userId, workflow: delegatedAccess.workflow, action: "submit", outcome: "completed", decision: delegatedAccess.decision, metadata: { batch_id: batch.batch_id, file_ids: batch.items.map(item => item.file_id).filter(Boolean) } })
         return { content: [{ type: "text", text: JSON.stringify(batch, null, 2) }] }
       } catch (error) { return mcpToolError(error, userId, "ingest", "The ingest batch could not be queued.") }
     }))
@@ -107,12 +123,25 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
     server.registerTool("smart_storage.ingest_status", {
       title: "Smart Storage ingest status",
       description: "Read-only. Check a resumable ingest batch by the exact idempotency key used to create it. Returns stable file IDs and per-file processing, completion, rejection, or retry status.",
-      inputSchema: z.object({ idempotency_key: z.string().uuid() }),
-    }, async ({ idempotency_key }) => timedTool("smart_storage.ingest_status", async () => {
+      inputSchema: z.object({ idempotency_key: z.string().uuid(), workflow_id: z.string().uuid().optional() }),
+    }, async ({ idempotency_key, workflow_id }) => timedTool("smart_storage.ingest_status", async () => {
       const blocked = await toolGuard(userId, entitlement, "profile")
       if (blocked) return blocked
       try {
-        const batch = await getIngestBatchStatus(userId, idempotency_key)
+        let batchUserId = userId
+        let batchFolderId: string | null = null
+        let delegatedAccess: Awaited<ReturnType<typeof resolveCollaborationAccess>> | null = null
+        if (workflow_id) {
+          const access = await resolveCollaborationAccess({ actorUserId: userId, workflowId: workflow_id, action: "view" })
+          if (!access.workflow || !access.decision.allowed || access.decision.owner.kind !== "personal") {
+            return featureResult("This workflow does not allow you to view ingest status.")
+          }
+          batchUserId = access.decision.owner.userId
+          batchFolderId = access.workflow.intake_folder_id
+          delegatedAccess = access
+        }
+        const batch = await getIngestBatchStatus(batchUserId, idempotency_key, { actorUserId: userId, workflowId: workflow_id, folderId: batchFolderId })
+        if (delegatedAccess?.workflow) await recordCollaborationAudit({ actorUserId: userId, workflow: delegatedAccess.workflow, action: "view", outcome: "completed", decision: delegatedAccess.decision, metadata: { batch_id: batch.batch_id } })
         return { content: [{ type: "text", text: JSON.stringify(batch, null, 2) }] }
       } catch (error) { return mcpToolError(error, userId, "ingest_status", "The ingest batch status could not be loaded.") }
     }))

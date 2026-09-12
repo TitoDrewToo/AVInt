@@ -353,7 +353,7 @@ serve(async (req) => {
       if (!jsonMatch) throw new Error("No JSON object found in response")
       normalized = JSON.parse(jsonMatch[0])
     } catch {
-      throw new Error(`Failed to parse AI output: ${rawText}`)
+      throw new Error("Failed to parse AI output")
     }
 
     // 4. Merge normalized values into a fresh extraction and persist the

@@ -204,7 +204,7 @@ async function normalizeRow(supabase: any, row: any): Promise<void> {
   try {
     normalized = JSON.parse(rawText.replace(/```json|```/g, "").trim())
   } catch {
-    throw new Error(`Failed to parse AI output: ${rawText}`)
+    throw new Error("Failed to parse AI output")
   }
 
   const now = new Date().toISOString()

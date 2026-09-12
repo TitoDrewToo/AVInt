@@ -2,6 +2,7 @@ import { generateQuickBooksCSV, generateXeroCSV } from "@/lib/accounting-csv"
 import { computeTaxBundle, type IncomeSourceClass, type TaxRow } from "@/lib/tax-bundle"
 import { type Entitlement } from "@/lib/entitlement"
 import { supabaseAdmin } from "@/lib/mcp-auth"
+import { readComplete } from "@/lib/complete-read"
 import { overlapsDateRange } from "@/lib/report-utils"
 import { selectTaxBundleDefaultYear } from "@/lib/tax-bundle-default-year"
 import { isExpenseRow, isUsdRow } from "@/lib/document-classification"
@@ -76,24 +77,25 @@ async function recordsTaxRows(userId: string, filters: ReportFilters): Promise<T
 
   let query = supabaseAdmin
     .from("records")
-    .select("id, file_id, source_key, parent_record_id, document_type, occurred_on, period_start, period_end, amount, currency, counterparty, counterparty_normalized, category, confidence, files!inner(filename, document_type, storage_path, user_id)")
+    .select("id, file_id, source_key, parent_record_id, document_type, occurred_on, period_start, period_end, amount, currency, counterparty, counterparty_normalized, category, confidence, files!inner(filename, document_type, storage_path, user_id)", { count: "exact" })
     .eq("user_id", userId)
     .is("parent_record_id", null)
     .is("excluded_at", null)
     .order("occurred_on", { ascending: false })
+    .order("id")
   if (fileIds.length > 0) query = query.in("file_id", fileIds)
 
-  const { data, error } = await query
-  if (error) throw new Error(error.message)
-  const records = (data ?? []) as RecordRow[]
+  const data = await readComplete((from, to) => query.range(from, to), 5000)
+  const records = data as RecordRow[]
   const recordIds = records.map((record) => record.id)
-  const { data: attributes, error: attributesError } = recordIds.length === 0
-    ? { data: [], error: null }
-    : await supabaseAdmin
+  const attributes = recordIds.length === 0
+    ? []
+    : await readComplete((from, to) => supabaseAdmin
       .from("record_attributes")
-      .select("record_id, field_key, value")
+      .select("record_id, field_key, value", { count: "exact" })
+      .eq("user_id", userId)
       .in("record_id", recordIds)
-  if (attributesError) throw new Error(attributesError.message)
+      .order("record_id").order("field_key").range(from, to))
   const attrs = recordAttributeMap((attributes ?? []) as RecordAttribute[])
 
   return records

@@ -1,4 +1,5 @@
 import { createClient, serve } from "../_shared/deps.ts"
+import { processingStateAllowed } from "../_shared/processing-access.ts"
 import { type AiProvider, isProviderFailure, providerChain } from "../_shared/ai-providers.ts"
 import { logError, logEvent } from "../_shared/log.ts"
 import { fetchWithTimeout } from "../_shared/fetch.ts"
@@ -983,6 +984,11 @@ serve(async (req) => {
   try {
     const { file_id, job_id } = body
     const isReprocess = body.reprocess === true
+    if (isReprocess && !isServiceRole) {
+      return new Response(JSON.stringify({ error: "Reprocessing requires the authorized reprocess route" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      })
+    }
     logEvent(FN, "received", { file_id, job_id, reprocess: isReprocess })
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
@@ -1003,6 +1009,14 @@ serve(async (req) => {
       })
     }
 
+    // Reprocessing is reserved for the trusted route after its atomic state claim.
+    // Legacy uploads must pass prescan too; uploaded is not evidence of approval.
+    if (!processingStateAllowed(file.upload_status, isReprocess, isServiceRole)) {
+      return new Response(JSON.stringify({ error: "File not approved for processing" }), {
+        status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      })
+    }
+
     const ensuredExtraction = await ensureExtraction(supabase, {
       id: typeof body.extraction_id === "string" ? body.extraction_id : undefined,
       userId: file.user_id,
@@ -1010,16 +1024,6 @@ serve(async (req) => {
       attemptNumber: 1,
     })
     activeExtractionId = ensuredExtraction.id
-
-    // Phase B gate: only proceed on approved or legacy uploaded rows.
-    // approved → passed prescan, safe to OCR.
-    // uploaded → legacy pre-Phase-B rows (backward compat, retire after backfill).
-    if (!isReprocess && !["approved", "uploaded"].includes(file.upload_status)) {
-      return new Response(
-        JSON.stringify({ error: "File not approved for processing", current_status: file.upload_status }),
-        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      )
-    }
 
     const { data: subscription, error: subscriptionError } = await supabase
       .from("subscriptions")
@@ -1051,6 +1055,59 @@ serve(async (req) => {
         }
       }
     }
+    // User-triggered reprocesses are recorded as retry usage and never claim
+    // another billable document slot.
+    if (!isReprocess) {
+      const usageWindow = usageWindowForTier(tier, new Date(), entitlementEnd)
+      const { data: usageRows, error: usageError } = await supabase.rpc("avint_claim_document_processing", {
+        p_user_id: file.user_id,
+        p_file_id: file_id,
+        p_period_start: usageWindow.start,
+        p_period_end: usageWindow.end,
+        p_limit: PLAN_LIMITS[tier].documents,
+        p_soft_cap: PLAN_LIMITS[tier].softCap,
+      })
+
+      if (usageError) throw new Error(`Document usage claim failed: ${usageError.message}`)
+
+      const usage = usageRows?.[0]
+      if (usage?.fair_use_warning) {
+        logEvent(FN, "document_fair_use_warning", {
+          file_id,
+          user_id: file.user_id,
+          tier,
+          used_count: usage.used_count,
+          limit_count: PLAN_LIMITS[tier].documents,
+        })
+      }
+
+      if (!usage?.allowed) {
+        const limitMessage = `You've reached the ${PLAN_LIMITS[tier].documents}-document limit for your current plan. Upgrade to continue processing documents.`
+        await supabase
+          .from("processing_jobs")
+          .update({ status: "failed", error_message: limitMessage })
+          .eq("file_id", file_id)
+          .in("status", ["uploaded", "processing"])
+        logEvent(FN, "document_limit_reached", {
+          file_id,
+          user_id: file.user_id,
+          tier,
+          used_count: usage?.used_count ?? PLAN_LIMITS[tier].documents,
+          limit_count: PLAN_LIMITS[tier].documents,
+        })
+        return new Response(JSON.stringify({
+          error: limitMessage,
+          code: "DOCUMENT_LIMIT_REACHED",
+          tier,
+          used_count: usage?.used_count ?? PLAN_LIMITS[tier].documents,
+          limit_count: PLAN_LIMITS[tier].documents,
+        }), {
+          status: 429,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        })
+      }
+    }
+
     // 1. Mark active job for this file as processing.
     // Prescan does not pass job_id through the chain, so we look up the latest
     // job for the file by file_id. One active job per file in practice.
@@ -1120,7 +1177,7 @@ serve(async (req) => {
         // can contain arrays inside line_items.
         extractedRows = asExtractedDocumentRows(parseExtractionRows(rawText))
       } catch {
-        throw new Error(`Failed to parse extraction output: ${rawText}`)
+        throw new Error("Failed to parse extraction output")
       }
     }
 
@@ -1168,61 +1225,7 @@ serve(async (req) => {
     logEvent(FN, "rows_to_normalize", {
       file_id,
       rows_to_insert_count: rowsToInsert.length,
-      sample_first_row: rowsToInsert[0] ?? null,
     })
-
-    // User-triggered reprocesses are recorded as retry usage and never claim
-    // another billable document slot.
-    if (!isReprocess) {
-      const usageWindow = usageWindowForTier(tier, new Date(), entitlementEnd)
-      const { data: usageRows, error: usageError } = await supabase.rpc("avint_claim_document_processing", {
-        p_user_id: file.user_id,
-        p_file_id: file_id,
-        p_period_start: usageWindow.start,
-        p_period_end: usageWindow.end,
-        p_limit: PLAN_LIMITS[tier].documents,
-        p_soft_cap: PLAN_LIMITS[tier].softCap,
-      })
-
-      if (usageError) throw new Error(`Document usage claim failed: ${usageError.message}`)
-
-      const usage = usageRows?.[0]
-      if (usage?.fair_use_warning) {
-        logEvent(FN, "document_fair_use_warning", {
-          file_id,
-          user_id: file.user_id,
-          tier,
-          used_count: usage.used_count,
-          limit_count: PLAN_LIMITS[tier].documents,
-        })
-      }
-
-      if (!usage?.allowed) {
-        const limitMessage = `You've reached the ${PLAN_LIMITS[tier].documents}-document limit for your current plan. Upgrade to continue processing documents.`
-        await supabase
-          .from("processing_jobs")
-          .update({ status: "failed", error_message: limitMessage })
-          .eq("file_id", file_id)
-          .in("status", ["uploaded", "processing"])
-        logEvent(FN, "document_limit_reached", {
-          file_id,
-          user_id: file.user_id,
-          tier,
-          used_count: usage?.used_count ?? PLAN_LIMITS[tier].documents,
-          limit_count: PLAN_LIMITS[tier].documents,
-        })
-        return new Response(JSON.stringify({
-          error: limitMessage,
-          code: "DOCUMENT_LIMIT_REACHED",
-          tier,
-          used_count: usage?.used_count ?? PLAN_LIMITS[tier].documents,
-          limit_count: PLAN_LIMITS[tier].documents,
-        }), {
-          status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        })
-      }
-    }
 
     const resolvedDocumentType = isCsv ? "csv_export" : normalizeExtractedDocumentType(extracted, mimeType)
     const extractionPayload = extractedRows.length === 1 ? extractedRows[0] : extractedRows

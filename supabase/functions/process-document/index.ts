@@ -160,6 +160,17 @@ function isSpreadsheetInput(mimeType: string, filename: string): boolean {
          /\.(xlsx|csv)$/i.test(filename ?? "")
 }
 
+function datasetSheetLabel(sheetName: string, filename: string, sheetCount: number): string {
+  // CSV parsing exposes a synthetic "Sheet1" name. That label leaks into
+  // report coverage/method lines, so use the source filename for single-sheet
+  // CSVs while preserving real workbook sheet names.
+  const extension = filename.split(".").pop()?.toLowerCase() ?? ""
+  if (extension === "csv" && sheetCount === 1 && sheetName === "Sheet1") {
+    return filename.replace(/\.[^.]+$/, "") || filename
+  }
+  return sheetName
+}
+
 function isBlankCell(value: unknown): boolean {
   return value === null || value === undefined || value === ""
 }
@@ -590,11 +601,12 @@ async function extractSpreadsheetRows(
   let sourceIndex = 0
 
   for (const sheetName of workbook.SheetNames) {
+    const datasetName = datasetSheetLabel(sheetName, filename, workbook.SheetNames.length)
     const sheet = workbook.Sheets[sheetName]
     const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null, raw: true }) as any[][]
     const rawHeaders = Array.isArray(rawRows[0]) ? rawRows[0] : []
     const dataRows = rawRows.slice(1)
-    datasetSheets.push(buildDatasetSheet(sheetName, rawHeaders, dataRows))
+    datasetSheets.push(buildDatasetSheet(datasetName, rawHeaders, dataRows))
 
     const headerEntries = (rawRows[0] ?? [])
       .map((header: any, index: number) => ({ header: String(header ?? "").trim(), index }))
@@ -603,7 +615,7 @@ async function extractSpreadsheetRows(
 
     logEvent(FN, "sheet_extracted", {
       file_id: fileId,
-      sheet_name: sheetName,
+      sheet_name: datasetName,
       raw_row_count: rawRows.length,
       header_count: headers.length,
       headers,
@@ -621,7 +633,7 @@ async function extractSpreadsheetRows(
     let documentType = "general_document"
     let mappingMethod = "ai"
     try {
-      const result = await mapHeadersForSheet(supabase, sheetName, headers, sampleForMapping, fileId, userId, fileType, fileSizeBytes, documentType, extractionId, isRetry)
+      const result = await mapHeadersForSheet(supabase, datasetName, headers, sampleForMapping, fileId, userId, fileType, fileSizeBytes, documentType, extractionId, isRetry)
       mapping = result.mapping
       documentType = result.document_type
     } catch (err: any) {
@@ -630,11 +642,11 @@ async function extractSpreadsheetRows(
       // usage event for the same failed provider chain.
       logEvent(FN, "header_mapping_degraded", {
         file_id: fileId,
-        sheet: sheetName,
+        sheet: datasetName,
         mapping_method: "fallback",
         error: err instanceof Error ? err.message : String(err),
       })
-      logError(FN, "header_mapping_failed", err, { file_id: fileId, sheet: sheetName })
+      logError(FN, "header_mapping_failed", err, { file_id: fileId, sheet: datasetName })
       mapping = fallbackKeywordMapping(headers)
       mappingMethod = "fallback"
       mappingDegraded = true
@@ -644,7 +656,7 @@ async function extractSpreadsheetRows(
     mapping = resolveSpreadsheetMapping(mapping)
     logEvent(FN, "header_mapping_result", {
       file_id: fileId,
-      sheet_name: sheetName,
+      sheet_name: datasetName,
       mapping,
       document_type: documentType,
       mapping_method: mappingMethod,
@@ -652,7 +664,7 @@ async function extractSpreadsheetRows(
 
     const extractedRowsBeforeSheet = extractedRows.length
     let garbageFiltered = 0
-    const sheetCurrency = inferCurrencyFromText(sheetName)
+    const sheetCurrency = inferCurrencyFromText(datasetName)
     const amountSymbolCounts: Record<string, number> = {}
     const rowsForSheet: Array<{
       canonical: any
@@ -677,11 +689,11 @@ async function extractSpreadsheetRows(
       canonical.document_type = "csv_export"
       canonical._field_evidence = Object.fromEntries(Object.entries(mapping)
         .filter(([, target]) => target !== "custom" && target !== "ignore")
-        .map(([header, target]) => [target, { source_kind: "spreadsheet_cell", sheet: sheetName, row: rowIndex + 2, column: header, column_index: headerEntries.find(entry => entry.header === header)?.index, method: mappingMethod === "ai" ? "header_mapping" : "keyword_mapping" }]))
+        .map(([header, target]) => [target, { source_kind: "spreadsheet_cell", sheet: datasetName, row: rowIndex + 2, column: header, column_index: headerEntries.find(entry => entry.header === header)?.index, method: mappingMethod === "ai" ? "header_mapping" : "keyword_mapping" }]))
       if (canonical._sanitized_fields?.length > 0) {
         logEvent(FN, "field_sanitized", {
           file_id: fileId,
-          sheet_name: sheetName,
+          sheet_name: datasetName,
           row_index: rowIndex + 2,
           sanitized: canonical._sanitized_fields,
         })
@@ -699,12 +711,12 @@ async function extractSpreadsheetRows(
         canonical.currency = explicitCurrency
         explicitCurrencyCounts[explicitCurrency] = (explicitCurrencyCounts[explicitCurrency] ?? 0) + 1
       }
-      canonical._source_sheet = sheetName
+      canonical._source_sheet = datasetName
       canonical._source_index = sourceIndex
       rowsForSheet.push({
         canonical,
         source: {
-          sheet_name: sheetName,
+          sheet_name: datasetName,
           row_index: rowIndex + 2,
           cells,
         },
@@ -723,7 +735,7 @@ async function extractSpreadsheetRows(
       if (!inferredCurrency) continue
       const method = headerCurrency ? "column_header" : sheetCurrency ? "sheet_name" : "amount_symbol"
       item.canonical.currency = inferredCurrency
-      item.canonical._field_evidence.currency = { source_kind: "spreadsheet_header", sheet: sheetName, method, currency: inferredCurrency, inferred: true }
+      item.canonical._field_evidence.currency = { source_kind: "spreadsheet_header", sheet: datasetName, method, currency: inferredCurrency, inferred: true }
       item.canonical.raw_json_extras = {
         ...(item.canonical.raw_json_extras ?? {}),
         inferred_currency_method: method,
@@ -736,7 +748,7 @@ async function extractSpreadsheetRows(
       const [method, inferredCurrency] = key.split(":")
       logEvent(FN, "currency_inferred", {
         file_id: fileId,
-        sheet_name: sheetName,
+        sheet_name: datasetName,
         method,
         inferred_currency: inferredCurrency,
         affected_count: affectedCount,
@@ -760,7 +772,7 @@ async function extractSpreadsheetRows(
 
     logEvent(FN, "sheet_processed", {
       file_id: fileId,
-      sheet_name: sheetName,
+      sheet_name: datasetName,
       data_rows_seen: dataRows.length,
       extracted_rows_added: extractedRows.length - extractedRowsBeforeSheet,
       garbage_filtered: garbageFiltered,
@@ -785,7 +797,7 @@ async function extractSpreadsheetRows(
     for (const [sheetName, affectedCount] of Object.entries(fileMajorityBySheet)) {
       logEvent(FN, "currency_inferred", {
         file_id: fileId,
-        sheet_name: sheetName,
+      sheet_name: datasetName,
         method: "file_majority",
         inferred_currency: fileMajorityCurrency,
         affected_count: affectedCount,

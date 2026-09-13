@@ -542,8 +542,10 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
     // Diagnostic for the production discovery discrepancy. This intentionally
     // observes the adapter only; it does not alter registration or schemas.
     const serverState = server as unknown as Record<string, unknown>
-    const registryKeys = Object.keys(serverState).filter((key) => /tool|registr|manifest|discover/i.test(key))
-    console.info(`[mcp-registry] registered_tools_expected=31 server_keys=${registryKeys.join(",") || "none"}`)
+    const reg = (serverState._registeredTools ?? {}) as Record<string, unknown>
+    const cache = (serverState._toolInputSchemaJson ?? {}) as Record<string, unknown>
+    console.info(`[mcp-registry] registry=${Object.keys(reg).length} schemaCache=${Object.keys(cache).length} ` +
+      `registryNames=${Object.keys(reg).join("|")} cacheNames=${Object.keys(cache).join("|")}`)
   }, {
     serverInfo: { name: "avintelligence-smart-storage", version: "1.0.0" },
     capabilities: STATELESS_MCP_CAPABILITIES,

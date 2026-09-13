@@ -16,7 +16,7 @@ export const DATA_MAPPING_TARGET_FIELDS = [
 export const RECONCILIATION_TARGET_TYPES = ["text", "number", "date", "boolean"] as const
 export const RECONCILIATION_MISSING_POLICIES = ["null", "exclude_row", "exclude_dataset", "reject"] as const
 export const RECONCILIATION_CONFLICT_POLICIES = ["reject", "first_non_empty"] as const
-export const RECONCILIATION_FIELD_ROLES = ["time", "currency"] as const
+export const RECONCILIATION_FIELD_ROLES = ["time", "currency", "identifier", "dimension", "descriptor", "ignored", "measure_additive", "measure_semi_additive", "measure_non_additive"] as const
 
 export type CanonicalDataMappingTarget = typeof DATA_MAPPING_TARGET_FIELDS[number]
 export type ReconciliationTargetType = typeof RECONCILIATION_TARGET_TYPES[number]
@@ -38,6 +38,7 @@ export type ReconciliationDataMappingRule = {
   onMissing: ReconciliationMissingPolicy
   onConflict: ReconciliationConflictPolicy
   role?: ReconciliationFieldRole
+  expected?: boolean
 }
 
 export type DataMappingRule = LegacyDataMappingRule | ReconciliationDataMappingRule
@@ -174,6 +175,7 @@ export function validateDataMappingProfilePayload(input: unknown): { ok: true; v
     if (RESERVED_RECONCILIATION_TARGETS.has(rule.targetField)) return { ok: false, error: `mappings[${index}].targetField is reserved` }
     if (!RECONCILIATION_TARGET_TYPES.includes(rule.targetType as ReconciliationTargetType)) return { ok: false, error: `mappings[${index}].targetType is unsupported` }
     if (typeof rule.required !== "boolean") return { ok: false, error: `mappings[${index}].required must be boolean` }
+    if (rule.expected !== undefined && typeof rule.expected !== "boolean") return { ok: false, error: `mappings[${index}].expected must be boolean` }
     if (!RECONCILIATION_MISSING_POLICIES.includes(rule.onMissing as ReconciliationMissingPolicy)) return { ok: false, error: `mappings[${index}].onMissing is unsupported` }
     if (rule.required && rule.onMissing === "null") return { ok: false, error: `mappings[${index}] cannot use null for a required target` }
     const onConflict = rule.onConflict === undefined ? "reject" : rule.onConflict
@@ -192,7 +194,7 @@ export function validateDataMappingProfilePayload(input: unknown): { ok: true; v
       candidates.push({ sourceField: source.sourceField, coercion: source.coercion as DataMappingCoercion })
     }
     if (new Set(candidates.map((item) => item.sourceField)).size !== candidates.length) return { ok: false, error: `mappings[${index}].candidates must be unique` }
-    mappings.push({ targetField: rule.targetField, targetType: rule.targetType as ReconciliationTargetType, candidates, required: rule.required, onMissing: rule.onMissing as ReconciliationMissingPolicy, onConflict: onConflict as ReconciliationConflictPolicy, ...(rule.role ? { role: rule.role as ReconciliationFieldRole } : {}) })
+    mappings.push({ targetField: rule.targetField, targetType: rule.targetType as ReconciliationTargetType, candidates, required: rule.required, onMissing: rule.onMissing as ReconciliationMissingPolicy, onConflict: onConflict as ReconciliationConflictPolicy, ...(rule.role ? { role: rule.role as ReconciliationFieldRole } : {}), ...(rule.expected !== undefined ? { expected: rule.expected } : {}) })
   }
   if (!reconciliation && new Set(mappings.map((rule) => (rule as LegacyDataMappingRule).sourceField)).size !== mappings.length) return { ok: false, error: "Each source field may be mapped once" }
   if (new Set(mappings.map((rule) => rule.targetField)).size !== mappings.length) return { ok: false, error: "Each target field may be mapped once" }

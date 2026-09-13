@@ -1,11 +1,12 @@
 export type DatasetDataType = "number" | "date" | "text" | "boolean"
+export type DatasetColumnRole = "time" | "currency" | "identifier" | "dimension" | "descriptor" | "ignored" | "measure_additive" | "measure_semi_additive" | "measure_non_additive"
 
 export type DatasetColumn = {
   key: string
   label: string
   position: number
   data_type: DatasetDataType
-  role: null
+  role: DatasetColumnRole
   null_count: number
   distinct_count: number
   type_confidence: number | null
@@ -113,6 +114,16 @@ function distinctKey(value: unknown): string {
   return JSON.stringify(jsonValue(value))
 }
 
+function inferRole(label: string, dataType: DatasetDataType, rowCount: number, nullCount: number, distinctCount: number): DatasetColumnRole {
+  if (rowCount > 0 && nullCount === rowCount) return "ignored"
+  const name = label.toLowerCase().replace(/[^a-z0-9]+/g, "_")
+  if (dataType === "date") return "time"
+  if (/(^|_)(currency|curr|currency_code)($|_)/.test(name)) return "currency"
+  if (/(^|_)(id|uuid|key|code|hash)($|_)/.test(name) || (dataType === "text" && distinctCount === rowCount)) return "identifier"
+  if (dataType === "number") return /(visitor|unique|distinct|count|views?|impressions?|sessions?)/.test(name) ? "measure_non_additive" : "measure_additive"
+  return dataType === "boolean" || distinctCount <= Math.max(20, Math.ceil(rowCount * 0.25)) ? "dimension" : "descriptor"
+}
+
 function inferColumn(label: string, position: number, values: unknown[], key: string): DatasetColumn {
   const nonNull = values.filter((value) => !isBlank(value))
   const nullCount = values.length - nonNull.length
@@ -123,7 +134,7 @@ function inferColumn(label: string, position: number, values: unknown[], key: st
   const numericCount = numericValues.filter((value): value is number => value !== null).length
   if (nonNull.length > 0 && numericCount / nonNull.length >= 0.95) {
     return {
-      key, label, position, data_type: "number", role: null, null_count: nullCount,
+      key, label, position, data_type: "number", role: inferRole(label, "number", values.length, nullCount, distinct.size), null_count: nullCount,
       distinct_count: distinct.size, type_confidence: numericCount / nonNull.length,
       sample_values: [...distinct.values()].slice(0, 5), needs_review: false, review_reason: null,
     }
@@ -133,7 +144,7 @@ function inferColumn(label: string, position: number, values: unknown[], key: st
   const booleanCount = booleanValues.filter((value): value is boolean => value !== null).length
   if (nonNull.length > 0 && booleanCount === nonNull.length) {
     return {
-      key, label, position, data_type: "boolean", role: null, null_count: nullCount,
+      key, label, position, data_type: "boolean", role: inferRole(label, "boolean", values.length, nullCount, distinct.size), null_count: nullCount,
       distinct_count: distinct.size, type_confidence: 1, sample_values: [...distinct.values()].slice(0, 5),
       needs_review: false, review_reason: null,
     }
@@ -145,7 +156,7 @@ function inferColumn(label: string, position: number, values: unknown[], key: st
   const hasSlashDates = nonNull.some((value) => slashParts(value) !== null)
   if ((!hasSlashDates || dateOrder !== "ambiguous") && nonNull.length > 0 && dateCount / nonNull.length >= 0.95) {
     return {
-      key, label, position, data_type: "date", role: null, null_count: nullCount,
+      key, label, position, data_type: "date", role: inferRole(label, "date", values.length, nullCount, distinct.size), null_count: nullCount,
       distinct_count: distinct.size, type_confidence: dateCount / nonNull.length,
       sample_values: [...distinct.values()].slice(0, 5), needs_review: false, review_reason: null,
     }
@@ -153,7 +164,7 @@ function inferColumn(label: string, position: number, values: unknown[], key: st
 
   const ambiguousDates = nonNull.some((value) => slashParts(value) !== null) && dateOrder === "ambiguous"
   return {
-    key, label, position, data_type: "text", role: null, null_count: nullCount,
+    key, label, position, data_type: "text", role: inferRole(label, "text", values.length, nullCount, distinct.size), null_count: nullCount,
     distinct_count: distinct.size, type_confidence: nonNull.length === 0 ? null : 1,
     sample_values: [...distinct.values()].slice(0, 5), needs_review: ambiguousDates,
     review_reason: ambiguousDates

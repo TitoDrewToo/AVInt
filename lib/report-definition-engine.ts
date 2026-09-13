@@ -2,7 +2,7 @@ import { supabaseAdmin } from "@/lib/mcp-auth"
 import { readComplete } from "@/lib/complete-read"
 import { createReportQueryContext } from "@/lib/report-query-context-server"
 import type { ReportBlock, ReportDocument } from "@/lib/report-document"
-import { RECORD_DEFINITION_FIELDS, referencedDefinitionFields, type ReportDefinition, type ReportDefinitionFilter, type ReportMetric, type ReportDefinitionPeriod } from "@/lib/report-definitions"
+import { RECORD_DEFINITION_FIELDS, referencedDefinitionFields, type ReportDefinition, type ReportDefinitionFilter, type ReportMetric, type ReportDefinitionPeriod, type DatasetColumnRole } from "@/lib/report-definitions"
 import { getVirtualDatasetDefinition } from "@/lib/virtual-dataset-store"
 import type { VirtualDatasetDefinition } from "@/lib/virtual-dataset-definitions"
 import { getDataMappingProfile } from "@/lib/data-mapping-store"
@@ -16,8 +16,8 @@ const CORE_FIELDS = new Set<string>([...RECORD_DEFINITION_FIELDS, "filename", "f
 
 type ValueRow = Record<string, unknown>
 export type LoadedDatasetCandidate = {
-  dataset: { id: string; name: string; file_id: string; sheet_name: string | null; updated_at?: string }
-  columns: Array<{ key: string; data_type: string }>
+  dataset: { id: string; name: string; file_id: string; sheet_name: string | null; row_count?: number | null; updated_at?: string }
+  columns: Array<{ key: string; data_type: string; role?: DatasetColumnRole | null; null_count?: number | null }>
   rows: ValueRow[]
 }
 export type FocusedModelDependency = { kind: "file" | "dataset" | "mapping_profile" | "virtual_dataset" | "relationship"; id: string; version?: number | string }
@@ -154,11 +154,11 @@ async function loadDataset(userId: string, definition: ReportDefinition, periodO
     if (byId.size !== source.fileIds.length || source.fileIds.some((id) => !byId.has(id))) throw new ReportDefinitionExecutionError("Selected files do not exist or are not accessible")
     selectedFiles = source.fileIds.map((id) => byId.get(id)!)
   }
-  let datasetQuery = supabaseAdmin.from("datasets").select("id, name, file_id, sheet_name, updated_at, files!inner(folder_id, filename)", { count: "exact" }).eq("user_id", userId).eq("files.user_id", userId).is("archived_at", null).order("id")
+  let datasetQuery = supabaseAdmin.from("datasets").select("id, name, file_id, sheet_name, row_count, updated_at, files!inner(folder_id, filename)", { count: "exact" }).eq("user_id", userId).eq("files.user_id", userId).is("archived_at", null).order("id")
   if (source.datasetId) datasetQuery = datasetQuery.eq("id", source.datasetId)
   else datasetQuery = datasetQuery.in("file_id", source.fileIds ?? scopedIds ?? [])
   const datasets = await readComplete((from, to) => {
-    let query = supabaseAdmin.from("datasets").select("id, name, file_id, sheet_name, updated_at, files!inner(folder_id, filename)", { count: "exact" }).eq("user_id", userId).eq("files.user_id", userId).is("archived_at", null).order("id")
+    let query = supabaseAdmin.from("datasets").select("id, name, file_id, sheet_name, row_count, updated_at, files!inner(folder_id, filename)", { count: "exact" }).eq("user_id", userId).eq("files.user_id", userId).is("archived_at", null).order("id")
     if (source.datasetId) query = query.eq("id", source.datasetId)
     else query = query.in("file_id", source.fileIds ?? scopedIds ?? [])
     return query.range(from, to)
@@ -179,7 +179,7 @@ async function loadDataset(userId: string, definition: ReportDefinition, periodO
   }
   const loaded: LoadedDatasetCandidate[] = []
   for (const dataset of datasets) {
-    const columns = await readComplete((from, to) => supabaseAdmin.from("dataset_columns").select("key, data_type", { count: "exact" }).eq("dataset_id", dataset.id).eq("user_id", userId).order("key").range(from, to), 100_000, "dataset_columns")
+    const columns = await readComplete((from, to) => supabaseAdmin.from("dataset_columns").select("key, data_type, role, null_count", { count: "exact" }).eq("dataset_id", dataset.id).eq("user_id", userId).order("key").range(from, to), 100_000, "dataset_columns")
     const rows = await readComplete((from, to) => supabaseAdmin.from("dataset_rows").select("row_index, data", { count: "exact" }).eq("dataset_id", dataset.id).eq("user_id", userId).order("row_index").range(from, to), MAX_SOURCE_ROWS, "dataset_rows")
     loaded.push({ dataset, columns: columns ?? [], rows: (rows ?? []).map((row) => ({ ...(row.data as ValueRow), __dataset_id: dataset.id, __dataset_name: dataset.name, __sheet_name: dataset.sheet_name, __file_id: dataset.file_id, __row_index: row.row_index })) })
   }
@@ -198,9 +198,12 @@ async function loadDataset(userId: string, definition: ReportDefinition, periodO
   const filesWithDatasets = new Set(loaded.map((item) => item.dataset.file_id))
   const withoutDatasets = selectedFiles.filter((file) => !filesWithDatasets.has(file.id))
   const unioned = Boolean(source.folderId || source.fileIds)
-  const coverageNote = unioned
+  const emptyColumns = [...new Set(compatible.flatMap((item) => item.columns.filter((column) => column.role === "ignored" || (column.null_count != null && column.null_count === item.dataset.row_count)).map((column) => column.key)))]
+  const emptyNote = emptyColumns.length ? `${emptyColumns.length} column(s) are empty in all rows and were excluded: ${emptyColumns.join(", ")}.` : ""
+  const unionNote = unioned
     ? `${compatible.length} ${compatibility === "reconcile" ? "candidate" : "compatible"} dataset(s) unioned without de-duplication${excluded.length ? `; excluded ${excluded.map((item) => `${item.dataset.name} (schema mismatch)`).join(", ")}` : ""}${withoutDatasets.length ? `; excluded ${withoutDatasets.map((file) => `${file.filename} (no dataset)`).join(", ")}` : ""}.`
-    : undefined
+    : ""
+  const coverageNote = [unionNote, emptyNote].filter(Boolean).join(" ") || undefined
   const sourceLabel = compatibility === "reconcile"
     ? (source.folderId ? "heterogeneous folder datasets" : source.fileIds ? `heterogeneous selected-file datasets from ${selectedFiles.length} file(s)` : `dataset ${compatible[0].dataset.name}`)
     : (source.folderId ? "folder dataset union" : source.fileIds ? `selected-file dataset union from ${selectedFiles.length} file(s)` : `dataset ${compatible[0].dataset.name}`)

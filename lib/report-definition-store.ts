@@ -155,16 +155,29 @@ export async function validateDefinitionAccess(userId: string, input: ReportDefi
       : await resolveSelectedFiles(userId, input.source.fileIds!)
     if (files.some((file) => !scope?.folderIds.includes(file.folder_id))) throw new TypeError("A selected dataset is outside the report folder scope")
   }
-  const { data: columns, error: columnError } = await supabaseAdmin.from("dataset_columns").select("key, data_type, dataset_id").in("dataset_id", datasets.map((item) => item.id)).eq("user_id", userId)
+  const { data: columns, error: columnError } = await supabaseAdmin.from("dataset_columns").select("key, data_type, role, null_count, dataset_id").in("dataset_id", datasets.map((item) => item.id)).eq("user_id", userId)
   if (columnError) throw new Error(columnError.message)
   const baseDatasetId = datasets[0].id
   const typeByField = new Map((columns ?? []).filter((column) => column.dataset_id === baseDatasetId).map((column) => [column.key, column.data_type]))
+  const roleByField = new Map((columns ?? []).filter((column) => column.dataset_id === baseDatasetId).map((column) => [column.key, column.role]))
   const unknown = referenced.filter((field) => !typeByField.has(field))
   if (unknown.length) throw new TypeError(`Definition references unavailable dataset fields: ${unknown.join(", ")}`)
   if (input.source.dateField && typeByField.get(input.source.dateField) !== "date") throw new TypeError("source.dateField must reference a date column")
   if (input.source.currencyField && typeByField.get(input.source.currencyField) !== "text") throw new TypeError("source.currencyField must reference a text column")
-  const invalidMetric = metrics(input).find((metric) => metric.aggregation !== "count" && metric.aggregation !== "count_distinct" && metric.aggregation !== "ratio" && metric.field && typeByField.get(metric.field) !== "number")
+  if (input.period.kind !== "all" && !input.source.dateField) throw new TypeError("A period requires source.dateField so the dataset time grain is explicit")
+  const invalidMetric = metrics(input).find((metric) => {
+    const fields = metric.aggregation === "ratio" ? [metric.numerator, metric.denominator] : [metric.field]
+    return fields.some((field) => {
+      if (!field || metric.aggregation === "count" || metric.aggregation === "count_distinct") return false
+      if (typeByField.get(field) !== "number") return true
+      const role = metric.role ?? roleByField.get(field)
+      if (["identifier", "descriptor", "ignored"].includes(String(role))) return true
+      if (metric.aggregation === "sum" && role === "measure_non_additive") return true
+      return false
+    })
+  })
   if (invalidMetric?.field) throw new TypeError(`${invalidMetric.field} is not a numeric dataset column and cannot use ${invalidMetric.aggregation}`)
+  if (invalidMetric?.numerator || invalidMetric?.denominator) throw new TypeError("Ratio fields must be numeric dataset columns with compatible semantic roles")
 }
 
 export async function listReportDefinitions(userId: string, search?: string): Promise<ReportDefinitionListItem[]> {

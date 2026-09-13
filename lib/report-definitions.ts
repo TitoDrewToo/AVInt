@@ -3,6 +3,8 @@ export const RECORD_DEFINITION_FIELDS = [
   "counterparty", "counterparty_normalized", "category", "description", "document_type", "record_type",
   "is_recurring", "confidence", "needs_review",
 ] as const
+export const DATASET_COLUMN_ROLES = ["time", "currency", "identifier", "dimension", "descriptor", "ignored", "measure_additive", "measure_semi_additive", "measure_non_additive"] as const
+export type DatasetColumnRole = typeof DATASET_COLUMN_ROLES[number]
 
 export type MaterializedReportDefinitionSource =
   | { kind: "records"; documentTypes?: string[]; fileIds?: string[] }
@@ -16,7 +18,7 @@ export type ReportDefinitionPeriod =
   | { kind: "fixed"; from: string; to: string }
   | { kind: "rolling"; unit: "month" | "year"; count: number; offset?: number }
 export type ReportDefinitionFilter = { field: string; operator: "eq" | "neq" | "contains" | "gt" | "gte" | "lt" | "lte"; value: string | number | boolean | null }
-export type ReportMetric = { aggregation: "count" | "count_distinct" | "sum" | "average" | "min" | "max" | "ratio"; field?: string; numerator?: string; denominator?: string; onZero?: "suppress" | "null" }
+export type ReportMetric = { aggregation: "count" | "count_distinct" | "sum" | "average" | "min" | "max" | "ratio"; field?: string; numerator?: string; denominator?: string; onZero?: "suppress" | "null"; role?: DatasetColumnRole }
 export type ReportDefinitionBlock =
   | { type: "kpi"; items: Array<{ label: string; metric: ReportMetric }> }
   | { type: "share"; title: string; groupBy: string; metric: ReportMetric; limit?: number }
@@ -65,15 +67,16 @@ function realDate(value: unknown): value is string {
 }
 function validateMetric(input: unknown, path: string): { ok: true; value: ReportMetric } | { ok: false; error: string } {
   if (!isObject(input) || !AGGREGATIONS.has(String(input.aggregation))) return { ok: false, error: `${path}.aggregation is unsupported` }
+  if (input.role !== undefined && !DATASET_COLUMN_ROLES.includes(input.role as DatasetColumnRole)) return { ok: false, error: `${path}.role is unsupported` }
   const aggregation = input.aggregation as ReportMetric["aggregation"]
   if (aggregation === "ratio") {
     if (!validField(input.numerator) || !validField(input.denominator) || (input.onZero !== "suppress" && input.onZero !== "null")) return { ok: false, error: `${path} ratio requires numerator, denominator, and onZero` }
     if (input.field !== undefined) return { ok: false, error: `${path}.field is not allowed for ratio` }
-    return { ok: true, value: { aggregation: "ratio", numerator: input.numerator, denominator: input.denominator, onZero: input.onZero } }
+    return { ok: true, value: { aggregation: "ratio", numerator: input.numerator, denominator: input.denominator, onZero: input.onZero, ...(input.role ? { role: input.role as DatasetColumnRole } : {}) } }
   }
   if (aggregation !== "count" && !validField(input.field)) return { ok: false, error: `${path}.field is required for ${aggregation}` }
   if (input.field !== undefined && !validField(input.field)) return { ok: false, error: `${path}.field is invalid` }
-  return { ok: true, value: { aggregation, ...(input.field ? { field: input.field } : {}) } }
+  return { ok: true, value: { aggregation, ...(input.field ? { field: input.field } : {}), ...(input.role ? { role: input.role as DatasetColumnRole } : {}) } }
 }
 function validateBlock(input: unknown, index: number): { ok: true; value: ReportDefinitionBlock } | { ok: false; error: string } {
   const path = `blocks[${index}]`

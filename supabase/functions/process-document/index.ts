@@ -1321,13 +1321,64 @@ serve(async (req) => {
       }
     }
 
-    // For CSV multi-row: normalize every inserted row exactly once in parallel.
+    // For CSV multi-row inputs, use a bounded worker pool. An unbounded
+    // Promise.all overwhelms the edge runtime around ~60 concurrent child
+    // invocations; the rejected/never-started rows then strand the file in
+    // processing with no evidence of which rows were lost.
     if (rowsForNormalization.length > 1) {
+      const NORMALIZE_CONCURRENCY = 8
+      const MAX_RETRIES = 1
+      const RETRY_BACKOFF_MS = 250
+      let cursor = 0
+      const failures: Array<{ source_key: string; cause: string }> = []
+
+      const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+      const normalizeWithRetry = async (row: any) => {
+        let lastCause = "unknown normalization failure"
+        for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
+          try {
+            const response = await normalizeOne(row)
+            if (response.ok) return true
+            lastCause = `${response.status} ${await response.text()}`
+          } catch (cause) {
+            lastCause = cause instanceof Error ? cause.message : String(cause)
+          }
+          if (attempt < MAX_RETRIES) await wait(RETRY_BACKOFF_MS * (attempt + 1))
+        }
+        failures.push({ source_key: row.source_key, cause: lastCause })
+        return false
+      }
+
+      const worker = async () => {
+        while (true) {
+          const index = cursor++
+          if (index >= rowsForNormalization.length) return
+          await normalizeWithRetry(rowsForNormalization[index])
+        }
+      }
+
       const normalizeChain = Promise.all(
-        rowsForNormalization.map((row: any) =>
-          normalizeOne(row)
-        )
-      ).catch(() => {/* non-blocking — normalization failures handled per-row */})
+        Array.from({ length: Math.min(NORMALIZE_CONCURRENCY, rowsForNormalization.length) }, worker),
+      ).then(async () => {
+        if (!failures.length) return
+        logError(FN, "normalize_fanout_incomplete", new Error(`${failures.length} of ${rowsForNormalization.length} rows failed`), {
+          file_id,
+          source_keys: failures.map((failure) => failure.source_key),
+          failures,
+        })
+        // A failed child is terminally named instead of being swallowed. The
+        // UI's existing stalled-job projection can now surface this state.
+        await supabase
+          .from("processing_jobs")
+          .update({
+            status: "failed",
+            completed_at: new Date().toISOString(),
+            error_message: `Normalization incomplete: ${failures.length} of ${rowsForNormalization.length} rows failed`,
+          })
+          .eq("file_id", file_id)
+          .in("status", ["uploaded", "processing"])
+      })
+
       // @ts-ignore - EdgeRuntime is a Supabase runtime global
       if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(normalizeChain)
       else await normalizeChain

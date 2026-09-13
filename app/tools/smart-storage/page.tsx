@@ -1057,6 +1057,7 @@ export default function SmartStoragePage() {
             file_size: file.size,
             document_type: "unknown",
             upload_status: "pending_scan",
+            sha256,
             folder_id: targetFolderId,
             upload_batch_id: uploadBatchId,
           })

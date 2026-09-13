@@ -16,7 +16,7 @@ export async function resolveReportFolderScope(userId: string, targetFolder?: st
     .from("folders")
     .select("id, parent_id", { count: "exact" })
     .eq("user_id", userId)
-    .order("id").range(from, to))
+    .order("id").range(from, to), 100_000, "folders")
   if (!folderBelongsToUser(folders, targetFolder)) {
     throw new InvalidReportFolderError()
   }
@@ -35,6 +35,6 @@ export async function getReportFileIds(userId: string, documentTypes: string[], 
   if (documentTypes.length > 0) query = query.in("document_type", documentTypes)
   if (scope) query = query.in("folder_id", scope.folderIds)
 
-  const data = await readComplete((from, to) => query.range(from, to))
+  const data = await readComplete((from, to) => query.range(from, to), 100_000, "files")
   return data.map((row) => row.id)
 }

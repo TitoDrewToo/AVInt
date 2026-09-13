@@ -85,7 +85,7 @@ async function recordsTaxRows(userId: string, filters: ReportFilters): Promise<T
     .order("id")
   if (fileIds.length > 0) query = query.in("file_id", fileIds)
 
-  const data = await readComplete((from, to) => query.range(from, to), 5000)
+  const data = await readComplete((from, to) => query.range(from, to), 5000, "records")
   const records = data as RecordRow[]
   const recordIds = records.map((record) => record.id)
   const attributes = recordIds.length === 0
@@ -95,7 +95,7 @@ async function recordsTaxRows(userId: string, filters: ReportFilters): Promise<T
       .select("record_id, field_key, value", { count: "exact" })
       .eq("user_id", userId)
       .in("record_id", recordIds)
-      .order("record_id").order("field_key").range(from, to))
+      .order("record_id").order("field_key").range(from, to), 100_000, "record_attributes")
   const attrs = recordAttributeMap((attributes ?? []) as RecordAttribute[])
 
   return records

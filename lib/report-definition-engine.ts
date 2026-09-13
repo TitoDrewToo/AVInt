@@ -113,11 +113,11 @@ async function loadRecords(userId: string, definition: ReportDefinition, periodO
   const fileIds = selectedFileIds ? selectedFileIds.filter((id) => scopedFileIds.includes(id)) : scopedFileIds
   const sourceLabel = selectedFileIds ? `selected canonical records from ${fileIds.length} file(s)` : "canonical records"
   if (!fileIds.length) return { rows: [], availableFields: new Set(CORE_FIELDS), dateField: "occurred_on", currencyField: "currency", sourceLabel, dependencies: [] }
-  const recordRows = await readComplete((from, to) => supabaseAdmin.from("records").select("*, files!inner(filename, folder_id, document_type)", { count: "exact" }).eq("user_id", userId).in("file_id", fileIds).is("parent_record_id", null).is("excluded_at", null).order("id").range(from, to), MAX_SOURCE_ROWS)
+  const recordRows = await readComplete((from, to) => supabaseAdmin.from("records").select("*, files!inner(filename, folder_id, document_type)", { count: "exact" }).eq("user_id", userId).in("file_id", fileIds).is("parent_record_id", null).is("excluded_at", null).order("id").range(from, to), MAX_SOURCE_ROWS, "records")
   const recordIds = recordRows.map((row) => row.id)
   const [attributes, attributeCatalog] = await Promise.all([
-    recordIds.length ? readComplete((from, to) => supabaseAdmin.from("record_attributes").select("record_id, field_key, value", { count: "exact" }).eq("user_id", userId).in("record_id", recordIds).order("record_id").order("field_key").range(from, to)) : Promise.resolve([]),
-    readComplete((from, to) => supabaseAdmin.from("record_attributes").select("field_key", { count: "exact" }).eq("user_id", userId).order("record_id").order("field_key").range(from, to)),
+    recordIds.length ? readComplete((from, to) => supabaseAdmin.from("record_attributes").select("record_id, field_key, value", { count: "exact" }).eq("user_id", userId).in("record_id", recordIds).order("record_id").order("field_key").range(from, to), 100_000, "record_attributes") : Promise.resolve([]),
+    readComplete((from, to) => supabaseAdmin.from("record_attributes").select("field_key", { count: "exact" }).eq("user_id", userId).order("record_id").order("field_key").range(from, to), 100_000, "record_attribute_catalog"),
   ])
   const attributesByRecord = new Map<string, Record<string, unknown>>()
   for (const attribute of attributes ?? []) {
@@ -149,7 +149,7 @@ async function loadDataset(userId: string, definition: ReportDefinition, periodO
   if (source.folderId && !scopedIds?.length) throw new ReportDefinitionExecutionError("The selected folder contains no files or datasets")
   let selectedFiles: Array<{ id: string; filename: string; folder_id: string | null }> = []
   if (source.fileIds) {
-    const files = await readComplete((from, to) => supabaseAdmin.from("files").select("id, filename, folder_id", { count: "exact" }).eq("user_id", userId).in("id", source.fileIds!).order("id").range(from, to))
+    const files = await readComplete((from, to) => supabaseAdmin.from("files").select("id, filename, folder_id", { count: "exact" }).eq("user_id", userId).in("id", source.fileIds!).order("id").range(from, to), 100_000, "files")
     const byId = new Map((files ?? []).map((file) => [file.id, file]))
     if (byId.size !== source.fileIds.length || source.fileIds.some((id) => !byId.has(id))) throw new ReportDefinitionExecutionError("Selected files do not exist or are not accessible")
     selectedFiles = source.fileIds.map((id) => byId.get(id)!)
@@ -157,7 +157,12 @@ async function loadDataset(userId: string, definition: ReportDefinition, periodO
   let datasetQuery = supabaseAdmin.from("datasets").select("id, name, file_id, sheet_name, updated_at, files!inner(folder_id, filename)", { count: "exact" }).eq("user_id", userId).eq("files.user_id", userId).is("archived_at", null).order("id")
   if (source.datasetId) datasetQuery = datasetQuery.eq("id", source.datasetId)
   else datasetQuery = datasetQuery.in("file_id", source.fileIds ?? scopedIds ?? [])
-  const datasets = await readComplete((from, to) => datasetQuery.range(from, to))
+  const datasets = await readComplete((from, to) => {
+    let query = supabaseAdmin.from("datasets").select("id, name, file_id, sheet_name, updated_at, files!inner(folder_id, filename)", { count: "exact" }).eq("user_id", userId).eq("files.user_id", userId).is("archived_at", null).order("id")
+    if (source.datasetId) query = query.eq("id", source.datasetId)
+    else query = query.in("file_id", source.fileIds ?? scopedIds ?? [])
+    return query.range(from, to)
+  }, 100_000, "datasets")
   if (!datasets?.length) {
     if (source.datasetId) {
       const { data: archived, error: archivedError } = await supabaseAdmin.from("datasets").select("id").eq("id", source.datasetId).eq("user_id", userId).not("archived_at", "is", null).maybeSingle()
@@ -174,8 +179,8 @@ async function loadDataset(userId: string, definition: ReportDefinition, periodO
   }
   const loaded: LoadedDatasetCandidate[] = []
   for (const dataset of datasets) {
-    const columns = await readComplete((from, to) => supabaseAdmin.from("dataset_columns").select("key, data_type", { count: "exact" }).eq("dataset_id", dataset.id).eq("user_id", userId).order("key").range(from, to))
-    const rows = await readComplete((from, to) => supabaseAdmin.from("dataset_rows").select("row_index, data", { count: "exact" }).eq("dataset_id", dataset.id).eq("user_id", userId).order("row_index").range(from, to), MAX_SOURCE_ROWS)
+    const columns = await readComplete((from, to) => supabaseAdmin.from("dataset_columns").select("key, data_type", { count: "exact" }).eq("dataset_id", dataset.id).eq("user_id", userId).order("key").range(from, to), 100_000, "dataset_columns")
+    const rows = await readComplete((from, to) => supabaseAdmin.from("dataset_rows").select("row_index, data", { count: "exact" }).eq("dataset_id", dataset.id).eq("user_id", userId).order("row_index").range(from, to), MAX_SOURCE_ROWS, "dataset_rows")
     loaded.push({ dataset, columns: columns ?? [], rows: (rows ?? []).map((row) => ({ ...(row.data as ValueRow), __dataset_id: dataset.id, __dataset_name: dataset.name, __sheet_name: dataset.sheet_name, __file_id: dataset.file_id, __row_index: row.row_index })) })
   }
   if (source.fileIds) {

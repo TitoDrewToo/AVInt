@@ -17,9 +17,9 @@ export async function GET(request: Request) {
   const { months, since } = operationsCostWindow(url.searchParams.get("months"), now)
   try {
   const [ai, other, subscriptions] = await Promise.all([
-    readComplete((from, to) => supabaseAdmin.from("ai_usage_events").select("id, created_at, estimated_cost_usd, provider, operation, status, input_tokens, output_tokens", { count: "exact" }).gte("created_at", since.toISOString()).lte("created_at", now.toISOString()).order("id").range(from, to)),
-    readComplete((from, to) => supabaseAdmin.from("platform_cost_events").select("id, occurred_at, estimated_cost_usd, category, provider", { count: "exact" }).gte("occurred_at", since.toISOString()).lte("occurred_at", now.toISOString()).order("id").range(from, to)),
-    readComplete((from, to) => supabaseAdmin.from("subscriptions").select("id, plan, status, current_period_end", { count: "exact" }).eq("status", "pro").gt("current_period_end", now.toISOString()).order("id").range(from, to)),
+    readComplete((from, to) => supabaseAdmin.from("ai_usage_events").select("id, created_at, estimated_cost_usd, provider, operation, status, input_tokens, output_tokens", { count: "exact" }).gte("created_at", since.toISOString()).lte("created_at", now.toISOString()).order("id").range(from, to), 100_000, "ai_usage_events"),
+    readComplete((from, to) => supabaseAdmin.from("platform_cost_events").select("id, occurred_at, estimated_cost_usd, category, provider", { count: "exact" }).gte("occurred_at", since.toISOString()).lte("occurred_at", now.toISOString()).order("id").range(from, to), 100_000, "platform_cost_events"),
+    readComplete((from, to) => supabaseAdmin.from("subscriptions").select("id, plan, status, current_period_end", { count: "exact" }).eq("status", "pro").gt("current_period_end", now.toISOString()).order("id").range(from, to), 100_000, "subscriptions"),
   ])
   const byMonth = new Map<string, { ai: number; other: number; total: number; events: number }>()
   for (let index = 0; index < months; index++) {

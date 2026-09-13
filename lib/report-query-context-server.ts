@@ -28,7 +28,7 @@ export async function createReportQueryContext(
       let query = supabaseAdmin.from("files").select("id", { count: "exact" }).eq("user_id", userId).order("id")
       if (documentTypes.length > 0) query = query.in("document_type", documentTypes)
       if (scopedFolderIds) query = query.in("folder_id", scopedFolderIds)
-      const data = await readComplete((from, to) => query.range(from, to))
+      const data = await readComplete((from, to) => query.range(from, to), 100_000, "files")
       return data.map((row) => row.id)
     },
   }

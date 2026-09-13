@@ -22,10 +22,10 @@ import { listSavedDashboardWidgets, saveDashboardWidget } from "@/lib/dashboard-
 import { createDashboardPage, deleteDashboardPage, ensureDefaultDashboardPages, renameDashboardPage, resolveDashboardPage } from "@/lib/dashboard-pages"
 import { logApiError } from "@/lib/api-error"
 import { rejectStatelessSubscriptionRequest, STATELESS_MCP_CAPABILITIES } from "@/lib/mcp-stateless-transport"
-import { createVirtualDatasetDefinition, getVirtualDatasetDefinition, listVirtualDatasetDefinitions, updateVirtualDatasetDefinition, VirtualDatasetConflictError, VirtualDatasetNotFoundError } from "@/lib/virtual-dataset-store"
-import { activateDataMappingProfile, createDataMappingProfile, getDataMappingProfile, listDataMappingProfiles, updateDataMappingProfile, DataMappingProfileConflictError, DataMappingProfileNotFoundError } from "@/lib/data-mapping-store"
+import { activateDataMappingProfile, archiveDataMappingProfile, createDataMappingProfile, getDataMappingProfile, listDataMappingProfiles, updateDataMappingProfile, DataMappingProfileConflictError, DataMappingProfileDependencyError, DataMappingProfileNotFoundError } from "@/lib/data-mapping-store"
+import { createVirtualDatasetDefinition, getVirtualDatasetDefinition, listVirtualDatasetDefinitions, updateVirtualDatasetDefinition, VirtualDatasetConflictError, VirtualDatasetDependencyError, VirtualDatasetNotFoundError, archiveVirtualDatasetDefinition } from "@/lib/virtual-dataset-store"
 import { previewDataMappingProfile } from "@/lib/data-mapping-service"
-import { activateDataRelationship, createDataRelationship, getDataRelationship, listDataRelationships, updateDataRelationship, DataRelationshipConflictError, DataRelationshipNotFoundError } from "@/lib/data-relationship-store"
+import { activateDataRelationship, archiveDataRelationship, createDataRelationship, getDataRelationship, listDataRelationships, updateDataRelationship, DataRelationshipConflictError, DataRelationshipDependencyError, DataRelationshipNotFoundError } from "@/lib/data-relationship-store"
 import { previewDataRelationship } from "@/lib/data-relationship-service"
 import { DataRelationshipExecutionError } from "@/lib/data-relationship-engine"
 import { mappingProfileSchema, relationshipSchema, reportDefinitionSchema, virtualDatasetSchema } from "@/lib/mcp-definition-schemas"
@@ -51,7 +51,7 @@ function limitedResult(message: string) {
 }
 
 function mcpToolError(error: unknown, userId: string, stage: string, fallback: string) {
-  if (error instanceof TypeError || error instanceof IngestBatchConflictError || error instanceof ReportDefinitionNotFoundError || error instanceof ReportDefinitionConflictError || error instanceof ReportDefinitionWriteError || error instanceof ReportDefinitionExecutionError || error instanceof VirtualDatasetNotFoundError || error instanceof VirtualDatasetConflictError || error instanceof DataMappingProfileNotFoundError || error instanceof DataMappingProfileConflictError || error instanceof DataRelationshipNotFoundError || error instanceof DataRelationshipConflictError || error instanceof DataRelationshipExecutionError) {
+  if (error instanceof TypeError || error instanceof IngestBatchConflictError || error instanceof ReportDefinitionNotFoundError || error instanceof ReportDefinitionConflictError || error instanceof ReportDefinitionWriteError || error instanceof ReportDefinitionExecutionError || error instanceof VirtualDatasetNotFoundError || error instanceof VirtualDatasetConflictError || error instanceof VirtualDatasetDependencyError || error instanceof DataMappingProfileNotFoundError || error instanceof DataMappingProfileConflictError || error instanceof DataMappingProfileDependencyError || error instanceof DataRelationshipNotFoundError || error instanceof DataRelationshipConflictError || error instanceof DataRelationshipDependencyError || error instanceof DataRelationshipExecutionError) {
     return featureResult(error.message)
   }
   logApiError(error, { route: "mcp", stage, userId })
@@ -284,6 +284,11 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
         return { content: [{ type: "text" as const, text: JSON.stringify({ virtualDataset: saved, useAs: { kind: "virtual_dataset", slug: saved.slug } }, null, 2) }] }
       } catch (error) { return mcpToolError(error, userId, "save_virtual_dataset", "The virtual dataset could not be saved.") }
     }))
+    server.registerTool("smart_storage.delete_virtual_dataset", { title: "Delete a saved Smart Storage virtual dataset", description: "Archive one owned virtual dataset. Refuses when a saved report or relationship references it.", inputSchema: z.object({ slug: z.string().min(1).max(80) }) }, async ({ slug }) => timedTool("smart_storage.delete_virtual_dataset", async () => {
+      const blocked = await toolGuard(userId, entitlement, "report"); if (blocked) return blocked
+      try { return { content: [{ type: "text" as const, text: JSON.stringify({ virtualDataset: await archiveVirtualDatasetDefinition(userId, slug) }, null, 2) }] } }
+      catch (error) { return mcpToolError(error, userId, "delete_virtual_dataset", "The virtual dataset could not be deleted.") }
+    }))
 
     server.registerTool("smart_storage.list_mapping_profiles", {
       title: "List Smart Storage mapping profiles",
@@ -318,6 +323,11 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
         const saved = slug ? await updateDataMappingProfile(userId, slug, definition, expectedVersion ?? 0, "assistant") : await createDataMappingProfile(userId, definition, "assistant")
         return { content: [{ type: "text" as const, text: JSON.stringify({ mappingProfile: saved, next: "Preview this exact version before activation." }, null, 2) }] }
       } catch (error) { return mcpToolError(error, userId, "save_mapping_profile", "The mapping profile could not be saved.") }
+    }))
+    server.registerTool("smart_storage.delete_mapping_profile", { title: "Delete a Smart Storage mapping profile", description: "Archive one owned mapping profile. Refuses when a saved report references it.", inputSchema: z.object({ slug: z.string().min(1).max(80) }) }, async ({ slug }) => timedTool("smart_storage.delete_mapping_profile", async () => {
+      const blocked = await toolGuard(userId, entitlement, "report"); if (blocked) return blocked
+      try { return { content: [{ type: "text" as const, text: JSON.stringify({ mappingProfile: await archiveDataMappingProfile(userId, slug) }, null, 2) }] } }
+      catch (error) { return mcpToolError(error, userId, "delete_mapping_profile", "The mapping profile could not be deleted.") }
     }))
 
     server.registerTool("smart_storage.preview_mapping_profile", {
@@ -397,6 +407,12 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
       if (blocked) return blocked
       try { return { content: [{ type: "text" as const, text: JSON.stringify({ relationship: await activateDataRelationship(userId, slug, expectedVersion), useAs: { kind: "relationship", slug } }, null, 2) }] } }
       catch (error) { return mcpToolError(error, userId, "activate_relationship", "The data relationship could not be activated.") }
+    }))
+
+    server.registerTool("smart_storage.delete_relationship", { title: "Delete a Smart Storage relationship", description: "Archive one owned relationship. Refuses when a saved report references it.", inputSchema: z.object({ slug: z.string().min(1).max(80) }) }, async ({ slug }) => timedTool("smart_storage.delete_relationship", async () => {
+      const blocked = await toolGuard(userId, entitlement, "report"); if (blocked) return blocked
+      try { return { content: [{ type: "text" as const, text: JSON.stringify({ relationship: await archiveDataRelationship(userId, slug) }, null, 2) }] } }
+      catch (error) { return mcpToolError(error, userId, "delete_relationship", "The data relationship could not be deleted.") }
     }))
 
     server.registerTool("smart_storage.list_report_definitions", {

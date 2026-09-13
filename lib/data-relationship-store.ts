@@ -11,6 +11,7 @@ import {
 
 export class DataRelationshipNotFoundError extends Error {}
 export class DataRelationshipConflictError extends Error {}
+export class DataRelationshipDependencyError extends Error {}
 
 async function validateAccess(userId: string, input: DataRelationshipDefinitionInput) {
   const [left, right] = await Promise.all([
@@ -100,4 +101,17 @@ export async function activateDataRelationship(userId: string, slug: string, exp
   if (error) throw new Error(error.message)
   if (!data) throw new DataRelationshipConflictError("Relationship changed while it was being activated")
   return hydrate(data)
+}
+
+export async function archiveDataRelationship(userId: string, slug: string): Promise<{ slug: string; archived_at: string }> {
+  await getDataRelationship(userId, slug)
+  const { data: reports, error } = await supabaseAdmin.from("report_definitions").select("slug, source").eq("user_id", userId).is("archived_at", null)
+  if (error) throw new Error(error.message)
+  const dependents = (reports ?? []).filter((row) => row.source?.kind === "relationship" && row.source?.slug === slug).map((row) => `report ${row.slug}`)
+  if (dependents.length) throw new DataRelationshipDependencyError(`Relationship ${slug} cannot be deleted; it is referenced by ${dependents.join(", ")}`)
+  const archivedAt = new Date().toISOString()
+  const { data, error: archiveError } = await supabaseAdmin.from("virtual_dataset_relationships").update({ archived_at: archivedAt }).eq("user_id", userId).eq("slug", slug).is("archived_at", null).select("slug, archived_at").maybeSingle()
+  if (archiveError) throw new Error(archiveError.message)
+  if (!data) throw new DataRelationshipNotFoundError("Relationship not found")
+  return data as { slug: string; archived_at: string }
 }

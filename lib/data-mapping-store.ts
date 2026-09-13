@@ -13,6 +13,7 @@ import {
 
 export class DataMappingProfileNotFoundError extends Error {}
 export class DataMappingProfileConflictError extends Error {}
+export class DataMappingProfileDependencyError extends Error {}
 
 async function validateAccess(userId: string, input: DataMappingProfileInput) {
   const reconciliation = input.mappings.every(isReconciliationMappingRule)
@@ -96,4 +97,17 @@ export async function activateDataMappingProfile(userId: string, slug: string, e
   if (error) throw new Error(error.message)
   if (!data) throw new DataMappingProfileConflictError("Mapping profile changed while it was being activated")
   return data as DataMappingProfile
+}
+
+export async function archiveDataMappingProfile(userId: string, slug: string): Promise<{ slug: string; archived_at: string }> {
+  const current = await getDataMappingProfile(userId, slug)
+  const { data: reports, error } = await supabaseAdmin.from("report_definitions").select("slug, source").eq("user_id", userId).is("archived_at", null)
+  if (error) throw new Error(error.message)
+  const dependents = (reports ?? []).filter((row) => row.source?.kind === "mapping_profile" && row.source?.slug === current.slug).map((row) => `report ${row.slug}`)
+  if (dependents.length) throw new DataMappingProfileDependencyError(`Mapping profile ${current.slug} cannot be deleted; it is referenced by ${dependents.join(", ")}`)
+  const archivedAt = new Date().toISOString()
+  const { data, error: archiveError } = await supabaseAdmin.from("data_mapping_profiles").update({ archived_at: archivedAt }).eq("user_id", userId).eq("slug", slug).is("archived_at", null).select("slug, archived_at").maybeSingle()
+  if (archiveError) throw new Error(archiveError.message)
+  if (!data) throw new DataMappingProfileNotFoundError("Mapping profile not found")
+  return data as { slug: string; archived_at: string }
 }

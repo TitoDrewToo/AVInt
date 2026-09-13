@@ -10,6 +10,7 @@ import {
 
 export class VirtualDatasetNotFoundError extends Error {}
 export class VirtualDatasetConflictError extends Error {}
+export class VirtualDatasetDependencyError extends Error {}
 
 async function validateAccess(userId: string, input: VirtualDatasetDefinitionInput) {
   const reportShape: ReportDefinitionInput = {
@@ -71,6 +72,17 @@ export async function updateVirtualDatasetDefinition(userId: string, slug: strin
 }
 
 export async function archiveVirtualDatasetDefinition(userId: string, slug: string): Promise<{ slug: string; archived_at: string }> {
+  const current = await getVirtualDatasetDefinition(userId, slug)
+  const [{ data: relationships, error: relationshipError }, { data: reports, error: reportError }] = await Promise.all([
+    supabaseAdmin.from("virtual_dataset_relationships").select("slug, title, definition").eq("user_id", userId).is("archived_at", null),
+    supabaseAdmin.from("report_definitions").select("slug, title, source").eq("user_id", userId).is("archived_at", null),
+  ])
+  if (relationshipError) throw new Error(relationshipError.message)
+  if (reportError) throw new Error(reportError.message)
+  const dependentRelationships = (relationships ?? []).filter((row) => row.definition?.leftVirtualDatasetSlug === current.slug || row.definition?.rightVirtualDatasetSlug === current.slug)
+  const dependentReports = (reports ?? []).filter((row) => row.source?.kind === "virtual_dataset" && row.source?.slug === current.slug)
+  const dependents = [...dependentRelationships.map((row) => `relationship ${row.slug}`), ...dependentReports.map((row) => `report ${row.slug}`)]
+  if (dependents.length) throw new VirtualDatasetDependencyError(`Virtual dataset ${current.slug} cannot be deleted; it is referenced by ${dependents.join(", ")}`)
   const archivedAt = new Date().toISOString()
   const { data, error } = await supabaseAdmin.from("virtual_dataset_definitions").update({ archived_at: archivedAt }).eq("user_id", userId).eq("slug", slug).is("archived_at", null).select("slug, archived_at").maybeSingle()
   if (error) throw new Error(error.message)

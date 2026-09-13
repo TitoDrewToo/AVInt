@@ -86,6 +86,52 @@ export function projectRecordDefinitionRow(row: ValueRow, attributes: ValueRow):
   }
 }
 
+/**
+ * Project only explicit user corrections onto dataset rows. Dataset rows are
+ * immutable source evidence; the canonical record/revision layer is the
+ * authoritative correction overlay used by mapped and virtual sources.
+ */
+async function applyDatasetCorrections(userId: string, rows: ValueRow[], fileIds: string[]) {
+  if (!rows.length || !fileIds.length) return rows
+  const { data: records, error: recordsError } = await supabaseAdmin
+    .from("records")
+    .select("id, file_id, source_key, updated_at")
+    .eq("user_id", userId)
+    .in("file_id", fileIds)
+    .is("parent_record_id", null)
+  if (recordsError) throw new Error(`dataset correction records query failed: ${recordsError.message}`)
+  if (!records?.length) return rows
+  const recordIds = records.map((record) => record.id)
+  const { data: revisions, error: revisionsError } = await supabaseAdmin
+    .from("record_revisions")
+    .select("record_id, revision_number, target_kind, target, new_value, change_kind")
+    .eq("user_id", userId)
+    .in("record_id", recordIds)
+    .in("change_kind", ["user_edit", "reclassify", "rollback"])
+    .order("revision_number", { ascending: false })
+  if (revisionsError) throw new Error(`dataset correction revisions query failed: ${revisionsError.message}`)
+  const latest = new Map<string, Record<string, unknown>>()
+  for (const revision of revisions ?? []) {
+    const key = `${revision.record_id}:${revision.target_kind}:${revision.target}`
+    if (!latest.has(key)) latest.set(key, revision)
+  }
+  const overlays = new Map<string, Record<string, unknown>>()
+  for (const revision of latest.values()) {
+    if (revision.change_kind === "rollback") continue
+    const recordId = String(revision.record_id)
+    const values = overlays.get(recordId) ?? {}
+    values[String(revision.target)] = revision.new_value
+    overlays.set(recordId, values)
+  }
+  if (!overlays.size) return rows
+  const bySource = new Map(records.map((record) => [`${record.file_id}:${record.source_key}`, record]))
+  return rows.map((row) => {
+    const record = bySource.get(`${row.__file_id}:${String(row.__row_index)}`)
+    const overlay = record ? overlays.get(record.id) : undefined
+    return overlay ? { ...row, ...overlay, __correction_overlay: true } : row
+  })
+}
+
 export class ReportDefinitionExecutionError extends Error {}
 
 function rollingBounds(unit: "month" | "year", count: number, offset: number, now: Date) {
@@ -154,9 +200,6 @@ async function loadDataset(userId: string, definition: ReportDefinition, periodO
     if (byId.size !== source.fileIds.length || source.fileIds.some((id) => !byId.has(id))) throw new ReportDefinitionExecutionError("Selected files do not exist or are not accessible")
     selectedFiles = source.fileIds.map((id) => byId.get(id)!)
   }
-  let datasetQuery = supabaseAdmin.from("datasets").select("id, name, file_id, sheet_name, row_count, updated_at, files!inner(folder_id, filename)", { count: "exact" }).eq("user_id", userId).eq("files.user_id", userId).is("archived_at", null).order("id")
-  if (source.datasetId) datasetQuery = datasetQuery.eq("id", source.datasetId)
-  else datasetQuery = datasetQuery.in("file_id", source.fileIds ?? scopedIds ?? [])
   const datasets = await readComplete((from, to) => {
     let query = supabaseAdmin.from("datasets").select("id, name, file_id, sheet_name, row_count, updated_at, files!inner(folder_id, filename)", { count: "exact" }).eq("user_id", userId).eq("files.user_id", userId).is("archived_at", null).order("id")
     if (source.datasetId) query = query.eq("id", source.datasetId)
@@ -181,7 +224,8 @@ async function loadDataset(userId: string, definition: ReportDefinition, periodO
   for (const dataset of datasets) {
     const columns = await readComplete((from, to) => supabaseAdmin.from("dataset_columns").select("key, data_type, role, null_count", { count: "exact" }).eq("dataset_id", dataset.id).eq("user_id", userId).order("key").range(from, to), 100_000, "dataset_columns")
     const rows = await readComplete((from, to) => supabaseAdmin.from("dataset_rows").select("row_index, data", { count: "exact" }).eq("dataset_id", dataset.id).eq("user_id", userId).order("row_index").range(from, to), MAX_SOURCE_ROWS, "dataset_rows")
-    loaded.push({ dataset, columns: columns ?? [], rows: (rows ?? []).map((row) => ({ ...(row.data as ValueRow), __dataset_id: dataset.id, __dataset_name: dataset.name, __sheet_name: dataset.sheet_name, __file_id: dataset.file_id, __row_index: row.row_index })) })
+    const materializedRows = (rows ?? []).map((row) => ({ ...(row.data as ValueRow), __dataset_id: dataset.id, __dataset_name: dataset.name, __sheet_name: dataset.sheet_name, __file_id: dataset.file_id, __row_index: row.row_index }))
+    loaded.push({ dataset, columns: columns ?? [], rows: await applyDatasetCorrections(userId, materializedRows, [dataset.file_id]) })
   }
   if (source.fileIds) {
     const filePosition = new Map(source.fileIds.map((id, index) => [id, index]))

@@ -120,7 +120,14 @@ function inferRole(label: string, dataType: DatasetDataType, rowCount: number, n
   if (dataType === "date") return "time"
   if (/(^|_)(currency|curr|currency_code)($|_)/.test(name)) return "currency"
   if (/(^|_)(id|uuid|key|code|hash)($|_)/.test(name) || (dataType === "text" && distinctCount === rowCount)) return "identifier"
-  if (dataType === "number") return /(visitor|unique|distinct|count|views?|impressions?|sessions?)/.test(name) ? "measure_non_additive" : "measure_additive"
+  if (dataType === "number") {
+    // Entity-level uniques and derived rates cannot be added across grains.
+    if (/(^|_)(visitor|visitors|unique|distinct|user|users|people)(_|$)/.test(name) || /(avg|average|mean|median|rate|ratio|percent|percentage|duration|seconds?)/.test(name)) return "measure_non_additive"
+    // Event counts (views, clicks, impressions, sessions) are additive at
+    // their stated grain. Ambiguous numeric measures remain additive by
+    // default but are flagged for declaration during review.
+    return "measure_additive"
+  }
   return dataType === "boolean" || distinctCount <= Math.max(20, Math.ceil(rowCount * 0.25)) ? "dimension" : "descriptor"
 }
 
@@ -136,7 +143,9 @@ function inferColumn(label: string, position: number, values: unknown[], key: st
     return {
       key, label, position, data_type: "number", role: inferRole(label, "number", values.length, nullCount, distinct.size), null_count: nullCount,
       distinct_count: distinct.size, type_confidence: numericCount / nonNull.length,
-      sample_values: [...distinct.values()].slice(0, 5), needs_review: false, review_reason: null,
+      sample_values: [...distinct.values()].slice(0, 5),
+      needs_review: !/(^|_)(amount|total|revenue|income|expense|cost|price|views?|clicks?|impressions?|events?|sessions?|visitor|visitors|unique|distinct|user|users|people)(_|$)/.test(key.toLowerCase()) && !/(avg|average|mean|median|rate|ratio|percent|percentage|duration|seconds?)/.test(key.toLowerCase()),
+      review_reason: !/(^|_)(amount|total|revenue|income|expense|cost|price|views?|clicks?|impressions?|events?|sessions?|visitor|visitors|unique|distinct|user|users|people)(_|$)/.test(key.toLowerCase()) && !/(avg|average|mean|median|rate|ratio|percent|percentage|duration|seconds?)/.test(key.toLowerCase()) ? "Numeric additivity cannot be determined from values alone; confirm the field role." : null,
     }
   }
 

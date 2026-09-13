@@ -10,6 +10,14 @@ const numeric = buildDatasetSheet("Numbers", ["Amount"], [["1,234.50"], ["$99"],
 check("currency and parenthesised values infer as numbers", numeric.columns[0].data_type === "number")
 assert.deepEqual(numeric.rows.map((row) => row.data.amount), [1234.5, 99, -45])
 
+const analytics = buildDatasetSheet("Analytics", ["day", "path", "visitors", "views", "avg_seconds"], [
+  ["2026-09-01", "/", 5, 12, 2.5],
+  ["2026-09-02", "/", 3, 8, 3.25],
+])
+assert.deepEqual(Object.fromEntries(analytics.columns.map((column) => [column.key, column.role])), {
+  day: "time", path: "dimension", visitors: "measure_non_additive", views: "measure_additive", avg_seconds: "measure_non_additive",
+})
+
 const isoDates = buildDatasetSheet("ISO dates", ["Day"], [["2026-01-08"], ["2026-01-09"]])
 check("ISO values infer as dates", isoDates.columns[0].data_type === "date")
 check("date values remain YYYY-MM-DD", isoDates.rows[0].data.day === "2026-01-08")

@@ -119,10 +119,10 @@ export async function validateDefinitionAccess(userId: string, input: ReportDefi
     if (invalidMetric?.field) throw new TypeError(`${invalidMetric.field} is not a numeric field and cannot use ${invalidMetric.aggregation}`)
     return
   }
-  let datasets: Array<{ id: string; file_id: string; sheet_name: string | null }> = []
-  let dataset: { id: string; file_id: string; sheet_name: string | null } | null = null
+  let datasets: Array<{ id: string; file_id: string; sheet_name: string | null; row_count?: number | null }> = []
+  let dataset: { id: string; file_id: string; sheet_name: string | null; row_count?: number | null } | null = null
   if (input.source.datasetId) {
-    const { data, error } = await supabaseAdmin.from("datasets").select("id, file_id, sheet_name").eq("id", input.source.datasetId).eq("user_id", userId).is("archived_at", null).maybeSingle()
+    const { data, error } = await supabaseAdmin.from("datasets").select("id, file_id, sheet_name, row_count").eq("id", input.source.datasetId).eq("user_id", userId).is("archived_at", null).maybeSingle()
     if (error) throw new Error(error.message)
     if (!data) {
       const { data: archived, error: archivedError } = await supabaseAdmin.from("datasets").select("id").eq("id", input.source.datasetId).eq("user_id", userId).not("archived_at", "is", null).maybeSingle()
@@ -136,13 +136,13 @@ export async function validateDefinitionAccess(userId: string, input: ReportDefi
     const scope = await resolveReportFolderScope(userId, input.source.folderId)
     const { data: files, error: filesError } = await supabaseAdmin.from("files").select("id").eq("user_id", userId).in("folder_id", scope?.folderIds ?? [])
     if (filesError) throw new Error(filesError.message)
-    const { data: folderDatasets, error: datasetError } = await supabaseAdmin.from("datasets").select("id, file_id, sheet_name").eq("user_id", userId).in("file_id", (files ?? []).map((file) => file.id)).is("archived_at", null)
+    const { data: folderDatasets, error: datasetError } = await supabaseAdmin.from("datasets").select("id, file_id, sheet_name, row_count").eq("user_id", userId).in("file_id", (files ?? []).map((file) => file.id)).is("archived_at", null)
     if (datasetError) throw new Error(datasetError.message)
     datasets = (folderDatasets ?? []).sort((a, b) => a.id.localeCompare(b.id))
     if (!datasets.length) throw new TypeError("The selected folder contains no datasets")
   } else if (input.source.fileIds) {
     const selectedFiles = await resolveSelectedFiles(userId, input.source.fileIds)
-    const { data: selectedDatasets, error: datasetError } = await supabaseAdmin.from("datasets").select("id, file_id, sheet_name").eq("user_id", userId).in("file_id", selectedFiles.map((file) => file.id)).is("archived_at", null)
+    const { data: selectedDatasets, error: datasetError } = await supabaseAdmin.from("datasets").select("id, file_id, sheet_name, row_count").eq("user_id", userId).in("file_id", selectedFiles.map((file) => file.id)).is("archived_at", null)
     if (datasetError) throw new Error(datasetError.message)
     const position = new Map(input.source.fileIds.map((id, index) => [id, index]))
     datasets = (selectedDatasets ?? []).sort((a, b) => (position.get(a.file_id) ?? Number.MAX_SAFE_INTEGER) - (position.get(b.file_id) ?? Number.MAX_SAFE_INTEGER) || String(a.sheet_name).localeCompare(String(b.sheet_name)) || a.id.localeCompare(b.id))
@@ -160,6 +160,7 @@ export async function validateDefinitionAccess(userId: string, input: ReportDefi
   const baseDatasetId = datasets[0].id
   const typeByField = new Map((columns ?? []).filter((column) => column.dataset_id === baseDatasetId).map((column) => [column.key, column.data_type]))
   const roleByField = new Map((columns ?? []).filter((column) => column.dataset_id === baseDatasetId).map((column) => [column.key, column.role]))
+  const nullCountByField = new Map((columns ?? []).filter((column) => column.dataset_id === baseDatasetId).map((column) => [column.key, column.null_count]))
   const unknown = referenced.filter((field) => !typeByField.has(field))
   if (unknown.length) throw new TypeError(`Definition references unavailable dataset fields: ${unknown.join(", ")}`)
   if (input.source.dateField && typeByField.get(input.source.dateField) !== "date") throw new TypeError("source.dateField must reference a date column")
@@ -176,8 +177,21 @@ export async function validateDefinitionAccess(userId: string, input: ReportDefi
       return false
     })
   })
-  if (invalidMetric?.field) throw new TypeError(`${invalidMetric.field} is not a numeric dataset column and cannot use ${invalidMetric.aggregation}`)
-  if (invalidMetric?.numerator || invalidMetric?.denominator) throw new TypeError("Ratio fields must be numeric dataset columns with compatible semantic roles")
+  if (invalidMetric) {
+    const fields = invalidMetric.aggregation === "ratio" ? [invalidMetric.numerator, invalidMetric.denominator] : [invalidMetric.field]
+    const field = fields.find((candidate) => candidate && (typeByField.get(candidate) !== "number" || ["identifier", "descriptor", "ignored"].includes(String(invalidMetric.role ?? roleByField.get(candidate))) || (invalidMetric.aggregation === "sum" && (invalidMetric.role ?? roleByField.get(candidate)) === "measure_non_additive")))
+    const baseRows = datasets.find((item) => item.id === baseDatasetId)?.row_count ?? null
+    if (field && nullCountByField.get(field) != null && baseRows != null && nullCountByField.get(field) === baseRows && typeByField.get(field) !== "number") {
+      throw new TypeError(`${field} is empty in all rows; no type could be inferred and it cannot use ${invalidMetric.aggregation}`)
+    }
+    const role = field ? invalidMetric.role ?? roleByField.get(field) : null
+    if (role === "measure_non_additive" && invalidMetric.aggregation === "sum") throw new TypeError(`${field} is declared measure_non_additive and cannot be summed at this dataset grain`)
+    if (field && ["identifier", "descriptor", "ignored"].includes(String(role))) throw new TypeError(`${field} is declared ${role} and cannot use ${invalidMetric.aggregation}`)
+    if (invalidMetric.aggregation === "ratio") throw new TypeError("Ratio fields must be numeric dataset columns with compatible semantic roles")
+    if (field) throw new TypeError(`${field} is not a numeric dataset column and cannot use ${invalidMetric.aggregation}`)
+  }
+  const invalidGrouping = input.blocks.find((block) => block.type === "share" && ["identifier", "ignored"].includes(String(roleByField.get(block.groupBy))))
+  if (invalidGrouping?.type === "share") throw new TypeError(`${invalidGrouping.groupBy} is declared ${roleByField.get(invalidGrouping.groupBy)} and cannot be used as a grouping dimension`)
 }
 
 export async function listReportDefinitions(userId: string, search?: string): Promise<ReportDefinitionListItem[]> {

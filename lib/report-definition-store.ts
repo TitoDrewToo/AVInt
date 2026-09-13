@@ -6,6 +6,7 @@ import { relationshipOutputField, validateDataRelationshipDefinitionPayload } fr
 
 export class ReportDefinitionNotFoundError extends Error {}
 export class ReportDefinitionConflictError extends Error {}
+export class ReportDefinitionWriteError extends Error {}
 
 async function validateExecutableSource(userId: string, input: ReportDefinitionInput) {
   const { loadReportDefinitionSource } = await import("@/lib/report-definition-engine")
@@ -189,9 +190,10 @@ export async function createReportDefinition(userId: string, input: unknown, aut
   const base = slugifyReportTitle(validated.value.title)
   for (let suffix = 1; suffix <= 100; suffix += 1) {
     const slug = slugWithSuffix(base, suffix)
-    const { data, error } = await supabaseAdmin.from("report_definitions").insert({ user_id: userId, slug, ...validated.value, authored_by: authoredBy }).select("*").single()
+    const payload = { user_id: userId, slug, ...validated.value, authored_by: authoredBy, blocks: JSON.parse(JSON.stringify(validated.value.blocks)) }
+    const { data, error } = await supabaseAdmin.from("report_definitions").insert(payload).select("*").single()
     if (!error && data) return data as ReportDefinition
-    if (error?.code !== "23505") throw new Error(error?.message ?? "Definition could not be created")
+    if (error?.code !== "23505") throw new ReportDefinitionWriteError(`Report definition could not be saved${error?.message ? `: ${error.message}` : ""}`)
   }
   throw new ReportDefinitionConflictError("A unique report slug could not be allocated")
 }
@@ -204,8 +206,8 @@ export async function updateReportDefinition(userId: string, slug: string, input
   if (!validated.ok) throw new TypeError(validated.error)
   await validateDefinitionAccess(userId, validated.value)
   await validateExecutableSource(userId, validated.value)
-  const { data, error } = await supabaseAdmin.from("report_definitions").update({ ...validated.value, authored_by: authoredBy, version: expectedVersion + 1 }).eq("id", current.id).eq("user_id", userId).eq("version", expectedVersion).is("archived_at", null).select("*").maybeSingle()
-  if (error) throw new Error(error.message)
+  const { data, error } = await supabaseAdmin.from("report_definitions").update({ ...validated.value, authored_by: authoredBy, version: expectedVersion + 1, blocks: JSON.parse(JSON.stringify(validated.value.blocks)) }).eq("id", current.id).eq("user_id", userId).eq("version", expectedVersion).is("archived_at", null).select("*").maybeSingle()
+  if (error) throw new ReportDefinitionWriteError(`Report definition could not be saved: ${error.message}`)
   if (!data) throw new ReportDefinitionConflictError("Report definition changed while it was being saved")
   return data as ReportDefinition
 }

@@ -15,7 +15,7 @@ import { buildDashboardAIContext } from "@/lib/dashboard-ai-context"
 import { readVirtualModel } from "@/lib/virtual-model"
 import { PLAN_LIMITS, usageWindowForTier } from "@/supabase/functions/_shared/plan-limits"
 import { corsPreflight, withCors } from "@/lib/mcp-cors"
-import { createReportDefinition, getReportDefinition, listReportDefinitions, ReportDefinitionConflictError, ReportDefinitionNotFoundError, updateReportDefinition } from "@/lib/report-definition-store"
+import { createReportDefinition, getReportDefinition, listReportDefinitions, ReportDefinitionConflictError, ReportDefinitionNotFoundError, ReportDefinitionWriteError, updateReportDefinition } from "@/lib/report-definition-store"
 import { ReportDefinitionExecutionError, runReportDefinition } from "@/lib/report-definition-engine"
 import { validateReportDefinitionPayload } from "@/lib/report-definitions"
 import { listSavedDashboardWidgets, saveDashboardWidget } from "@/lib/dashboard-widget-store"
@@ -51,7 +51,7 @@ function limitedResult(message: string) {
 }
 
 function mcpToolError(error: unknown, userId: string, stage: string, fallback: string) {
-  if (error instanceof TypeError || error instanceof IngestBatchConflictError || error instanceof ReportDefinitionNotFoundError || error instanceof ReportDefinitionConflictError || error instanceof ReportDefinitionExecutionError || error instanceof VirtualDatasetNotFoundError || error instanceof VirtualDatasetConflictError || error instanceof DataMappingProfileNotFoundError || error instanceof DataMappingProfileConflictError || error instanceof DataRelationshipNotFoundError || error instanceof DataRelationshipConflictError || error instanceof DataRelationshipExecutionError) {
+  if (error instanceof TypeError || error instanceof IngestBatchConflictError || error instanceof ReportDefinitionNotFoundError || error instanceof ReportDefinitionConflictError || error instanceof ReportDefinitionWriteError || error instanceof ReportDefinitionExecutionError || error instanceof VirtualDatasetNotFoundError || error instanceof VirtualDatasetConflictError || error instanceof DataMappingProfileNotFoundError || error instanceof DataMappingProfileConflictError || error instanceof DataRelationshipNotFoundError || error instanceof DataRelationshipConflictError || error instanceof DataRelationshipExecutionError) {
     return featureResult(error.message)
   }
   logApiError(error, { route: "mcp", stage, userId })
@@ -94,18 +94,18 @@ async function logJsonRpcMethod(req: NextRequest) {
 
 function buildHandler(userId: string, entitlement: ReturnType<typeof computeEntitlement>) {
   return createMcpHandler((server) => {
-    for (const kind of ["files", "folders"] as const) {
-      server.registerTool(`smart_storage.list_${kind}`, {
-        title: `List Smart Storage ${kind}`,
-        description: `Read-only, paginated owned ${kind}. Files include rejected, quarantined, failed and pending uploads. Does not return file contents.`,
-        inputSchema: z.object({ page: z.number().int().min(0).default(0), pageSize: z.number().int().min(1).max(100).default(40), search: z.string().max(120).optional() }),
-      }, async ({ page, pageSize, search }) => {
-        const blocked = await toolGuard(userId, entitlement, "profile")
-        if (blocked) return blocked
-        try { return { content: [{ type: "text" as const, text: JSON.stringify(await listStorageResources(userId, kind, page, pageSize, search)) }] } }
-        catch (error) { return mcpToolError(error, userId, `list_${kind}`, "Storage resources could not be listed") }
-      })
-    }
+    const listStorage = (kind: "files" | "folders", toolName: string, title: string) => server.registerTool(toolName, {
+      title,
+      description: `Read-only, paginated owned ${kind}. Files include rejected, quarantined, failed and pending uploads. Does not return file contents.`,
+      inputSchema: z.object({ page: z.number().int().min(0).optional(), pageSize: z.number().int().min(1).max(100).optional(), search: z.string().max(120).optional() }),
+    }, async ({ page, pageSize, search }) => {
+      const blocked = await toolGuard(userId, entitlement, "profile")
+      if (blocked) return blocked
+      try { return { content: [{ type: "text" as const, text: JSON.stringify(await listStorageResources(userId, kind, page ?? 0, pageSize ?? 40, search)) }] } }
+      catch (error) { return mcpToolError(error, userId, toolName.replace("smart_storage.", ""), "Storage resources could not be listed") }
+    })
+    listStorage("files", "smart_storage.list_files", "List Smart Storage files")
+    listStorage("folders", "smart_storage.list_folders", "List Smart Storage folders")
     server.registerTool("smart_storage.create_folder", {
       title: "Create an owned folder", description: "Create a personal folder for source targeting. Optional parent_id must belong to the signed-in user; this does not enable sharing.",
       inputSchema: z.object({ name: z.string().trim().min(1).max(120), parent_id: z.string().uuid().optional() }),
@@ -193,16 +193,16 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
         fieldKey: z.string().max(120).optional(),
         customOnly: z.boolean().optional().default(false),
         includeExcluded: z.boolean().optional().default(false),
-        page: z.number().int().min(0).default(0),
-        pageSize: z.number().int().min(1).max(40).default(40),
+        page: z.number().int().min(0).optional(),
+        pageSize: z.number().int().min(1).max(40).optional(),
         fileId: z.string().uuid().optional().describe("Focus records and dataset metadata on one owned file; discover IDs with list_files."),
       }),
     }, async ({ search, status, documentType, fieldKey, customOnly, includeExcluded, page, pageSize, fileId }) => timedTool("smart_storage.virtual_model", async () => {
       const blocked = await toolGuard(userId, entitlement, "profile")
       if (blocked) return blocked
-      const model = await readVirtualModel(userId, { search, status, documentType, fieldKey, customOnly, includeExcluded, page, pageSize, fileId })
+      const model = await readVirtualModel(userId, { search, status, documentType, fieldKey, customOnly, includeExcluded, page: page ?? 0, pageSize: pageSize ?? 40, fileId })
       const files = model.files.map(({ id, filename, folder_id, upload_status, scan_reason, document_type }) => ({ id, filename, folder_id, upload_status, scan_reason, document_type }))
-      return { content: [{ type: "text", text: JSON.stringify({ ...model, files, bounded: true, maxRecords: pageSize, truncationGuidance: model.hasMore ? "Use nextPage as page with the same filters to continue; use fileId to focus source metadata." : null }, null, 2) }] }
+      return { content: [{ type: "text", text: JSON.stringify({ ...model, files, bounded: true, maxRecords: pageSize ?? 40, truncationGuidance: model.hasMore ? "Use nextPage as page with the same filters to continue; use fileId to focus source metadata." : null }, null, 2) }] }
     }))
 
     server.registerTool("smart_storage.report", {

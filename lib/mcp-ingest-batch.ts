@@ -173,12 +173,22 @@ export async function getIngestBatchStatus(userId: string, idempotencyKey: strin
     .eq("user_id", userId)
     .order("item_index")
   if (itemsError) throw new Error(itemsError.message)
+  const fileIds = (rows ?? []).map((row: any) => row.file_id).filter(Boolean)
+  const { data: jobs, error: jobsError } = fileIds.length
+    ? await supabaseAdmin.from("processing_jobs").select("file_id, status, error_message, created_at").in("file_id", fileIds).order("created_at", { ascending: false })
+    : { data: [], error: null }
+  if (jobsError) throw new Error(jobsError.message)
+  const latestJobByFile = new Map<string, any>()
+  for (const job of jobs ?? []) if (!latestJobByFile.has(job.file_id)) latestJobByFile.set(job.file_id, job)
   if (scope.workflowId && (rows ?? []).some((row: any) => row.file_id && (Array.isArray(row.files) ? row.files[0]?.folder_id : row.files?.folder_id) !== scope.folderId)) throw new Error("Ingest batch not found.")
 
   const stateChanges: Array<PromiseLike<unknown>> = []
   const items = (rows ?? []).map((row: any) => {
     const uploadStatus = Array.isArray(row.files) ? row.files[0]?.upload_status : row.files?.upload_status
-    const status: BatchItemStatus = uploadStatus === "done" || uploadStatus === "normalized"
+    const processingJob = row.file_id ? latestJobByFile.get(row.file_id) : null
+    const status: BatchItemStatus = processingJob?.status === "failed"
+      ? "failed"
+      : uploadStatus === "done" || uploadStatus === "normalized"
       ? "normalized"
       : uploadStatus === "quarantined" || uploadStatus === "rejected"
         ? "rejected"
@@ -189,8 +199,8 @@ export async function getIngestBatchStatus(userId: string, idempotencyKey: strin
       stateChanges.push(supabaseAdmin.from("ingest_batch_items").update({ status, lease_expires_at: null }).eq("id", row.id).eq("user_id", userId))
     }
     const file = Array.isArray(row.files) ? row.files[0] : row.files
-    const reason = (status === "failed" || status === "rejected") ? file?.scan_reason ?? null : null
-    return { item_id: row.id, item_index: row.item_index, filename: row.filename, file_id: row.file_id, status, attempt_count: row.attempt_count, reason, message: row.error_message ?? reason ?? (status === "rejected" ? "File was not admitted. Inspect its scan status before retrying." : status === "failed" ? "Processing did not complete. Inspect file status before retrying." : null) }
+    const reason = (status === "failed" || status === "rejected") ? file?.scan_reason ?? (processingJob?.status === "failed" ? "normalization_failed" : null) : null
+    return { item_id: row.id, item_index: row.item_index, filename: row.filename, file_id: row.file_id, status, attempt_count: row.attempt_count, reason, message: row.error_message ?? processingJob?.error_message ?? reason ?? (status === "rejected" ? "File was not admitted. Inspect its scan status before retrying." : status === "failed" ? "Processing did not complete. Inspect file status before retrying." : null) }
   })
   const persistedChanges: any[] = await Promise.all(stateChanges)
   const stateError = persistedChanges.find((result) => result.error)?.error

@@ -1310,6 +1310,17 @@ serve(async (req) => {
         body: JSON.stringify({ file_id, job_id: currentJobId, source_key: row.source_key, fields: row, reprocess: isReprocess, extraction_id: extractionId }),
       },
     )
+    const normalizeSpreadsheetBatch = (batch: any[]) => fetch(
+      `${SUPABASE_URL}/functions/v1/normalize-spreadsheet-batch`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        },
+        body: JSON.stringify({ file_id, rows: batch }),
+      },
+    )
 
     if (rowsForNormalization.length === 1) {
       const normalizeResponse = await normalizeOne(rowsForNormalization[0], job_id)
@@ -1321,7 +1332,35 @@ serve(async (req) => {
       }
     }
 
-    // For CSV multi-row inputs, use a bounded worker pool. An unbounded
+    // // Spreadsheet rows are deterministic facts and do not need one edge
+    // invocation each. Batch them into a single normalizer request (with a
+    // conservative payload bound) so the platform invocation quota is not a
+    // correctness limit for CSV/analytics imports.
+    if (isCsv && rowsForNormalization.length > 1) {
+      const BATCH_SIZE = 50
+      const failures: Array<{ source_key: string; cause: string }> = []
+      for (let offset = 0; offset < rowsForNormalization.length; offset += BATCH_SIZE) {
+        const batch = rowsForNormalization.slice(offset, offset + BATCH_SIZE)
+        try {
+          const response = await normalizeSpreadsheetBatch(batch)
+          const body = await response.json().catch(() => ({}))
+          if (!response.ok && response.status !== 207) {
+            const retryAfter = Number.parseInt(response.headers.get("retry-after") ?? "", 10)
+            if (Number.isFinite(retryAfter) && retryAfter > 0 && retryAfter <= 60) await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000))
+            failures.push(...batch.map((row) => ({ source_key: row.source_key, cause: `${response.status} ${body?.error ?? "batch normalization failed"}` })))
+          }
+          if (Array.isArray(body?.failures)) failures.push(...body.failures)
+        } catch (cause) {
+          failures.push(...batch.map((row) => ({ source_key: row.source_key, cause: cause instanceof Error ? cause.message : String(cause) })))
+        }
+      }
+      if (failures.length) {
+        logError(FN, "normalize_fanout_incomplete", new Error(`${failures.length} of ${rowsForNormalization.length} rows failed`), { file_id, failures })
+        await supabase.from("processing_jobs").update({ status: "failed", completed_at: new Date().toISOString(), error_message: `Normalization incomplete: ${failures.length} of ${rowsForNormalization.length} rows failed` }).eq("file_id", file_id).in("status", ["uploaded", "processing"])
+      }
+    }
+
+    // For non-spreadsheet multi-row inputs, use a bounded worker pool. An unbounded
     // Promise.all overwhelms the edge runtime around ~60 concurrent child
     // invocations; the rejected/never-started rows then strand the file in
     // processing with no evidence of which rows were lost.

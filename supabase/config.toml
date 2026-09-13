@@ -21,6 +21,12 @@ entrypoint = "./functions/normalize-document/index.ts"
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/normalize-document/*.html" ]
 
+[functions.normalize-spreadsheet-batch]
+enabled = true
+verify_jwt = false
+import_map = "./functions/normalize-spreadsheet-batch/deno.json"
+entrypoint = "./functions/normalize-spreadsheet-batch/index.ts"
+
 [functions.analyze-spreadsheet]
 enabled = true
 verify_jwt = false

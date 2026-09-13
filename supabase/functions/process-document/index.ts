@@ -1364,7 +1364,7 @@ serve(async (req) => {
     // Promise.all overwhelms the edge runtime around ~60 concurrent child
     // invocations; the rejected/never-started rows then strand the file in
     // processing with no evidence of which rows were lost.
-    if (rowsForNormalization.length > 1) {
+    if (!isCsv && rowsForNormalization.length > 1) {
       const NORMALIZE_CONCURRENCY = 8
       const MAX_RETRIES = 1
       const RETRY_BACKOFF_MS = 250

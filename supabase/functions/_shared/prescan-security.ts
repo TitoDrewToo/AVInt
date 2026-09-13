@@ -17,6 +17,12 @@ const DOCUMENT_CATEGORIES = new Set([
   "other_financial", "operational_data", "unrelated",
 ])
 
+// Structural and abuse checks remain mandatory. Topic and topic-confidence
+// cannot reject otherwise processable files in a general operational dataset.
+export function suitabilityBlocksAdmission(result: PrescanSafetyResult): boolean {
+  return result.abuse_flag
+}
+
 export function parsePrescanSafetyJson(provider: string, rawText: string): PrescanSafetyResult {
   const stripped = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim()
   const objectMatch = stripped.match(/\{[\s\S]*\}/)

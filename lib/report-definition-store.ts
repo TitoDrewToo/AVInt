@@ -7,6 +7,11 @@ import { relationshipOutputField, validateDataRelationshipDefinitionPayload } fr
 export class ReportDefinitionNotFoundError extends Error {}
 export class ReportDefinitionConflictError extends Error {}
 
+async function validateExecutableSource(userId: string, input: ReportDefinitionInput) {
+  const { loadReportDefinitionSource } = await import("@/lib/report-definition-engine")
+  await loadReportDefinitionSource(userId, { ...input, id: "save-validation", user_id: userId, slug: "save-validation", version: 1, authored_by: "user", archived_at: null, created_at: "", updated_at: "" })
+}
+
 async function resolveSelectedFiles(userId: string, fileIds: string[]) {
   const { data, error } = await supabaseAdmin.from("files").select("id, filename, folder_id").eq("user_id", userId).in("id", fileIds)
   if (error) throw new Error(error.message)
@@ -69,7 +74,11 @@ export async function validateDefinitionAccess(userId: string, input: ReportDefi
     if (unknown.length) throw new TypeError(`Definition references fields outside the virtual dataset projection: ${unknown.join(", ")}`)
     return validateDefinitionAccess(userId, {
       ...input,
-      source: data.source,
+      source: {
+        ...data.source,
+        ...(input.source.kind === "virtual_dataset" && input.source.dateField ? { dateField: input.source.dateField } : {}),
+        ...(input.source.kind === "virtual_dataset" && input.source.currencyField ? { currencyField: input.source.currencyField } : {}),
+      },
       scope: data.scope,
       filters: [...(Array.isArray(data.filters) ? data.filters : []), ...input.filters],
     })
@@ -176,6 +185,7 @@ export async function createReportDefinition(userId: string, input: unknown, aut
   const validated = validateReportDefinitionPayload(input)
   if (!validated.ok) throw new TypeError(validated.error)
   await validateDefinitionAccess(userId, validated.value)
+  await validateExecutableSource(userId, validated.value)
   const base = slugifyReportTitle(validated.value.title)
   for (let suffix = 1; suffix <= 100; suffix += 1) {
     const slug = slugWithSuffix(base, suffix)
@@ -193,6 +203,7 @@ export async function updateReportDefinition(userId: string, slug: string, input
   const validated = validateReportDefinitionPayload({ ...current, ...(input && typeof input === "object" && !Array.isArray(input) ? input : {}) })
   if (!validated.ok) throw new TypeError(validated.error)
   await validateDefinitionAccess(userId, validated.value)
+  await validateExecutableSource(userId, validated.value)
   const { data, error } = await supabaseAdmin.from("report_definitions").update({ ...validated.value, authored_by: authoredBy, version: expectedVersion + 1 }).eq("id", current.id).eq("user_id", userId).eq("version", expectedVersion).is("archived_at", null).select("*").maybeSingle()
   if (error) throw new Error(error.message)
   if (!data) throw new ReportDefinitionConflictError("Report definition changed while it was being saved")

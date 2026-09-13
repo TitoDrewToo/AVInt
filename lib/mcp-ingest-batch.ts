@@ -168,7 +168,7 @@ export async function getIngestBatchStatus(userId: string, idempotencyKey: strin
   if (!batch || !batchScopeMatches(userId, batch, scope)) throw new Error("Ingest batch not found.")
   const { data: rows, error: itemsError } = await supabaseAdmin
     .from("ingest_batch_items")
-    .select("id, item_index, filename, file_id, status, error_message, attempt_count, files(upload_status, folder_id)")
+    .select("id, item_index, filename, file_id, status, error_message, attempt_count, files(upload_status, folder_id, scan_reason)")
     .eq("batch_id", batch.id)
     .eq("user_id", userId)
     .order("item_index")
@@ -188,7 +188,9 @@ export async function getIngestBatchStatus(userId: string, idempotencyKey: strin
     if (status !== row.status) {
       stateChanges.push(supabaseAdmin.from("ingest_batch_items").update({ status, lease_expires_at: null }).eq("id", row.id).eq("user_id", userId))
     }
-    return { item_id: row.id, item_index: row.item_index, filename: row.filename, file_id: row.file_id, status, attempt_count: row.attempt_count, message: row.error_message }
+    const file = Array.isArray(row.files) ? row.files[0] : row.files
+    const reason = (status === "failed" || status === "rejected") ? file?.scan_reason ?? null : null
+    return { item_id: row.id, item_index: row.item_index, filename: row.filename, file_id: row.file_id, status, attempt_count: row.attempt_count, reason, message: row.error_message ?? reason ?? (status === "rejected" ? "File was not admitted. Inspect its scan status before retrying." : status === "failed" ? "Processing did not complete. Inspect file status before retrying." : null) }
   })
   const persistedChanges: any[] = await Promise.all(stateChanges)
   const stateError = persistedChanges.find((result) => result.error)?.error

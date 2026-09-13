@@ -4,7 +4,7 @@ import { fetchWithTimeout } from "../_shared/fetch.ts"
 import { recordAiUsage } from "../_shared/ai-usage.ts"
 import { ensureExtraction } from "../_shared/write-extraction.ts"
 import { analyzePdf } from "../_shared/pdf-prescan.ts"
-import { findKnownQuarantinedFile, parsePrescanSafetyJson, type PrescanSafetyResult } from "../_shared/prescan-security.ts"
+import { findKnownQuarantinedFile, parsePrescanSafetyJson, suitabilityBlocksAdmission, type PrescanSafetyResult } from "../_shared/prescan-security.ts"
 import { buildXlsxPreview, inspectCsv, inspectXlsxArchive } from "../_shared/spreadsheet-prescan.ts"
 import {
   claimPrescanFile,
@@ -539,12 +539,11 @@ serve(async (req) => {
         aiProvider: usedProvider,
         aiModel: usedModel,
       })
-      if (safety.abuse_flag) {
+      if (suitabilityBlocksAdmission(safety)) {
         throw new PrescanReject("abuse_content", "This file cannot be accepted because its content is prohibited.")
       }
-      if (!safety.is_processable || safety.confidence < 0.7) {
-        throw new PrescanReject("content_unrelated", "This file does not appear to contain supported personal, financial, or operational records.")
-      }
+      // Suitability is advisory, not an admission gate. Supported structured
+      // reference/analytics files need no financial subject-matter endorsement.
     }
 
     // ── Approved path ───────────────────────────────────────────────────────
@@ -606,7 +605,7 @@ serve(async (req) => {
     if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(chain)
 
     return new Response(
-      JSON.stringify({ ok: true, approved: true, category: safety?.doc_category ?? null }),
+      JSON.stringify({ ok: true, approved: true, category: safety?.doc_category ?? null, warnings: safety && (!safety.is_processable || safety.confidence < 0.7) ? ["Subject classification is uncertain; inspect the extracted dataset before using it."] : [] }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     )
   } catch (err: any) {

@@ -44,12 +44,15 @@ export async function createVirtualDatasetDefinition(userId: string, input: unkn
   const validated = validateVirtualDatasetDefinitionPayload(input)
   if (!validated.ok) throw new TypeError(validated.error)
   await validateAccess(userId, validated.value)
-  const base = slugifyReportTitle(validated.value.title)
+  const requestedSlug = input && typeof input === "object" && "slug" in input ? input.slug : undefined
+  if (requestedSlug !== undefined && (typeof requestedSlug !== "string" || !/^[a-z0-9](?:[a-z0-9-]{0,78}[a-z0-9])?$/.test(requestedSlug))) throw new TypeError("slug must be a valid virtual dataset handle")
+  const base = typeof requestedSlug === "string" ? requestedSlug : slugifyReportTitle(validated.value.title)
   for (let suffix = 1; suffix <= 100; suffix += 1) {
     const slug = slugWithSuffix(base, suffix)
     const { data, error } = await supabaseAdmin.from("virtual_dataset_definitions").insert({ user_id: userId, slug, ...validated.value, authored_by: authoredBy }).select("*").single()
     if (!error && data) return data as VirtualDatasetDefinition
     if (error?.code !== "23505") throw new Error(error?.message ?? "Virtual dataset could not be created")
+    if (requestedSlug) throw new VirtualDatasetConflictError("The requested virtual dataset slug already exists; use its current version to update it")
   }
   throw new VirtualDatasetConflictError("A unique virtual dataset slug could not be allocated")
 }

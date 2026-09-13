@@ -37,6 +37,7 @@ export type DerivedAttribute = {
   value: unknown
   value_type: "string" | "number" | "boolean" | "date" | "array" | "object" | "null"
   confidence: number | null
+  source_evidence?: Record<string, unknown> | null
 }
 
 export type DeriveResult = {
@@ -47,7 +48,7 @@ export type DeriveResult = {
 
 type FileInput = { id: string; user_id: string }
 
-const META_FIELDS = new Set(["document_type", "confidence", "confidence_score", "field_confidence", "_field_confidence", "line_items"])
+const META_FIELDS = new Set(["document_type", "confidence", "confidence_score", "field_confidence", "_field_confidence", "line_items", "_field_evidence", "_source_sheet", "_source_index", "_custom_fields"])
 const FINANCIAL_TYPES = new Set([
   "receipt", "invoice", "payslip", "income_statement", "bank_statement", "transaction_record", "tax_document",
 ])
@@ -106,7 +107,7 @@ function firstNonNull(...values: unknown[]): unknown {
 }
 
 function counterpartyFor(row: Record<string, unknown>): unknown {
-  return firstNonNull(row.vendor_name, row.employer_name)
+  return firstNonNull(row.counterparty_name, row.vendor_name, row.employer_name)
 }
 
 function isParentRestatement(item: Record<string, unknown>, parentAmount: unknown): boolean {
@@ -210,6 +211,7 @@ function attributesFor(row: Record<string, unknown>, file: FileInput, sourceKey:
       value,
       value_type: valueType(key, value),
       confidence: rowConfidence(row, key, fieldConfidence),
+      source_evidence: isObject(row._field_evidence) && isObject(row._field_evidence[key]) ? row._field_evidence[key] : null,
     }))
 }
 

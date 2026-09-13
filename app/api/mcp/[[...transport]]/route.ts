@@ -28,6 +28,8 @@ import { previewDataMappingProfile } from "@/lib/data-mapping-service"
 import { activateDataRelationship, createDataRelationship, getDataRelationship, listDataRelationships, updateDataRelationship, DataRelationshipConflictError, DataRelationshipNotFoundError } from "@/lib/data-relationship-store"
 import { previewDataRelationship } from "@/lib/data-relationship-service"
 import { DataRelationshipExecutionError } from "@/lib/data-relationship-engine"
+import { mappingProfileSchema, relationshipSchema, reportDefinitionSchema, virtualDatasetSchema } from "@/lib/mcp-definition-schemas"
+import { createOwnedFolder, listStorageResources, requireOwnedFolder } from "@/lib/mcp-storage-discovery"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -92,9 +94,30 @@ async function logJsonRpcMethod(req: NextRequest) {
 
 function buildHandler(userId: string, entitlement: ReturnType<typeof computeEntitlement>) {
   return createMcpHandler((server) => {
+    for (const kind of ["files", "folders"] as const) {
+      server.registerTool(`smart_storage.list_${kind}`, {
+        title: `List Smart Storage ${kind}`,
+        description: `Read-only, paginated owned ${kind}. Files include rejected, quarantined, failed and pending uploads. Does not return file contents.`,
+        inputSchema: z.object({ page: z.number().int().min(0).default(0), pageSize: z.number().int().min(1).max(100).default(40), search: z.string().max(120).optional() }),
+      }, async ({ page, pageSize, search }) => {
+        const blocked = await toolGuard(userId, entitlement, "profile")
+        if (blocked) return blocked
+        try { return { content: [{ type: "text" as const, text: JSON.stringify(await listStorageResources(userId, kind, page, pageSize, search)) }] } }
+        catch (error) { return mcpToolError(error, userId, `list_${kind}`, "Storage resources could not be listed") }
+      })
+    }
+    server.registerTool("smart_storage.create_folder", {
+      title: "Create an owned folder", description: "Create a personal folder for source targeting. Optional parent_id must belong to the signed-in user; this does not enable sharing.",
+      inputSchema: z.object({ name: z.string().trim().min(1).max(120), parent_id: z.string().uuid().optional() }),
+    }, async ({ name, parent_id }) => {
+      const blocked = await toolGuard(userId, entitlement, "report")
+      if (blocked) return blocked
+      try { return { content: [{ type: "text" as const, text: JSON.stringify({ folder: await createOwnedFolder(userId, name, parent_id) }) }] } }
+      catch (error) { return mcpToolError(error, userId, "create_folder", "Folder could not be created") }
+    })
     server.registerTool("smart_storage.ingest", {
       title: "Smart Storage ingest",
-      description: "Queue up to 6 financial documents for the signed-in user's Smart Storage. Duplicate bytes are refused by default before extraction; set allow_duplicate true only when you intentionally want another copy. Provide a new UUID idempotency key and reuse that exact key when retrying the same ordered files. Each file is prescanned independently; the response returns stable IDs immediately while normalization continues.",
+      description: "Queue up to 6 supported documents or operational data files. Discover personal destinations with list_folders. Duplicate bytes are refused by default; allow_duplicate is only for intentional copies. Reuse the exact idempotency key and destination when retrying. Each file is prescanned independently while normalization continues.",
       inputSchema: z.object({ idempotency_key: z.string().uuid(), files: z.array(fileSchema).min(1).max(6), allow_duplicate: z.boolean().optional().default(false), workflow_id: z.string().uuid().optional(), destination_folder_id: z.string().uuid().optional() }),
     }, async ({ idempotency_key, files, allow_duplicate, workflow_id, destination_folder_id }) => timedTool("smart_storage.ingest", async () => {
       const blocked = await toolGuard(userId, entitlement, "ingest")
@@ -114,7 +137,8 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
           ownerEntitlement = await entitlementForUser(ownerUserId)
           await recordCollaborationAudit({ actorUserId: userId, workflow: access.workflow, action: "submit", outcome: "allowed", decision: access.decision, metadata: { file_count: files.length } })
         }
-        const batch = await ingestFileBatch(ownerUserId, ownerEntitlement, idempotency_key, files as IngestFile[], { allowDuplicate: allow_duplicate, folderId: workflow_id ? destination_folder_id : undefined, actorUserId: userId, workflowId: workflow_id })
+        if (!workflow_id && destination_folder_id) await requireOwnedFolder(userId, destination_folder_id)
+        const batch = await ingestFileBatch(ownerUserId, ownerEntitlement, idempotency_key, files as IngestFile[], { allowDuplicate: allow_duplicate, folderId: destination_folder_id, actorUserId: userId, workflowId: workflow_id })
         if (delegatedAccess?.workflow) await recordCollaborationAudit({ actorUserId: userId, workflow: delegatedAccess.workflow, action: "submit", outcome: "completed", decision: delegatedAccess.decision, metadata: { batch_id: batch.batch_id, file_ids: batch.items.map(item => item.file_id).filter(Boolean) } })
         return { content: [{ type: "text", text: JSON.stringify(batch, null, 2) }] }
       } catch (error) { return mcpToolError(error, userId, "ingest", "The ingest batch could not be queued.") }
@@ -123,13 +147,13 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
     server.registerTool("smart_storage.ingest_status", {
       title: "Smart Storage ingest status",
       description: "Read-only. Check a resumable ingest batch by the exact idempotency key used to create it. Returns stable file IDs and per-file processing, completion, rejection, or retry status.",
-      inputSchema: z.object({ idempotency_key: z.string().uuid(), workflow_id: z.string().uuid().optional() }),
-    }, async ({ idempotency_key, workflow_id }) => timedTool("smart_storage.ingest_status", async () => {
+      inputSchema: z.object({ idempotency_key: z.string().uuid(), workflow_id: z.string().uuid().optional(), destination_folder_id: z.string().uuid().optional() }),
+    }, async ({ idempotency_key, workflow_id, destination_folder_id }) => timedTool("smart_storage.ingest_status", async () => {
       const blocked = await toolGuard(userId, entitlement, "profile")
       if (blocked) return blocked
       try {
         let batchUserId = userId
-        let batchFolderId: string | null = null
+        let batchFolderId: string | null = destination_folder_id ?? null
         let delegatedAccess: Awaited<ReturnType<typeof resolveCollaborationAccess>> | null = null
         if (workflow_id) {
           const access = await resolveCollaborationAccess({ actorUserId: userId, workflowId: workflow_id, action: "view" })
@@ -154,7 +178,9 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
       const blocked = await toolGuard(userId, entitlement, "profile")
       if (blocked) return blocked
       const profile = await buildDashboardAIContext(userId)
-      return { content: [{ type: "text", text: JSON.stringify(profile, null, 2) }] }
+      const { data: account, error } = await supabaseAdmin.auth.admin.getUserById(userId)
+      if (error) return mcpToolError(error, userId, "profile", "Account context could not be loaded")
+      return { content: [{ type: "text", text: JSON.stringify({ ...profile, account: { id: userId, email: account.user.email ?? null }, entitlement: { tier: entitlement.tier, plan: entitlement.plan, status: entitlement.status, isActive: entitlement.isActive, expiresAt: entitlement.expiresAt } }, null, 2) }] }
     }))
 
     server.registerTool("smart_storage.virtual_model", {
@@ -167,12 +193,16 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
         fieldKey: z.string().max(120).optional(),
         customOnly: z.boolean().optional().default(false),
         includeExcluded: z.boolean().optional().default(false),
+        page: z.number().int().min(0).default(0),
+        pageSize: z.number().int().min(1).max(40).default(40),
+        fileId: z.string().uuid().optional().describe("Focus records and dataset metadata on one owned file; discover IDs with list_files."),
       }),
-    }, async ({ search, status, documentType, fieldKey, customOnly, includeExcluded }) => timedTool("smart_storage.virtual_model", async () => {
+    }, async ({ search, status, documentType, fieldKey, customOnly, includeExcluded, page, pageSize, fileId }) => timedTool("smart_storage.virtual_model", async () => {
       const blocked = await toolGuard(userId, entitlement, "profile")
       if (blocked) return blocked
-      const model = await readVirtualModel(userId, { search, status, documentType, fieldKey, customOnly, includeExcluded })
-      return { content: [{ type: "text", text: JSON.stringify({ ...model, bounded: true, maxRecords: 40, truncationGuidance: model.truncated ? "Results are partial. Narrow by status, documentType, fieldKey, or search before drawing conclusions." : null }, null, 2) }] }
+      const model = await readVirtualModel(userId, { search, status, documentType, fieldKey, customOnly, includeExcluded, page, pageSize, fileId })
+      const files = model.files.map(({ id, filename, folder_id, upload_status, scan_reason, document_type }) => ({ id, filename, folder_id, upload_status, scan_reason, document_type }))
+      return { content: [{ type: "text", text: JSON.stringify({ ...model, files, bounded: true, maxRecords: pageSize, truncationGuidance: model.hasMore ? "Use nextPage as page with the same filters to continue; use fileId to focus source metadata." : null }, null, 2) }] }
     }))
 
     server.registerTool("smart_storage.report", {
@@ -215,14 +245,16 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
       title: "Save a reusable Smart Storage virtual dataset",
       description: "Create or version a declarative owned data selection for reuse by reports and dashboard visuals. Provide a records or dataset source, optional folder scope and filters, and 1–100 projected field names. Nested virtual datasets, SQL, formulas, and executable expressions are rejected.",
       inputSchema: z.object({
-        definition: z.record(z.string(), z.unknown()),
-        slug: z.string().min(1).max(80).optional(),
+        definition: virtualDatasetSchema,
+        slug: z.string().min(1).max(80).optional().describe("Existing handle to UPDATE only; requires expectedVersion. To CREATE with an exact handle, put slug inside definition and omit this argument."),
         expectedVersion: z.number().int().positive().optional(),
       }),
     }, async ({ definition, slug, expectedVersion }) => timedTool("smart_storage.save_virtual_dataset", async () => {
       const blocked = await toolGuard(userId, entitlement, "report")
       if (blocked) return blocked
       try {
+        if (slug && !expectedVersion) throw new TypeError("Updating requires expectedVersion. To create, omit top-level slug and optionally set definition.slug.")
+        if (slug && definition.slug && definition.slug !== slug) throw new TypeError("An update cannot rename the virtual dataset slug")
         const saved = slug
           ? await updateVirtualDatasetDefinition(userId, slug, definition, expectedVersion ?? 0, "assistant")
           : await createVirtualDatasetDefinition(userId, definition, "assistant")
@@ -255,7 +287,7 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
     server.registerTool("smart_storage.save_mapping_profile", {
       title: "Save a draft Smart Storage mapping profile",
       description: "Create or version a draft mapping profile. Legacy rules map one source field to a safe canonical field. Reconciliation rules declare a custom typed target, 1–10 ordered source candidates, required state, missing policy (null, exclude_row, exclude_dataset, reject), conflict policy, and optional time or currency role. Only allowlisted coercions are accepted. Rules cannot mix modes, execute expressions, activate themselves, or rewrite source records.",
-      inputSchema: z.object({ definition: z.record(z.string(), z.unknown()), slug: z.string().min(1).max(80).optional(), expectedVersion: z.number().int().positive().optional() }),
+      inputSchema: z.object({ definition: mappingProfileSchema, slug: z.string().min(1).max(80).optional().describe("Existing handle to update, not a requested new handle"), expectedVersion: z.number().int().positive().optional() }),
     }, async ({ definition, slug, expectedVersion }) => timedTool("smart_storage.save_mapping_profile", async () => {
       const blocked = await toolGuard(userId, entitlement, "report")
       if (blocked) return blocked
@@ -312,7 +344,7 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
     server.registerTool("smart_storage.save_relationship", {
       title: "Save a draft Smart Storage data relationship",
       description: "Create or version an equality-only relationship between two different owned virtual datasets. Declare one_to_one, one_to_many, or many_to_one cardinality and named keys. Saving never activates the relationship; SQL, formulas, expressions, and many-to-many joins are rejected.",
-      inputSchema: z.object({ definition: z.record(z.string(), z.unknown()), slug: z.string().min(1).max(80).optional(), expectedVersion: z.number().int().positive().optional() }),
+      inputSchema: z.object({ definition: relationshipSchema, slug: z.string().min(1).max(80).optional().describe("Existing handle to update, not a requested new handle"), expectedVersion: z.number().int().positive().optional() }),
     }, async ({ definition, slug, expectedVersion }) => timedTool("smart_storage.save_relationship", async () => {
       const blocked = await toolGuard(userId, entitlement, "report")
       if (blocked) return blocked
@@ -381,7 +413,7 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
       title: "Save a refreshable Smart Storage report",
       description: "Create or update a report definition using only the declarative AVIntelligence contract. Never submit SQL, HTML, executable expressions, or computed snapshot rows. Inspect smart_storage.virtual_model first and use only returned fields and owned identifiers. Records may target up to 100 source.fileIds; datasets require exactly one datasetId, folderId, or fileIds selector; active mapping profiles and virtual datasets resolve by owned slug. Folder and file selection are evidence boundaries, and incompatible datasets are disclosed rather than coerced. To update, provide the exact slug and expectedVersion.",
       inputSchema: z.object({
-        definition: z.record(z.string(), z.unknown()),
+        definition: reportDefinitionSchema,
         slug: z.string().min(1).max(80).optional(),
         expectedVersion: z.number().int().positive().optional(),
       }),

@@ -30,6 +30,9 @@ const EXTRACTION_FIELDS = [
   "is_recurring",
   "recurrence_cadence",
   "line_items",
+  "_source_sheet",
+  "_source_index",
+  "_field_evidence",
 ] as const
 
 export function buildExtractionPayload(row: Record<string, unknown>, documentType?: string | null): Record<string, unknown> {

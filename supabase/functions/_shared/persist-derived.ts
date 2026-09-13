@@ -82,6 +82,7 @@ function attributePayload(attribute: DerivedAttribute, recordId: string) {
     value_type: attribute.value_type,
     value_numeric: valueNumeric,
     confidence: attribute.confidence,
+    source_evidence: attribute.source_evidence ?? null,
   }
 }
 

@@ -77,6 +77,9 @@ export function deriveDirection(
     if (["neutral", "none"].includes(normalized)) return "neutral"
   }
 
+  // General operational sheets require an explicit direction mapping. A
+  // category or amount sign alone does not identify whose money is moving.
+  if (recordType === "csv_export" && typeof fields._source_sheet === "string") return null
   const amount = fields.total_amount ?? fields.net_income ?? fields.gross_income
   if ((recordType === "bank_statement" || recordType === "transaction_record" || recordType === "csv_export") && typeof amount === "number") {
     if (amount < 0) return "outflow"

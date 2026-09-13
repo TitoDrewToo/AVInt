@@ -8,6 +8,7 @@ import { persistDerived } from "../_shared/persist-derived.ts"
 import { attemptNumberForSourceKey, ensureExtraction, writeExtraction } from "../_shared/write-extraction.ts"
 import { buildExtractionPayload } from "../_shared/extraction-payload.ts"
 import { loadDerivedRow } from "../_shared/derived-row.ts"
+import { spreadsheetFacts } from "../_shared/spreadsheet-facts.ts"
 import { NormalizationSettlementError, settleNormalizationRow as settleNormalizationBatch } from "../_shared/normalization-batch.ts"
 
 const FN = "normalize-document"
@@ -32,7 +33,7 @@ function buildCorsHeaders(req: Request) {
 
 // ── OpenAI system prompt ──────────────────────────────────────────────────────
 // Version bumped when this prompt changes. Rows stamped with a lower
-const NORMALIZATION_VERSION = 3
+const NORMALIZATION_VERSION = 4
 
 const SYSTEM_PROMPT = `You are a financial document normalization AI.
 
@@ -290,11 +291,12 @@ serve(async (req) => {
       throw new Error(`Unsupported normalization provider: ${provider}`)
     }
 
-    let rawText = ""
+    const sourceFacts = spreadsheetFacts(fields)
+    let rawText = sourceFacts ? JSON.stringify(sourceFacts) : ""
     let normalizationProvider: AiProvider | null = null
     let lastProviderError: unknown = null
     const attemptNumber = (fields.normalization_attempts ?? 0) + 1
-    for (const [providerIndex, provider] of NORMALIZATION_PROVIDERS.entries()) {
+    for (const [providerIndex, provider] of (sourceFacts ? [] : NORMALIZATION_PROVIDERS).entries()) {
       const startedAt = Date.now()
       try {
         const result = await callProvider(provider)
@@ -408,6 +410,7 @@ serve(async (req) => {
       normalized_at: now,
       normalization_error: null,
       normalization_attempts: 0,
+      ...(sourceFacts ?? {}),
     }
 
     if (ownerFile?.user_id) {
@@ -417,8 +420,8 @@ serve(async (req) => {
         userId: ownerFile.user_id,
         fileId: file_id,
         documentType: ownerFile.document_type ?? "general_document",
-        provider: normalizationProvider,
-        model: "document-normalization",
+        provider: sourceFacts ? "deterministic" : normalizationProvider,
+        model: sourceFacts ? "spreadsheet-source-preservation-v1" : "document-normalization",
         payload: extractionPayload,
         sourceRowCount: 1,
         attemptNumber: attemptNumberForSourceKey(sourceKey),

@@ -44,6 +44,7 @@ export type VirtualModelQuery = {
   includeExcluded?: boolean
   page?: number
   pageSize?: number
+  fileId?: string
 }
 
 type RecordAttribute = {
@@ -62,6 +63,7 @@ export async function readVirtualModel(userId: string, query: VirtualModelQuery 
   const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, query.pageSize ?? DEFAULT_PAGE_SIZE))
   let filesQuery = supabaseAdmin.from("files").select("id, filename, file_type, file_size, storage_path, folder_id, document_type, upload_status, scan_reason, analysis_json, analyzed_at, source_rows_json, created_at").eq("user_id", userId)
   if (query.documentType) filesQuery = filesQuery.eq("document_type", query.documentType)
+  if (query.fileId) filesQuery = filesQuery.eq("id", query.fileId)
   const [{ data: files, error: filesError }, { data: virtualDatasets, error: virtualDatasetError }, { data: mappingProfiles, error: mappingProfileError }, { data: relationships, error: relationshipError }] = await Promise.all([
     filesQuery,
     supabaseAdmin.from("virtual_dataset_definitions").select("slug, title, description, source, fields, version, updated_at").eq("user_id", userId).is("archived_at", null).order("updated_at", { ascending: false }).limit(100),

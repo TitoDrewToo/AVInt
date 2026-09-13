@@ -12,6 +12,7 @@ import { ensureExtraction, writeExtraction } from "../_shared/write-extraction.t
 import { buildExtractionPayload } from "../_shared/extraction-payload.ts"
 import { buildDatasetSheet, replaceSpreadsheetDatasets, type DatasetSheet } from "../_shared/dataset-layer.ts"
 import { beginNormalizationBatch } from "../_shared/normalization-batch.ts"
+import { resolveSpreadsheetMapping, spreadsheetHeaderCurrency } from "../_shared/spreadsheet-facts.ts"
 
 const FN = "process-document"
 
@@ -425,7 +426,7 @@ function applyMapping(
     }
   }
 
-  canonical.confidence = 0.95
+  canonical.confidence = null
   if (Object.keys(customFields).length > 0) canonical._custom_fields = customFields
 
   return canonical
@@ -640,6 +641,7 @@ async function extractSpreadsheetRows(
       degradedSheets.add(sheetName)
     }
 
+    mapping = resolveSpreadsheetMapping(mapping)
     logEvent(FN, "header_mapping_result", {
       file_id: fileId,
       sheet_name: sheetName,
@@ -671,6 +673,11 @@ async function extractSpreadsheetRows(
       }
 
       const canonical = applyMapping(cells, mapping, documentType)
+      // A spreadsheet row is not automatically an issued/received invoice.
+      canonical.document_type = "csv_export"
+      canonical._field_evidence = Object.fromEntries(Object.entries(mapping)
+        .filter(([, target]) => target !== "custom" && target !== "ignore")
+        .map(([header, target]) => [target, { source_kind: "spreadsheet_cell", sheet: sheetName, row: rowIndex + 2, column: header, column_index: headerEntries.find(entry => entry.header === header)?.index, method: mappingMethod === "ai" ? "header_mapping" : "keyword_mapping" }]))
       if (canonical._sanitized_fields?.length > 0) {
         logEvent(FN, "field_sanitized", {
           file_id: fileId,
@@ -710,10 +717,13 @@ async function extractSpreadsheetRows(
     const sheetInferenceCounts: Record<string, number> = {}
     for (const item of rowsForSheet) {
       if (normalizeCurrencyCode(item.canonical.currency)) continue
-      const inferredCurrency = sheetCurrency ?? sheetAmountCurrency
+      if (item.explicitBlankCurrency) continue
+      const headerCurrency = spreadsheetHeaderCurrency(mapping)
+      const inferredCurrency = headerCurrency ?? sheetCurrency ?? sheetAmountCurrency
       if (!inferredCurrency) continue
-      const method = sheetCurrency ? "sheet_name" : "amount_symbol"
+      const method = headerCurrency ? "column_header" : sheetCurrency ? "sheet_name" : "amount_symbol"
       item.canonical.currency = inferredCurrency
+      item.canonical._field_evidence.currency = { source_kind: "spreadsheet_header", sheet: sheetName, method, currency: inferredCurrency, inferred: true }
       item.canonical.raw_json_extras = {
         ...(item.canonical.raw_json_extras ?? {}),
         inferred_currency_method: method,
@@ -1206,7 +1216,7 @@ serve(async (req) => {
         gross_income:         row.gross_income     ?? null,
         net_income:           row.net_income       ?? null,
         expense_category:     row.expense_category ?? null,
-        confidence_score:     row.confidence       ?? 0.95,
+        confidence_score:     row.confidence       ?? null,
         // gemini_raw is the legacy compatibility key consumed by normalization prompts.
         raw_json:             {
           gemini_raw: row,

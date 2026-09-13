@@ -236,9 +236,21 @@ export async function loadReportDefinitionSource(userId: string, definition: Rep
   }
   if (definition.source.kind === "virtual_dataset") {
     const virtual = await getVirtualDatasetDefinition(userId, definition.source.slug)
-    const materializedDefinition: ReportDefinition = { ...definition, source: virtual.source, scope: virtual.scope }
-    const loaded = await loadReportDefinitionSource(userId, materializedDefinition, periodOverride)
+    // Resolve/project before applying temporal selectors. Otherwise a virtual
+    // dataset without an inherited date field fails before its override is read.
+    const materializedDefinition: ReportDefinition = { ...definition, source: virtual.source, scope: virtual.scope, period: { kind: "all" } }
+    const loaded = await loadReportDefinitionSource(userId, materializedDefinition)
     const projected = applyVirtualDatasetDefinition(virtual, loaded)
+    for (const [selector, type] of [["dateField", "date"], ["currencyField", "text"]] as const) {
+      const field = definition.source[selector] ?? projected[selector]
+      if (field && (!projected.availableFields.has(field) || (projected.fieldTypes?.has(field) && projected.fieldTypes.get(field) !== type))) throw new ReportDefinitionExecutionError(`source.${selector} must reference a projected ${type} field`)
+      projected[selector] = field ?? null
+    }
+    const period = expandedPeriod(definition, periodOverride)
+    if (period) {
+      if (!projected.dateField) throw new ReportDefinitionExecutionError("A dataset report with a period requires source.dateField")
+      projected.rows = projected.rows.filter(row => overlaps(String(row[projected.dateField!] ?? ""), String(row[projected.dateField!] ?? ""), period.from, period.to))
+    }
     projected.dependencies = mergeDependencies(projected.dependencies, [{ kind: "virtual_dataset", id: virtual.slug, version: virtual.version }])
     return projected
   }
@@ -307,14 +319,19 @@ function compare(left: unknown, filter: ReportDefinitionFilter) {
   if (filter.operator === "eq") return left === right || String(left ?? "") === String(right ?? "")
   if (filter.operator === "neq") return !(left === right || String(left ?? "") === String(right ?? ""))
   if (filter.operator === "contains") return String(left ?? "").toLowerCase().includes(String(right ?? "").toLowerCase())
-  const a = typeof left === "number" ? left : Number(left); const b = typeof right === "number" ? right : Number(right)
-  if (!Number.isFinite(a) || !Number.isFinite(b)) return false
+  const a = numericValue(left); const b = numericValue(right)
+  if (a === null || b === null) return false
   if (filter.operator === "gt") return a > b
   if (filter.operator === "gte") return a >= b
   if (filter.operator === "lt") return a < b
   return a <= b
 }
-function numeric(values: unknown[]) { return values.map((value) => typeof value === "number" ? value : Number(value)).filter(Number.isFinite) as number[] }
+function numericValue(value: unknown): number | null {
+  if (typeof value !== "number" && (typeof value !== "string" || !value.trim())) return null
+  const parsed = typeof value === "number" ? value : Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+function numeric(values: unknown[]) { return values.map(numericValue).filter((value): value is number => value !== null) }
 function aggregate(rows: ValueRow[], metric: ReportMetric): number | null {
   if (metric.aggregation === "ratio") {
     const denominator = aggregate(rows, { aggregation: "sum", field: metric.denominator })
@@ -396,7 +413,7 @@ function buildSeries(rows: ValueRow[], block: Extract<ReportDefinition["blocks"]
   }
   const points = buildPoints(rows)
   const gaps = points.filter((point) => point.value === null).length
-  const caption = gaps ? `${gaps} bucket${gaps === 1 ? "" : "s"} have no data; values are not interpolated.` : undefined
+  const caption = gaps ? `${gaps} bucket${gaps === 1 ? " has" : "s have"} no data; values are not interpolated.` : undefined
   if (!block.splitBy) return { type: "series", title: block.title, bucket: block.bucket, points, gaps, caption }
   const grouped = new Map<string, ValueRow[]>()
   for (const row of rows) { const key = String(row[block.splitBy] ?? "Unspecified"); grouped.set(key, [...(grouped.get(key) ?? []), row]) }

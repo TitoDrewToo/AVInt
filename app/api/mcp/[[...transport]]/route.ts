@@ -200,9 +200,13 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
     }, async ({ search, status, documentType, fieldKey, customOnly, includeExcluded, page, pageSize, fileId }) => timedTool("smart_storage.virtual_model", async () => {
       const blocked = await toolGuard(userId, entitlement, "profile")
       if (blocked) return blocked
-      const model = await readVirtualModel(userId, { search, status, documentType, fieldKey, customOnly, includeExcluded, page: page ?? 0, pageSize: pageSize ?? 40, fileId })
+      const requestedPage = page ?? 0
+      const model = await readVirtualModel(userId, { search, status, documentType, fieldKey, customOnly, includeExcluded, page: requestedPage, pageSize: pageSize ?? 40, fileId })
       const files = model.files.map(({ id, filename, folder_id, upload_status, scan_reason, document_type }) => ({ id, filename, folder_id, upload_status, scan_reason, document_type }))
-      return { content: [{ type: "text", text: JSON.stringify({ ...model, files, bounded: true, maxRecords: pageSize ?? 40, truncationGuidance: model.hasMore ? "Use nextPage as page with the same filters to continue; use fileId to focus source metadata." : null }, null, 2) }] }
+      const metadata = requestedPage === 0
+        ? { files, datasets: model.datasets, datasetColumns: model.datasetColumns, virtualDatasets: model.virtualDatasets, mappingProfiles: model.mappingProfiles, relationships: model.relationships, catalog: model.catalog }
+        : { files: [], datasets: [], datasetColumns: [], virtualDatasets: [], mappingProfiles: [], relationships: [], catalog: [], metadataIncluded: false, metadataGuidance: "Metadata is returned on page 0. Use smart_storage.list_files or fileId to inspect source files while paging records." }
+      return { content: [{ type: "text", text: JSON.stringify({ ...model, ...metadata, bounded: true, maxRecords: model.pageSize, truncationGuidance: model.hasMore ? "Use nextPage as page with the same filters to continue; use fileId to focus source metadata." : null }, null, 2) }] }
     }))
 
     server.registerTool("smart_storage.report", {

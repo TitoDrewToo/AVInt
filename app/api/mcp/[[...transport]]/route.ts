@@ -539,6 +539,11 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
       const report = await getExport(userId, entitlement, "tax-bundle", target, period ?? {})
       return { content: [{ type: "text", text: report }] }
     }))
+    // Diagnostic for the production discovery discrepancy. This intentionally
+    // observes the adapter only; it does not alter registration or schemas.
+    const serverState = server as unknown as Record<string, unknown>
+    const registryKeys = Object.keys(serverState).filter((key) => /tool|registr|manifest|discover/i.test(key))
+    console.info(`[mcp-registry] registered_tools_expected=31 server_keys=${registryKeys.join(",") || "none"}`)
   }, {
     serverInfo: { name: "avintelligence-smart-storage", version: "1.0.0" },
     capabilities: STATELESS_MCP_CAPABILITIES,

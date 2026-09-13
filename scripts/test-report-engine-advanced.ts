@@ -43,6 +43,25 @@ const rows = [
   { day: "2026-09-04", path: "/shop", views: 2, visitors: 2 },
 ]
 const source = { rows, availableFields: new Set(["day", "path", "views", "visitors"]), dateField: "day", currencyField: null, sourceLabel: "local fixture" }
+const sparseRows = rows.filter((row) => row.day !== "2026-09-03")
+const countSeriesDefinition = { ...definition, period: { kind: "fixed" as const, from: "2026-09-01", to: "2026-09-04" }, blocks: [{ type: "series" as const, title: "Daily orders", timeField: "day", bucket: "day" as const, metric: { aggregation: "count" as const, field: "path" } }] }
+const countZeroDocument = compileReportDefinition(countSeriesDefinition, { ...source, rows: sparseRows }, new Date("2026-09-04T00:00:00Z"))
+const countZeroSeries = countZeroDocument.blocks[0]
+assert.equal(countZeroSeries.type, "series")
+assert.deepEqual(countZeroSeries.points.map((point) => point.value), [1, 1, 0, 1])
+assert.match(countZeroSeries.caption ?? "", /counted as zero/)
+const countGapDocument = compileReportDefinition({ ...countSeriesDefinition, blocks: [{ ...countSeriesDefinition.blocks[0], emptyBucket: "gap" as const }] }, { ...source, rows: sparseRows }, new Date("2026-09-04T00:00:00Z"))
+const countGapSeries = countGapDocument.blocks[0]
+assert.equal(countGapSeries.type, "series")
+assert.equal(countGapSeries.points[2].value, null)
+assert.equal(countGapSeries.gaps, 1)
+assert.match(countGapSeries.caption ?? "", /shown as a gap/)
+const sumGapDocument = compileReportDefinition({ ...countSeriesDefinition, blocks: [{ ...countSeriesDefinition.blocks[0], metric: { aggregation: "sum" as const, field: "views" } }] }, { ...source, rows: sparseRows }, new Date("2026-09-04T00:00:00Z"))
+const sumGapSeries = sumGapDocument.blocks[0]
+assert.equal(sumGapSeries.type, "series")
+assert.equal(sumGapSeries.points[2].value, null)
+assert.equal(sumGapSeries.gaps, 1)
+assert.match(sumGapSeries.caption ?? "", /shown as a gap/)
 const document = compileReportDefinition(definition, source, new Date("2026-09-04T00:00:00Z"))
 const kpi = document.blocks.find((block) => block.type === "kpi")
 assert.equal(kpi?.type, "kpi")

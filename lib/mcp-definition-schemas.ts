@@ -22,7 +22,7 @@ const block = z.discriminatedUnion("type", [
   z.object({ type: z.literal("stat"), title, metric }).strict(),
   z.object({ type: z.literal("share"), title, groupBy: field, metric, limit: z.number().int().min(1).max(50).optional() }).strict(),
   z.object({ type: z.literal("table"), title, columns: z.array(z.object({ field, label: z.string().optional() }).strict()).min(1), sort: z.object({ field, direction: z.enum(["asc", "desc"]) }).strict().optional(), limit: z.number().int().min(1).max(500).optional() }).strict(),
-  z.object({ type: z.literal("series"), title, timeField: field, bucket: z.enum(["day", "week", "month", "quarter"]), metric, splitBy: field.optional(), limit: z.number().int().min(1).max(20).optional().describe("Maximum split groups, NOT time buckets. The date period determines the time axis.") }).strict(),
+  z.object({ type: z.literal("series"), title, timeField: field, bucket: z.enum(["day", "week", "month", "quarter"]), metric, splitBy: field.optional(), limit: z.number().int().min(1).max(20).optional().describe("Maximum split groups, NOT time buckets. The date period determines the time axis."), emptyBucket: z.enum(["gap", "zero"]).optional().describe("What an empty time bucket means; defaults to zero for counts and gap for numeric aggregates.") }).strict(),
   z.object({ type: z.literal("comparison"), title, against: z.literal("previous_period"), items }).strict(),
   z.object({ type: z.literal("narrative"), title, text: z.string() }).strict(),
   z.object({ type: z.literal("note"), text: z.string() }).strict(),

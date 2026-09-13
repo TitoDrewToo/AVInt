@@ -394,6 +394,8 @@ function bucketDate(value: string, bucket: "day" | "week" | "month" | "quarter")
 }
 
 function buildSeries(rows: ValueRow[], block: Extract<ReportDefinition["blocks"][number], { type: "series" }>, period: { from: string; to: string }): ReportBlock {
+  const defaultEmptyBucket = block.metric.aggregation === "count" || block.metric.aggregation === "count_distinct" ? "zero" : "gap"
+  const emptyBucket = block.emptyBucket ?? defaultEmptyBucket
   const dates = rows.map((row) => String(row[block.timeField] ?? "")).filter(Boolean).sort()
   const from = period.from || dates[0]
   const to = period.to || dates.at(-1)
@@ -406,21 +408,26 @@ function buildSeries(rows: ValueRow[], block: Extract<ReportDefinition["blocks"]
       const key = bucketDate(cursor.toISOString().slice(0, 10), block.bucket)
       if (!key) break
       const bucketRows = seriesRows.filter((row) => bucketDate(String(row[block.timeField] ?? ""), block.bucket) === key)
-      points.push({ bucket: key, label: key, value: bucketRows.length ? aggregate(bucketRows, block.metric) : null })
+      points.push({ bucket: key, label: key, value: bucketRows.length ? aggregate(bucketRows, block.metric) : emptyBucket === "zero" ? 0 : null })
       increment()
     }
     return points
   }
   const points = buildPoints(rows)
+  const occupiedBuckets = new Set(rows.map((row) => bucketDate(String(row[block.timeField] ?? ""), block.bucket)).filter((value): value is string => Boolean(value)))
+  const emptyBucketCount = Math.max(0, points.length - occupiedBuckets.size)
   const gaps = points.filter((point) => point.value === null).length
-  const caption = gaps ? `${gaps} bucket${gaps === 1 ? " has" : "s have"} no data; values are not interpolated.` : undefined
+  const emptyCaption = emptyBucket === "zero"
+    ? `${emptyBucketCount} bucket${emptyBucketCount === 1 ? " had" : "s had"} no rows, counted as zero.`
+    : `${emptyBucketCount} bucket${emptyBucketCount === 1 ? " has" : "s have"} no data, shown as a gap; values are not interpolated.`
+  const caption = emptyBucketCount ? emptyCaption : undefined
   if (!block.splitBy) return { type: "series", title: block.title, bucket: block.bucket, points, gaps, caption }
   const grouped = new Map<string, ValueRow[]>()
   for (const row of rows) { const key = String(row[block.splitBy] ?? "Unspecified"); grouped.set(key, [...(grouped.get(key) ?? []), row]) }
   const ranked = [...grouped.entries()].sort((a, b) => (aggregate(b[1], block.metric) ?? 0) - (aggregate(a[1], block.metric) ?? 0))
   const selected = ranked.slice(0, block.limit ?? 5).map(([key, seriesRows]) => ({ key, points: buildPoints(seriesRows), gaps: buildPoints(seriesRows).filter((point) => point.value === null).length }))
   const dropped = Math.max(0, ranked.length - selected.length)
-  return { type: "series", title: block.title, bucket: block.bucket, points, gaps, caption: `${selected.length} series shown${dropped ? `; ${dropped} lower-volume series omitted.` : "."}`, series: selected }
+  return { type: "series", title: block.title, bucket: block.bucket, points, gaps, caption: `${selected.length} series shown${dropped ? `; ${dropped} lower-volume series omitted.` : "."}${emptyBucketCount ? ` ${emptyCaption}` : ""}`, series: selected }
 }
 
 export function compileReportDefinition(definition: ReportDefinition, source: LoadedReportDefinitionSource, now = new Date(), periodOverride?: ReportDefinitionPeriod): ReportDocument {
@@ -507,7 +514,7 @@ export function compileReportDefinition(definition: ReportDefinition, source: Lo
     blocks,
     focusedModel: focusedModelMetadata(source, referencedDefinitionFields(definition)),
     theme: definition.theme ?? undefined,
-    method: `Source: Smart Storage ${source.sourceLabel}. Definition ${definition.slug} version ${definition.version}. Currency buckets are never combined without conversion.`,
+    method: `Source: Smart Storage ${source.sourceLabel}. Definition ${definition.slug} version ${definition.version}. Currency buckets are never combined without conversion.${definition.blocks.some((block) => block.type === "series" && block.emptyBucket !== undefined && block.emptyBucket !== (block.metric.aggregation === "count" || block.metric.aggregation === "count_distinct" ? "zero" : "gap")) ? " Non-default empty-bucket policies are applied as declared on the series blocks." : ""}`,
   }
 }
 

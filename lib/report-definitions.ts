@@ -22,7 +22,7 @@ export type ReportDefinitionBlock =
   | { type: "share"; title: string; groupBy: string; metric: ReportMetric; limit?: number }
   | { type: "table"; title: string; columns: Array<{ field: string; label?: string }>; sort?: { field: string; direction: "asc" | "desc" }; limit?: number }
   | { type: "stat"; title: string; metric: ReportMetric }
-  | { type: "series"; title: string; timeField: string; bucket: "day" | "week" | "month" | "quarter"; metric: ReportMetric; splitBy?: string; limit?: number }
+  | { type: "series"; title: string; timeField: string; bucket: "day" | "week" | "month" | "quarter"; metric: ReportMetric; splitBy?: string; limit?: number; emptyBucket?: "gap" | "zero" }
   | { type: "comparison"; title: string; against: "previous_period"; items: Array<{ label: string; metric: ReportMetric }> }
   | { type: "narrative"; title: string; text: string }
   | { type: "note"; text: string }
@@ -132,7 +132,8 @@ function validateBlock(input: unknown, index: number): { ok: true; value: Report
     const limit = input.limit === undefined ? 5 : Number(input.limit)
     if (!Number.isInteger(limit) || limit < 1 || limit > 20) return { ok: false, error: `${path}.limit must be 1–20` }
     if (input.splitBy !== undefined && !validField(input.splitBy)) return { ok: false, error: `${path}.splitBy is invalid` }
-    return { ok: true, value: { type: "series", title, timeField: input.timeField, bucket: input.bucket as "day" | "week" | "month" | "quarter", metric: metric.value, ...(input.splitBy ? { splitBy: input.splitBy } : {}), limit } }
+    if (input.emptyBucket !== undefined && input.emptyBucket !== "gap" && input.emptyBucket !== "zero") return { ok: false, error: `${path}.emptyBucket must be gap or zero` }
+    return { ok: true, value: { type: "series", title, timeField: input.timeField, bucket: input.bucket as "day" | "week" | "month" | "quarter", metric: metric.value, ...(input.splitBy ? { splitBy: input.splitBy } : {}), limit, ...(input.emptyBucket ? { emptyBucket: input.emptyBucket as "gap" | "zero" } : {}) } }
   }
   if (input.type === "comparison") {
     const title = text(input.title, 120)

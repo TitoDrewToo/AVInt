@@ -92,6 +92,25 @@ async function logJsonRpcMethod(req: NextRequest) {
   console.info(`[mcp-stage] stage=jsonrpc_method method=${method} name=${name}`)
 }
 
+async function logMcpOutgoingPayload(req: NextRequest, response: Response) {
+  let method = "unknown"
+  try {
+    const body = await req.clone().json() as { method?: unknown }
+    if (typeof body.method === "string") method = body.method
+  } catch {
+    return
+  }
+  if (method !== "tools/list" && method !== "server/discover") return
+  try {
+    const text = await response.clone().text()
+    const names = new Set<string>()
+    for (const match of text.matchAll(/"name"\s*:\s*"(smart_(?:storage|dashboard)\.[^"]+)"/g)) names.add(match[1])
+    console.info(`[mcp-outgoing] method=${method} bytes=${new TextEncoder().encode(text).byteLength} toolCount=${names.size} toolNames=${[...names].join("|")}`)
+  } catch (error) {
+    console.info(`[mcp-outgoing] method=${method} inspect_failed=${error instanceof Error ? error.message : String(error)}`)
+  }
+}
+
 function buildHandler(userId: string, entitlement: ReturnType<typeof computeEntitlement>) {
   return createMcpHandler((server) => {
     const listStorage = (kind: "files" | "folders", toolName: string, title: string) => server.registerTool(toolName, {
@@ -589,6 +608,7 @@ async function handle(req: NextRequest) {
     await logJsonRpcMethod(req)
     const handlerStartedAt = Date.now()
     const response = await buildHandler(identity.userId, entitlement)(req)
+    await logMcpOutgoingPayload(req, response)
     console.info(`[mcp-stage] stage=handler_returned elapsed_ms=${Date.now() - handlerStartedAt}`)
     return withCors(req, response)
   } catch (error) {

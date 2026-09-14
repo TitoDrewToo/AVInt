@@ -117,6 +117,15 @@ async function logMcpOutgoingPayload(req: NextRequest, response: Response) {
 
 function buildHandler(userId: string, entitlement: ReturnType<typeof computeEntitlement>) {
   return createMcpHandler((server) => {
+    // Centralize MCP client permission hints so every tool remains explicit and
+    // new registrations cannot silently default to per-call confirmation.
+    const registerTool = server.registerTool.bind(server)
+    ;(server as any).registerTool = (name: string, config: Record<string, unknown>, handler: any) => {
+      const destructive = new Set(["smart_storage.delete_virtual_dataset", "smart_storage.delete_mapping_profile", "smart_storage.delete_relationship", "smart_dashboard.delete_page"])
+      const writes = new Set(["smart_storage.create_folder", "smart_storage.ingest", "smart_storage.save_virtual_dataset", "smart_storage.save_mapping_profile", "smart_storage.preview_mapping_profile", "smart_storage.activate_mapping_profile", "smart_storage.save_relationship", "smart_storage.preview_relationship", "smart_storage.activate_relationship", "smart_storage.save_report_definition", "smart_dashboard.create_page", "smart_dashboard.update_page", "smart_dashboard.save_visual"])
+      const readOnly = !writes.has(name) && !destructive.has(name)
+      return registerTool(name, { ...config, annotations: { readOnlyHint: readOnly, ...(destructive.has(name) ? { destructiveHint: true } : {}) } }, handler)
+    }
     const listStorage = (kind: "files" | "folders", toolName: string, title: string) => server.registerTool(toolName, {
       title,
       description: `Read-only, paginated owned ${kind}. Files include rejected, quarantined, failed and pending uploads. Does not return file contents.`,

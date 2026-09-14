@@ -27,12 +27,12 @@ of docs, numbers that must be right and reproducible.
 Fast-follow tools: `smart_storage.list(filter)`, `smart_storage.summary(period)`.
 
 ## Auth
+- **Current consumer path:** OAuth-only through WorkOS AuthKit. The historical API-key
+  proposal below is retired and is not an active setup path.
 - **Identity (unchanged):** existing Supabase auth (email + Google) stays the
   source of truth. Google/email are how the user proves who they are — untouched.
-- **v0 — API key:** user logs in (email/Google), generates a key on a "Connect to
-  Claude" settings page, pastes it into the connector. New backend: `api_keys`
-  table (store **hash only**, scoped, revocable, listed in dashboard) + generate/revoke
-  UI + validation in the MCP route. Simple, free, secure.
+- **Retired:** the former API-key setup is kept only as historical context; do not
+  build or advertise it.
 - **v1 fast-follow — OAuth 2.1 via a MANAGED provider (WorkOS AuthKit, free to 1M MAU),
   federated to Supabase identity** → "Connect → Sign in with Google → done", no key paste.
   Zero-vendor alternative: self-host Ory Hydra (certified OAuth 2.1), federate to Supabase.
@@ -49,7 +49,7 @@ Fast-follow tools: `smart_storage.list(filter)`, `smart_storage.summary(period)`
   itself become a Pro/Business perk later.
 
 ## Security
-- API keys: high-entropy, hashed at rest, scoped, revocable, dashboard-listed.
+- OAuth tokens are short-lived, resource-scoped, and revocable by disconnecting.
 - No data path around RLS — the connector calls the same gated edge functions/API.
 - Approval required on money-touching steps (exports).
 
@@ -58,7 +58,7 @@ Fast-follow tools: `smart_storage.list(filter)`, `smart_storage.summary(period)`
   auth + entitlement metering automatically; no separate service, no duplicated billing.
 
 ## Build order
-1. **API-key v0 backend (Codex):** MCP route (the three tools) + `api_keys` table +
+1. **OAuth connector backend:** MCP route + WorkOS resource authorization +
    generate/revoke UI + validation, all riding existing entitlements. Material change
    (touches auth) → Codex builds, review, approve, deploy.
 2. **Plugin scaffold (Cowork plugin-creator):** wrap the connector + a couple of

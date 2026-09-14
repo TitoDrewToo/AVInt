@@ -1,7 +1,6 @@
 import { generateQuickBooksCSV, generateXeroCSV } from "@/lib/accounting-csv"
 import { computeTaxBundle, type IncomeSourceClass, type TaxRow } from "@/lib/tax-bundle"
 import { type Entitlement } from "@/lib/entitlement"
-import { supabaseAdmin } from "@/lib/mcp-auth"
 import { scopedDb } from "@/lib/scoped-db"
 import { readComplete } from "@/lib/complete-read"
 import { overlapsDateRange } from "@/lib/report-utils"

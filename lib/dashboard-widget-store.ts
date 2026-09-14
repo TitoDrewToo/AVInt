@@ -1,4 +1,3 @@
-import { supabaseAdmin } from "@/lib/mcp-auth"
 import { scopedDb } from "@/lib/scoped-db"
 import { widgetMinSize } from "@/lib/dashboard-layout"
 import { validateDashboardWidgetSpec } from "@/lib/dashboard-widget-spec"

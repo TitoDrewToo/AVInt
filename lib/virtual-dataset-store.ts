@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/mcp-auth"
+import { scopedDb } from "@/lib/scoped-db"
 import { McpUserFacingError } from "@/lib/mcp-errors"
 import { slugifyReportTitle, slugWithSuffix, type ReportDefinitionInput } from "@/lib/report-definitions"
 import { validateDefinitionAccess } from "@/lib/report-definition-store"
@@ -28,7 +29,7 @@ async function validateAccess(userId: string, input: VirtualDatasetDefinitionInp
 }
 
 export async function listVirtualDatasetDefinitions(userId: string, search?: string): Promise<VirtualDatasetDefinitionListItem[]> {
-  let query = supabaseAdmin.from("virtual_dataset_definitions").select("slug, title, description, source, fields, authored_by, version, updated_at").eq("user_id", userId).is("archived_at", null).order("updated_at", { ascending: false }).limit(100)
+  let query = scopedDb(userId).from("virtual_dataset_definitions").select("slug, title, description, source, fields, authored_by, version, updated_at").is("archived_at", null).order("updated_at", { ascending: false }).limit(100)
   if (search?.trim()) query = query.ilike("title", `%${search.trim().replace(/[\\%_]/g, "\\$&")}%`)
   const { data, error } = await query
   if (error) throw new Error(error.message)
@@ -36,7 +37,7 @@ export async function listVirtualDatasetDefinitions(userId: string, search?: str
 }
 
 export async function getVirtualDatasetDefinition(userId: string, slug: string): Promise<VirtualDatasetDefinition> {
-  const { data, error } = await supabaseAdmin.from("virtual_dataset_definitions").select("*").eq("user_id", userId).eq("slug", slug).is("archived_at", null).maybeSingle()
+  const { data, error } = await scopedDb(userId).from("virtual_dataset_definitions").select("*").eq("slug", slug).is("archived_at", null).maybeSingle()
   if (error) throw new Error(error.message)
   if (!data) throw new VirtualDatasetNotFoundError("Virtual dataset definition not found")
   return data as VirtualDatasetDefinition
@@ -51,7 +52,7 @@ export async function createVirtualDatasetDefinition(userId: string, input: unkn
   const base = typeof requestedSlug === "string" ? requestedSlug : slugifyReportTitle(validated.value.title)
   for (let suffix = 1; suffix <= 100; suffix += 1) {
     const slug = slugWithSuffix(base, suffix)
-    const { data, error } = await supabaseAdmin.from("virtual_dataset_definitions").insert({ user_id: userId, slug, ...validated.value, authored_by: authoredBy }).select("*").single()
+    const { data, error } = await scopedDb(userId).from("virtual_dataset_definitions").insert({ user_id: userId, slug, ...validated.value, authored_by: authoredBy }).select("*").single()
     if (!error && data) return data as VirtualDatasetDefinition
     if (error?.code !== "23505") throw new Error(error?.message ?? "Virtual dataset could not be created")
     if (requestedSlug) throw new VirtualDatasetConflictError("The requested virtual dataset slug already exists; use its current version to update it")
@@ -66,7 +67,7 @@ export async function updateVirtualDatasetDefinition(userId: string, slug: strin
   const validated = validateVirtualDatasetDefinitionPayload({ ...current, ...(input && typeof input === "object" && !Array.isArray(input) ? input : {}) })
   if (!validated.ok) throw new TypeError(validated.error)
   await validateAccess(userId, validated.value)
-  const { data, error } = await supabaseAdmin.from("virtual_dataset_definitions").update({ ...validated.value, authored_by: authoredBy, version: expectedVersion + 1 }).eq("id", current.id).eq("user_id", userId).eq("version", expectedVersion).is("archived_at", null).select("*").maybeSingle()
+  const { data, error } = await scopedDb(userId).from("virtual_dataset_definitions").update({ ...validated.value, authored_by: authoredBy, version: expectedVersion + 1 }).eq("id", current.id).eq("version", expectedVersion).is("archived_at", null).select("*").maybeSingle()
   if (error) throw new Error(error.message)
   if (!data) throw new VirtualDatasetConflictError("Virtual dataset changed while it was being saved")
   return data as VirtualDatasetDefinition
@@ -75,8 +76,8 @@ export async function updateVirtualDatasetDefinition(userId: string, slug: strin
 export async function archiveVirtualDatasetDefinition(userId: string, slug: string): Promise<{ slug: string; archived_at: string }> {
   const current = await getVirtualDatasetDefinition(userId, slug)
   const [{ data: relationships, error: relationshipError }, { data: reports, error: reportError }] = await Promise.all([
-    supabaseAdmin.from("virtual_dataset_relationships").select("slug, title, definition").eq("user_id", userId).is("archived_at", null),
-    supabaseAdmin.from("report_definitions").select("slug, title, source").eq("user_id", userId).is("archived_at", null),
+    scopedDb(userId).from("virtual_dataset_relationships").select("slug, title, definition").is("archived_at", null),
+    scopedDb(userId).from("report_definitions").select("slug, title, source").is("archived_at", null),
   ])
   if (relationshipError) throw new Error(relationshipError.message)
   if (reportError) throw new Error(reportError.message)
@@ -85,7 +86,7 @@ export async function archiveVirtualDatasetDefinition(userId: string, slug: stri
   const dependents = [...dependentRelationships.map((row) => `relationship ${row.slug}`), ...dependentReports.map((row) => `report ${row.slug}`)]
   if (dependents.length) throw new VirtualDatasetDependencyError(`Virtual dataset ${current.slug} cannot be deleted; it is referenced by ${dependents.join(", ")}`)
   const archivedAt = new Date().toISOString()
-  const { data, error } = await supabaseAdmin.from("virtual_dataset_definitions").update({ archived_at: archivedAt }).eq("user_id", userId).eq("slug", slug).is("archived_at", null).select("slug, archived_at").maybeSingle()
+  const { data, error } = await scopedDb(userId).from("virtual_dataset_definitions").update({ archived_at: archivedAt }).eq("slug", slug).is("archived_at", null).select("slug, archived_at").maybeSingle()
   if (error) throw new Error(error.message)
   if (!data) throw new VirtualDatasetNotFoundError("Virtual dataset definition not found")
   return data as { slug: string; archived_at: string }

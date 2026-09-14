@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/mcp-auth"
+import { scopedDb } from "@/lib/scoped-db"
 import { readComplete } from "@/lib/complete-read"
 import { resolveReportFolderScope } from "@/lib/report-folder-scope-server"
 
@@ -25,7 +26,7 @@ export async function createReportQueryContext(
     dateTo: filters.dateTo ?? "",
     targetFolder,
     fileIds: async (documentTypes = []) => {
-      let query = supabaseAdmin.from("files").select("id", { count: "exact" }).eq("user_id", userId).order("id")
+      let query = scopedDb(userId).from("files").select("id", { count: "exact" }).order("id")
       if (documentTypes.length > 0) query = query.in("document_type", documentTypes)
       if (scopedFolderIds) query = query.in("folder_id", scopedFolderIds)
       const data = await readComplete((from, to) => query.range(from, to), 100_000, "files")

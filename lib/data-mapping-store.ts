@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/mcp-auth"
+import { scopedDb } from "@/lib/scoped-db"
 import { slugifyReportTitle, slugWithSuffix, type ReportDefinitionInput } from "@/lib/report-definitions"
 import { validateDefinitionAccess } from "@/lib/report-definition-store"
 import {
@@ -34,7 +35,7 @@ async function validateAccess(userId: string, input: DataMappingProfileInput) {
 }
 
 export async function listDataMappingProfiles(userId: string, search?: string): Promise<DataMappingProfileListItem[]> {
-  let query = supabaseAdmin.from("data_mapping_profiles").select("slug, title, description, source, mappings, status, authored_by, version, previewed_version, preview_summary, updated_at").eq("user_id", userId).is("archived_at", null).order("updated_at", { ascending: false }).limit(100)
+  let query = scopedDb(userId).from("data_mapping_profiles").select("slug, title, description, source, mappings, status, authored_by, version, previewed_version, preview_summary, updated_at").is("archived_at", null).order("updated_at", { ascending: false }).limit(100)
   if (search?.trim()) query = query.ilike("title", `%${search.trim().replace(/[\\%_]/g, "\\$&")}%`)
   const { data, error } = await query
   if (error) throw new Error(error.message)
@@ -42,7 +43,7 @@ export async function listDataMappingProfiles(userId: string, search?: string): 
 }
 
 export async function getDataMappingProfile(userId: string, slug: string, activeOnly = false): Promise<DataMappingProfile> {
-  let query = supabaseAdmin.from("data_mapping_profiles").select("*").eq("user_id", userId).eq("slug", slug).is("archived_at", null)
+  let query = scopedDb(userId).from("data_mapping_profiles").select("*").eq("slug", slug).is("archived_at", null)
   if (activeOnly) query = query.eq("status", "active")
   const { data, error } = await query.maybeSingle()
   if (error) throw new Error(error.message)
@@ -59,7 +60,7 @@ export async function createDataMappingProfile(userId: string, input: unknown, a
   const base = slugifyReportTitle(validated.value.title)
   for (let suffix = 1; suffix <= 100; suffix += 1) {
     const slug = slugWithSuffix(base, suffix)
-    const { data, error } = await supabaseAdmin.from("data_mapping_profiles").insert({ user_id: userId, slug, ...validated.value, status: "draft", authored_by: authoredBy }).select("*").single()
+    const { data, error } = await scopedDb(userId).from("data_mapping_profiles").insert({ user_id: userId, slug, ...validated.value, status: "draft", authored_by: authoredBy }).select("*").single()
     if (!error && data) return data as DataMappingProfile
     if (error?.code !== "23505") throw new Error(error?.message ?? "Mapping profile could not be created")
   }
@@ -73,14 +74,14 @@ export async function updateDataMappingProfile(userId: string, slug: string, inp
   const validated = validateDataMappingProfilePayload({ ...current, ...(input && typeof input === "object" && !Array.isArray(input) ? input : {}) })
   if (!validated.ok) throw new TypeError(validated.error)
   await validateAccess(userId, validated.value)
-  const { data, error } = await supabaseAdmin.from("data_mapping_profiles").update({ ...validated.value, status: "draft", authored_by: authoredBy, version: expectedVersion + 1, previewed_version: null, preview_summary: null, activated_by: null, activated_at: null }).eq("id", current.id).eq("user_id", userId).eq("version", expectedVersion).is("archived_at", null).select("*").maybeSingle()
+  const { data, error } = await scopedDb(userId).from("data_mapping_profiles").update({ ...validated.value, status: "draft", authored_by: authoredBy, version: expectedVersion + 1, previewed_version: null, preview_summary: null, activated_by: null, activated_at: null }).eq("id", current.id).eq("version", expectedVersion).is("archived_at", null).select("*").maybeSingle()
   if (error) throw new Error(error.message)
   if (!data) throw new DataMappingProfileConflictError("Mapping profile changed while it was being saved")
   return data as DataMappingProfile
 }
 
 export async function recordDataMappingPreview(userId: string, slug: string, version: number, summary: DataMappingPreviewSummary): Promise<DataMappingProfile> {
-  const { data, error } = await supabaseAdmin.from("data_mapping_profiles").update({ previewed_version: version, preview_summary: summary }).eq("user_id", userId).eq("slug", slug).eq("version", version).is("archived_at", null).select("*").maybeSingle()
+  const { data, error } = await scopedDb(userId).from("data_mapping_profiles").update({ previewed_version: version, preview_summary: summary }).eq("slug", slug).eq("version", version).is("archived_at", null).select("*").maybeSingle()
   if (error) throw new Error(error.message)
   if (!data) throw new DataMappingProfileConflictError("Mapping profile changed while it was being previewed")
   return data as DataMappingProfile
@@ -94,7 +95,7 @@ export async function activateDataMappingProfile(userId: string, slug: string, e
   if (current.preview_summary.sourceMatches < 1) throw new DataMappingProfileConflictError("The preview found no source values to map")
   const activatedAt = new Date().toISOString()
   const nextVersion = expectedVersion + 1
-  const { data, error } = await supabaseAdmin.from("data_mapping_profiles").update({ status: "active", version: nextVersion, previewed_version: nextVersion, preview_summary: { ...current.preview_summary, profileVersion: nextVersion }, activated_by: userId, activated_at: activatedAt }).eq("id", current.id).eq("user_id", userId).eq("version", expectedVersion).eq("previewed_version", expectedVersion).is("archived_at", null).select("*").maybeSingle()
+  const { data, error } = await scopedDb(userId).from("data_mapping_profiles").update({ status: "active", version: nextVersion, previewed_version: nextVersion, preview_summary: { ...current.preview_summary, profileVersion: nextVersion }, activated_by: userId, activated_at: activatedAt }).eq("id", current.id).eq("version", expectedVersion).eq("previewed_version", expectedVersion).is("archived_at", null).select("*").maybeSingle()
   if (error) throw new Error(error.message)
   if (!data) throw new DataMappingProfileConflictError("Mapping profile changed while it was being activated")
   return data as DataMappingProfile
@@ -102,12 +103,12 @@ export async function activateDataMappingProfile(userId: string, slug: string, e
 
 export async function archiveDataMappingProfile(userId: string, slug: string): Promise<{ slug: string; archived_at: string }> {
   const current = await getDataMappingProfile(userId, slug)
-  const { data: reports, error } = await supabaseAdmin.from("report_definitions").select("slug, source").eq("user_id", userId).is("archived_at", null)
+  const { data: reports, error } = await scopedDb(userId).from("report_definitions").select("slug, source").is("archived_at", null)
   if (error) throw new Error(error.message)
   const dependents = (reports ?? []).filter((row) => row.source?.kind === "mapping_profile" && row.source?.slug === current.slug).map((row) => `report ${row.slug}`)
   if (dependents.length) throw new DataMappingProfileDependencyError(`Mapping profile ${current.slug} cannot be deleted; it is referenced by ${dependents.join(", ")}`)
   const archivedAt = new Date().toISOString()
-  const { data, error: archiveError } = await supabaseAdmin.from("data_mapping_profiles").update({ archived_at: archivedAt }).eq("user_id", userId).eq("slug", slug).is("archived_at", null).select("slug, archived_at").maybeSingle()
+  const { data, error: archiveError } = await scopedDb(userId).from("data_mapping_profiles").update({ archived_at: archivedAt }).eq("slug", slug).is("archived_at", null).select("slug, archived_at").maybeSingle()
   if (archiveError) throw new Error(archiveError.message)
   if (!data) throw new DataMappingProfileNotFoundError("Mapping profile not found")
   return data as { slug: string; archived_at: string }

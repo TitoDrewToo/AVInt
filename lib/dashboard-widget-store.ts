@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/mcp-auth"
+import { scopedDb } from "@/lib/scoped-db"
 import { widgetMinSize } from "@/lib/dashboard-layout"
 import { validateDashboardWidgetSpec } from "@/lib/dashboard-widget-spec"
 import { executeDashboardVisual } from "@/lib/dashboard-visual-engine"
@@ -7,7 +8,7 @@ import { resolveDashboardPage } from "@/lib/dashboard-pages"
 export async function listSavedDashboardWidgets(userId: string, pageSlug?: string, resolvedPageId?: string) {
   const page = pageSlug && !resolvedPageId ? await resolveDashboardPage(userId, pageSlug) : null
   const pageId = resolvedPageId ?? page?.id
-  let query = supabaseAdmin.from("advanced_widgets").select("id, page_id, widget_type, title, description, insight, config, is_starred, is_plotted, created_at").eq("user_id", userId).or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`).order("created_at", { ascending: false }).limit(100)
+  let query = scopedDb(userId).from("advanced_widgets").select("id, page_id, widget_type, title, description, insight, config, is_starred, is_plotted, created_at").or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`).order("created_at", { ascending: false }).limit(100)
   if (pageId) query = query.eq("page_id", pageId)
   const { data, error } = await query
   if (error) throw new Error(error.message)
@@ -28,7 +29,7 @@ export async function saveDashboardWidget(userId: string, input: unknown, plot =
   if (!validated.definition) throw new TypeError("A canonical visual definition is required")
   if (validated.definition.renderer !== validated.widgetType) throw new TypeError("Visual renderer must match widget_type")
   const [page, resolved] = await Promise.all([resolveDashboardPage(userId, pageSlug), executeDashboardVisual(userId, validated.definition)])
-  const { data: saved, error } = await supabaseAdmin.from("advanced_widgets").insert({
+  const { data: saved, error } = await scopedDb(userId).from("advanced_widgets").insert({
     user_id: userId,
     page_id: page.id,
     widget_type: validated.widgetType,
@@ -54,9 +55,9 @@ export async function saveDashboardWidget(userId: string, input: unknown, plot =
     const lastY = gridLayout.reduce((maximum, item) => Math.max(maximum, Number(item.y ?? 0) + Number(item.h ?? 0)), 0)
     gridLayout.push({ i: widgetId, x: 0, y: lastY, w: min.minW, h: min.minH, minW: min.minW, minH: min.minH })
   }
-  const { error: saveError } = await supabaseAdmin.from("dashboard_pages").update({ layout: { ...layout, widgets, gridLayout }, updated_at: new Date().toISOString() }).eq("id", page.id).eq("user_id", userId)
+  const { error: saveError } = await scopedDb(userId).from("dashboard_pages").update({ layout: { ...layout, widgets, gridLayout }, updated_at: new Date().toISOString() }).eq("id", page.id)
   if (saveError) {
-    await supabaseAdmin.from("advanced_widgets").update({ is_plotted: false }).eq("id", saved.id).eq("user_id", userId)
+    await scopedDb(userId).from("advanced_widgets").update({ is_plotted: false }).eq("id", saved.id)
     throw new Error(`Visual was saved but could not be plotted: ${saveError.message}`)
   }
   return { ...saved, resolved_config: resolved }

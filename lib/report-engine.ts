@@ -2,6 +2,7 @@ import { generateQuickBooksCSV, generateXeroCSV } from "@/lib/accounting-csv"
 import { computeTaxBundle, type IncomeSourceClass, type TaxRow } from "@/lib/tax-bundle"
 import { type Entitlement } from "@/lib/entitlement"
 import { supabaseAdmin } from "@/lib/mcp-auth"
+import { scopedDb } from "@/lib/scoped-db"
 import { readComplete } from "@/lib/complete-read"
 import { overlapsDateRange } from "@/lib/report-utils"
 import { selectTaxBundleDefaultYear } from "@/lib/tax-bundle-default-year"
@@ -75,10 +76,10 @@ async function recordsTaxRows(userId: string, filters: ReportFilters): Promise<T
   const fileIds = await context.fileIds()
   if (filters.targetFolder && fileIds.length === 0) return []
 
-  let query = supabaseAdmin
+  let query = scopedDb(userId)
     .from("records")
     .select("id, file_id, source_key, parent_record_id, document_type, occurred_on, period_start, period_end, amount, currency, counterparty, counterparty_normalized, category, confidence, files!inner(filename, document_type, storage_path, user_id)", { count: "exact" })
-    .eq("user_id", userId)
+    
     .is("parent_record_id", null)
     .is("excluded_at", null)
     .order("occurred_on", { ascending: false })
@@ -90,10 +91,10 @@ async function recordsTaxRows(userId: string, filters: ReportFilters): Promise<T
   const recordIds = records.map((record) => record.id)
   const attributes = recordIds.length === 0
     ? []
-    : await readComplete((from, to) => supabaseAdmin
+    : await readComplete((from, to) => scopedDb(userId)
       .from("record_attributes")
       .select("record_id, field_key, value", { count: "exact" })
-      .eq("user_id", userId)
+      
       .in("record_id", recordIds)
       .order("record_id").order("field_key").range(from, to), 100_000, "record_attributes")
   const attrs = recordAttributeMap((attributes ?? []) as RecordAttribute[])

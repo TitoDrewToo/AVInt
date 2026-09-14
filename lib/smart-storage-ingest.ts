@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { supabaseAdmin } from "@/lib/mcp-auth"
+import { scopedDb } from "@/lib/scoped-db"
 import { type Entitlement } from "@/lib/entitlement"
 import { isIngestComplete, isTerminalExtractionFailure, type IngestCompletionSnapshot } from "@/lib/ingest-completion"
 import { PLAN_LIMITS, usageWindowForTier } from "@/supabase/functions/_shared/plan-limits"
@@ -76,20 +77,20 @@ async function claimDocumentProcessing(userId: string, fileId: string, entitleme
 }
 
 async function releaseDocumentProcessingClaim(userId: string, fileId: string) {
-  const { error } = await supabaseAdmin
+  const { error } = await scopedDb(userId)
     .from("document_processing_usage")
     .delete()
-    .eq("user_id", userId)
+    
     .eq("file_id", fileId)
   if (error) throw new Error(`Could not release unused document quota: ${error.message}`)
 }
 
 export async function resumeIngestFile(userId: string, fileId: string, entitlement: Entitlement) {
-  const { data: file, error } = await supabaseAdmin
+  const { data: file, error } = await scopedDb(userId)
     .from("files")
     .select("id, user_id, filename, upload_status")
     .eq("id", fileId)
-    .eq("user_id", userId)
+    
     .maybeSingle()
   if (error) throw new Error(error.message)
   if (!file) throw new Error("The resumable upload no longer exists.")
@@ -107,8 +108,7 @@ export async function resumeIngestFile(userId: string, fileId: string, entitleme
       return { file_id: file.id, filename: file.filename, status: "saved_at_cap", message: `You've hit your ${entitlement.tier} document limit (${limit}).`, ...EMPTY_COUNTS, records: [] }
     }
     if (file.upload_status === "scan_failed") {
-      const { error: retryJobError } = await supabaseAdmin
-        .from("processing_jobs")
+      const { error: retryJobError } = await scopedDb(userId).unscoped("processing_jobs", "scoped through the owner-scoped file row")
         .insert({ file_id: file.id, status: "uploaded" })
       if (retryJobError) throw new Error(`Could not queue prescan retry: ${retryJobError.message}`)
     }
@@ -143,14 +143,14 @@ export async function ingestFiles(userId: string, entitlement: Entitlement, file
     if (uploadError) throw new Error(uploadError.message)
     let file: { id: string; filename: string; storage_path: string } | null = null
     try {
-      const { data: fileRecord, error: fileError } = await supabaseAdmin.from("files").insert({ user_id: userId, folder_id: options.folderId ?? null, filename: input.name, storage_path: storagePath, file_type: input.mimeType, file_size: bytes.length, document_type: "unknown", upload_status: "pending_scan", upload_batch_id: uploadBatchId, sha256, source_provider: input.source?.provider ?? null, source_file_id: input.source?.fileId ?? null, source_url: input.source?.url ?? null, source_modified_at: input.source?.modifiedAt ?? null }).select("id, filename, storage_path").single()
+      const { data: fileRecord, error: fileError } = await scopedDb(userId).from("files").insert({ user_id: userId, folder_id: options.folderId ?? null, filename: input.name, storage_path: storagePath, file_type: input.mimeType, file_size: bytes.length, document_type: "unknown", upload_status: "pending_scan", upload_batch_id: uploadBatchId, sha256, source_provider: input.source?.provider ?? null, source_file_id: input.source?.fileId ?? null, source_url: input.source?.url ?? null, source_modified_at: input.source?.modifiedAt ?? null }).select("id, filename, storage_path").single()
       if (fileError || !fileRecord) throw new Error(fileError?.message ?? "Could not create file record")
       file = fileRecord
-      const { error: jobError } = await supabaseAdmin.from("processing_jobs").insert({ file_id: file.id, status: "uploaded" })
+      const { error: jobError } = await scopedDb(userId).unscoped("processing_jobs", "scoped through the owner-scoped file row").insert({ file_id: file.id, status: "uploaded" })
       if (jobError) throw new Error(jobError.message)
       await options.onFileCreated?.(file.id)
     } catch (metadataError) {
-      if (file) await supabaseAdmin.from("files").delete().eq("id", file.id)
+      if (file) await scopedDb(userId).from("files").delete().eq("id", file.id)
       const { error: cleanupError } = await supabaseAdmin.storage.from("documents").remove([storagePath])
       if (cleanupError) console.error("MCP ingest inbox cleanup failed:", cleanupError)
       throw metadataError
@@ -177,7 +177,7 @@ export async function ingestFiles(userId: string, entitlement: Entitlement, file
     let terminalFailure: string | null = null
     let normalizationComplete = false
     while (Date.now() < deadline) {
-      const { data: extractionRows } = await supabaseAdmin
+      const { data: extractionRows } = await scopedDb(userId)
         .from("extractions")
         .select("id, status")
         .eq("file_id", file.id)
@@ -188,10 +188,10 @@ export async function ingestFiles(userId: string, entitlement: Entitlement, file
       }
 
       const [{ data: recordRows, count: recordCount }, { count: parentCount }, { count: lineItemCount }, { data: fileState }] = await Promise.all([
-        supabaseAdmin.from("records").select("*, record_attributes(*)", { count: "exact" }).eq("file_id", file.id),
-        supabaseAdmin.from("records").select("id", { count: "exact", head: true }).eq("file_id", file.id).is("parent_record_id", null),
-        supabaseAdmin.from("records").select("id", { count: "exact", head: true }).eq("file_id", file.id).not("parent_record_id", "is", null),
-        supabaseAdmin.from("files").select("upload_status").eq("id", file.id).maybeSingle(),
+        scopedDb(userId).from("records").select("*, record_attributes(*)", { count: "exact" }).eq("file_id", file.id),
+        scopedDb(userId).from("records").select("id", { count: "exact", head: true }).eq("file_id", file.id).is("parent_record_id", null),
+        scopedDb(userId).from("records").select("id", { count: "exact", head: true }).eq("file_id", file.id).not("parent_record_id", "is", null),
+        scopedDb(userId).from("files").select("upload_status").eq("id", file.id).maybeSingle(),
       ])
       records = recordRows ?? []
       counts = { record_count: recordCount ?? 0, parent_count: parentCount ?? 0, line_item_count: lineItemCount ?? 0 }

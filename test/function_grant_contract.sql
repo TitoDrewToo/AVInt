@@ -38,9 +38,9 @@ begin
   end if;
 
   if not has_function_privilege('authenticated', 'public.is_firm_admin(uuid)'::regprocedure, 'EXECUTE')
-     or has_function_privilege('anon', 'public.is_firm_admin(uuid)'::regprocedure)
-     or has_function_privilege('anon', 'public.is_firm_admin(uuid,uuid)'::regprocedure)
-     or has_function_privilege('authenticated', 'public.is_firm_admin(uuid,uuid)'::regprocedure) then
+     or has_function_privilege('anon', 'public.is_firm_admin(uuid)'::regprocedure, 'EXECUTE')
+     or has_function_privilege('anon', 'public.is_firm_admin(uuid,uuid)'::regprocedure, 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.is_firm_admin(uuid,uuid)'::regprocedure, 'EXECUTE') then
     raise exception 'is_firm_admin grant contract changed; review its dependent RLS policies before editing grants';
   end if;
 end

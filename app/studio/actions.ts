@@ -73,7 +73,10 @@ export async function submitSupportRequest(input: SupportInput): Promise<StudioI
   const email = typeof input?.email === "string" ? input.email.trim().toLowerCase() : ""
   const subject = typeof input?.subject === "string" ? input.subject.replace(/[\r\n]+/g, " ").trim() : ""
   const message = typeof input?.message === "string" ? input.message.trim() : ""
-  if (input.honeypot || typeof input.startedAt !== "number" || !Number.isFinite(input.startedAt) || Date.now() - input.startedAt < 1200) return { ok: true, spam: true }
+  if (input.honeypot || typeof input.startedAt !== "number" || !Number.isFinite(input.startedAt) || Date.now() - input.startedAt < 1200) {
+    console.info("[support-inquiry] honeypot/timing drop")
+    return { ok: true, spam: true, reference: "SUPPORT" }
+  }
   if (!EMAIL_PATTERN.test(email) || email.length > 254 || !subject || subject.length > 180 || !message || message.length > 4000) return { ok: false, error: "Please check your email, subject, and message." }
   const requestHeaders = await headers()
   const address = requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim() || requestHeaders.get("x-real-ip") || "unknown"

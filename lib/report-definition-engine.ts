@@ -182,10 +182,19 @@ async function loadRecords(userId: string, definition: ReportDefinition, periodO
   const sourceLabel = selectedFileIds ? `selected canonical records from ${fileIds.length} file(s)` : "canonical records"
   if (!fileIds.length) return { rows: [], availableFields: new Set(CORE_FIELDS), dateField: "occurred_on", currencyField: "currency", sourceLabel, dependencies: [] }
   const recordRows = await readComplete((from, to) => scopedDb(userId).from("records").select("*, files!inner(filename, folder_id, document_type)", { count: "exact" }).in("file_id", fileIds).is("parent_record_id", null).is("excluded_at", null).order("id").range(from, to), MAX_SOURCE_ROWS, "records")
-  const recordIds = recordRows.map((row) => row.id)
   const [attributes, attributeCatalog] = await Promise.all([
-    recordIds.length ? readComplete((from, to) => scopedDb(userId).from("record_attributes").select("record_id, field_key, value", { count: "exact" }).in("record_id", recordIds).order("record_id").order("field_key").range(from, to), 100_000, "record_attributes") : Promise.resolve([]),
-    readComplete((from, to) => scopedDb(userId).from("record_attributes").select("field_key", { count: "exact" }).order("record_id").order("field_key").range(from, to), 100_000, "record_attribute_catalog"),
+    recordRows.length ? readComplete((from, to) => {
+      let query = scopedDb(userId).from("record_attributes")
+        .select("record_id, field_key, value, records!inner(file_id, occurred_on, parent_record_id, excluded_at)", { count: "exact" })
+        .in("records.file_id", fileIds)
+        .is("records.parent_record_id", null)
+        .is("records.excluded_at", null)
+        .order("record_id").order("field_key")
+      if (period.from) query = query.gte("records.occurred_on", period.from)
+      if (period.to) query = query.lte("records.occurred_on", period.to)
+      return query.range(from, to)
+    }, 100_000, `record_attributes; joined records; period=${period.from}..${period.to}`) : Promise.resolve([]),
+    readComplete((from, to) => scopedDb(userId).from("record_attributes").select("field_key, records!inner(file_id)", { count: "exact" }).in("records.file_id", fileIds).order("field_key").range(from, to), 100_000, "record_attribute_catalog"),
   ])
   const attributesByRecord = new Map<string, Record<string, unknown>>()
   for (const attribute of attributes ?? []) {

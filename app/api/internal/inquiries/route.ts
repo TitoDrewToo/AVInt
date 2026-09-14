@@ -33,8 +33,10 @@ export async function PATCH(request: NextRequest) {
   const id = body.id
   const source = body.source
   const status = body.status
-  const validSupportStatus = source === "support" && typeof status === "string" && (SUPPORT_STATUSES as readonly string[]).includes(status)
-  if (!isUuid(id) || (source !== "partner" && source !== "studio" && source !== "support") || typeof status !== "string" || (!(STATUSES as readonly string[]).includes(status) && !validSupportStatus)) {
+  const validStatus = source === "support"
+    ? typeof status === "string" && (SUPPORT_STATUSES as readonly string[]).includes(status)
+    : typeof status === "string" && (STATUSES as readonly string[]).includes(status)
+  if (!isUuid(id) || (source !== "partner" && source !== "studio" && source !== "support") || !validStatus) {
     return NextResponse.json({ error: "Valid inquiry id, source, and status are required" }, { status: 400 })
   }
   const table = source === "partner" ? "partner_inquiries" : source === "studio" ? "studio_inquiries" : "support_inquiries"

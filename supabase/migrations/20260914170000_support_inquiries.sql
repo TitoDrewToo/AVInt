@@ -11,3 +11,10 @@ create table if not exists public.support_inquiries (
 );
 create index if not exists support_inquiries_created_at_idx on public.support_inquiries(created_at desc);
 create index if not exists support_inquiries_user_id_idx on public.support_inquiries(user_id);
+alter table public.support_inquiries enable row level security;
+revoke all on public.support_inquiries from public, anon, authenticated;
+grant select, insert, update on public.support_inquiries to service_role;
+drop trigger if exists maintain_support_inquiries_updated_at on public.support_inquiries;
+create trigger maintain_support_inquiries_updated_at
+before update on public.support_inquiries
+for each row execute function public.set_updated_at();

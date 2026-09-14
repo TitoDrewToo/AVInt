@@ -35,6 +35,7 @@ export const MCP_RATE_LIMITS = {
   globalIngest: { windowSeconds: positiveInteger("INGEST_GLOBAL_WINDOW_SECONDS", 60), maxCalls: positiveInteger("INGEST_GLOBAL_RPM", 60) },
 } as const
 export const MCP_CONNECTOR_URL = "/tools/smart-storage/connect"
+export const MCP_ENDPOINT = "/api/mcp"
 
 export function upgradeMessage(tier: string, limit: number, kind: string) {
   return `You've hit your ${tier} ${kind} limit (${limit}). Upgrade at ${process.env.NEXT_PUBLIC_APP_URL ?? "https://www.avintph.com/pricing"}; your records are saved.`

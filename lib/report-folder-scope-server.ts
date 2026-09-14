@@ -23,18 +23,3 @@ export async function resolveReportFolderScope(userId: string, targetFolder?: st
 
   return { folderIds: descendantFolderIds(folders, targetFolder) }
 }
-
-export async function getReportFileIds(userId: string, documentTypes: string[], targetFolder?: string | null) {
-  const scope = await resolveReportFolderScope(userId, targetFolder)
-  let query = supabaseAdmin
-    .from("files")
-    .select("id", { count: "exact" })
-    .eq("user_id", userId)
-    .order("id")
-
-  if (documentTypes.length > 0) query = query.in("document_type", documentTypes)
-  if (scope) query = query.in("folder_id", scope.folderIds)
-
-  const data = await readComplete((from, to) => query.range(from, to), 100_000, "files")
-  return data.map((row) => row.id)
-}

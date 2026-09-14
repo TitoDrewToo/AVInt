@@ -164,7 +164,7 @@ function makeRecord(
   const confidence = confidenceValues.length ? Math.min(...confidenceValues) : null
   const amount = forcedType === "line_item" ? row.amount ?? null : amountFor(row, type)
   const occurredOn = forcedType === "line_item"
-    ? row.due_date ?? inherited?.document_date ?? null
+    ? inherited?.document_date ?? null
     : row.document_date ?? null
   const currency = row.currency ?? inherited?.currency ?? null
   const needsReview = confidenceValues.some((value) => value < 0.8)

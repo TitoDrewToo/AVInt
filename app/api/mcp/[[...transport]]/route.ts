@@ -55,7 +55,10 @@ function mcpToolError(error: unknown, userId: string, stage: string, fallback: s
     return featureResult(error.message)
   }
   logApiError(error, { route: "mcp", stage, userId })
-  return featureResult(fallback)
+  const detail = error instanceof Error && /timeout|timed out|gateway|fetch failed|\b5\d\d\b/i.test(error.message)
+    ? ` (${error.message})`
+    : ""
+  return featureResult(`${fallback}${detail}`)
 }
 
 async function toolGuard(userId: string, entitlement: ReturnType<typeof computeEntitlement>, tool: "ingest" | "report" | "export" | "profile") {

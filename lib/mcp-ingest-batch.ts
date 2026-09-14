@@ -48,6 +48,7 @@ function safeMessage(error: unknown) {
   const message = error instanceof Error ? error.message : String(error)
   if (/idempotency key/i.test(message)) return message
   if (/no longer exists/i.test(message)) return message
+  if (/timeout|timed out|gateway|fetch failed|\b5\d\d\b/i.test(message)) return `This file could not be queued: ${message}`
   return "This file could not be queued. Retry the same batch key to resume it."
 }
 

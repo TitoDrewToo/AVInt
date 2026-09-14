@@ -79,6 +79,10 @@ Extract these fields:
   "employer_name": "string or null — employer name for payslips",
   "document_date": "YYYY-MM-DD or null — date printed on the document",
   "currency": "USD|PHP|SGD|EUR|GBP|etc or null — currency of the amounts",
+  "invoice_number": "string or null — invoice/reference number if present",
+  "due_date": "YYYY-MM-DD or null — document payment due date if present",
+  "subtotal_amount": number or null — subtotal before tax if present,
+  "tax_amount": number or null — tax/VAT amount if present,
   "total_amount": number or null,
   "gross_income": number or null,
   "net_income": number or null,
@@ -112,7 +116,7 @@ const HEADER_MAPPING_PROMPT = `You are a spreadsheet header mapper for a financi
 Given column headers from one sheet of a spreadsheet, map each header to one of these canonical fields, then infer the document_type for the sheet.
 
 Canonical fields:
-- vendor_name, employer_name, document_date, currency, total_amount
+- vendor_name, employer_name, document_date, due_date, currency, invoice_number, subtotal_amount, total_amount
 - gross_income, net_income, tax_amount, discount_amount, expense_category
 - direction (inflow|outflow|neutral) or the source debit/credit signal
 - payment_method, invoice_number, period_start, period_end, counterparty_name
@@ -143,7 +147,7 @@ const DOCUMENT_TYPES = new Set([
   "general_document",
 ])
 
-const NUMERIC_FIELDS = ["total_amount", "gross_income", "net_income", "tax_amount", "discount_amount"]
+const NUMERIC_FIELDS = ["total_amount", "subtotal_amount", "gross_income", "net_income", "tax_amount", "discount_amount"]
 const KNOWN_CURRENCY_CODES = ["USD", "PHP", "EUR", "GBP", "SGD", "JPY", "AUD", "CAD"]
 const CURRENCY_SYMBOL_TO_CODE: Record<string, string> = {
   "$": "USD",
@@ -406,7 +410,7 @@ function applyMapping(
     canonical[target] = value
   }
 
-  for (const dateField of ["document_date", "period_start", "period_end"]) {
+  for (const dateField of ["document_date", "due_date", "period_start", "period_end"]) {
     if (canonical[dateField] != null) {
       const original = canonical[dateField]
       const sanitized = safeDate(original)

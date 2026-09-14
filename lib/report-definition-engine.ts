@@ -1,4 +1,3 @@
-import { supabaseAdmin } from "@/lib/mcp-auth"
 import { scopedDb } from "@/lib/scoped-db"
 import { McpUserFacingError } from "@/lib/mcp-errors"
 import { readComplete } from "@/lib/complete-read"

@@ -123,7 +123,11 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
     ;(server as any).registerTool = (name: string, config: Record<string, unknown>, handler: any) => {
       const destructive = new Set(["smart_storage.delete_virtual_dataset", "smart_storage.delete_mapping_profile", "smart_storage.delete_relationship", "smart_dashboard.delete_page"])
       const writes = new Set(["smart_storage.create_folder", "smart_storage.ingest", "smart_storage.save_virtual_dataset", "smart_storage.save_mapping_profile", "smart_storage.preview_mapping_profile", "smart_storage.activate_mapping_profile", "smart_storage.save_relationship", "smart_storage.preview_relationship", "smart_storage.activate_relationship", "smart_storage.save_report_definition", "smart_dashboard.create_page", "smart_dashboard.update_page", "smart_dashboard.save_visual"])
-      const readOnly = !writes.has(name) && !destructive.has(name)
+      const readOnlyToolNames = new Set(["smart_storage.list_files", "smart_storage.list_folders", "smart_storage.ingest_status", "smart_storage.profile", "smart_storage.virtual_model", "smart_storage.report", "smart_storage.list_virtual_datasets", "smart_storage.get_virtual_dataset", "smart_storage.list_mapping_profiles", "smart_storage.get_mapping_profile", "smart_storage.list_relationships", "smart_storage.get_relationship", "smart_storage.list_report_definitions", "smart_storage.run_report_definition", "smart_storage.export", "smart_dashboard.list_visuals", "smart_dashboard.list_pages"])
+      if (!writes.has(name) && !destructive.has(name) && !readOnlyToolNames.has(name)) {
+        throw new Error(`Unclassified MCP tool permission policy: ${name}`)
+      }
+      const readOnly = readOnlyToolNames.has(name)
       return registerTool(name, { ...config, annotations: { readOnlyHint: readOnly, ...(destructive.has(name) ? { destructiveHint: true } : {}) } }, handler)
     }
     const listStorage = (kind: "files" | "folders", toolName: string, title: string) => server.registerTool(toolName, {

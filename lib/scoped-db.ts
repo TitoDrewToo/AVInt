@@ -28,9 +28,8 @@ export function scopedDb(ownerUserId: string) {
             return Reflect.apply((target as any)[property], target, [withOwner, ...args])
           }
         }
-        // Query-builder methods after the initial scoped operation execute on the
-        // returned PostgREST builder and retain Supabase's own typing/runtime.
-        return Reflect.get(target, property, receiver)
+        if (property === "then") return Reflect.get(target, property, receiver)
+        throw new Error(`Unsupported scoped database method: ${String(property)}`)
       },
     })
   }

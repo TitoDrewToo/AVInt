@@ -32,7 +32,7 @@ export async function validateDefinitionAccess(userId: string, input: ReportDefi
     const parsed = new URL(logoUrl)
     const match = parsed.pathname.match(/^\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/)
     if (!match) throw new TypeError("theme.client.logoUrl must be a public Supabase Storage object")
-    const { data: object, error: objectError } = await supabaseAdmin.from("objects").select("owner_id").eq("bucket_id", match[1]).eq("name", decodeURIComponent(match[2])).maybeSingle()
+    const { data: object, error: objectError } = await supabaseAdmin.schema("storage").from("objects").select("owner_id").eq("bucket_id", match[1]).eq("name", decodeURIComponent(match[2])).maybeSingle()
     if (objectError) throw new Error(objectError.message)
     if (!object || object.owner_id !== userId) throw new TypeError("theme.client.logoUrl must reference a storage object owned by this account")
   }

@@ -3,7 +3,7 @@ import { z } from "zod"
 import { NextRequest, NextResponse } from "next/server"
 
 import { computeEntitlement } from "@/lib/entitlement"
-import { entitlementForUser, OAuthAccountRequiredError, resolveOAuthToken, supabaseAdmin, withMcpStage } from "@/lib/mcp-auth"
+import { entitlementForUser, OAuthAccountRequiredError, OAuthTokenExpiredError, resolveOAuthToken, supabaseAdmin, withMcpStage } from "@/lib/mcp-auth"
 import { MCP_CONNECTOR_ENABLED, MCP_OAUTH_ENABLED, MCP_RATE_LIMITS, oauthProtectedResourceUrl, upgradeMessage } from "@/lib/mcp-config"
 import { checkRateLimit, type RateLimitBucket } from "@/lib/rate-limit"
 import { type IngestFile } from "@/lib/smart-storage-ingest"
@@ -615,6 +615,7 @@ async function handle(req: NextRequest) {
     identity = await resolveOAuthToken(req)
   } catch (error) {
     if (error instanceof OAuthAccountRequiredError) return withCors(req, NextResponse.json({ error: error.message }, { status: 403 }))
+    if (error instanceof OAuthTokenExpiredError) return withCors(req, NextResponse.json({ error: error.message }, { status: 401 }))
     return withCors(req, NextResponse.json({ error: "OAuth authentication failed" }, { status: 401 }))
   }
   if (!identity) {

@@ -4,12 +4,17 @@ import { createRemoteJWKSet, decodeJwt, jwtVerify, type JWTPayload } from "jose"
 import { MCP_OAUTH_ENABLED, mcpResourceUrl, workosIssuer } from "@/lib/mcp-config"
 import { computeEntitlement, computeFirmClientEntitlement, type Entitlement } from "@/lib/entitlement"
 import { getWorkOSClient } from "@/lib/workos"
+import { McpUserFacingError } from "@/lib/mcp-errors"
 
 export class OAuthAccountRequiredError extends Error {
   constructor() {
     super("Connect requires a Smart Storage account with this email")
     this.name = "OAuthAccountRequiredError"
   }
+}
+
+export class OAuthTokenExpiredError extends McpUserFacingError {
+  constructor() { super("OAuth access token expired; reconnect the Smart Storage connector.") }
 }
 
 export const supabaseAdmin = createClient(
@@ -72,7 +77,20 @@ export async function resolveOAuthToken(req: Request): Promise<{ userId: string 
     if (!MCP_OAUTH_ENABLED) return null
     if (!token) return null
     if (!issuer || !resource || !process.env.WORKOS_API_KEY || !process.env.WORKOS_CLIENT_ID) return null
-    const { payload } = await withMcpStage("jwtVerify_JWKS", async () => jwtVerify(token, getOAuthJwks(issuer), { issuer, audience: resource }))
+    const { payload } = await withMcpStage("jwtVerify_JWKS", async () => {
+      let lastError: unknown
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try { return await jwtVerify(token, getOAuthJwks(issuer), { issuer, audience: resource }) }
+        catch (error) {
+          lastError = error
+          if ((error as { code?: string }).code === "ERR_JWT_EXPIRED") throw new OAuthTokenExpiredError()
+          const message = error instanceof Error ? error.message : String(error)
+          if (!/timeout|gateway|fetch failed|5\d\d/i.test(message) || attempt === 2) throw error
+          await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)))
+        }
+      }
+      throw lastError
+    })
     const email = await emailFromOAuthClaims(payload)
     if (!email) throw new OAuthAccountRequiredError()
     const { data: userId, error } = await withMcpStage("get_user_id_by_email_RPC", async () => {
@@ -84,7 +102,7 @@ export async function resolveOAuthToken(req: Request): Promise<{ userId: string 
     return { userId }
   } catch (error) {
     outcome = "failed"
-    if (error instanceof OAuthAccountRequiredError) throw error
+    if (error instanceof OAuthAccountRequiredError || error instanceof OAuthTokenExpiredError) throw error
     // Diagnostic (observability-first): surface WHY jwtVerify rejected the token.
     // Never logs the token or any secret — only claim identifiers and the jose code.
     try {

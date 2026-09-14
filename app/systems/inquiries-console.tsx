@@ -6,9 +6,9 @@ import { Archive, Mail, RefreshCw, Search } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"
 
-type Status = "new" | "contacted" | "qualified" | "closed"
-type Inquiry = { id: string; source: "partner" | "studio"; name: string; organization: string | null; email: string; client_count?: number | null; message: string; status: Status; created_at: string }
-const statuses: Status[] = ["new", "contacted", "qualified", "closed"]
+type Status = "new" | "contacted" | "qualified" | "closed" | "open" | "in_progress" | "waiting_on_customer" | "resolved"
+type Inquiry = { id: string; source: "partner" | "studio" | "support"; name: string; organization: string | null; email: string; client_count?: number | null; message: string; status: Status; created_at: string }
+const statuses: Status[] = ["new", "contacted", "qualified", "closed", "open", "in_progress", "waiting_on_customer", "resolved"]
 
 function formatDate(value: string) {
   return new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
@@ -45,9 +45,9 @@ export function InquiriesConsole({ view = "active" }: { view?: "active" | "archi
 
   const visible = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase()
-    return inquiries.filter((inquiry) => view === "archive" ? inquiry.status === "closed" : inquiry.status !== "closed").filter((inquiry) => !normalizedQuery || [inquiry.name, inquiry.email, inquiry.organization, inquiry.message, inquiry.source].filter(Boolean).join(" ").toLowerCase().includes(normalizedQuery))
+    return inquiries.filter((inquiry) => view === "archive" ? (inquiry.status === "closed" || inquiry.status === "resolved") : (inquiry.status !== "closed" && inquiry.status !== "resolved")).filter((inquiry) => !normalizedQuery || [inquiry.name, inquiry.email, inquiry.organization, inquiry.message, inquiry.source].filter(Boolean).join(" ").toLowerCase().includes(normalizedQuery))
   }, [inquiries, query, view])
-  const activeCount = inquiries.filter((inquiry) => inquiry.status !== "closed").length
+  const activeCount = inquiries.filter((inquiry) => inquiry.status !== "closed" && inquiry.status !== "resolved").length
   const archivedCount = inquiries.length - activeCount
   const heading = view === "archive" ? "Archived inquiries" : "Partner + studio inquiries"
   const description = view === "archive" ? "Closed conversations remain available for reference without crowding the active pipeline." : "Keep active conversations visible, then close them when no further follow-up is needed."

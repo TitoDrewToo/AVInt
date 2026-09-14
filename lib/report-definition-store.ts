@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/mcp-auth"
+import { scopedDb } from "@/lib/scoped-db"
 import { RECORD_DEFINITION_FIELDS, referencedDefinitionFields, slugifyReportTitle, slugWithSuffix, validateReportDefinitionPayload, type ReportDefinition, type ReportDefinitionInput, type ReportDefinitionListItem, type ReportMetric } from "@/lib/report-definitions"
 import { resolveReportFolderScope } from "@/lib/report-folder-scope-server"
 import { dataMappingRuleSourceFields, dataMappingTargetType, isReconciliationMappingRule, validateDataMappingProfilePayload } from "@/lib/data-mapping-definitions"
@@ -15,7 +16,7 @@ async function validateExecutableSource(userId: string, input: ReportDefinitionI
 }
 
 async function resolveSelectedFiles(userId: string, fileIds: string[]) {
-  const { data, error } = await supabaseAdmin.from("files").select("id, filename, folder_id").eq("user_id", userId).in("id", fileIds)
+  const { data, error } = await scopedDb(userId).from("files").select("id, filename, folder_id").in("id", fileIds)
   if (error) throw new Error(error.message)
   const byId = new Map((data ?? []).map((file) => [file.id, file]))
   if (byId.size !== fileIds.length || fileIds.some((id) => !byId.has(id))) throw new TypeError("Selected files do not exist or are not accessible")
@@ -32,15 +33,16 @@ export async function validateDefinitionAccess(userId: string, input: ReportDefi
     const parsed = new URL(logoUrl)
     const match = parsed.pathname.match(/^\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/)
     if (!match) throw new TypeError("theme.client.logoUrl must be a public Supabase Storage object")
-    const { data: object, error: objectError } = await supabaseAdmin.from("objects").select("owner_id").eq("bucket_id", match[1]).eq("name", decodeURIComponent(match[2])).maybeSingle()
+    const objectName = decodeURIComponent(match[2])
+    const { data: object, error: objectError } = await supabaseAdmin.schema("storage").from("objects").select("name").eq("bucket_id", match[1]).eq("name", objectName).maybeSingle()
     if (objectError) throw new Error(objectError.message)
-    if (!object || object.owner_id !== userId) throw new TypeError("theme.client.logoUrl must reference a storage object owned by this account")
+    if (!object || !object.name.startsWith(`${userId}/`)) throw new TypeError("theme.client.logoUrl must reference a storage object owned by this account")
   }
   if (input.scope?.folderId) await resolveReportFolderScope(userId, input.scope.folderId)
   const referenced = referencedDefinitionFields(input)
   if (input.source.kind === "mapping_profile") {
     if (input.scope?.folderId) throw new TypeError("Report scope must be defined by the mapping profile source")
-    const { data, error } = await supabaseAdmin.from("data_mapping_profiles").select("title, description, source, scope, mappings, status").eq("user_id", userId).eq("slug", input.source.slug).eq("status", "active").is("archived_at", null).maybeSingle()
+    const { data, error } = await scopedDb(userId).from("data_mapping_profiles").select("title, description, source, scope, mappings, status").eq("slug", input.source.slug).eq("status", "active").is("archived_at", null).maybeSingle()
     if (error) throw new Error(error.message)
     if (!data) throw new TypeError("The selected active mapping profile does not exist or is not accessible")
     const profile = validateDataMappingProfilePayload(data)
@@ -68,7 +70,7 @@ export async function validateDefinitionAccess(userId: string, input: ReportDefi
   }
   if (input.source.kind === "virtual_dataset") {
     if (input.scope?.folderId) throw new TypeError("Report scope must be defined by the virtual dataset source")
-    const { data, error } = await supabaseAdmin.from("virtual_dataset_definitions").select("source, scope, filters, fields").eq("user_id", userId).eq("slug", input.source.slug).is("archived_at", null).maybeSingle()
+    const { data, error } = await scopedDb(userId).from("virtual_dataset_definitions").select("source, scope, filters, fields").eq("slug", input.source.slug).is("archived_at", null).maybeSingle()
     if (error) throw new Error(error.message)
     if (!data) throw new TypeError("The selected virtual dataset does not exist or is not accessible")
     const projectedFields = Array.isArray(data.fields) ? data.fields.filter((field): field is string => typeof field === "string") : []
@@ -87,12 +89,12 @@ export async function validateDefinitionAccess(userId: string, input: ReportDefi
   }
   if (input.source.kind === "relationship") {
     if (input.scope?.folderId) throw new TypeError("Report scope must be defined by the relationship's virtual datasets")
-    const { data, error } = await supabaseAdmin.from("virtual_dataset_relationships").select("definition, status").eq("user_id", userId).eq("slug", input.source.slug).eq("status", "active").is("archived_at", null).maybeSingle()
+    const { data, error } = await scopedDb(userId).from("virtual_dataset_relationships").select("definition, status").eq("slug", input.source.slug).eq("status", "active").is("archived_at", null).maybeSingle()
     if (error) throw new Error(error.message)
     if (!data) throw new TypeError("The selected active relationship does not exist or is not accessible")
     const relationship = validateDataRelationshipDefinitionPayload(data.definition)
     if (!relationship.ok) throw new TypeError("The selected relationship is invalid")
-    const { data: virtuals, error: virtualError } = await supabaseAdmin.from("virtual_dataset_definitions").select("slug, fields").eq("user_id", userId).in("slug", [relationship.value.leftVirtualDatasetSlug, relationship.value.rightVirtualDatasetSlug]).is("archived_at", null)
+    const { data: virtuals, error: virtualError } = await scopedDb(userId).from("virtual_dataset_definitions").select("slug, fields").in("slug", [relationship.value.leftVirtualDatasetSlug, relationship.value.rightVirtualDatasetSlug]).is("archived_at", null)
     if (virtualError) throw new Error(virtualError.message)
     const fieldsBySlug = new Map((virtuals ?? []).map((item) => [item.slug, Array.isArray(item.fields) ? item.fields.filter((field): field is string => typeof field === "string") : []]))
     const leftFields = fieldsBySlug.get(relationship.value.leftVirtualDatasetSlug)
@@ -106,7 +108,7 @@ export async function validateDefinitionAccess(userId: string, input: ReportDefi
   if (input.source.kind === "records") {
     if (input.source.fileIds) await resolveSelectedFiles(userId, input.source.fileIds)
     const availableFields = new Set<string>([...RECORD_DEFINITION_FIELDS, "filename", "folder_id"])
-    const { data, error } = await supabaseAdmin.from("record_attributes").select("field_key, value_type").eq("user_id", userId)
+    const { data, error } = await scopedDb(userId).from("record_attributes").select("field_key, value_type")
     if (error) throw new Error(error.message)
     const types = new Map<string, Set<string>>()
     for (const row of data ?? []) {
@@ -123,10 +125,10 @@ export async function validateDefinitionAccess(userId: string, input: ReportDefi
   let datasets: Array<{ id: string; file_id: string; sheet_name: string | null; row_count?: number | null }> = []
   let dataset: { id: string; file_id: string; sheet_name: string | null; row_count?: number | null } | null = null
   if (input.source.datasetId) {
-    const { data, error } = await supabaseAdmin.from("datasets").select("id, file_id, sheet_name, row_count").eq("id", input.source.datasetId).eq("user_id", userId).is("archived_at", null).maybeSingle()
+    const { data, error } = await scopedDb(userId).from("datasets").select("id, file_id, sheet_name, row_count").eq("id", input.source.datasetId).is("archived_at", null).maybeSingle()
     if (error) throw new Error(error.message)
     if (!data) {
-      const { data: archived, error: archivedError } = await supabaseAdmin.from("datasets").select("id").eq("id", input.source.datasetId).eq("user_id", userId).not("archived_at", "is", null).maybeSingle()
+      const { data: archived, error: archivedError } = await scopedDb(userId).from("datasets").select("id").eq("id", input.source.datasetId).not("archived_at", "is", null).maybeSingle()
       if (archivedError) throw new Error(archivedError.message)
       if (archived) throw new TypeError("The selected dataset is no longer present in the current source file")
       throw new TypeError("The selected dataset does not exist or is not accessible")
@@ -135,15 +137,15 @@ export async function validateDefinitionAccess(userId: string, input: ReportDefi
     dataset = data; datasets = [data]
   } else if (input.source.folderId) {
     const scope = await resolveReportFolderScope(userId, input.source.folderId)
-    const { data: files, error: filesError } = await supabaseAdmin.from("files").select("id").eq("user_id", userId).in("folder_id", scope?.folderIds ?? [])
+    const { data: files, error: filesError } = await scopedDb(userId).from("files").select("id").in("folder_id", scope?.folderIds ?? [])
     if (filesError) throw new Error(filesError.message)
-    const { data: folderDatasets, error: datasetError } = await supabaseAdmin.from("datasets").select("id, file_id, sheet_name, row_count").eq("user_id", userId).in("file_id", (files ?? []).map((file) => file.id)).is("archived_at", null)
+    const { data: folderDatasets, error: datasetError } = await scopedDb(userId).from("datasets").select("id, file_id, sheet_name, row_count").in("file_id", (files ?? []).map((file) => file.id)).is("archived_at", null)
     if (datasetError) throw new Error(datasetError.message)
     datasets = (folderDatasets ?? []).sort((a, b) => a.id.localeCompare(b.id))
     if (!datasets.length) throw new TypeError("The selected folder contains no datasets")
   } else if (input.source.fileIds) {
     const selectedFiles = await resolveSelectedFiles(userId, input.source.fileIds)
-    const { data: selectedDatasets, error: datasetError } = await supabaseAdmin.from("datasets").select("id, file_id, sheet_name, row_count").eq("user_id", userId).in("file_id", selectedFiles.map((file) => file.id)).is("archived_at", null)
+    const { data: selectedDatasets, error: datasetError } = await scopedDb(userId).from("datasets").select("id, file_id, sheet_name, row_count").in("file_id", selectedFiles.map((file) => file.id)).is("archived_at", null)
     if (datasetError) throw new Error(datasetError.message)
     const position = new Map(input.source.fileIds.map((id, index) => [id, index]))
     datasets = (selectedDatasets ?? []).sort((a, b) => (position.get(a.file_id) ?? Number.MAX_SAFE_INTEGER) - (position.get(b.file_id) ?? Number.MAX_SAFE_INTEGER) || String(a.sheet_name).localeCompare(String(b.sheet_name)) || a.id.localeCompare(b.id))
@@ -156,7 +158,7 @@ export async function validateDefinitionAccess(userId: string, input: ReportDefi
       : await resolveSelectedFiles(userId, input.source.fileIds!)
     if (files.some((file) => !scope?.folderIds.includes(file.folder_id))) throw new TypeError("A selected dataset is outside the report folder scope")
   }
-  const { data: columns, error: columnError } = await supabaseAdmin.from("dataset_columns").select("key, data_type, role, null_count, dataset_id").in("dataset_id", datasets.map((item) => item.id)).eq("user_id", userId)
+  const { data: columns, error: columnError } = await scopedDb(userId).from("dataset_columns").select("key, data_type, role, null_count, dataset_id").in("dataset_id", datasets.map((item) => item.id))
   if (columnError) throw new Error(columnError.message)
   const baseDatasetId = datasets[0].id
   const typeByField = new Map((columns ?? []).filter((column) => column.dataset_id === baseDatasetId).map((column) => [column.key, column.data_type]))
@@ -196,7 +198,7 @@ export async function validateDefinitionAccess(userId: string, input: ReportDefi
 }
 
 export async function listReportDefinitions(userId: string, search?: string): Promise<ReportDefinitionListItem[]> {
-  let query = supabaseAdmin.from("report_definitions").select("slug, title, description, source, period, authored_by, version, updated_at").eq("user_id", userId).is("archived_at", null).order("updated_at", { ascending: false }).limit(100)
+  let query = scopedDb(userId).from("report_definitions").select("slug, title, description, source, period, authored_by, version, updated_at").is("archived_at", null).order("updated_at", { ascending: false }).limit(100)
   if (search?.trim()) query = query.ilike("title", `%${search.trim().replace(/[\\%_]/g, "\\$&")}%`)
   const { data, error } = await query
   if (error) throw new Error(error.message)
@@ -204,7 +206,7 @@ export async function listReportDefinitions(userId: string, search?: string): Pr
 }
 
 export async function getReportDefinition(userId: string, slug: string): Promise<ReportDefinition> {
-  const { data, error } = await supabaseAdmin.from("report_definitions").select("*").eq("user_id", userId).eq("slug", slug).is("archived_at", null).maybeSingle()
+  const { data, error } = await scopedDb(userId).from("report_definitions").select("*").eq("slug", slug).is("archived_at", null).maybeSingle()
   if (error) throw new Error(error.message)
   if (!data) throw new ReportDefinitionNotFoundError("Report definition not found")
   return data as ReportDefinition
@@ -219,7 +221,7 @@ export async function createReportDefinition(userId: string, input: unknown, aut
   for (let suffix = 1; suffix <= 100; suffix += 1) {
     const slug = slugWithSuffix(base, suffix)
     const payload = { user_id: userId, slug, ...validated.value, authored_by: authoredBy, blocks: JSON.parse(JSON.stringify(validated.value.blocks)) }
-    const { data, error } = await supabaseAdmin.from("report_definitions").insert(payload).select("*").single()
+    const { data, error } = await scopedDb(userId).from("report_definitions").insert(payload).select("*").single()
     if (!error && data) return data as ReportDefinition
     if (error?.code !== "23505") throw new ReportDefinitionWriteError(`Report definition could not be saved${error?.message ? `: ${error.message}` : ""}`)
   }
@@ -234,7 +236,7 @@ export async function updateReportDefinition(userId: string, slug: string, input
   if (!validated.ok) throw new TypeError(validated.error)
   await validateDefinitionAccess(userId, validated.value)
   await validateExecutableSource(userId, validated.value)
-  const { data, error } = await supabaseAdmin.from("report_definitions").update({ ...validated.value, authored_by: authoredBy, version: expectedVersion + 1, blocks: JSON.parse(JSON.stringify(validated.value.blocks)) }).eq("id", current.id).eq("user_id", userId).eq("version", expectedVersion).is("archived_at", null).select("*").maybeSingle()
+  const { data, error } = await scopedDb(userId).from("report_definitions").update({ ...validated.value, authored_by: authoredBy, version: expectedVersion + 1, blocks: JSON.parse(JSON.stringify(validated.value.blocks)) }).eq("id", current.id).eq("version", expectedVersion).is("archived_at", null).select("*").maybeSingle()
   if (error) throw new ReportDefinitionWriteError(`Report definition could not be saved: ${error.message}`)
   if (!data) throw new ReportDefinitionConflictError("Report definition changed while it was being saved")
   return data as ReportDefinition
@@ -242,7 +244,7 @@ export async function updateReportDefinition(userId: string, slug: string, input
 
 export async function archiveReportDefinition(userId: string, slug: string): Promise<{ slug: string; archived_at: string }> {
   const archivedAt = new Date().toISOString()
-  const { data, error } = await supabaseAdmin.from("report_definitions").update({ archived_at: archivedAt }).eq("user_id", userId).eq("slug", slug).is("archived_at", null).select("slug, archived_at").maybeSingle()
+  const { data, error } = await scopedDb(userId).from("report_definitions").update({ archived_at: archivedAt }).eq("slug", slug).is("archived_at", null).select("slug, archived_at").maybeSingle()
   if (error) throw new Error(error.message)
   if (!data) throw new ReportDefinitionNotFoundError("Report definition not found")
   return data as { slug: string; archived_at: string }

@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/mcp-auth"
+import { scopedDb } from "@/lib/scoped-db"
 import { McpUserFacingError } from "@/lib/mcp-errors"
 import { slugifyReportTitle, slugWithSuffix } from "@/lib/report-definitions"
 import { getVirtualDatasetDefinition } from "@/lib/virtual-dataset-store"
@@ -35,7 +36,7 @@ function hydrate(row: Record<string, unknown>): DataRelationshipDefinition {
 }
 
 export async function listDataRelationships(userId: string, search?: string): Promise<DataRelationshipDefinitionListItem[]> {
-  let query = supabaseAdmin.from("virtual_dataset_relationships").select("slug, title, description, definition, status, version, previewed_version, updated_at").eq("user_id", userId).is("archived_at", null).order("updated_at", { ascending: false }).limit(100)
+  let query = scopedDb(userId).from("virtual_dataset_relationships").select("slug, title, description, definition, status, version, previewed_version, updated_at").is("archived_at", null).order("updated_at", { ascending: false }).limit(100)
   if (search?.trim()) query = query.ilike("title", `%${search.trim().replace(/[\\%_]/g, "\\$&")}%`)
   const { data, error } = await query
   if (error) throw new Error(error.message)
@@ -47,7 +48,7 @@ export async function listDataRelationships(userId: string, search?: string): Pr
 }
 
 export async function getDataRelationship(userId: string, slug: string, activeOnly = false): Promise<DataRelationshipDefinition> {
-  let query = supabaseAdmin.from("virtual_dataset_relationships").select("*").eq("user_id", userId).eq("slug", slug).is("archived_at", null)
+  let query = scopedDb(userId).from("virtual_dataset_relationships").select("*").eq("slug", slug).is("archived_at", null)
   if (activeOnly) query = query.eq("status", "active")
   const { data, error } = await query.maybeSingle()
   if (error) throw new Error(error.message)
@@ -62,7 +63,7 @@ export async function createDataRelationship(userId: string, input: unknown, aut
   const base = slugifyReportTitle(validated.value.title)
   for (let suffix = 1; suffix <= 100; suffix += 1) {
     const slug = slugWithSuffix(base, suffix)
-    const { data, error } = await supabaseAdmin.from("virtual_dataset_relationships").insert({ user_id: userId, slug, title: validated.value.title, description: validated.value.description, definition: validated.value, status: "draft", authored_by: authoredBy }).select("*").single()
+    const { data, error } = await scopedDb(userId).from("virtual_dataset_relationships").insert({ user_id: userId, slug, title: validated.value.title, description: validated.value.description, definition: validated.value, status: "draft", authored_by: authoredBy }).select("*").single()
     if (!error && data) return hydrate(data)
     if (error?.code !== "23505") throw new Error(error?.message ?? "Relationship could not be created")
   }
@@ -75,14 +76,14 @@ export async function updateDataRelationship(userId: string, slug: string, input
   const validated = validateDataRelationshipDefinitionPayload({ ...current, ...(input && typeof input === "object" && !Array.isArray(input) ? input : {}) })
   if (!validated.ok) throw new TypeError(validated.error)
   await validateAccess(userId, validated.value)
-  const { data, error } = await supabaseAdmin.from("virtual_dataset_relationships").update({ title: validated.value.title, description: validated.value.description, definition: validated.value, status: "draft", authored_by: authoredBy, version: expectedVersion + 1, previewed_version: null, preview_summary: null, activated_by: null, activated_at: null }).eq("id", current.id).eq("user_id", userId).eq("version", expectedVersion).is("archived_at", null).select("*").maybeSingle()
+  const { data, error } = await scopedDb(userId).from("virtual_dataset_relationships").update({ title: validated.value.title, description: validated.value.description, definition: validated.value, status: "draft", authored_by: authoredBy, version: expectedVersion + 1, previewed_version: null, preview_summary: null, activated_by: null, activated_at: null }).eq("id", current.id).eq("version", expectedVersion).is("archived_at", null).select("*").maybeSingle()
   if (error) throw new Error(error.message)
   if (!data) throw new DataRelationshipConflictError("Relationship changed while it was being saved")
   return hydrate(data)
 }
 
 export async function recordDataRelationshipPreview(userId: string, slug: string, version: number, summary: DataRelationshipPreviewSummary) {
-  const { data, error } = await supabaseAdmin.from("virtual_dataset_relationships").update({ previewed_version: version, preview_summary: summary }).eq("user_id", userId).eq("slug", slug).eq("version", version).is("archived_at", null).select("*").maybeSingle()
+  const { data, error } = await scopedDb(userId).from("virtual_dataset_relationships").update({ previewed_version: version, preview_summary: summary }).eq("slug", slug).eq("version", version).is("archived_at", null).select("*").maybeSingle()
   if (error) throw new Error(error.message)
   if (!data) throw new DataRelationshipConflictError("Relationship changed while it was being previewed")
   return hydrate(data)
@@ -98,7 +99,7 @@ export async function activateDataRelationship(userId: string, slug: string, exp
   if (preview.projectedRows < 1) throw new DataRelationshipConflictError("The preview found no matching rows")
   const activatedAt = new Date().toISOString()
   const nextVersion = expectedVersion + 1
-  const { data, error } = await supabaseAdmin.from("virtual_dataset_relationships").update({ status: "active", version: nextVersion, previewed_version: nextVersion, preview_summary: { ...preview, relationshipVersion: nextVersion }, activated_by: userId, activated_at: activatedAt }).eq("id", current.id).eq("user_id", userId).eq("version", expectedVersion).eq("previewed_version", expectedVersion).is("archived_at", null).select("*").maybeSingle()
+  const { data, error } = await scopedDb(userId).from("virtual_dataset_relationships").update({ status: "active", version: nextVersion, previewed_version: nextVersion, preview_summary: { ...preview, relationshipVersion: nextVersion }, activated_by: userId, activated_at: activatedAt }).eq("id", current.id).eq("version", expectedVersion).eq("previewed_version", expectedVersion).is("archived_at", null).select("*").maybeSingle()
   if (error) throw new Error(error.message)
   if (!data) throw new DataRelationshipConflictError("Relationship changed while it was being activated")
   return hydrate(data)
@@ -106,12 +107,12 @@ export async function activateDataRelationship(userId: string, slug: string, exp
 
 export async function archiveDataRelationship(userId: string, slug: string): Promise<{ slug: string; archived_at: string }> {
   await getDataRelationship(userId, slug)
-  const { data: reports, error } = await supabaseAdmin.from("report_definitions").select("slug, source").eq("user_id", userId).is("archived_at", null)
+  const { data: reports, error } = await scopedDb(userId).from("report_definitions").select("slug, source").is("archived_at", null)
   if (error) throw new Error(error.message)
   const dependents = (reports ?? []).filter((row) => row.source?.kind === "relationship" && row.source?.slug === slug).map((row) => `report ${row.slug}`)
   if (dependents.length) throw new DataRelationshipDependencyError(`Relationship ${slug} cannot be deleted; it is referenced by ${dependents.join(", ")}`)
   const archivedAt = new Date().toISOString()
-  const { data, error: archiveError } = await supabaseAdmin.from("virtual_dataset_relationships").update({ archived_at: archivedAt }).eq("user_id", userId).eq("slug", slug).is("archived_at", null).select("slug, archived_at").maybeSingle()
+  const { data, error: archiveError } = await scopedDb(userId).from("virtual_dataset_relationships").update({ archived_at: archivedAt }).eq("slug", slug).is("archived_at", null).select("slug, archived_at").maybeSingle()
   if (archiveError) throw new Error(archiveError.message)
   if (!data) throw new DataRelationshipNotFoundError("Relationship not found")
   return data as { slug: string; archived_at: string }

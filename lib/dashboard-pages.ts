@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/mcp-auth"
+import { scopedDb } from "@/lib/scoped-db"
 import { McpUserFacingError } from "@/lib/mcp-errors"
 import { dashboardPageId, dashboardPageName, dashboardPageOrder, dashboardPageSlug, MAX_DASHBOARD_PAGES } from "@/lib/dashboard-page-contract"
 
@@ -10,7 +11,7 @@ export class DashboardPageConflictError extends McpUserFacingError {}
 const PAGE_SELECT = "id, user_id, name, slug, kind, position"
 
 async function selectPages(userId: string) {
-  const { data, error } = await supabaseAdmin.from("dashboard_pages").select(PAGE_SELECT).eq("user_id", userId).order("position").order("created_at")
+  const { data, error } = await scopedDb(userId).from("dashboard_pages").select(PAGE_SELECT).order("position").order("created_at")
   if (error) throw new Error(error.message)
   return (data ?? []) as DashboardPage[]
 }
@@ -22,13 +23,13 @@ export async function ensureDefaultDashboardPages(userId: string) {
   ]
   const existing = await selectPages(userId)
   if (!existing.length) {
-    const { error: insertError } = await supabaseAdmin.from("dashboard_pages").upsert(defaults, { onConflict: "user_id,slug", ignoreDuplicates: true })
+    const { error: insertError } = await scopedDb(userId).from("dashboard_pages").upsert(defaults, { onConflict: "user_id,slug", ignoreDuplicates: true })
     if (insertError) throw new Error(insertError.message)
   }
   const pages = existing.length ? existing : await selectPages(userId)
   const firstPage = pages[0]
   if (firstPage) {
-    const { error: legacyWidgetError } = await supabaseAdmin.from("advanced_widgets").update({ page_id: firstPage.id }).eq("user_id", userId).is("page_id", null)
+    const { error: legacyWidgetError } = await scopedDb(userId).from("advanced_widgets").update({ page_id: firstPage.id }).is("page_id", null)
     if (legacyWidgetError) throw new Error(legacyWidgetError.message)
   }
   return pages
@@ -43,7 +44,7 @@ export async function resolveDashboardPage(userId: string, slug?: string, fallba
 
 export async function loadDashboardPageLayout(userId: string, idInput: unknown) {
   const id = dashboardPageId(idInput)
-  const { data, error } = await supabaseAdmin.from("dashboard_pages").select("layout").eq("id", id).eq("user_id", userId).maybeSingle()
+  const { data, error } = await scopedDb(userId).from("dashboard_pages").select("layout").eq("id", id).maybeSingle()
   if (error) throw new Error(error.message)
   if (!data) throw new DashboardPageNotFoundError("Dashboard page does not exist")
   return data.layout && typeof data.layout === "object" && !Array.isArray(data.layout) ? data.layout as Record<string, unknown> : {}
@@ -63,7 +64,7 @@ export async function createDashboardPage(userId: string, input: unknown) {
 
 export async function renameDashboardPage(userId: string, idInput: unknown, nameInput: unknown) {
   const id = dashboardPageId(idInput); const name = dashboardPageName(nameInput)
-  const { data, error } = await supabaseAdmin.from("dashboard_pages").update({ name, updated_at: new Date().toISOString() }).eq("id", id).eq("user_id", userId).select(PAGE_SELECT).maybeSingle()
+  const { data, error } = await scopedDb(userId).from("dashboard_pages").update({ name, updated_at: new Date().toISOString() }).eq("id", id).select(PAGE_SELECT).maybeSingle()
   if (error) throw new Error(error.message)
   if (!data) throw new DashboardPageNotFoundError("Dashboard page does not exist")
   return { page: data as DashboardPage, pages: await selectPages(userId) }

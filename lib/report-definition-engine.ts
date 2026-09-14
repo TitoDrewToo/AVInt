@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/mcp-auth"
+import { scopedDb } from "@/lib/scoped-db"
 import { McpUserFacingError } from "@/lib/mcp-errors"
 import { readComplete } from "@/lib/complete-read"
 import { createReportQueryContext } from "@/lib/report-query-context-server"
@@ -98,19 +99,19 @@ export function projectRecordDefinitionRow(row: ValueRow, attributes: ValueRow):
  */
 async function applyDatasetCorrections(userId: string, rows: ValueRow[], fileIds: string[]) {
   if (!rows.length || !fileIds.length) return { rows, count: 0, version: "", unresolved: [] as string[] }
-  const { data: records, error: recordsError } = await supabaseAdmin
+  const { data: records, error: recordsError } = await scopedDb(userId)
     .from("records")
     .select("id, file_id, source_key, updated_at, source_column_map")
-    .eq("user_id", userId)
+    
     .in("file_id", fileIds)
     .is("parent_record_id", null)
   if (recordsError) throw new Error(`dataset correction records query failed: ${recordsError.message}`)
   if (!records?.length) return { rows, count: 0, version: "", unresolved: [] as string[] }
   const recordIds = records.map((record) => record.id)
-  const { data: revisions, error: revisionsError } = await supabaseAdmin
+  const { data: revisions, error: revisionsError } = await scopedDb(userId)
     .from("record_revisions")
     .select("record_id, revision_number, target_kind, target, new_value, change_kind")
-    .eq("user_id", userId)
+    
     .in("record_id", recordIds)
     .in("change_kind", ["user_edit", "reclassify", "rollback"])
     .order("revision_number", { ascending: false })
@@ -180,11 +181,11 @@ async function loadRecords(userId: string, definition: ReportDefinition, periodO
   const fileIds = selectedFileIds ? selectedFileIds.filter((id) => scopedFileIds.includes(id)) : scopedFileIds
   const sourceLabel = selectedFileIds ? `selected canonical records from ${fileIds.length} file(s)` : "canonical records"
   if (!fileIds.length) return { rows: [], availableFields: new Set(CORE_FIELDS), dateField: "occurred_on", currencyField: "currency", sourceLabel, dependencies: [] }
-  const recordRows = await readComplete((from, to) => supabaseAdmin.from("records").select("*, files!inner(filename, folder_id, document_type)", { count: "exact" }).eq("user_id", userId).in("file_id", fileIds).is("parent_record_id", null).is("excluded_at", null).order("id").range(from, to), MAX_SOURCE_ROWS, "records")
+  const recordRows = await readComplete((from, to) => scopedDb(userId).from("records").select("*, files!inner(filename, folder_id, document_type)", { count: "exact" }).in("file_id", fileIds).is("parent_record_id", null).is("excluded_at", null).order("id").range(from, to), MAX_SOURCE_ROWS, "records")
   const recordIds = recordRows.map((row) => row.id)
   const [attributes, attributeCatalog] = await Promise.all([
-    recordIds.length ? readComplete((from, to) => supabaseAdmin.from("record_attributes").select("record_id, field_key, value", { count: "exact" }).eq("user_id", userId).in("record_id", recordIds).order("record_id").order("field_key").range(from, to), 100_000, "record_attributes") : Promise.resolve([]),
-    readComplete((from, to) => supabaseAdmin.from("record_attributes").select("field_key", { count: "exact" }).eq("user_id", userId).order("record_id").order("field_key").range(from, to), 100_000, "record_attribute_catalog"),
+    recordIds.length ? readComplete((from, to) => scopedDb(userId).from("record_attributes").select("record_id, field_key, value", { count: "exact" }).in("record_id", recordIds).order("record_id").order("field_key").range(from, to), 100_000, "record_attributes") : Promise.resolve([]),
+    readComplete((from, to) => scopedDb(userId).from("record_attributes").select("field_key", { count: "exact" }).order("record_id").order("field_key").range(from, to), 100_000, "record_attribute_catalog"),
   ])
   const attributesByRecord = new Map<string, Record<string, unknown>>()
   for (const attribute of attributes ?? []) {
@@ -216,20 +217,20 @@ async function loadDataset(userId: string, definition: ReportDefinition, periodO
   if (source.folderId && !scopedIds?.length) throw new ReportDefinitionExecutionError("The selected folder contains no files or datasets")
   let selectedFiles: Array<{ id: string; filename: string; folder_id: string | null }> = []
   if (source.fileIds) {
-    const files = await readComplete((from, to) => supabaseAdmin.from("files").select("id, filename, folder_id", { count: "exact" }).eq("user_id", userId).in("id", source.fileIds!).order("id").range(from, to), 100_000, "files")
+    const files = await readComplete((from, to) => scopedDb(userId).from("files").select("id, filename, folder_id", { count: "exact" }).in("id", source.fileIds!).order("id").range(from, to), 100_000, "files")
     const byId = new Map((files ?? []).map((file) => [file.id, file]))
     if (byId.size !== source.fileIds.length || source.fileIds.some((id) => !byId.has(id))) throw new ReportDefinitionExecutionError("Selected files do not exist or are not accessible")
     selectedFiles = source.fileIds.map((id) => byId.get(id)!)
   }
   const datasets = await readComplete((from, to) => {
-    let query = supabaseAdmin.from("datasets").select("id, name, file_id, sheet_name, row_count, updated_at, files!inner(folder_id, filename, upload_status, normalization_expected, normalization_settled)", { count: "exact" }).eq("user_id", userId).eq("files.user_id", userId).is("archived_at", null).order("id")
+    let query = scopedDb(userId).from("datasets").select("id, name, file_id, sheet_name, row_count, updated_at, files!inner(folder_id, filename, upload_status, normalization_expected, normalization_settled)", { count: "exact" }).eq("files.user_id", userId).is("archived_at", null).order("id")
     if (source.datasetId) query = query.eq("id", source.datasetId)
     else query = query.in("file_id", source.fileIds ?? scopedIds ?? [])
     return query.range(from, to)
   }, 100_000, "datasets")
   if (!datasets?.length) {
     if (source.datasetId) {
-      const { data: archived, error: archivedError } = await supabaseAdmin.from("datasets").select("id").eq("id", source.datasetId).eq("user_id", userId).not("archived_at", "is", null).maybeSingle()
+      const { data: archived, error: archivedError } = await scopedDb(userId).from("datasets").select("id").eq("id", source.datasetId).not("archived_at", "is", null).maybeSingle()
       if (archivedError) throw new Error(archivedError.message)
       if (archived) throw new ReportDefinitionExecutionError("The selected dataset is no longer present in the current source file")
     }
@@ -243,8 +244,8 @@ async function loadDataset(userId: string, definition: ReportDefinition, periodO
   }
   const loaded: LoadedDatasetCandidate[] = []
   for (const dataset of datasets) {
-    const columns = await readComplete((from, to) => supabaseAdmin.from("dataset_columns").select("key, data_type, role, null_count", { count: "exact" }).eq("dataset_id", dataset.id).eq("user_id", userId).order("key").range(from, to), 100_000, "dataset_columns")
-    const rows = await readComplete((from, to) => supabaseAdmin.from("dataset_rows").select("row_index, data", { count: "exact" }).eq("dataset_id", dataset.id).eq("user_id", userId).order("row_index").range(from, to), MAX_SOURCE_ROWS, "dataset_rows")
+    const columns = await readComplete((from, to) => scopedDb(userId).from("dataset_columns").select("key, data_type, role, null_count", { count: "exact" }).eq("dataset_id", dataset.id).order("key").range(from, to), 100_000, "dataset_columns")
+    const rows = await readComplete((from, to) => scopedDb(userId).from("dataset_rows").select("row_index, data", { count: "exact" }).eq("dataset_id", dataset.id).order("row_index").range(from, to), MAX_SOURCE_ROWS, "dataset_rows")
     const materializedRows = (rows ?? []).map((row) => ({ ...(row.data as ValueRow), __dataset_id: dataset.id, __dataset_name: dataset.name, __sheet_name: dataset.sheet_name, __file_id: dataset.file_id, __row_index: row.row_index }))
     const corrected = await applyDatasetCorrections(userId, materializedRows, [dataset.file_id])
     loaded.push({ dataset, columns: columns ?? [], rows: corrected.rows, correctionCount: corrected.count, correctionVersion: corrected.version, unresolvedCorrections: corrected.unresolved })

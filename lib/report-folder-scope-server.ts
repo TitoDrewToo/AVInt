@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/mcp-auth"
+import { scopedDb } from "@/lib/scoped-db"
 import { readComplete } from "@/lib/complete-read"
 import { descendantFolderIds, folderBelongsToUser } from "@/lib/report-folder-scope"
 
@@ -12,29 +13,14 @@ export class InvalidReportFolderError extends Error {
 export async function resolveReportFolderScope(userId: string, targetFolder?: string | null) {
   if (!targetFolder) return null
 
-  const folders = await readComplete((from, to) => supabaseAdmin
+  const folders = await readComplete((from, to) => scopedDb(userId)
     .from("folders")
     .select("id, parent_id", { count: "exact" })
-    .eq("user_id", userId)
+    
     .order("id").range(from, to), 100_000, "folders")
   if (!folderBelongsToUser(folders, targetFolder)) {
     throw new InvalidReportFolderError()
   }
 
   return { folderIds: descendantFolderIds(folders, targetFolder) }
-}
-
-export async function getReportFileIds(userId: string, documentTypes: string[], targetFolder?: string | null) {
-  const scope = await resolveReportFolderScope(userId, targetFolder)
-  let query = supabaseAdmin
-    .from("files")
-    .select("id", { count: "exact" })
-    .eq("user_id", userId)
-    .order("id")
-
-  if (documentTypes.length > 0) query = query.in("document_type", documentTypes)
-  if (scope) query = query.in("folder_id", scope.folderIds)
-
-  const data = await readComplete((from, to) => query.range(from, to), 100_000, "files")
-  return data.map((row) => row.id)
 }

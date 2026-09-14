@@ -1,4 +1,3 @@
-import { supabaseAdmin } from "@/lib/mcp-auth"
 import { scopedDb } from "@/lib/scoped-db"
 import { summarizeDataModelRecords, type DataModelStatRecord } from "@/lib/data-model-stats"
 
@@ -68,9 +67,9 @@ export async function readVirtualModel(userId: string, query: VirtualModelQuery 
   if (query.fileId) filesQuery = filesQuery.eq("id", query.fileId)
   const [{ data: files, error: filesError }, { data: virtualDatasets, error: virtualDatasetError }, { data: mappingProfiles, error: mappingProfileError }, { data: relationships, error: relationshipError }] = await Promise.all([
     filesQuery,
-    supabaseAdmin.from("virtual_dataset_definitions").select("slug, title, description, source, fields, version, updated_at").eq("user_id", userId).is("archived_at", null).order("updated_at", { ascending: false }).limit(100),
-    supabaseAdmin.from("data_mapping_profiles").select("slug, title, description, source, mappings, status, version, previewed_version, preview_summary, updated_at").eq("user_id", userId).is("archived_at", null).order("updated_at", { ascending: false }).limit(100),
-    supabaseAdmin.from("virtual_dataset_relationships").select("slug, title, description, definition, status, version, previewed_version, preview_summary, updated_at").eq("user_id", userId).is("archived_at", null).order("updated_at", { ascending: false }).limit(100),
+    db.from("virtual_dataset_definitions").select("slug, title, description, source, fields, version, updated_at").is("archived_at", null).order("updated_at", { ascending: false }).limit(100),
+    db.from("data_mapping_profiles").select("slug, title, description, source, mappings, status, version, previewed_version, preview_summary, updated_at").is("archived_at", null).order("updated_at", { ascending: false }).limit(100),
+    db.from("virtual_dataset_relationships").select("slug, title, description, definition, status, version, previewed_version, updated_at").is("archived_at", null).order("updated_at", { ascending: false }).limit(100),
   ])
   if (filesError) throw new Error(filesError.message)
   if (virtualDatasetError) throw new Error(virtualDatasetError.message)
@@ -83,7 +82,7 @@ export async function readVirtualModel(userId: string, query: VirtualModelQuery 
 
   let matchingRecordIds: string[] | null = null
   if (query.fieldKey || query.customOnly) {
-    let matchingFieldsQuery = supabaseAdmin.from("record_attributes").select("record_id").eq("user_id", userId)
+    let matchingFieldsQuery = db.from("record_attributes").select("record_id")
     if (query.fieldKey) matchingFieldsQuery = matchingFieldsQuery.eq("field_key", query.fieldKey)
     if (query.customOnly) matchingFieldsQuery = matchingFieldsQuery.eq("is_custom", true)
     const { data: matchingFields, error } = await matchingFieldsQuery
@@ -99,22 +98,20 @@ export async function readVirtualModel(userId: string, query: VirtualModelQuery 
       .filter((file) => String(file.filename ?? "").toLowerCase().includes(needle.toLowerCase()))
       .map((file) => file.id)
     if (filenameFileIds.length) {
-      const { data, error } = await supabaseAdmin.from("records").select("id").eq("user_id", userId).in("file_id", filenameFileIds)
+      const { data, error } = await db.from("records").select("id").in("file_id", filenameFileIds)
       if (error) throw new Error(error.message)
       for (const row of data ?? []) searchIds.add(row.id)
     }
-    const { data: directMatches, error: directError } = await supabaseAdmin
+    const { data: directMatches, error: directError } = await db
       .from("records")
       .select("id")
-      .eq("user_id", userId)
       .in("file_id", fileIds)
       .or(`record_type.ilike.${like},document_type.ilike.${like},counterparty.ilike.${like},category.ilike.${like},description.ilike.${like}`)
     if (directError) throw new Error(directError.message)
     for (const row of directMatches ?? []) searchIds.add(row.id)
-    const { data: fieldMatches, error: fieldError } = await supabaseAdmin
+    const { data: fieldMatches, error: fieldError } = await db
       .from("record_attributes")
       .select("record_id")
-      .eq("user_id", userId)
       .ilike("field_key", like)
     if (fieldError) throw new Error(fieldError.message)
     for (const row of fieldMatches ?? []) searchIds.add(row.record_id)
@@ -125,10 +122,9 @@ export async function readVirtualModel(userId: string, query: VirtualModelQuery 
 
   const emptyMatch = matchingRecordIds !== null && matchingRecordIds.length === 0
 
-  let recordsQuery = supabaseAdmin
+  let recordsQuery = db
     .from("records")
     .select("id, file_id, source_key, parent_record_id, record_type, document_type, occurred_on, period_start, period_end, amount, amount_base, currency, fx_rate, fx_rate_date, direction, counterparty, counterparty_normalized, category, description, is_recurring, confidence, field_confidence, needs_review, has_user_edits, excluded_at, status, created_at, updated_at, files!inner(filename, document_type, upload_status)", { count: "exact" })
-    .eq("user_id", userId)
     .in("file_id", fileIds)
     .order("updated_at", { ascending: false })
     .range(page * pageSize, (page + 1) * pageSize - 1)
@@ -143,10 +139,9 @@ export async function readVirtualModel(userId: string, query: VirtualModelQuery 
   const recordIds = (records ?? []).map((record) => record.id)
   let fields: RecordAttribute[] = []
   if (recordIds.length) {
-    let fieldsQuery = supabaseAdmin
+    let fieldsQuery = db
       .from("record_attributes")
       .select("id, record_id, field_key, value, value_type, confidence, is_custom, source_evidence")
-      .eq("user_id", userId)
       .in("record_id", recordIds)
     if (query.fieldKey) fieldsQuery = fieldsQuery.eq("field_key", query.fieldKey)
     if (query.customOnly) fieldsQuery = fieldsQuery.eq("is_custom", true)
@@ -155,10 +150,9 @@ export async function readVirtualModel(userId: string, query: VirtualModelQuery 
     fields = (data ?? []) as RecordAttribute[]
   }
 
-  let catalogQuery = supabaseAdmin
+  let catalogQuery = db
     .from("record_attributes")
     .select("field_key, value_type, is_custom, source_evidence")
-    .eq("user_id", userId)
   if (query.fieldKey) catalogQuery = catalogQuery.eq("field_key", query.fieldKey)
   if (query.customOnly) catalogQuery = catalogQuery.eq("is_custom", true)
   const { data: allAttributes, error: catalogError } = await catalogQuery
@@ -177,10 +171,9 @@ export async function readVirtualModel(userId: string, query: VirtualModelQuery 
     .sort((a, b) => b.occurrence_count - a.occurrence_count || a.field_key.localeCompare(b.field_key))
     .map((entry) => ({ ...entry, value_types: [...entry.value_types], source_kinds: [...entry.source_kinds] }))
 
-  const { data: datasetRows, error: datasetsError } = await supabaseAdmin
+  const { data: datasetRows, error: datasetsError } = await db
     .from("datasets")
     .select("id, file_id, name, sheet_name, row_count, column_count, needs_review, archived_at, created_at, updated_at")
-    .eq("user_id", userId)
     .in("file_id", fileIds)
     .is("archived_at", null)
     .order("updated_at", { ascending: false })
@@ -188,17 +181,16 @@ export async function readVirtualModel(userId: string, query: VirtualModelQuery 
   const datasetIds = (datasetRows ?? []).map((dataset) => dataset.id)
   let datasetColumns: Array<Record<string, unknown>> = []
   if (datasetIds.length) {
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await db
       .from("dataset_columns")
       .select("id, dataset_id, key, label, position, data_type, role, null_count, distinct_count, type_confidence, sample_values, needs_review, review_reason")
-      .eq("user_id", userId)
       .in("dataset_id", datasetIds)
       .order("position", { ascending: true })
     if (error) throw new Error(error.message)
     datasetColumns = data ?? []
   }
 
-  let statusQuery = supabaseAdmin.from("records").select("status, needs_review, excluded_at, has_user_edits, parent_record_id").eq("user_id", userId).in("file_id", fileIds)
+  let statusQuery = db.from("records").select("status, needs_review, excluded_at, has_user_edits, parent_record_id").in("file_id", fileIds)
   if (matchingRecordIds && matchingRecordIds.length) statusQuery = statusQuery.in("id", matchingRecordIds)
   if (query.status) statusQuery = statusQuery.eq("status", query.status)
   if (query.documentType) statusQuery = statusQuery.eq("document_type", query.documentType)

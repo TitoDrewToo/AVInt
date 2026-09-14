@@ -245,7 +245,7 @@ Every migration that creates or replaces a function in `public` must therefore:
 3. update `test/function_grant_contract.sql` when a browser-executable
    `SECURITY DEFINER` function is intentionally introduced.
 
-`public.is_system_admin()` is the current reviewed exception. Authenticated
+`public.is_system_admin()` and caller-bound `public.is_firm_admin(uuid)` are the current reviewed exceptions. Authenticated
 execution is required because three RLS policies call it. Do not revoke it or
 expand the allowlist without checking the live `pg_proc.proacl`, `pg_policies`,
 and every dependent policy.

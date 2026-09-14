@@ -26,6 +26,7 @@ export type DerivedRecord = {
   is_recurring: unknown
   confidence: number | null
   field_confidence: Record<string, number>
+  source_column_map: Record<string, string>
   needs_review: boolean
 }
 
@@ -153,6 +154,11 @@ function makeRecord(
 ): DerivedRecord {
   const type = forcedType ?? recordType(row, fallbackType)
   const fieldConfidence = confidenceMap(row)
+  const fieldEvidence = isObject(row._field_evidence) ? row._field_evidence : {}
+  const sourceColumnMap = Object.fromEntries(Object.entries(RECORD_COLUMN_BY_EXTRACTED).flatMap(([extracted, column]) => {
+    const evidence = fieldEvidence[extracted]
+    return isObject(evidence) && typeof evidence.column === "string" ? [[column, evidence.column]] : []
+  }))
   const contributing = Object.keys(row).filter((key) => !META_FIELDS.has(key) && row[key] !== null && row[key] !== undefined)
   const confidenceValues = contributing.map((key) => rowConfidence(row, key, fieldConfidence)).filter((value): value is number => value !== null)
   const confidence = confidenceValues.length ? Math.min(...confidenceValues) : null
@@ -190,6 +196,7 @@ function makeRecord(
         .filter(([key]) => fieldConfidence[key] !== undefined)
         .map(([key, column]) => [column, fieldConfidence[key]]),
     ),
+    source_column_map: sourceColumnMap,
     needs_review: needsReview,
   }
   return record

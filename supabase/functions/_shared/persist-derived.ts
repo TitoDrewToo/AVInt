@@ -29,6 +29,7 @@ function recordPayload(record: DerivedRecord, extractionId: string, parentRecord
     is_recurring: record.is_recurring,
     confidence: record.confidence,
     field_confidence: record.field_confidence,
+    source_column_map: record.source_column_map,
     needs_review: record.needs_review,
   }
 }

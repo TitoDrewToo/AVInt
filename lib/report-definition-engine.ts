@@ -95,7 +95,7 @@ async function applyDatasetCorrections(userId: string, rows: ValueRow[], fileIds
   if (!rows.length || !fileIds.length) return rows
   const { data: records, error: recordsError } = await supabaseAdmin
     .from("records")
-    .select("id, file_id, source_key, updated_at")
+    .select("id, file_id, source_key, updated_at, source_column_map")
     .eq("user_id", userId)
     .in("file_id", fileIds)
     .is("parent_record_id", null)
@@ -116,11 +116,15 @@ async function applyDatasetCorrections(userId: string, rows: ValueRow[], fileIds
     if (!latest.has(key)) latest.set(key, revision)
   }
   const overlays = new Map<string, Record<string, unknown>>()
+  const recordsById = new Map(records.map((record) => [record.id, record]))
   for (const revision of latest.values()) {
     if (revision.change_kind === "rollback") continue
     const recordId = String(revision.record_id)
     const values = overlays.get(recordId) ?? {}
-    values[String(revision.target)] = revision.new_value
+    const target = String(revision.target)
+    values[target] = revision.new_value
+    const sourceColumn = recordsById.get(recordId)?.source_column_map?.[target]
+    if (typeof sourceColumn === "string" && sourceColumn.length > 0) values[sourceColumn] = revision.new_value
     overlays.set(recordId, values)
   }
   if (!overlays.size) return rows

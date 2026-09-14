@@ -73,6 +73,7 @@ const receipt = deriveRecords({
   expense_category: "Food",
   line_items: Array.from({ length: 5 }, (_, index) => ({ description: `Item ${index + 1}`, amount: (index + 1) * 100 })),
   field_confidence: { document_date: 0.99, total_amount: 0.95 },
+  _field_evidence: { total_amount: { source_kind: "spreadsheet_cell", column: "order_total_php" } },
 }, file)
 check("receipt has one parent and five children", receipt.records.length === 6)
 assert.deepEqual(receipt.records.map((record) => record.source_key), ["root", "root.1", "root.2", "root.3", "root.4", "root.5"])
@@ -83,6 +84,7 @@ check("line-item children inherit parent direction", receipt.records.slice(1).ev
 check("line-item children inherit parent date", receipt.records.slice(1).every((record) => record.occurred_on === "2026-08-27"))
 check("line-item children inherit parent currency", receipt.records.slice(1).every((record) => record.currency === "PHP"))
 check("line-item children retain their own amount", receipt.records[1].amount === 100)
+check("record keeps the physical source column for corrections", receipt.records[0].source_column_map.amount === "order_total_php")
 
 const invoiceWithIncomeField = deriveRecords({
   document_type: "invoice", document_date: "2026-08-27", vendor_name: "Contractor", currency: "PHP",

@@ -92,9 +92,12 @@ async function recordsTaxRows(userId: string, filters: ReportFilters): Promise<T
   const attributes = recordIds.length === 0
     ? []
     : await readComplete((from, to) => scopedDb(userId)
-      .from("record_attributes")
+      // Keep this query on the native PostgREST builder: the attribute lookup
+      // uses a second filter (record_id IN) and must preserve both projection
+      // and predicate through pagination. The owner predicate is explicit.
+      .unscoped("record_attributes", "explicit owner predicate for report attribute lookup")
       .select("record_id, field_key, value", { count: "exact" })
-      
+      .eq("user_id", userId)
       .in("record_id", recordIds)
       .order("record_id").order("field_key").range(from, to), 100_000, "record_attributes")
   const attrs = recordAttributeMap((attributes ?? []) as RecordAttribute[])

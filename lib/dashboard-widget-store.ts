@@ -17,8 +17,10 @@ export async function listSavedDashboardWidgets(userId: string, pageSlug?: strin
     if (!validated?.definition) return row
     try {
       return { ...row, resolved_config: await executeDashboardVisual(userId, validated.definition) }
-    } catch {
-      return { ...row, resolution_error: "This visual cannot be refreshed from its current data source." }
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      console.error("Dashboard visual resolution failed", { userId, widgetId: row.id, reason })
+      return { ...row, resolution_error: `This visual cannot be refreshed from its current data source: ${reason}` }
     }
   }))
 }

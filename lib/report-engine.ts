@@ -75,30 +75,33 @@ async function recordsTaxRows(userId: string, filters: ReportFilters): Promise<T
   const fileIds = await context.fileIds()
   if (filters.targetFolder && fileIds.length === 0) return []
 
-  let query = scopedDb(userId)
-    .from("records")
-    .select("id, file_id, source_key, parent_record_id, document_type, occurred_on, period_start, period_end, amount, currency, counterparty, counterparty_normalized, category, confidence, files!inner(filename, document_type, storage_path, user_id)", { count: "exact" })
-    
-    .is("parent_record_id", null)
-    .is("excluded_at", null)
-    .order("occurred_on", { ascending: false })
-    .order("id")
-  if (fileIds.length > 0) query = query.in("file_id", fileIds)
-
-  const data = await readComplete((from, to) => query.range(from, to), 5000, "records")
+  const data = await readComplete((from, to) => {
+    let query = scopedDb(userId)
+      .from("records")
+      .select("id, file_id, source_key, parent_record_id, document_type, occurred_on, period_start, period_end, amount, currency, counterparty, counterparty_normalized, category, confidence, files!inner(filename, document_type, storage_path, user_id)", { count: "exact" })
+      .is("parent_record_id", null)
+      .is("excluded_at", null)
+      .order("occurred_on", { ascending: false })
+      .order("id")
+    if (fileIds.length > 0) query = query.in("file_id", fileIds)
+    if (filters.dateFrom) query = query.gte("occurred_on", filters.dateFrom)
+    if (filters.dateTo) query = query.lte("occurred_on", filters.dateTo)
+    return query.range(from, to)
+  }, 5000, "records")
   const records = data as RecordRow[]
-  const recordIds = records.map((record) => record.id)
-  const attributes = recordIds.length === 0
+  const attributes = records.length === 0
     ? []
-    : await readComplete((from, to) => scopedDb(userId)
-      // Keep this query on the native PostgREST builder: the attribute lookup
-      // uses a second filter (record_id IN) and must preserve both projection
-      // and predicate through pagination. The owner predicate is explicit.
-      .unscoped("record_attributes", "explicit owner predicate for report attribute lookup")
-      .select("record_id, field_key, value", { count: "exact" })
-      .eq("user_id", userId)
-      .in("record_id", recordIds)
-      .order("record_id").order("field_key").range(from, to), 100_000, "record_attributes")
+    : await readComplete((from, to) => {
+      let query = scopedDb(userId)
+        .from("record_attributes")
+        .select("record_id, field_key, value, records!inner(occurred_on, parent_record_id, excluded_at)", { count: "exact" })
+        .is("records.parent_record_id", null)
+        .is("records.excluded_at", null)
+        .order("record_id").order("field_key")
+      if (filters.dateFrom) query = query.gte("records.occurred_on", filters.dateFrom)
+      if (filters.dateTo) query = query.lte("records.occurred_on", filters.dateTo)
+      return query.range(from, to)
+    }, 100_000, `record_attributes; joined records; period=${filters.dateFrom ?? ""}..${filters.dateTo ?? ""}`)
   const attrs = recordAttributeMap((attributes ?? []) as RecordAttribute[])
 
   return records

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { MCP_ENDPOINT } from "@/lib/mcp-config"
 
 export default function ConnectClient({ oauthEnabled }: { oauthEnabled: boolean }) {
-  const mcpUrl = typeof window !== "undefined" ? `${window.location.origin}${MCP_ENDPOINT}` : MCP_ENDPOINT
+  const mcpUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}${MCP_ENDPOINT}`
   const [copied, setCopied] = useState(false)
 
   async function copyMcpUrl() {
@@ -52,9 +52,6 @@ export default function ConnectClient({ oauthEnabled }: { oauthEnabled: boolean 
             <p className="mt-4 text-xs leading-relaxed text-muted-foreground">The same MCP endpoint can also be used by compatible clients such as Codex. Claude remains the primary supported connection. MCP access is available on Pro and Business plans.</p>
             <p className="mt-3 text-xs leading-relaxed text-muted-foreground">Authenticate with the same email as your AVIntelligence account. If it does not match, you’ll see: <span className="font-medium text-foreground">“Connect requires a Smart Storage account with this email”</span>.</p>
             <p className="mt-3 text-xs leading-relaxed text-muted-foreground">If Claude stops seeing Smart Storage tools entirely, your connection has expired rather than broken. Reconnect from Settings → Connectors. Nothing in your account is affected.</p>
-            <p className="mt-3 text-xs leading-relaxed text-muted-foreground">Claude reads and computes from your records. Changing a value is done here in the web app, where the controls and change history live.</p>
-            <p className="mt-3 text-xs leading-relaxed text-muted-foreground">The connection reaches only your own account. There is no shared or cross-account access.</p>
-            <p className="mt-3 text-xs leading-relaxed text-muted-foreground">Try: “What’s in my Smart Storage account?”</p>
             <p className="mt-3 text-xs leading-relaxed text-muted-foreground">Disconnecting revokes Claude’s access immediately. Your documents, records and saved reports stay in your account.</p>
           </div>
         </section>}

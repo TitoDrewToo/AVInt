@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "@/lib/mcp-auth"
 
-type QueryBuilder = any
+type QueryBuilder = ReturnType<typeof supabaseAdmin.from>
 
 /**
  * Owner-scoped service-role client. The owner is the data owner, not
@@ -15,7 +15,7 @@ export function scopedDb(ownerUserId: string) {
     return new Proxy(builder, {
       get(target, property, receiver) {
         if (property === "select") {
-          return (...args: unknown[]) => Reflect.apply(target.select, target, args).eq("user_id", ownerUserId)
+          return (...args: unknown[]) => (Reflect.apply(target.select, target, args) as any).eq("user_id", ownerUserId)
         }
         if (property === "update" || property === "delete") {
           return (...args: unknown[]) => (Reflect.apply((target as any)[property], target, args) as any).eq("user_id", ownerUserId)
@@ -28,6 +28,8 @@ export function scopedDb(ownerUserId: string) {
             return Reflect.apply((target as any)[property], target, [withOwner, ...args])
           }
         }
+        // Query-builder methods after the initial scoped operation execute on the
+        // returned PostgREST builder and retain Supabase's own typing/runtime.
         return Reflect.get(target, property, receiver)
       },
     })

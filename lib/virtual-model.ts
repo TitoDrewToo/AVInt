@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/mcp-auth"
+import { scopedDb } from "@/lib/scoped-db"
 import { summarizeDataModelRecords, type DataModelStatRecord } from "@/lib/data-model-stats"
 
 const DEFAULT_PAGE_SIZE = 40
@@ -59,9 +60,10 @@ type RecordAttribute = {
 }
 
 export async function readVirtualModel(userId: string, query: VirtualModelQuery = {}) {
+  const db = scopedDb(userId)
   const page = Math.max(0, query.page ?? 0)
   const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, query.pageSize ?? DEFAULT_PAGE_SIZE))
-  let filesQuery = supabaseAdmin.from("files").select("id, filename, file_type, file_size, storage_path, folder_id, document_type, upload_status, scan_reason, analysis_json, analyzed_at, source_rows_json, created_at").eq("user_id", userId)
+  let filesQuery = db.from("files").select("id, filename, file_type, file_size, storage_path, folder_id, document_type, upload_status, scan_reason, analysis_json, analyzed_at, source_rows_json, created_at")
   if (query.documentType) filesQuery = filesQuery.eq("document_type", query.documentType)
   if (query.fileId) filesQuery = filesQuery.eq("id", query.fileId)
   const [{ data: files, error: filesError }, { data: virtualDatasets, error: virtualDatasetError }, { data: mappingProfiles, error: mappingProfileError }, { data: relationships, error: relationshipError }] = await Promise.all([
@@ -75,7 +77,7 @@ export async function readVirtualModel(userId: string, query: VirtualModelQuery 
   if (mappingProfileError) throw new Error(mappingProfileError.message)
   if (relationshipError) throw new Error(relationshipError.message)
 
-  const ownedFiles = files ?? []
+  const ownedFiles = (files ?? []) as Array<{ id: string; filename?: string | null }>
   const fileIds = ownedFiles.map((file) => file.id)
   if (!fileIds.length) return { sourceCapabilities: VIRTUAL_MODEL_SOURCE_CAPABILITIES, virtualDatasets: virtualDatasets ?? [], mappingProfiles: mappingProfiles ?? [], relationships: relationships ?? [], files: [], records: [], fields: [], catalog: [], datasets: [], datasetColumns: [], page, pageSize, total: 0, allTotal: 0, hasMore: false, nextPage: null, statusCounts: {}, stats: { activeRecords: 0, excludedRecords: 0, needsReview: 0, userEdited: 0, lineItems: 0 }, truncated: false }
 

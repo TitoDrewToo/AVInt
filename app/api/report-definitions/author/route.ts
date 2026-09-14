@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     const model = await readVirtualModel(auth.user.id, { pageSize: 1 })
     const context = {
       recordFields: ["occurred_on", "amount", "currency", "direction", "counterparty", "category", "document_type", "record_type", "is_recurring", "confidence", "needs_review", ...model.catalog.map((field) => field.field_key)],
-      documentTypes: [...new Set(model.files.map((file) => file.document_type).filter(Boolean))],
+      documentTypes: [...new Set((model.files as unknown as Array<{ document_type: string | null }>).map((file) => file.document_type).filter(Boolean))],
       datasets: model.datasets.map((dataset) => ({ ...dataset, columns: model.datasetColumns.filter((column) => column.dataset_id === dataset.id).map((column) => ({ key: column.key, label: column.label, data_type: column.data_type, needs_review: column.needs_review })) })),
       mappingProfiles: model.mappingProfiles.filter((profile) => profile.status === "active").slice(0, 20).map((profile) => ({ slug: profile.slug, title: profile.title, mappings: profile.mappings })),
       virtualDatasets: model.virtualDatasets.slice(0, 20).map((dataset) => ({ slug: dataset.slug, title: dataset.title, fields: dataset.fields })),

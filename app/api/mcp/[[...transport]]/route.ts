@@ -227,7 +227,7 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
       if (blocked) return blocked
       const requestedPage = page ?? 0
       const model = await readVirtualModel(userId, { search, status, documentType, fieldKey, customOnly, includeExcluded, page: requestedPage, pageSize: pageSize ?? 40, fileId })
-      const files = model.files.map(({ id, filename, folder_id, upload_status, scan_reason, document_type }) => ({ id, filename, folder_id, upload_status, scan_reason, document_type }))
+      const files = (model.files as Array<{ id: string; filename: string; folder_id: string | null; upload_status: string; scan_reason: string | null; document_type: string | null }>).map(({ id, filename, folder_id, upload_status, scan_reason, document_type }) => ({ id, filename, folder_id, upload_status, scan_reason, document_type }))
       const metadata = requestedPage === 0
         ? { files, datasets: model.datasets, datasetColumns: model.datasetColumns, virtualDatasets: model.virtualDatasets, mappingProfiles: model.mappingProfiles, relationships: model.relationships, catalog: model.catalog }
         : { files: [], datasets: [], datasetColumns: [], virtualDatasets: [], mappingProfiles: [], relationships: [], catalog: [], metadataIncluded: false, metadataGuidance: "Metadata is returned on page 0. Use smart_storage.list_files or fileId to inspect source files while paging records." }

@@ -1,10 +1,11 @@
 import { supabaseAdmin } from "@/lib/mcp-auth"
+import { McpUserFacingError } from "@/lib/mcp-errors"
 import { dashboardPageId, dashboardPageName, dashboardPageOrder, dashboardPageSlug, MAX_DASHBOARD_PAGES } from "@/lib/dashboard-page-contract"
 
 export type DashboardPage = { id: string; user_id: string; name: string; slug: string; kind: "personal" | "business" | "custom"; position: number; layout?: Record<string, unknown> }
 
-export class DashboardPageNotFoundError extends TypeError {}
-export class DashboardPageConflictError extends TypeError {}
+export class DashboardPageNotFoundError extends McpUserFacingError {}
+export class DashboardPageConflictError extends McpUserFacingError {}
 
 const PAGE_SELECT = "id, user_id, name, slug, kind, position"
 

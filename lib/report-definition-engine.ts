@@ -16,7 +16,7 @@ const CORE_FIELDS = new Set<string>([...RECORD_DEFINITION_FIELDS, "filename", "f
 
 type ValueRow = Record<string, unknown>
 export type LoadedDatasetCandidate = {
-  dataset: { id: string; name: string; file_id: string; sheet_name: string | null; row_count?: number | null; updated_at?: string }
+  dataset: { id: string; name: string; file_id: string; sheet_name: string | null; row_count?: number | null; updated_at?: string; files?: { filename?: string | null; upload_status?: string | null; normalization_expected?: number | null; normalization_settled?: number | null } | Array<{ filename?: string | null; upload_status?: string | null; normalization_expected?: number | null; normalization_settled?: number | null }> | null }
   columns: Array<{ key: string; data_type: string; role?: DatasetColumnRole | null; null_count?: number | null }>
   rows: ValueRow[]
   correctionCount?: number
@@ -34,6 +34,7 @@ export type LoadedReportDefinitionSource = {
   currencyField: string | null
   sourceLabel: string
   coverageNote?: string
+  coverageComplete?: boolean
 }
 
 function mergeDependencies(...groups: Array<FocusedModelDependency[] | undefined>) {
@@ -220,7 +221,7 @@ async function loadDataset(userId: string, definition: ReportDefinition, periodO
     selectedFiles = source.fileIds.map((id) => byId.get(id)!)
   }
   const datasets = await readComplete((from, to) => {
-    let query = supabaseAdmin.from("datasets").select("id, name, file_id, sheet_name, row_count, updated_at, files!inner(folder_id, filename)", { count: "exact" }).eq("user_id", userId).eq("files.user_id", userId).is("archived_at", null).order("id")
+    let query = supabaseAdmin.from("datasets").select("id, name, file_id, sheet_name, row_count, updated_at, files!inner(folder_id, filename, upload_status, normalization_expected, normalization_settled)", { count: "exact" }).eq("user_id", userId).eq("files.user_id", userId).is("archived_at", null).order("id")
     if (source.datasetId) query = query.eq("id", source.datasetId)
     else query = query.in("file_id", source.fileIds ?? scopedIds ?? [])
     return query.range(from, to)
@@ -273,13 +274,21 @@ async function loadDataset(userId: string, definition: ReportDefinition, periodO
   const unresolvedNote = unresolvedCorrections.length
     ? `${unresolvedCorrections.length} correction(s) could not be projected to physical dataset columns and were not applied: ${unresolvedCorrections.join("; ")}.`
     : ""
-  const coverageNote = [unionNote, emptyNote, correctionNote, unresolvedNote].filter(Boolean).join(" ") || undefined
+  const unsettled = compatible
+    .map((item) => item.dataset)
+    .map((dataset) => ({ dataset, file: Array.isArray(dataset.files) ? dataset.files[0] : dataset.files }))
+    .filter(({ file }) => file?.normalization_expected != null && file.normalization_settled !== file.normalization_expected)
+  const unsettledNote = unsettled.length
+    ? `Source normalization is incomplete for ${unsettled.map(({ dataset, file }) => `${file?.filename ?? dataset.name} (${file?.normalization_settled ?? 0}/${file?.normalization_expected}; ${file?.upload_status ?? "unknown"})`).join(", ")}; figures may reflect a partial source.`
+    : ""
+  const coverageNote = [unionNote, emptyNote, correctionNote, unresolvedNote, unsettledNote].filter(Boolean).join(" ") || undefined
   const sourceLabel = compatibility === "reconcile"
     ? (source.folderId ? "heterogeneous folder datasets" : source.fileIds ? `heterogeneous selected-file datasets from ${selectedFiles.length} file(s)` : `dataset ${compatible[0].dataset.name}`)
     : (source.folderId ? "folder dataset union" : source.fileIds ? `selected-file dataset union from ${selectedFiles.length} file(s)` : `dataset ${compatible[0].dataset.name}`)
   return {
     rows: values, availableFields, fieldTypes, datasetSchemas,
     dateField: source.dateField ?? null, currencyField: source.currencyField ?? null, sourceLabel, coverageNote,
+    coverageComplete: unsettled.length === 0,
     dependencies: mergeDependencies(
       compatible.map((item) => ({ kind: "dataset" as const, id: item.dataset.id, version: `${item.dataset.updated_at ?? ""}${item.correctionVersion ? `:correction:${item.correctionVersion}` : ""}` })),
       compatible.map((item) => ({ kind: "file" as const, id: item.dataset.file_id })),
@@ -588,7 +597,7 @@ export function compileReportDefinition(definition: ReportDefinition, source: Lo
     subtitle: definition.description ?? `${displayPeriod.from} to ${displayPeriod.to}`,
     period: displayPeriod,
     generatedAt: now.toISOString(),
-    coverage: { statement: rows.length ? `${rows.length} matching rows from ${source.sourceLabel}; excluded and superseded records are omitted. ${source.coverageNote ?? ""}` : noRows, complete: rows.length > 0 },
+    coverage: { statement: rows.length ? `${rows.length} matching rows from ${source.sourceLabel}; excluded and superseded records are omitted. ${source.coverageNote ?? ""}` : noRows, complete: rows.length > 0 && source.coverageComplete !== false },
     blocks,
     focusedModel: focusedModelMetadata(source, referencedDefinitionFields(definition)),
     theme: definition.theme ?? undefined,

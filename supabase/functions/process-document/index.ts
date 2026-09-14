@@ -1337,7 +1337,7 @@ serve(async (req) => {
     // conservative payload bound) so the platform invocation quota is not a
     // correctness limit for CSV/analytics imports.
     if (isCsv && rowsForNormalization.length > 1) {
-      const BATCH_SIZE = 50
+      const BATCH_SIZE = 250
       const failures: Array<{ source_key: string; cause: string }> = []
       for (let offset = 0; offset < rowsForNormalization.length; offset += BATCH_SIZE) {
         const batch = rowsForNormalization.slice(offset, offset + BATCH_SIZE)

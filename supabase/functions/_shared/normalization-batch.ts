@@ -38,11 +38,12 @@ export async function beginNormalizationBatch(
   if (error) throw new Error(`File normalization state update failed: ${error.message ?? String(error)}`)
 }
 
-export async function settleNormalizationRow(client: RpcClient, fileId: string, batchId: string | null | undefined) {
+export async function settleNormalizationRow(client: RpcClient, fileId: string, batchId: string | null | undefined, completedRows = 1) {
+  if (!Number.isInteger(completedRows) || completedRows < 1) throw new NormalizationSettlementError("invalid_completed_rows")
   const { data, error } = await client.rpc("avint_settle_document_normalization", {
     p_file_id: fileId,
     p_batch_id: batchId ?? null,
-    p_completed_rows: 1,
+    p_completed_rows: completedRows,
   })
   if (error) throw new NormalizationSettlementError(error.message ?? String(error))
   if (!data || typeof data !== "object" || typeof data.settled !== "boolean") {

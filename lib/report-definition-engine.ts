@@ -19,6 +19,9 @@ export type LoadedDatasetCandidate = {
   dataset: { id: string; name: string; file_id: string; sheet_name: string | null; row_count?: number | null; updated_at?: string }
   columns: Array<{ key: string; data_type: string; role?: DatasetColumnRole | null; null_count?: number | null }>
   rows: ValueRow[]
+  correctionCount?: number
+  correctionVersion?: string
+  unresolvedCorrections?: string[]
 }
 export type FocusedModelDependency = { kind: "file" | "dataset" | "mapping_profile" | "virtual_dataset" | "relationship"; id: string; version?: number | string }
 export type LoadedReportDefinitionSource = {
@@ -92,7 +95,7 @@ export function projectRecordDefinitionRow(row: ValueRow, attributes: ValueRow):
  * authoritative correction overlay used by mapped and virtual sources.
  */
 async function applyDatasetCorrections(userId: string, rows: ValueRow[], fileIds: string[]) {
-  if (!rows.length || !fileIds.length) return rows
+  if (!rows.length || !fileIds.length) return { rows, count: 0, version: "", unresolved: [] as string[] }
   const { data: records, error: recordsError } = await supabaseAdmin
     .from("records")
     .select("id, file_id, source_key, updated_at, source_column_map")
@@ -100,7 +103,7 @@ async function applyDatasetCorrections(userId: string, rows: ValueRow[], fileIds
     .in("file_id", fileIds)
     .is("parent_record_id", null)
   if (recordsError) throw new Error(`dataset correction records query failed: ${recordsError.message}`)
-  if (!records?.length) return rows
+  if (!records?.length) return { rows, count: 0, version: "", unresolved: [] as string[] }
   const recordIds = records.map((record) => record.id)
   const { data: revisions, error: revisionsError } = await supabaseAdmin
     .from("record_revisions")
@@ -127,13 +130,25 @@ async function applyDatasetCorrections(userId: string, rows: ValueRow[], fileIds
     if (typeof sourceColumn === "string" && sourceColumn.length > 0) values[sourceColumn] = revision.new_value
     overlays.set(recordId, values)
   }
-  if (!overlays.size) return rows
+  if (!overlays.size) return { rows, count: 0, version: "", unresolved: [] as string[] }
   const bySource = new Map(records.map((record) => [`${record.file_id}:${record.source_key}`, record]))
-  return rows.map((row) => {
+  let count = 0
+  const unresolved: string[] = []
+  const corrected = rows.map((row) => {
     const record = bySource.get(`${row.__file_id}:${String(row.__row_index)}`)
     const overlay = record ? overlays.get(record.id) : undefined
-    return overlay ? { ...row, ...overlay, __correction_overlay: true } : row
+    if (!overlay || !record) return row
+    const canApply = Object.keys(overlay).some((key) => Object.prototype.hasOwnProperty.call(row, key))
+    if (!canApply) {
+      const targets = Object.keys(overlay).join(", ")
+      unresolved.push(`source row ${record.source_key} (${targets}; physical source mapping unavailable)`)
+      return row
+    }
+    count += 1
+    return { ...row, ...overlay, __correction_overlay: true }
   })
+  const version = records.filter((record) => overlays.has(record.id)).map((record) => String(record.updated_at ?? "")).sort().at(-1) ?? ""
+  return { rows: corrected, count, version, unresolved }
 }
 
 export class ReportDefinitionExecutionError extends Error {}
@@ -229,7 +244,8 @@ async function loadDataset(userId: string, definition: ReportDefinition, periodO
     const columns = await readComplete((from, to) => supabaseAdmin.from("dataset_columns").select("key, data_type, role, null_count", { count: "exact" }).eq("dataset_id", dataset.id).eq("user_id", userId).order("key").range(from, to), 100_000, "dataset_columns")
     const rows = await readComplete((from, to) => supabaseAdmin.from("dataset_rows").select("row_index, data", { count: "exact" }).eq("dataset_id", dataset.id).eq("user_id", userId).order("row_index").range(from, to), MAX_SOURCE_ROWS, "dataset_rows")
     const materializedRows = (rows ?? []).map((row) => ({ ...(row.data as ValueRow), __dataset_id: dataset.id, __dataset_name: dataset.name, __sheet_name: dataset.sheet_name, __file_id: dataset.file_id, __row_index: row.row_index }))
-    loaded.push({ dataset, columns: columns ?? [], rows: await applyDatasetCorrections(userId, materializedRows, [dataset.file_id]) })
+    const corrected = await applyDatasetCorrections(userId, materializedRows, [dataset.file_id])
+    loaded.push({ dataset, columns: columns ?? [], rows: corrected.rows, correctionCount: corrected.count, correctionVersion: corrected.version, unresolvedCorrections: corrected.unresolved })
   }
   if (source.fileIds) {
     const filePosition = new Map(source.fileIds.map((id, index) => [id, index]))
@@ -251,7 +267,13 @@ async function loadDataset(userId: string, definition: ReportDefinition, periodO
   const unionNote = unioned
     ? `${compatible.length} ${compatibility === "reconcile" ? "candidate" : "compatible"} dataset(s) unioned without de-duplication${excluded.length ? `; excluded ${excluded.map((item) => `${item.dataset.name} (schema mismatch)`).join(", ")}` : ""}${withoutDatasets.length ? `; excluded ${withoutDatasets.map((file) => `${file.filename} (no dataset)`).join(", ")}` : ""}.`
     : ""
-  const coverageNote = [unionNote, emptyNote].filter(Boolean).join(" ") || undefined
+  const correctionCount = loaded.reduce((sum, item) => sum + (item.correctionCount ?? 0), 0)
+  const correctionNote = correctionCount ? `${correctionCount} explicit user correction(s) were applied from the canonical revision overlay.` : ""
+  const unresolvedCorrections = [...new Set(loaded.flatMap((item) => item.unresolvedCorrections ?? []))]
+  const unresolvedNote = unresolvedCorrections.length
+    ? `${unresolvedCorrections.length} correction(s) could not be projected to physical dataset columns and were not applied: ${unresolvedCorrections.join("; ")}.`
+    : ""
+  const coverageNote = [unionNote, emptyNote, correctionNote, unresolvedNote].filter(Boolean).join(" ") || undefined
   const sourceLabel = compatibility === "reconcile"
     ? (source.folderId ? "heterogeneous folder datasets" : source.fileIds ? `heterogeneous selected-file datasets from ${selectedFiles.length} file(s)` : `dataset ${compatible[0].dataset.name}`)
     : (source.folderId ? "folder dataset union" : source.fileIds ? `selected-file dataset union from ${selectedFiles.length} file(s)` : `dataset ${compatible[0].dataset.name}`)
@@ -259,7 +281,7 @@ async function loadDataset(userId: string, definition: ReportDefinition, periodO
     rows: values, availableFields, fieldTypes, datasetSchemas,
     dateField: source.dateField ?? null, currencyField: source.currencyField ?? null, sourceLabel, coverageNote,
     dependencies: mergeDependencies(
-      compatible.map((item) => ({ kind: "dataset" as const, id: item.dataset.id, version: item.dataset.updated_at })),
+      compatible.map((item) => ({ kind: "dataset" as const, id: item.dataset.id, version: `${item.dataset.updated_at ?? ""}${item.correctionVersion ? `:correction:${item.correctionVersion}` : ""}` })),
       compatible.map((item) => ({ kind: "file" as const, id: item.dataset.file_id })),
     ),
   }

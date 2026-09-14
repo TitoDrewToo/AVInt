@@ -223,7 +223,7 @@ function openAiInputPart(mimeType: string, base64: string, bytes: Uint8Array) {
     return {
       type: "input_file",
       filename: "document.pdf",
-      file_data: base64,
+      file_data: `data:application/pdf;base64,${base64}`,
     }
   }
   if (mimeType.startsWith("image/")) {
@@ -1349,14 +1349,19 @@ serve(async (req) => {
             if (Number.isFinite(retryAfter) && retryAfter > 0 && retryAfter <= 60) await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000))
             failures.push(...batch.map((row) => ({ source_key: row.source_key, cause: `${response.status} ${body?.error ?? "batch normalization failed"}` })))
           }
-          if (Array.isArray(body?.failures)) failures.push(...body.failures)
+          if (Array.isArray(body?.failures) && body.failures.length) {
+            const cause = String(body.failures[0]?.cause ?? "batch normalization failed")
+            failures.push(...batch.map((row) => ({ source_key: row.source_key, cause })))
+          }
         } catch (cause) {
           failures.push(...batch.map((row) => ({ source_key: row.source_key, cause: cause instanceof Error ? cause.message : String(cause) })))
         }
       }
       if (failures.length) {
         logError(FN, "normalize_fanout_incomplete", new Error(`${failures.length} of ${rowsForNormalization.length} rows failed`), { file_id, failures })
-        await supabase.from("processing_jobs").update({ status: "failed", completed_at: new Date().toISOString(), error_message: `Normalization incomplete: ${failures.length} of ${rowsForNormalization.length} rows failed` }).eq("file_id", file_id).in("status", ["uploaded", "processing"])
+        const errorMessage = `Normalization incomplete: ${failures.length} of ${rowsForNormalization.length} rows failed`
+        await supabase.from("processing_jobs").update({ status: "failed", completed_at: new Date().toISOString(), error_message: errorMessage }).eq("file_id", file_id).in("status", ["uploaded", "processing"])
+        await supabase.from("files").update({ upload_status: "failed", normalization_error: errorMessage }).eq("id", file_id).eq("upload_status", "processing")
       }
     }
 
@@ -1416,6 +1421,7 @@ serve(async (req) => {
           })
           .eq("file_id", file_id)
           .in("status", ["uploaded", "processing"])
+        await supabase.from("files").update({ upload_status: "failed", normalization_error: `Normalization incomplete: ${failures.length} of ${rowsForNormalization.length} rows failed` }).eq("id", file_id).eq("upload_status", "processing")
       })
 
       // @ts-ignore - EdgeRuntime is a Supabase runtime global
@@ -1449,6 +1455,7 @@ serve(async (req) => {
           .update({ status: "failed", error_message: error.message })
           .eq("file_id", body.file_id)
           .in("status", ["uploaded", "processing"])
+        await supabase.from("files").update({ upload_status: "failed", normalization_error: error instanceof Error ? error.message : String(error) }).eq("id", body.file_id).in("upload_status", ["approved", "processing"])
       }
     } catch {}
 

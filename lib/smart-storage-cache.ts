@@ -271,14 +271,16 @@ export async function fetchSmartStorageReportAvailability(userId: string): Promi
     .is("excluded_at", null)
   if (recordsError) throw new Error(recordsError.message)
   const recordRows = records ?? []
-  const { data: attributes, error: attributesError } = recordRows.length === 0
-    ? { data: [], error: null }
-    : await supabase
+  const attributes: Array<{ record_id: string; field_key: string; value: unknown }> = []
+  for (let offset = 0; offset < recordRows.length; offset += 100) {
+    const { data, error } = await supabase
       .from("record_attributes")
       .select("record_id, field_key, value")
-      .in("record_id", recordRows.map((row) => row.id))
+      .in("record_id", recordRows.slice(offset, offset + 100).map((row) => row.id))
       .in("field_key", ["vendor_name", "employer_name", "counterparty_name"])
-  if (attributesError) throw new Error(attributesError.message)
+    if (error) throw new Error(error.message)
+    attributes.push(...(data ?? []))
+  }
   const attributesByRecord = new Map<string, Map<string, unknown>>()
   for (const attribute of attributes ?? []) {
     const fields = attributesByRecord.get(attribute.record_id) ?? new Map<string, unknown>()

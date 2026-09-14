@@ -7,7 +7,7 @@ import { entitlementForUser, OAuthAccountRequiredError, resolveOAuthToken, supab
 import { MCP_CONNECTOR_ENABLED, MCP_OAUTH_ENABLED, MCP_RATE_LIMITS, oauthProtectedResourceUrl, upgradeMessage } from "@/lib/mcp-config"
 import { checkRateLimit, type RateLimitBucket } from "@/lib/rate-limit"
 import { type IngestFile } from "@/lib/smart-storage-ingest"
-import { getIngestBatchStatus, IngestBatchConflictError, ingestFileBatch } from "@/lib/mcp-ingest-batch"
+import { getIngestBatchStatus, ingestFileBatch } from "@/lib/mcp-ingest-batch"
 import { recordCollaborationAudit, resolveCollaborationAccess } from "@/lib/collaboration-access"
 import { getExport, getReport } from "@/lib/report-engine"
 import { shapeMcpReportResult } from "@/lib/mcp-report-shaping"
@@ -15,21 +15,22 @@ import { buildDashboardAIContext } from "@/lib/dashboard-ai-context"
 import { readVirtualModel } from "@/lib/virtual-model"
 import { PLAN_LIMITS, usageWindowForTier } from "@/supabase/functions/_shared/plan-limits"
 import { corsPreflight, withCors } from "@/lib/mcp-cors"
-import { createReportDefinition, getReportDefinition, listReportDefinitions, ReportDefinitionConflictError, ReportDefinitionNotFoundError, ReportDefinitionWriteError, updateReportDefinition } from "@/lib/report-definition-store"
-import { ReportDefinitionExecutionError, runReportDefinition } from "@/lib/report-definition-engine"
+import { createReportDefinition, getReportDefinition, listReportDefinitions, updateReportDefinition } from "@/lib/report-definition-store"
+import { runReportDefinition } from "@/lib/report-definition-engine"
+import { ReportDefinitionExecutionError } from "@/lib/report-definition-engine"
 import { validateReportDefinitionPayload } from "@/lib/report-definitions"
 import { listSavedDashboardWidgets, saveDashboardWidget } from "@/lib/dashboard-widget-store"
 import { createDashboardPage, deleteDashboardPage, ensureDefaultDashboardPages, renameDashboardPage, resolveDashboardPage } from "@/lib/dashboard-pages"
 import { logApiError } from "@/lib/api-error"
 import { rejectStatelessSubscriptionRequest, STATELESS_MCP_CAPABILITIES } from "@/lib/mcp-stateless-transport"
-import { activateDataMappingProfile, archiveDataMappingProfile, createDataMappingProfile, getDataMappingProfile, listDataMappingProfiles, updateDataMappingProfile, DataMappingProfileConflictError, DataMappingProfileDependencyError, DataMappingProfileNotFoundError } from "@/lib/data-mapping-store"
-import { createVirtualDatasetDefinition, getVirtualDatasetDefinition, listVirtualDatasetDefinitions, updateVirtualDatasetDefinition, VirtualDatasetConflictError, VirtualDatasetDependencyError, VirtualDatasetNotFoundError, archiveVirtualDatasetDefinition } from "@/lib/virtual-dataset-store"
+import { activateDataMappingProfile, archiveDataMappingProfile, createDataMappingProfile, getDataMappingProfile, listDataMappingProfiles, updateDataMappingProfile } from "@/lib/data-mapping-store"
+import { createVirtualDatasetDefinition, getVirtualDatasetDefinition, listVirtualDatasetDefinitions, updateVirtualDatasetDefinition, archiveVirtualDatasetDefinition } from "@/lib/virtual-dataset-store"
 import { previewDataMappingProfile } from "@/lib/data-mapping-service"
-import { activateDataRelationship, archiveDataRelationship, createDataRelationship, getDataRelationship, listDataRelationships, updateDataRelationship, DataRelationshipConflictError, DataRelationshipDependencyError, DataRelationshipNotFoundError } from "@/lib/data-relationship-store"
+import { activateDataRelationship, archiveDataRelationship, createDataRelationship, getDataRelationship, listDataRelationships, updateDataRelationship } from "@/lib/data-relationship-store"
 import { previewDataRelationship } from "@/lib/data-relationship-service"
-import { DataRelationshipExecutionError } from "@/lib/data-relationship-engine"
 import { mappingProfileSchema, relationshipSchema, reportDefinitionSchema, virtualDatasetSchema } from "@/lib/mcp-definition-schemas"
 import { createOwnedFolder, listStorageResources, requireOwnedFolder } from "@/lib/mcp-storage-discovery"
+import { McpUserFacingError } from "@/lib/mcp-errors"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -51,7 +52,7 @@ function limitedResult(message: string) {
 }
 
 function mcpToolError(error: unknown, userId: string, stage: string, fallback: string) {
-  if (error instanceof TypeError || error instanceof IngestBatchConflictError || error instanceof ReportDefinitionNotFoundError || error instanceof ReportDefinitionConflictError || error instanceof ReportDefinitionWriteError || error instanceof ReportDefinitionExecutionError || error instanceof VirtualDatasetNotFoundError || error instanceof VirtualDatasetConflictError || error instanceof VirtualDatasetDependencyError || error instanceof DataMappingProfileNotFoundError || error instanceof DataMappingProfileConflictError || error instanceof DataMappingProfileDependencyError || error instanceof DataRelationshipNotFoundError || error instanceof DataRelationshipConflictError || error instanceof DataRelationshipDependencyError || error instanceof DataRelationshipExecutionError) {
+  if (error instanceof McpUserFacingError || error instanceof TypeError) {
     return featureResult(error.message)
   }
   logApiError(error, { route: "mcp", stage, userId })
@@ -159,6 +160,8 @@ function buildHandler(userId: string, entitlement: ReturnType<typeof computeEnti
           ownerEntitlement = await entitlementForUser(ownerUserId)
           await recordCollaborationAudit({ actorUserId: userId, workflow: access.workflow, action: "submit", outcome: "allowed", decision: access.decision, metadata: { file_count: files.length } })
         }
+        // Collaboration submissions intentionally skip the personal-folder ownership check;
+        // collaborationAvailable() is hard-disabled until that path receives its own review.
         if (!workflow_id && destination_folder_id) await requireOwnedFolder(userId, destination_folder_id)
         const batch = await ingestFileBatch(ownerUserId, ownerEntitlement, idempotency_key, files as IngestFile[], { allowDuplicate: allow_duplicate, folderId: destination_folder_id, actorUserId: userId, workflowId: workflow_id })
         if (delegatedAccess?.workflow) await recordCollaborationAudit({ actorUserId: userId, workflow: delegatedAccess.workflow, action: "submit", outcome: "completed", decision: delegatedAccess.decision, metadata: { batch_id: batch.batch_id, file_ids: batch.items.map(item => item.file_id).filter(Boolean) } })

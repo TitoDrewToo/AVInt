@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/mcp-auth"
+import { McpUserFacingError } from "@/lib/mcp-errors"
 import { readComplete } from "@/lib/complete-read"
 import { createReportQueryContext } from "@/lib/report-query-context-server"
 import type { ReportBlock, ReportDocument } from "@/lib/report-document"
@@ -152,7 +153,7 @@ async function applyDatasetCorrections(userId: string, rows: ValueRow[], fileIds
   return { rows: corrected, count, version, unresolved }
 }
 
-export class ReportDefinitionExecutionError extends Error {}
+export class ReportDefinitionExecutionError extends McpUserFacingError {}
 
 function rollingBounds(unit: "month" | "year", count: number, offset: number, now: Date) {
   if (unit === "month") {

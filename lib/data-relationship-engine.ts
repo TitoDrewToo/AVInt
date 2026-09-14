@@ -1,10 +1,11 @@
 import { relationshipOutputField, type DataRelationshipDefinition, type DataRelationshipPreviewSamples, type DataRelationshipPreviewSummary } from "@/lib/data-relationship-definitions"
 import type { LoadedReportDefinitionSource } from "@/lib/report-definition-engine"
+import { McpUserFacingError } from "@/lib/mcp-errors"
 
 export const DATA_RELATIONSHIP_ROW_LIMIT = 5_000
 type ValueRow = Record<string, unknown>
 
-export class DataRelationshipExecutionError extends Error {}
+export class DataRelationshipExecutionError extends McpUserFacingError {}
 
 function usableKey(value: unknown) {
   return (typeof value === "string" && value.trim() !== "") || (typeof value === "number" && Number.isFinite(value)) || typeof value === "boolean"

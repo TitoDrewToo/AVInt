@@ -3,10 +3,11 @@ import { RECORD_DEFINITION_FIELDS, referencedDefinitionFields, slugifyReportTitl
 import { resolveReportFolderScope } from "@/lib/report-folder-scope-server"
 import { dataMappingRuleSourceFields, dataMappingTargetType, isReconciliationMappingRule, validateDataMappingProfilePayload } from "@/lib/data-mapping-definitions"
 import { relationshipOutputField, validateDataRelationshipDefinitionPayload } from "@/lib/data-relationship-definitions"
+import { McpUserFacingError } from "@/lib/mcp-errors"
 
-export class ReportDefinitionNotFoundError extends Error {}
-export class ReportDefinitionConflictError extends Error {}
-export class ReportDefinitionWriteError extends Error {}
+export class ReportDefinitionNotFoundError extends McpUserFacingError {}
+export class ReportDefinitionConflictError extends McpUserFacingError {}
+export class ReportDefinitionWriteError extends McpUserFacingError {}
 
 async function validateExecutableSource(userId: string, input: ReportDefinitionInput) {
   const { loadReportDefinitionSource } = await import("@/lib/report-definition-engine")

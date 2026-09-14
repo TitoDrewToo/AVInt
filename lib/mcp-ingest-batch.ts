@@ -4,6 +4,8 @@ import { supabaseAdmin } from "@/lib/mcp-auth"
 import { ingestFiles, resumeIngestFile, type IngestFile } from "@/lib/smart-storage-ingest"
 import type { Entitlement } from "@/lib/entitlement"
 import { batchScopeMatches, withoutDuplicateEvidence, type IngestBatchScope } from "@/lib/ingest-batch-scope"
+import { McpUserFacingError } from "@/lib/mcp-errors"
+import { scopedDb } from "@/lib/scoped-db"
 
 type ClaimedItem = {
   batch_id: string
@@ -28,7 +30,7 @@ type BatchItemResult = {
   existing_file?: { id: string; filename: string; created_at: string }
 }
 
-export class IngestBatchConflictError extends Error {
+export class IngestBatchConflictError extends McpUserFacingError {
   constructor(message: string) {
     super(message)
     this.name = "IngestBatchConflictError"
@@ -52,9 +54,9 @@ function safeMessage(error: unknown) {
   return "This file could not be queued. Retry the same batch key to resume it."
 }
 
-async function updateClaimedItem(item: ClaimedItem, values: Record<string, unknown>) {
+async function updateClaimedItem(userId: string, item: ClaimedItem, values: Record<string, unknown>) {
   if (!item.lease_token) throw new Error("Missing ingest item lease.")
-  const { data, error } = await supabaseAdmin
+  const { data, error } = await scopedDb(userId)
     .from("ingest_batch_items")
     .update({ ...values, lease_expires_at: null })
     .eq("id", item.item_id)
@@ -68,9 +70,10 @@ async function updateClaimedItem(item: ClaimedItem, values: Record<string, unkno
 }
 
 async function processClaimedItem(userId: string, entitlement: Entitlement, input: IngestFile, item: ClaimedItem, options: { allowDuplicate?: boolean; folderId?: string | null; workflowId?: string }): Promise<BatchItemResult> {
+  const db = scopedDb(userId)
   try {
     if (item.file_id && options.folderId) {
-      const { data: file, error } = await supabaseAdmin.from("files").select("id").eq("id", item.file_id).eq("user_id", userId).eq("folder_id", options.folderId).maybeSingle()
+      const { data: file, error } = await db.from("files").select("id").eq("id", item.file_id).eq("folder_id", options.folderId).maybeSingle()
       if (error || !file) throw new Error("Batch file no longer belongs to its intake folder")
     }
     const rawResult = item.file_id
@@ -81,7 +84,7 @@ async function processClaimedItem(userId: string, entitlement: Entitlement, inpu
           folderId: options.folderId,
           uploadBatchId: item.batch_id,
           onFileCreated: async (fileId) => {
-            const { data, error } = await supabaseAdmin
+            const { data, error } = await scopedDb(userId)
               .from("ingest_batch_items")
               .update({ file_id: fileId, status: "processing" })
               .eq("id", item.item_id)
@@ -94,7 +97,7 @@ async function processClaimedItem(userId: string, entitlement: Entitlement, inpu
         }))[0]
     const result = options.workflowId && rawResult ? { ...rawResult, ...withoutDuplicateEvidence(rawResult), existing_file: undefined } : rawResult
     const status = resultStatus(result?.status)
-    await updateClaimedItem(item, { status, file_id: result?.file_id ?? item.file_id, error_message: result?.message ?? null })
+    await updateClaimedItem(userId, item, { status, file_id: result?.file_id ?? item.file_id, error_message: result?.message ?? null })
     return {
       item_id: item.item_id,
       item_index: item.item_index,
@@ -108,17 +111,21 @@ async function processClaimedItem(userId: string, entitlement: Entitlement, inpu
   } catch (error) {
     logApiError(error, { route: "mcp", stage: "ingest_batch_item", userId, extra: { itemId: item.item_id } })
     const message = safeMessage(error)
-    await updateClaimedItem(item, { status: "failed", file_id: item.file_id, error_message: message })
+    await updateClaimedItem(userId, item, { status: "failed", file_id: item.file_id, error_message: message })
     return { item_id: item.item_id, item_index: item.item_index, filename: input.name, file_id: item.file_id, status: "failed", message }
   }
 }
 
-async function persistBatchStatus(batchId: string, status: "processing" | "completed" | "partial") {
-  const { error } = await supabaseAdmin.from("ingest_batches").update({ status }).eq("id", batchId)
-  if (error) throw new Error(error.message)
+async function persistBatchStatus(userId: string, batchId: string, status: "processing" | "completed" | "partial") {
+  const { error } = await scopedDb(userId).from("ingest_batches").update({ status }).eq("id", batchId)
+  if (error) {
+    if (/idempotency key/i.test(error.message)) throw new IngestBatchConflictError(error.message)
+    throw new Error(error.message)
+  }
 }
 
 export async function ingestFileBatch(userId: string, entitlement: Entitlement, idempotencyKey: string, files: IngestFile[], options: { allowDuplicate?: boolean; folderId?: string | null; actorUserId?: string; workflowId?: string } = {}) {
+  const db = scopedDb(userId)
   const descriptor = buildIngestBatchDescriptor(files, options.allowDuplicate === true)
   const { data, error } = await supabaseAdmin.rpc("avint_claim_scoped_ingest_batch", {
     p_user_id: userId,
@@ -129,15 +136,18 @@ export async function ingestFileBatch(userId: string, entitlement: Entitlement, 
     p_workflow_id: options.workflowId ?? null,
     p_intake_folder_id: options.folderId ?? null,
   })
-  if (error) throw new Error(error.message)
+  if (error) {
+    if (/idempotency key/i.test(error.message)) throw new IngestBatchConflictError(error.message)
+    throw new Error(error.message)
+  }
   const claimedItems = (data ?? []) as ClaimedItem[]
   if (claimedItems.length !== files.length) throw new Error("The ingest batch could not be claimed completely.")
   const batchId = claimedItems[0].batch_id
   if (options.workflowId) {
     const existingIds = claimedItems.flatMap(item => item.file_id ? [item.file_id] : [])
     if (existingIds.length) {
-      const { data: scopedFiles, error: scopeError } = await supabaseAdmin.from("files").select("id").eq("user_id", userId).eq("folder_id", options.folderId!).in("id", existingIds)
-      if (scopeError || new Set(scopedFiles?.map(file => file.id)).size !== new Set(existingIds).size) throw new Error("Batch files no longer belong to their intake folder")
+      const { data: scopedFiles, error: scopeError } = await db.from("files").select("id").eq("folder_id", options.folderId!).in("id", existingIds)
+      if (scopeError || new Set((scopedFiles as Array<{ id: string }> | null | undefined)?.map((file) => file.id)).size !== new Set(existingIds).size) throw new Error("Batch files no longer belong to their intake folder")
     }
   }
 
@@ -154,12 +164,13 @@ export async function ingestFileBatch(userId: string, entitlement: Entitlement, 
     }
   }))
   const status = deriveIngestBatchStatus(results)
-  await persistBatchStatus(batchId, status)
+  await persistBatchStatus(userId, batchId, status)
   return { batch_id: batchId, idempotency_key: idempotencyKey, status, items: options.workflowId ? results.map(withoutDuplicateEvidence) : results }
 }
 
 export async function getIngestBatchStatus(userId: string, idempotencyKey: string, scope: IngestBatchScope = { actorUserId: userId }) {
-  const { data: batch, error } = await supabaseAdmin
+  const db = scopedDb(userId)
+  const { data: batch, error } = await db
     .from("ingest_batches")
     .select("id, idempotency_key, status, created_at, updated_at, actor_user_id, workflow_id, intake_folder_id")
     .eq("user_id", userId)
@@ -167,7 +178,7 @@ export async function getIngestBatchStatus(userId: string, idempotencyKey: strin
     .maybeSingle()
   if (error) throw new Error(error.message)
   if (!batch || !batchScopeMatches(userId, batch, scope)) throw new Error("Ingest batch not found.")
-  const { data: rows, error: itemsError } = await supabaseAdmin
+  const { data: rows, error: itemsError } = await db
     .from("ingest_batch_items")
     .select("id, item_index, filename, file_id, status, error_message, attempt_count, files(upload_status, folder_id, scan_reason)")
     .eq("batch_id", batch.id)
@@ -176,7 +187,7 @@ export async function getIngestBatchStatus(userId: string, idempotencyKey: strin
   if (itemsError) throw new Error(itemsError.message)
   const fileIds = (rows ?? []).map((row: any) => row.file_id).filter(Boolean)
   const { data: jobs, error: jobsError } = fileIds.length
-    ? await supabaseAdmin.from("processing_jobs").select("file_id, status, error_message, created_at").in("file_id", fileIds).order("created_at", { ascending: false })
+    ? await scopedDb(userId).unscoped("processing_jobs", "scoped via files!inner(user_id)").select("file_id, status, error_message, created_at, files!inner(user_id)").in("file_id", fileIds).eq("files.user_id", userId).order("created_at", { ascending: false })
     : { data: [], error: null }
   if (jobsError) throw new Error(jobsError.message)
   const latestJobByFile = new Map<string, any>()
@@ -197,7 +208,7 @@ export async function getIngestBatchStatus(userId: string, idempotencyKey: strin
           ? "failed"
         : row.status
     if (status !== row.status) {
-      stateChanges.push(supabaseAdmin.from("ingest_batch_items").update({ status, lease_expires_at: null }).eq("id", row.id).eq("user_id", userId))
+      stateChanges.push(scopedDb(userId).from("ingest_batch_items").update({ status, lease_expires_at: null }).eq("id", row.id))
     }
     const file = Array.isArray(row.files) ? row.files[0] : row.files
     const reason = (status === "failed" || status === "rejected") ? file?.scan_reason ?? (processingJob?.status === "failed" ? "normalization_failed" : null) : null
@@ -207,6 +218,6 @@ export async function getIngestBatchStatus(userId: string, idempotencyKey: strin
   const stateError = persistedChanges.find((result) => result.error)?.error
   if (stateError) throw new Error(stateError.message)
   const status = deriveIngestBatchStatus(items)
-  if (status !== batch.status) await persistBatchStatus(batch.id, status)
+  if (status !== batch.status) await persistBatchStatus(userId, batch.id, status)
   return { batch_id: batch.id, idempotency_key: batch.idempotency_key, status, created_at: batch.created_at, updated_at: batch.updated_at, items }
 }

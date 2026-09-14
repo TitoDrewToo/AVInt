@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/mcp-auth"
+import { scopedDb } from "@/lib/scoped-db"
 
 const MAX_CONTEXT_ROWS = 120
 
@@ -41,6 +42,7 @@ export async function countProfileRecords(client: DashboardContextClient, userId
 }
 
 export async function buildDashboardAIContext(userId: string, client: DashboardContextClient = supabaseAdmin) {
+  if (client === supabaseAdmin) client = scopedDb(userId) as DashboardContextClient
   const [{ data: files, error: filesError }, { data: fields, error: fieldsError }, counts] = await Promise.all([
     client.from("files").select("id, filename, document_type, upload_status").eq("user_id", userId),
     client

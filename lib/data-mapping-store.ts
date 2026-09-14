@@ -10,10 +10,11 @@ import {
   type DataMappingProfileInput,
   type DataMappingProfileListItem,
 } from "@/lib/data-mapping-definitions"
+import { McpUserFacingError } from "@/lib/mcp-errors"
 
-export class DataMappingProfileNotFoundError extends Error {}
-export class DataMappingProfileConflictError extends Error {}
-export class DataMappingProfileDependencyError extends Error {}
+export class DataMappingProfileNotFoundError extends McpUserFacingError {}
+export class DataMappingProfileConflictError extends McpUserFacingError {}
+export class DataMappingProfileDependencyError extends McpUserFacingError {}
 
 async function validateAccess(userId: string, input: DataMappingProfileInput) {
   const reconciliation = input.mappings.every(isReconciliationMappingRule)

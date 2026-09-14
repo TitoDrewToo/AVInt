@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/mcp-auth"
+import { McpUserFacingError } from "@/lib/mcp-errors"
 import { slugifyReportTitle, slugWithSuffix } from "@/lib/report-definitions"
 import { getVirtualDatasetDefinition } from "@/lib/virtual-dataset-store"
 import {
@@ -9,9 +10,9 @@ import {
   type DataRelationshipPreviewSummary,
 } from "@/lib/data-relationship-definitions"
 
-export class DataRelationshipNotFoundError extends Error {}
-export class DataRelationshipConflictError extends Error {}
-export class DataRelationshipDependencyError extends Error {}
+export class DataRelationshipNotFoundError extends McpUserFacingError {}
+export class DataRelationshipConflictError extends McpUserFacingError {}
+export class DataRelationshipDependencyError extends McpUserFacingError {}
 
 async function validateAccess(userId: string, input: DataRelationshipDefinitionInput) {
   const [left, right] = await Promise.all([

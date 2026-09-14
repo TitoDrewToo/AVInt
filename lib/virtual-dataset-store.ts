@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/mcp-auth"
+import { McpUserFacingError } from "@/lib/mcp-errors"
 import { slugifyReportTitle, slugWithSuffix, type ReportDefinitionInput } from "@/lib/report-definitions"
 import { validateDefinitionAccess } from "@/lib/report-definition-store"
 import {
@@ -8,9 +9,9 @@ import {
   type VirtualDatasetDefinitionListItem,
 } from "@/lib/virtual-dataset-definitions"
 
-export class VirtualDatasetNotFoundError extends Error {}
-export class VirtualDatasetConflictError extends Error {}
-export class VirtualDatasetDependencyError extends Error {}
+export class VirtualDatasetNotFoundError extends McpUserFacingError {}
+export class VirtualDatasetConflictError extends McpUserFacingError {}
+export class VirtualDatasetDependencyError extends McpUserFacingError {}
 
 async function validateAccess(userId: string, input: VirtualDatasetDefinitionInput) {
   const reportShape: ReportDefinitionInput = {

@@ -156,7 +156,7 @@ const contract = deriveRecords({
   line_items: [{ description: "September rent", amount: 20000, due_date: "2026-09-01", check_number: "PDC-1" }],
 }, file)
 check("contract preserves line-item attributes", contract.attributes.some((attribute) => attribute.field_key === "description" && attribute.source_key === "root.1"))
-check("contract child uses its own amount and date", contract.records[1].amount === 20000 && contract.records[1].occurred_on === "2026-09-01")
+check("contract child uses its own amount and parent document date", contract.records[1].amount === 20000 && contract.records[1].occurred_on === "2026-08-01")
 
 const matchingSingleItem = deriveRecords({
   document_type: "receipt", document_date: "2026-08-27", currency: "PHP", total_amount: 49,

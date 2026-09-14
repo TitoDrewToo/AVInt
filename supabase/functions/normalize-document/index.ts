@@ -50,9 +50,11 @@ Fields to return:
   "vendor_normalized":      string or null  — canonical form of vendor_name suitable for grouping (e.g. "STARBUCKS #1234 SEATTLE" → "Starbucks"). Strip location suffixes, store numbers, legal suffixes (Inc, LLC, Ltd) unless they disambiguate. Use for duplicate detection.
   "employer_name":          string or null  — clean employer name, title case
   "document_date":          string or null  — ISO date YYYY-MM-DD, infer from context if needed
+  "due_date":               string or null  — payment due date from the document, if present
   "currency":               string or null  — ISO 4217 code: USD, PHP, SGD, EUR, GBP, etc
   "jurisdiction":           string or null  — best-effort ISO-like region tag: "US", "US-CA", "GB", "PH", "SG", "AU", etc. Use currency, address, tax labels (VAT/GST/Sales Tax), and language cues.
   "total_amount":           number or null  — final total paid/charged, must be a number not string
+  "subtotal_amount":        number or null  — subtotal before tax, must be a number not string
   "gross_income":           number or null  — gross pay before deductions
   "net_income":             number or null  — take-home pay after deductions
   "tax_amount":             number or null  — VAT, withholding tax, or any tax line extracted
@@ -376,9 +378,11 @@ serve(async (req) => {
       vendor_normalized: normalized.vendor_normalized  ?? null,
       employer_name: normalized.employer_name          ?? fields.employer_name,
       document_date: normalized.document_date          ?? fields.document_date,
+      due_date: normalized.due_date                    ?? fields.due_date ?? null,
       currency: normalized.currency                    ?? fields.currency,
       jurisdiction: normalized.jurisdiction            ?? null,
       total_amount: normalized.total_amount            ?? fields.total_amount,
+      subtotal_amount: normalized.subtotal_amount      ?? fields.subtotal_amount ?? null,
       gross_income: normalized.gross_income            ?? fields.gross_income,
       net_income: normalized.net_income                ?? fields.net_income,
       expense_category: normalized.expense_category    ?? fields.expense_category,

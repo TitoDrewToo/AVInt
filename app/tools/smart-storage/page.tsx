@@ -1133,15 +1133,25 @@ export default function SmartStoragePage() {
       const results = await Promise.allSettled(uploadList.map(uploadOne))
       const uploadedFiles: UploadedFile[] = []
       let failedUploads = 0
+      const uploadFailures: string[] = []
       for (const r of results) {
         if (r.status === "rejected") {
           failedUploads += 1
-          console.error("Upload failed:", r.reason)
+          const reason = r.reason instanceof Error
+            ? r.reason.message
+            : typeof r.reason === "string"
+              ? r.reason
+              : r.reason && typeof r.reason === "object"
+                ? JSON.stringify(r.reason)
+                : String(r.reason ?? "Unknown upload error")
+          uploadFailures.push(reason)
+          console.error("Upload failed:", reason, r.reason)
         }
         if (r.status === "fulfilled" && r.value) uploadedFiles.push(r.value)
       }
       if (failedUploads > 0) {
-        setUploadNotice(`${failedUploads} upload${failedUploads === 1 ? "" : "s"} could not be started for processing. Please retry the upload.`)
+        const detail = uploadFailures[0]
+        setUploadNotice(`${failedUploads} upload${failedUploads === 1 ? "" : "s"} could not be started for processing.${detail ? ` Reason: ${detail}` : ""}`)
       }
       upsertLoadedFiles(uploadedFiles)
       for (const file of uploadedFiles) {

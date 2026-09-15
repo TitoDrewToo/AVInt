@@ -47,6 +47,7 @@ import { GoogleDriveImportModal } from "@/components/smart-storage/google-drive-
 import { ProcessingActivityWindow } from "@/components/smart-storage/processing-activity-window"
 import { SecurityRejectionPanel } from "@/components/smart-storage/security-rejection-panel"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import {
   formatStorageAllowance,
   formatStorageBytes,
@@ -2781,7 +2782,10 @@ export default function SmartStoragePage() {
           <Sheet open={reportsOpen} onOpenChange={setReportsOpen}>
             <SheetContent side="right" className="w-full max-w-2xl gap-0 border-l border-border bg-card p-0">
             <div className="border-b border-border px-4 py-3">
-              <h2 className="text-sm font-semibold text-foreground">Reports</h2>
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-sm font-semibold text-foreground">Reports</h2>
+                {isPro && <Link href="/tools/smart-storage/reconcile" className="rounded-md border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">Reconcile sources</Link>}
+              </div>
             </div>
 
             {isPro && <SavedReportManager folderId={currentFolderId === "root" ? null : currentFolderId} />}

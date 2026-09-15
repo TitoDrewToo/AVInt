@@ -141,8 +141,8 @@ export async function readVirtualModel(userId: string, query: VirtualModelQuery 
   if (recordIds.length) {
     let fieldsQuery = db
       .from("record_attributes")
-      .select("id, record_id, field_key, value, value_type, confidence, is_custom, source_evidence")
-      .in("record_id", recordIds)
+      .select("id, record_id, field_key, value, value_type, confidence, is_custom, source_evidence, records!inner(user_id)")
+      .in("records.id", recordIds)
     if (query.fieldKey) fieldsQuery = fieldsQuery.eq("field_key", query.fieldKey)
     if (query.customOnly) fieldsQuery = fieldsQuery.eq("is_custom", true)
     const { data, error } = await fieldsQuery

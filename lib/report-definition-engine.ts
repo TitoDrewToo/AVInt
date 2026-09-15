@@ -106,12 +106,10 @@ async function applyDatasetCorrections(userId: string, rows: ValueRow[], fileIds
     .is("parent_record_id", null)
   if (recordsError) throw new Error(`dataset correction records query failed: ${recordsError.message}`)
   if (!records?.length) return { rows, count: 0, version: "", unresolved: [] as string[] }
-  const recordIds = records.map((record) => record.id)
   const { data: revisions, error: revisionsError } = await scopedDb(userId)
     .from("record_revisions")
-    .select("record_id, revision_number, target_kind, target, new_value, change_kind")
-    
-    .in("record_id", recordIds)
+    .select("record_id, revision_number, target_kind, target, new_value, change_kind, records!inner(file_id)")
+    .in("records.file_id", fileIds)
     .in("change_kind", ["user_edit", "reclassify", "rollback"])
     .order("revision_number", { ascending: false })
   if (revisionsError) throw new Error(`dataset correction revisions query failed: ${revisionsError.message}`)

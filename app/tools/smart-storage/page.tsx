@@ -2850,8 +2850,15 @@ export default function SmartStoragePage() {
                   const locked = !isPro
                   const isSelected = selectedReport === report.id
                   const dimmed = !enabled || locked
+                  const availabilityHint = report.id === "income_summary"
+                    ? "Unavailable because no income documents are currently available for this account or selection."
+                    : report.id === "profit_loss"
+                    ? "Unavailable until both income and expense documents are available in this account or selection."
+                    : report.id === "contract_summary" || report.id === "key_terms"
+                    ? "Unavailable because no contract or agreement documents are currently available."
+                    : report.description
                   return (
-                    <Tip text={locked ? "Upgrade to Pro to generate reports" : REPORT_HINTS[report.id] ?? report.description}><button
+                    <Tip text={locked ? "Upgrade to Pro to generate reports" : enabled ? REPORT_HINTS[report.id] ?? report.description : availabilityHint}><button
                       key={report.id}
                       onClick={() => {
                         if (locked) { router.push("/studio#studio-inquiry"); return }

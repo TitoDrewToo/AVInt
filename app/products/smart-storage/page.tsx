@@ -239,6 +239,10 @@ const smartStorageFaq = [
     answer: `Because Smart Storage is the persistent data layer behind the conversation. Upload a file once and its records stay organized, inspectable, correctable, and available as your history grows. Claude can then work from that governed, up-to-date evidence instead of starting again with a loose set of chat attachments. Using both is the point: Smart Storage preserves the source and structure; Claude reasons and acts on it.`,
   },
   {
+    question: "How does Smart Storage improve an AI workflow over time?",
+    answer: `The durable parts of your workflow live outside the model's context window: source files, structured records, mappings, corrections, report definitions, and evidence. That means an AI assistant can retrieve the current, relevant state instead of burning tokens retracing old conversations or re-learning the same rules every session.`,
+  },
+  {
     question: "Do I need to be technical to connect Claude?",
     answer: `No. In Claude you choose "Add custom connector," paste one URL, and sign in with the email on your AVIntelligence account. No keys, no code, no setup — about a minute.`,
   },

@@ -570,6 +570,7 @@ function TaxBundleContent() {
   const hasAnyFilter = Boolean(dateFrom || dateTo || targetFolder)
   const ownsNoDocs = totalOwnedDocs === 0
   const folderExcludingEverything = hasAnyFilter && !hasData && !!targetFolder
+  const hasRowsButNoEligibleUsd = rows.length > 0 && !hasData
 
   // ── Period preset helpers ────────────────────────────────────────────────────
   // Dates are ISO YYYY-MM-DD strings (what <input type="date"> expects and
@@ -763,6 +764,15 @@ function TaxBundleContent() {
                     className="mt-2 rounded border border-border px-4 py-2 text-xs text-foreground hover:bg-muted">
                     Clear folder filter
                   </button>
+                </>
+              ) : hasRowsButNoEligibleUsd ? (
+                <>
+                  <p className="text-sm font-medium text-foreground">No eligible USD documents in this report</p>
+                  <p className="max-w-sm text-xs text-muted-foreground">
+                    {rows.length} document{rows.length === 1 ? "" : "s"} {hasAnyFilter ? "match this selection, but " : "are on file, but "}
+                    none have eligible USD income or expense rows. Non-USD and unspecified-currency rows are excluded from Tax Bundle math.
+                    Review the excluded currency rows or use a report that supports their currency.
+                  </p>
                 </>
               ) : (
                 <>

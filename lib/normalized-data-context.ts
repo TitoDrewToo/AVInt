@@ -42,11 +42,13 @@ export async function fetchDashboardReadyFields(
   if (error) return { data: null, error }
   const parents = records ?? []
   const relatedParentIds = parents.map((record) => record.id)
+  const parentIdSet = new Set(relatedParentIds)
   const { data: children, error: childrenError } = relatedParentIds.length === 0
     ? { data: [], error: null }
-    : await supabase.from("records").select("id, parent_record_id, amount, source_key").in("parent_record_id", relatedParentIds).is("excluded_at", null).order("source_key", { ascending: true })
+    : await supabase.from("records").select("id, parent_record_id, amount, source_key, file_id").in("file_id", options.fileIds ?? []).not("parent_record_id", "is", null).is("excluded_at", null).order("source_key", { ascending: true })
   if (childrenError) return { data: null, error: childrenError }
-  const relatedIds = [...relatedParentIds, ...(children ?? []).map((child) => child.id)]
+  const scopedChildren = (children ?? []).filter((child) => parentIdSet.has(child.parent_record_id))
+  const relatedIds = [...relatedParentIds, ...scopedChildren.map((child) => child.id)]
   const attributePages = []
   for (let offset = 0; offset < relatedIds.length; offset += 400) {
     const { data, error } = await supabase.from("record_attributes").select("record_id, field_key, value, value_numeric").in("record_id", relatedIds.slice(offset, offset + 400))
@@ -64,7 +66,7 @@ export async function fetchDashboardReadyFields(
     attributeByRecord.set(attribute.record_id, fields)
   }
   const childrenByParent = new Map<string, typeof children>()
-  for (const child of children ?? []) {
+  for (const child of scopedChildren) {
     childrenByParent.set(child.parent_record_id, [...(childrenByParent.get(child.parent_record_id) ?? []), child])
   }
 

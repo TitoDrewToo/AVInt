@@ -1,5 +1,6 @@
 import { scopedDb } from "@/lib/scoped-db"
 import { summarizeDataModelRecords, type DataModelStatRecord } from "@/lib/data-model-stats"
+import { readComplete } from "@/lib/complete-read"
 
 const DEFAULT_PAGE_SIZE = 40
 const MAX_PAGE_SIZE = 100
@@ -190,13 +191,14 @@ export async function readVirtualModel(userId: string, query: VirtualModelQuery 
     datasetColumns = data ?? []
   }
 
-  let statusQuery = db.from("records").select("status, needs_review, excluded_at, has_user_edits, parent_record_id").in("file_id", fileIds)
-  if (matchingRecordIds && matchingRecordIds.length) statusQuery = statusQuery.in("id", matchingRecordIds)
-  if (query.status) statusQuery = statusQuery.eq("status", query.status)
-  if (query.documentType) statusQuery = statusQuery.eq("document_type", query.documentType)
-  if (query.reviewOnly) statusQuery = statusQuery.eq("needs_review", true).is("excluded_at", null)
-  const { data: statusRows, error: statusError } = emptyMatch ? { data: [], error: null } : await statusQuery
-  if (statusError) throw new Error(statusError.message)
+  const statusRows = emptyMatch ? [] : await readComplete((from, to) => {
+    let statusQuery = db.from("records").select("status, needs_review, excluded_at, has_user_edits, parent_record_id").in("file_id", fileIds)
+    if (matchingRecordIds && matchingRecordIds.length) statusQuery = statusQuery.in("id", matchingRecordIds)
+    if (query.status) statusQuery = statusQuery.eq("status", query.status)
+    if (query.documentType) statusQuery = statusQuery.eq("document_type", query.documentType)
+    if (query.reviewOnly) statusQuery = statusQuery.eq("needs_review", true).is("excluded_at", null)
+    return statusQuery.range(from, to)
+  }, 100_000, "data_model_status")
   const statRows = (statusRows ?? []) as DataModelStatRecord[]
   const { stats } = summarizeDataModelRecords(statRows)
   const { statusCounts } = summarizeDataModelRecords(query.includeExcluded ? statRows : statRows.filter((row) => row.excluded_at === null))

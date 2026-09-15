@@ -49,7 +49,7 @@ export async function fetchDashboardReadyFields(
   const relatedIds = [...relatedParentIds, ...(children ?? []).map((child) => child.id)]
   const attributePages = []
   for (let offset = 0; offset < relatedIds.length; offset += 400) {
-    const { data, error } = await supabase.from("record_attributes").select("record_id, field_key, value, value_numeric, records!inner(user_id)").in("records.id", relatedIds.slice(offset, offset + 400))
+    const { data, error } = await supabase.from("record_attributes").select("record_id, field_key, value, value_numeric").in("record_id", relatedIds.slice(offset, offset + 400))
     if (error) return { data: null, error }
     attributePages.push(...(data ?? []))
   }

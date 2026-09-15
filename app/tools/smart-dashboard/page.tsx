@@ -1687,7 +1687,8 @@ export default function SmartDashboardPage() {
     const { data: fields, error: fieldsError } = await fetchDashboardReadyFields(session.user.id, { fileIds, dateFrom, dateTo })
     if (fieldsError) {
       clearFinancialData()
-      setDataError("We could not refresh your extracted data. Please try again.")
+      const reason = fieldsError instanceof Error ? fieldsError.message : typeof fieldsError === "object" && fieldsError && "message" in fieldsError ? String((fieldsError as { message?: unknown }).message ?? "Unknown data error") : String(fieldsError)
+      setDataError(`We could not refresh your extracted data: ${reason}`)
       setLoading(false)
       return
     }

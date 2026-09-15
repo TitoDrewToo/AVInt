@@ -2784,7 +2784,7 @@ export default function SmartStoragePage() {
             <div className="border-b border-border px-4 py-3">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-sm font-semibold text-foreground">Reports</h2>
-                {isPro && <Link href="/tools/smart-storage/reconcile" className="rounded-md border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">Reconcile sources</Link>}
+                {isPro && <><Link href="/tools/smart-storage/reconcile" className="rounded-md border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">Reconcile sources</Link><Link href="/tools/smart-storage/analyst-lab" className="rounded-md border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">Quality checks</Link></>}
               </div>
             </div>
 

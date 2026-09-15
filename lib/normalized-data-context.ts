@@ -47,9 +47,14 @@ export async function fetchDashboardReadyFields(
     : await supabase.from("records").select("id, parent_record_id, amount, source_key").in("parent_record_id", relatedParentIds).is("excluded_at", null).order("source_key", { ascending: true })
   if (childrenError) return { data: null, error: childrenError }
   const relatedIds = [...relatedParentIds, ...(children ?? []).map((child) => child.id)]
-  const { data: attributes, error: attributesError } = relatedIds.length === 0
-    ? { data: [], error: null }
-    : await supabase.from("record_attributes").select("record_id, field_key, value, value_numeric").in("record_id", relatedIds)
+  const attributePages = []
+  for (let offset = 0; offset < relatedIds.length; offset += 400) {
+    const { data, error } = await supabase.from("record_attributes").select("record_id, field_key, value, value_numeric, records!inner(user_id)").in("records.id", relatedIds.slice(offset, offset + 400))
+    if (error) return { data: null, error }
+    attributePages.push(...(data ?? []))
+  }
+  const attributes = attributePages
+  const attributesError = null
   if (attributesError) return { data: null, error: attributesError }
 
   const attributeByRecord = new Map<string, Map<string, { value: unknown; value_numeric: unknown }>>()

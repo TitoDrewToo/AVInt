@@ -64,7 +64,7 @@ export async function buildDashboardAIContext(userId: string, client: DashboardC
   const recordIds = readyRows.map((row) => row.id)
   const { data: attributes, error: attributesError } = recordIds.length === 0
     ? { data: [], error: null }
-    : await client.from("record_attributes").select("record_id, field_key, value, value_numeric").in("record_id", recordIds)
+    : await client.from("record_attributes").select("record_id, field_key, value, value_numeric, records!inner(user_id)").in("records.id", recordIds)
   if (attributesError) throw new Error(attributesError.message)
   const attributeByRecord = new Map<string, Map<string, { value: unknown; value_numeric: unknown }>>()
   for (const attribute of attributes ?? []) {

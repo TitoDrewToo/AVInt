@@ -192,7 +192,7 @@ export async function readVirtualModel(userId: string, query: VirtualModelQuery 
   }
 
   const statusRows = emptyMatch ? [] : await readComplete((from, to) => {
-    let statusQuery = db.from("records").select("status, needs_review, excluded_at, has_user_edits, parent_record_id").in("file_id", fileIds)
+    let statusQuery = db.from("records").select("status, needs_review, excluded_at, has_user_edits, parent_record_id", { count: "exact" }).in("file_id", fileIds)
     if (matchingRecordIds && matchingRecordIds.length) statusQuery = statusQuery.in("id", matchingRecordIds)
     if (query.status) statusQuery = statusQuery.eq("status", query.status)
     if (query.documentType) statusQuery = statusQuery.eq("document_type", query.documentType)

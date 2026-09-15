@@ -45,7 +45,7 @@ export async function fetchDashboardReadyFields(
   const parentIdSet = new Set(relatedParentIds)
   const { data: children, error: childrenError } = relatedParentIds.length === 0
     ? { data: [], error: null }
-    : await supabase.from("records").select("id, parent_record_id, amount, source_key, file_id").in("file_id", options.fileIds ?? []).not("parent_record_id", "is", null).is("excluded_at", null).order("source_key", { ascending: true })
+    : await supabase.from("records").select("id, parent_record_id, amount, source_key, file_id").eq("user_id", userId).not("parent_record_id", "is", null).is("excluded_at", null).order("source_key", { ascending: true })
   if (childrenError) return { data: null, error: childrenError }
   const scopedChildren = (children ?? []).filter((child) => parentIdSet.has(child.parent_record_id))
   const relatedIds = [...relatedParentIds, ...scopedChildren.map((child) => child.id)]
